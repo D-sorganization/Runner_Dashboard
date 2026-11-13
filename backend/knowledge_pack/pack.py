@@ -1,4 +1,4 @@
-# Vendored from Tools (commit 09ff428af314969363f8908dcebafb84ddd7a3ef)
+# Vendored from Tools (commit 6f064e6091b8fc0f0e5390913602a747ac544fb1)
 # Path in Tools: src/shared/python/ai/knowledge/pack.py
 # Part of D-sorganization/Repository_Management#1772 (K0 / K2, Runner_Dashboard#1479)
 # fmt: off
@@ -6,20 +6,25 @@
 
 The pack file is self-describing (manifest, commits, per-file hashes) so a
 consumer can check freshness and cite passages without the Tools repository.
+Optionally stores dense embeddings for hybrid BM25 + cosine ranking (RM#1772 K4).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import math
 import os
 import re
 import sqlite3
-from collections.abc import Mapping
+import struct
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Protocol, runtime_checkable
 
 from .chunking import chunk_document
 from .manifest import (
@@ -31,22 +36,15 @@ from .manifest import (
 )
 from .sources import SourceFile, head_commit, select_files
 
+_logger = logging.getLogger(__name__)
+
 #: Bumped on any incompatible schema change; readers refuse other versions.
 FORMAT_VERSION = 1
 _TITLE_WEIGHT = 5.0
 _TEXT_WEIGHT = 1.0
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 _MAX_QUERY_TOKENS = 32
-
-
-def sanitize_fts_query(query: str) -> str | None:
-    """Reduce ``query`` to an FTS5 MATCH expression; ``None`` when no tokens remain."""
-    if not isinstance(query, str):
-        raise TypeError("query must be a string")
-    tokens = _TOKEN_RE.findall(query)[:_MAX_QUERY_TOKENS]
-    if not tokens:
-        return None
-    return " OR ".join('"' + t.replace('"', "") + '"' for t in tokens)
+_DEFAULT_RRF_K = 60
 
 _SCHEMA = """
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -58,12 +56,105 @@ CREATE TABLE passages (
     id INTEGER PRIMARY KEY, repo TEXT NOT NULL, source TEXT NOT NULL,
     anchor TEXT NOT NULL, title TEXT NOT NULL, text TEXT NOT NULL,
     commit_sha TEXT NOT NULL, content_hash TEXT NOT NULL, status TEXT NOT NULL,
-    authority TEXT NOT NULL, authority_rank INTEGER NOT NULL
+    authority TEXT NOT NULL, authority_rank INTEGER NOT NULL, embedding BLOB
 );
 CREATE VIRTUAL TABLE passages_fts USING fts5(
     title, text, content='', tokenize='porter unicode61'
 );
 """
+
+
+@runtime_checkable
+class Embedder(Protocol):
+    """Protocol for vector embedders (e.g. MiniLM)."""
+
+    def embed(self, text: str) -> Sequence[float]:
+        """Embed a single text string into a float vector."""
+        ...
+
+
+def _as_embed_fn(
+    embedder: Embedder | Callable[[str], Sequence[float]],
+) -> Callable[[str], Sequence[float]]:
+    """Normalize an ``Embedder`` or a bare callable to a callable."""
+    return embedder.embed if isinstance(embedder, Embedder) else embedder
+
+
+def get_minilm_embedder() -> Embedder | None:
+    """Return a MiniLM embedder using ai_backend or sentence-transformers.
+
+    MiniLM embeddings are optional: neither backend is a mandatory dependency.
+    Returns None (after logging a warning with the reason) if neither backend
+    is available, instead of raising.
+    """
+    try:
+        import ai_backend
+
+        if hasattr(ai_backend, "LocalEmbedder"):
+            embedder = ai_backend.LocalEmbedder.from_default_cache()
+
+            class _RustEmbedder:
+                def embed(self, text: str) -> Sequence[float]:
+                    return [float(x) for x in embedder.embed(text)]
+
+            return _RustEmbedder()
+    except Exception as exc:
+        _logger.warning("MiniLM embedder backend 'ai_backend' unavailable: %s", exc)
+
+    try:
+        from sentence_transformers import SentenceTransformer
+
+        model = SentenceTransformer("all-MiniLM-L6-v2")
+
+        class _STEmbedder:
+            def embed(self, text: str) -> Sequence[float]:
+                return [float(x) for x in model.encode(text, convert_to_numpy=True)]
+
+        return _STEmbedder()
+    except Exception as exc:
+        _logger.warning(
+            "MiniLM embedder backend 'sentence_transformers' unavailable: %s", exc
+        )
+
+    _logger.warning("No MiniLM embedding backend available.")
+    return None
+
+
+def embedding_to_blob(vec: Sequence[float]) -> bytes:
+    """Pack a sequence of floats into little-endian 32-bit float bytes."""
+    return struct.pack(f"<{len(vec)}f", *vec)
+
+
+def blob_to_embedding(blob: bytes) -> tuple[float, ...]:
+    """Unpack little-endian 32-bit float bytes into a tuple of floats."""
+    return struct.unpack(f"<{len(blob) // 4}f", blob)
+
+
+def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
+    """Compute cosine similarity between two float vectors."""
+    if len(a) != len(b):
+        raise ValueError(f"vector length mismatch: {len(a)} vs {len(b)}")
+    if not a:
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    norm_a = sum(x * x for x in a)
+    norm_b = sum(y * y for y in b)
+    if norm_a <= 0.0 or norm_b <= 0.0:
+        return 0.0
+    return dot / (math.sqrt(norm_a) * math.sqrt(norm_b))
+
+
+def reciprocal_rank_fusion(
+    bm25_ranks: Mapping[int, int],
+    cosine_ranks: Mapping[int, int],
+    rrf_k: int = _DEFAULT_RRF_K,
+) -> dict[int, float]:
+    """Fuse BM25 ranks and cosine ranks using reciprocal rank fusion."""
+    scores: dict[int, float] = {}
+    for ranks in (bm25_ranks, cosine_ranks):
+        for p_id, r in ranks.items():
+            scores[p_id] = scores.get(p_id, 0.0) + (1.0 / (rrf_k + r))
+    return scores
 
 
 class PackFormatError(RuntimeError):
@@ -107,7 +198,10 @@ class PackInfo:
 
 
 def build_pack(
-    manifest: PackManifest, roots: Mapping[str, Path], out: Path
+    manifest: PackManifest,
+    roots: Mapping[str, Path],
+    out: Path,
+    embedder: Embedder | Callable[[str], Sequence[float]] | None = None,
 ) -> PackInfo:
     """Index every file the manifest selects into ``out``, replacing it atomically.
 
@@ -116,6 +210,9 @@ def build_pack(
     """
     if not isinstance(manifest, PackManifest):
         raise TypeError("manifest must be a PackManifest")
+    if manifest.embeddings and embedder is None:
+        embedder = get_minilm_embedder()
+
     files = select_files(manifest, roots)
     commits = {repo: head_commit(Path(roots[repo])) for repo in manifest.repos}
     out = Path(out)
@@ -125,17 +222,16 @@ def build_pack(
     try:
         with closing(sqlite3.connect(tmp)) as conn:
             conn.executescript(_SCHEMA)
-            count = sum(_index_file(conn, manifest, f, commits[f.repo]) for f in files)
-            info = PackInfo(
-                pack_id=manifest.id,
-                title=manifest.title,
-                built_at=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                commits=commits,
-                files=len(files),
-                passages=count,
+            count = sum(
+                _index_file(conn, manifest, f, commits[f.repo], embedder) for f in files
             )
+            t = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+            info = PackInfo(manifest.id, manifest.title, t, commits, len(files), count)
             _write_meta(conn, manifest, info)
-            conn.execute(f"PRAGMA user_version = {FORMAT_VERSION}")
+            # SQLite PRAGMA assignments do not accept bound parameters.
+            conn.execute(  # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query, python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query  # noqa: E501
+                f"PRAGMA user_version = {FORMAT_VERSION}"
+            )
             conn.commit()
         os.replace(tmp, out)
     finally:
@@ -144,7 +240,11 @@ def build_pack(
 
 
 def _index_file(
-    conn: sqlite3.Connection, manifest: PackManifest, source: SourceFile, commit: str
+    conn: sqlite3.Connection,
+    manifest: PackManifest,
+    source: SourceFile,
+    commit: str,
+    embedder: Embedder | Callable[[str], Sequence[float]] | None = None,
 ) -> int:
     raw = source.absolute.read_bytes()
     conn.execute(
@@ -160,10 +260,15 @@ def _index_file(
     rank = AUTHORITIES.index(source.authority)
     for chunk in chunks:
         status = override or (chunk.status if chunk.status in STATUSES else "current")
+        emb_blob: bytes | None = None
+        if manifest.embeddings and embedder is not None:
+            emb_fn = _as_embed_fn(embedder)
+            emb_blob = embedding_to_blob(emb_fn(chunk.text))
+
         cur = conn.execute(
             "INSERT INTO passages (repo, source, anchor, title, text, commit_sha,"
-            " content_hash, status, authority, authority_rank)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " content_hash, status, authority, authority_rank, embedding)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 source.repo,
                 source.path,
@@ -175,6 +280,7 @@ def _index_file(
                 status,
                 source.authority,
                 rank,
+                emb_blob,
             ),
         )
         conn.execute(
@@ -205,14 +311,19 @@ class KnowledgePack:
     def __init__(self, path: Path) -> None:
         self._path = Path(path).resolve()
 
+    @property
+    def has_embeddings(self) -> bool:
+        """True if this pack was built with embeddings enabled."""
+        manifest_data = json.loads(self._meta().get("manifest", "{}"))
+        return bool(manifest_data.get("embeddings", False))
+
     @classmethod
     def open(cls, path: Path) -> KnowledgePack:
         """Open ``path``; raises FileNotFoundError or PackFormatError."""
         path = Path(path)
         if not path.is_file():
             raise FileNotFoundError(f"knowledge pack not found: {path}")
-        pack = cls(path)
-        with closing(pack._connect()) as conn:
+        with closing(cls(path)._connect()) as conn:
             try:
                 version = conn.execute("PRAGMA user_version").fetchone()[0]
             except sqlite3.DatabaseError as exc:
@@ -221,56 +332,33 @@ class KnowledgePack:
             raise PackFormatError(
                 f"{path} has pack format {version}; this engine reads {FORMAT_VERSION}"
             )
-        return pack
+        return cls(path)
 
     def search(
-        self, query: str, k: int = 8, include_superseded: bool = False
+        self,
+        query: str,
+        k: int = 8,
+        include_superseded: bool = False,
+        embedder: Embedder | Callable[[str], Sequence[float]] | None = None,
+        hybrid: bool = True,
     ) -> list[Passage]:
-        """Top ``k`` passages by BM25 (titles weighted), authority breaking ties.
+        """Return the top ``k`` passages using the pack's normal ranking."""
+        from .search import _search_pack
 
-        Any text is a valid query: it is reduced to word tokens, so FTS5
-        operators in user input are never interpreted.
-        """
-        if not isinstance(query, str):
-            raise TypeError("query must be a string")
-        if not isinstance(k, int) or isinstance(k, bool) or k < 1:
-            raise ValueError("k must be a positive integer")
-        match = sanitize_fts_query(query)
-        if match is None:
-            return []
-        hidden = "" if include_superseded else _hidden_clause()
-        sql = (
-            "SELECT p.repo, p.source, p.anchor, p.title, p.text, p.commit_sha,"
-            " p.content_hash, p.status, p.authority,"
-            f" bm25(passages_fts, {_TITLE_WEIGHT}, {_TEXT_WEIGHT}) AS score"
-            " FROM passages_fts JOIN passages p ON p.id = passages_fts.rowid"
-            f" WHERE passages_fts MATCH ?{hidden}"
-            " ORDER BY score, p.authority_rank, p.id LIMIT ?"
-        )
-        with closing(self._connect()) as conn:
-            rows = conn.execute(sql, (match, k)).fetchall()
-        return [_passage(row) for row in rows]
+        return _search_pack(self, query, k, include_superseded, embedder, hybrid)
 
     def info(self) -> PackInfo:
-        meta = self._meta()
-        return PackInfo(
-            pack_id=meta["pack_id"],
-            title=meta["title"],
-            built_at=meta["built_at"],
-            commits=json.loads(meta["commits"]),
-            files=int(meta["files"]),
-            passages=int(meta["passages"]),
-        )
+        m = self._meta()
+        c, f, p = json.loads(m["commits"]), int(m["files"]), int(m["passages"])
+        return PackInfo(m["pack_id"], m["title"], m["built_at"], c, f, p)
 
     def is_stale(self, roots: Mapping[str, Path]) -> bool:
         """True when the selected file set or any selected file's bytes changed."""
         manifest = manifest_from_dict(json.loads(self._meta()["manifest"]))
         current = {(f.repo, f.path): f.sha256() for f in select_files(manifest, roots)}
         with closing(self._connect()) as conn:
-            built = {
-                (r, p): h
-                for r, p, h in conn.execute("SELECT repo, path, sha256 FROM files")
-            }
+            q = "SELECT repo, path, sha256 FROM files"
+            built = {(r, p): h for r, p, h in conn.execute(q)}
         return current != built
 
     def _meta(self) -> dict[str, str]:
@@ -281,26 +369,15 @@ class KnowledgePack:
         return sqlite3.connect(f"{self._path.as_uri()}?mode=ro", uri=True)
 
 
-def _passage(row: tuple[object, ...]) -> Passage:
+def _passage(row: tuple[object, ...], score: float | None = None) -> Passage:
     """Map a search row; FTS5 bm25 is lower-is-better, so the score is negated."""
-    repo, source, anchor, title, text, commit, digest, status, authority = (
-        str(v) for v in row[:9]
-    )
-    return Passage(
-        repo=repo,
-        source=source,
-        anchor=anchor,
-        title=title,
-        text=text,
-        commit=commit,
-        content_hash=digest,
-        status=status,
-        authority=authority,
-        score=-float(str(row[9])),
-    )
+    r = [str(v) for v in row[:9]]
+    s = -float(str(row[9])) if score is None else score
+    return Passage(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], s)
 
 
 def _hidden_clause() -> str:
     quoted = ", ".join(f"'{s}'" for s in sorted(HIDDEN_STATUSES))
     return f" AND p.status NOT IN ({quoted})"
+
 # fmt: on

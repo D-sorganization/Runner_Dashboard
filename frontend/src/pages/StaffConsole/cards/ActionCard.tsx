@@ -197,7 +197,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
             marginBottom: 8,
           }}
         >
-          Action failed. You can review the failure below and retry approval.
+          Action failed{proposal.fail_reason ? `: ${proposal.fail_reason}` : ""}. You can retry approval.
         </div>
       )}
       {isExpired && (
@@ -246,6 +246,7 @@ export const ActionCard: React.FC<ActionCardProps> = ({
           <button
             type="button"
             onClick={() => setShowParams((prev) => !prev)}
+            title={showParams ? "Hide the action parameters JSON" : "Show the action parameters JSON"}
             style={{
               background: "none",
               border: "none",

@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Query, Response
-from identity import Principal, format_caller, require_scope
+from fastapi import APIRouter, Depends, Query, Request, Response
+from identity import Principal, format_caller, require_principal, require_scope
 from memory.models import (
     MemoryAppendRequest,
     MemoryAppendResponse,
@@ -24,6 +24,7 @@ from memory.service import (
     review_entry,
 )
 from staff.audit import record_audit
+from staff.barb_lease_fence import barb_write_fence, claim_for_write
 
 log = logging.getLogger("dashboard.memory")
 router = APIRouter(prefix="/api/v1/memory", tags=["assistant-memory"])
@@ -48,17 +49,28 @@ async def get_memory_entries(
 
 @router.get("/context-pack")
 async def get_context_pack(
-    _reader: Principal = Depends(require_scope("memory.read")),
+    request: Request,
+    reader: Principal = Depends(require_scope("memory.read")),
 ) -> dict:
-    return build_context_pack().model_dump()
+    """Return a scoped memory snapshot. Deprecated for Barb session startup — use Barb continuity + priorities/holds."""
+    qp = request.query_params
+    return build_context_pack(
+        reader, repo=qp.get("repo"), scope=qp.get("scope"), data_class=qp.get("data_class")
+    ).model_dump()
 
 
 @router.post("", response_model=MemoryAppendResponse, status_code=201)
 async def post_memory_entry(
     body: MemoryAppendRequest,
-    writer: Principal = Depends(require_scope("memory.write")),
+    request: Request,
+    writer: Principal = Depends(require_principal),
 ) -> MemoryAppendResponse:
-    entry = append_entry(writer, body)
+    # Authorization is entry-type-specific and enforced inside append_entry: a
+    # lesson proposal is authorized by active-run binding (authenticated_lesson_run),
+    # everything else still requires the "memory.write" scope (#2665).
+    claim = claim_for_write(request.headers, writer, surface="memory")
+    with barb_write_fence(claim, surface="memory", target="memory:append", principal=format_caller(writer)):
+        entry = append_entry(writer, body)
     record_audit(
         action="memory_append",
         target=entry.id,
@@ -80,9 +92,12 @@ async def post_memory_entry(
 async def post_session_digest(
     body: SessionDigestAppendRequest,
     response: Response,
+    request: Request,
     writer: Principal = Depends(require_scope("memory.shared.summarize")),
 ) -> SessionDigestAppendResponse:
-    entry, replayed = append_session_digest(writer, body)
+    claim = claim_for_write(request.headers, writer, surface="memory")
+    with barb_write_fence(claim, surface="memory", target="memory:session-digest", principal=format_caller(writer)):
+        entry, replayed = append_session_digest(writer, body)
     if replayed:
         response.status_code = 200
     else:

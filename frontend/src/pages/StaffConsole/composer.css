@@ -144,3 +144,13 @@
 .staff-composer__chip-remove { grid-area: remove; align-self: start; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-tertiary); color: var(--text-secondary); cursor: pointer; padding: 3px 8px; font-size: 11px; }
 .staff-composer__chip-remove:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 .staff-composer__chip--pending { border-color: var(--accent-blue); color: var(--text-secondary); }
+
+/* Touch targets on phones (#2988, WCAG 2.2 target size). Desktop is unchanged. */
+@media (max-width: 720px) {
+  .staff-composer__textarea { min-height: 44px; }
+  .staff-composer__attach-btn,
+  .staff-composer__voice-btn,
+  .staff-composer__send-btn { min-width: 44px; min-height: 44px; }
+  .staff-composer__sensitivity { min-height: 32px; font-size: 14px; }
+  .staff-composer__chip-remove { min-height: 32px; min-width: 44px; font-size: 12px; }
+}

@@ -423,6 +423,65 @@ describe('MobileShell accessibility (D7)', () => {
   });
 });
 
+describe('MobileShell drawer focus management (#3718)', () => {
+  beforeEach(() => {
+    breakpointMock.value = 'md'
+    window.matchMedia = vi.fn((query) => ({
+      matches: query === '(max-width: 767px)',
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    } as MediaQueryList))
+  })
+
+  afterEach(cleanup)
+
+  it('closes on Escape and restores focus to More', () => {
+    render(
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
+        <div>Content</div>
+      </MobileShell>,
+    )
+
+    const more = screen.getByRole('tab', { name: 'More' })
+    fireEvent.click(more)
+
+    const dialog = screen.getByRole('dialog', { name: 'More options' })
+    const close = within(dialog).getByRole('button', { name: 'Close drawer' })
+    expect(close).toHaveFocus()
+
+    fireEvent.keyDown(close, { key: 'Escape' })
+
+    expect(screen.queryByRole('dialog', { name: 'More options' })).not.toBeInTheDocument()
+    expect(more).toHaveFocus()
+  })
+
+  it('keeps keyboard focus inside the modal drawer', () => {
+    render(
+      <MobileShell currentTab={FIRST.tabId} onTabChange={vi.fn()}>
+        <div>Content</div>
+      </MobileShell>,
+    )
+    fireEvent.click(screen.getByRole('tab', { name: 'More' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'More options' })
+    const close = within(dialog).getByRole('button', { name: 'Close drawer' })
+    const drawerButtons = within(dialog).getAllByRole('button')
+    const lastItem = drawerButtons[drawerButtons.length - 1]
+
+    lastItem.focus()
+    fireEvent.keyDown(lastItem, { key: 'Tab' })
+    expect(close).toHaveFocus()
+
+    fireEvent.keyDown(close, { key: 'Tab', shiftKey: true })
+    expect(lastItem).toHaveFocus()
+  })
+})
+
 // Test helper component
 function Counter() {
   const [count, setCount] = React.useState(0)

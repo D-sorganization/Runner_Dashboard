@@ -21,17 +21,17 @@ reachable from any live state and `abandoned` from `parked`.
 
 ## Active
 
-### DL-#2022 — Fleet hub on DeskComputer, Brick node, Codex default model
+### DL-#2022 — Fleet hub on hub-a, node-c node, Codex default model
 
 - **State:** in_review
 - **Owner:** cursor-agent
 - **Issue:** #2022
-- **Branch:** `cursor/fleet-hub-brick-codex-7386`
+- **Branch:** `cursor/fleet-hub-node-c-codex-7386`
 - **PR:** https://github.com/D-sorganization/Runner_Dashboard/pull/2023
-- **Paths:** `backend/machine_registry.yml`, `backend/fleet_autoconfig.py`, `backend/dashboard_config/__init__.py`, `backend/server.py`, `backend/proxy_utils.py`, `backend/staff/provider_defaults.py`, `backend/staff/adapters.py`, `backend/staff/classifier.py`, `config/staff_provider_defaults.json`, `docs/runbooks/brick-dashboard-redeploy.md`, `docs/runbooks/fleet-hub-deskcomputer-rollout-2022.md`, `tests/test_fleet_hub_topology.py`, `tests/unit/test_staff_provider_defaults.py`, `tests/unit/test_staff_classifier.py`
+- **Paths:** `backend/machine_registry.yml`, `backend/fleet_autoconfig.py`, `backend/dashboard_config/__init__.py`, `backend/server.py`, `backend/proxy_utils.py`, `backend/staff/provider_defaults.py`, `backend/staff/adapters.py`, `backend/staff/classifier.py`, `config/staff_provider_defaults.json`, `docs/runbooks/node-c-dashboard-redeploy.md`, `docs/runbooks/fleet-hub-rollout-2022.md`, `tests/test_fleet_hub_topology.py`, `tests/unit/test_staff_provider_defaults.py`, `tests/unit/test_staff_classifier.py`
 - **Started:** 2026-10-21
 - **Last verified:** 2026-10-21 @ SELF; CI Standard lint/tests/quality-gate green on PR #2023.
-- **Summary:** Hub topology and Codex provider defaults move into repo-managed config; Brick joins the registry with redeploy/rollout runbooks.
+- **Summary:** Hub topology and Codex provider defaults move into repo-managed config; node-c joins the registry with redeploy/rollout runbooks.
 - **Next step:** Merge PR after CI Standard is green.
 
 ### DL-#1338-maxwell-mobile — SC-G6: mobile Maxwell page drops its chat
@@ -383,7 +383,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Started:** 2026-09-28
 - **Last verified:** 2026-09-28 (RED `test_tailnet_signin_from_other_device_can_approve`; then WSL `pytest tests/api/test_tailnet_identity.py tests/api -k "tailnet or scope or loopback or auth or proposal"` gave 194 passed, 2 skipped; ruff and mypy clean)
 - **Summary:** No one could approve Staff Console proposals on a loopback/tailnet node, because neither principal had `staff.approve`. A Tailscale sign-in from a tailnet device other than the host now gets the `tailnet-approver` role, which grants only `staff.approve`. The host is identified by `DASHBOARD_TAILSCALE_SELF_IPS`, and the role is refused when that is unset. Loopback, which covers every agent on the host, stays without approval rights.
-- **Next step:** Deploy with `DASHBOARD_TAILSCALE_SELF_IPS` set on DeskComputer and approve a MEDIUM proposal from the phone.
+- **Next step:** Deploy with `DASHBOARD_TAILSCALE_SELF_IPS` set on hub-a and approve a MEDIUM proposal from the phone.
 
 ### DL-#1767 — Board seats see referenced issue/PR items
 
@@ -421,7 +421,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `backend/routers/auth.py`, `tests/api/test_oauth_hint_host_neutral.py`
 - **Started:** 2026-09-28
 - **Last verified:** 2026-09-28 (`pytest tests/api/test_oauth_hint_host_neutral.py tests/test_oauth_production_readiness.py tests/test_oauth_config.py` 17 passed; `ruff check`/`ruff format --check` clean; `mypy` clean)
-- **Summary:** Make GitHub OAuth 503 error hint host-neutral, eliminating the hard-coded "OGLaptop" machine name; dynamically mention DASHBOARD_TAILSCALE_AUTH as the tailnet alternative when Tailscale auth is disabled.
+- **Summary:** Make GitHub OAuth 503 error hint host-neutral, eliminating the hard-coded "node-b" machine name; dynamically mention DASHBOARD_TAILSCALE_AUTH as the tailnet alternative when Tailscale auth is disabled.
 - **Next step:** Commit and create PR referencing #1764.
 
 ### DL-#1762 — read_issue chat context and board.convene
@@ -675,7 +675,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Paths:** `backend/cache_utils.py`, `backend/routers/runs_workflows.py`, `backend/projects/service.py`, `backend/routers/repos_stats.py`, `backend/lease_synchronizer.py`, `backend/platform_utils/wsl_paths.py`, `backend/priorities/consensus.py`, `frontend/src/pages/WorkflowsPage.tsx`, `frontend/src/pages/Workflows.tsx`, `frontend/src/components/formatters.ts`, `frontend/src/primitives/IntroHeader.tsx`, `frontend/src/primitives/OwnerMarkdown.tsx`, `frontend/src/pages/MaxwellPage.tsx`, `frontend/src/pages/Projects/*`, `frontend/src/pages/Analysis.tsx`, `frontend/src/pages/Fleet/Mobile.tsx`, `frontend/src/pages/Remediation/*`, `frontend/src/pages/Queue/*`, `frontend/src/pages/Operations/*`, `frontend/src/pages/FleetCommand/PrioritiesPanel.tsx`, `frontend/src/pages/StaffConsole/*`, `frontend/src/pages/decompIcons.tsx`, `tests/frontend/test_no_pictographic_emoji.py`
 - **Started:** 2026-09-28
 - **Last verified:** 2026-09-28 (vitest StaffConsole, Staff, Projects, Operations folders passed; WSL pytest projects router passed; Playwright journey + a11y 8/8 on Vite; browser pane at 1280x800 and 375x812; WSL pytest stats, lease sync, wsl paths, priorities passed; tsc, eslint, ruff, mypy clean)
-- **Summary:** Stale-while-revalidate for slow GitHub aggregates (workflows list, scheduled workflows) so they stop starving the browser's connections; bounded REST calls for the workflows catalogue; durations roll up to hours/days; SVG intro icon; readable Maxwell and Projects errors; decision links render; attention rows name their repo. Mobile pass: Fleet and Remediation read real endpoints, `/api/issues` 500 fixed, stale ages and reasons humanised, Ask button clears the bottom bar, Operations stops refetching, `/api/stats` concurrent, reports path finds the Windows profile, board minutes keep wrapped text. Pictographic emoji replaced by SVG glyphs, guarded by a test. `/api/runs/enriched` slimmed from 755 KB to 147 KB (50 runs) by dropping REST link fields and nested repository noise. Staff checkout discovery finds the Windows profile the same way as the reports path. `/api/runs` slimmed too; phone-friendly 404 hint; ControlTower pool heading only for several pools. Post-merge CI fixes: OpenAPI snapshot, neutral badge contrast, system run cards, inline markdown beside badges. 1280px sweep: the Staff Console role context overlays the conversation (closed by default, with its own close button) instead of wrapping under the roster; the Staff page no longer scrolls sideways; project card headers wrap; project cards name the missing GitHub App permission instead of the raw 403 body; Operations tables scroll sideways on phones instead of clipping. v1 holds/schedule routes (500 since #1386) share the legacy route helpers; routing eval engine moved out of `tests/` so `/api/v1/staff/routing/eval` works on deployed hubs.
+- **Summary:** Stale-while-revalidate for slow GitHub aggregates (workflows list, scheduled workflows) so they stop starving the browser's connections; bounded REST calls for the workflows catalogue; durations roll up to hours/days; SVG intro icon; readable Maxwell and Projects errors; decision links render; attention rows name their repo. Mobile pass: Fleet and Remediation read real endpoints, `/api/issues` 500 fixed, stale ages and reasons humanised, Ask button clears the bottom bar, Operations stops refetching, `/api/stats` concurrent, reports path finds the Windows profile, board minutes keep wrapped text. Pictographic emoji replaced by SVG glyphs, guarded by a test. `/api/runs/enriched` slimmed from 755 KB to 147 KB (50 runs) by dropping REST link fields and nested repository noise. Staff checkout discovery finds the Windows profile the same way as the reports path. `/api/runs` slimmed too; phone-friendly 404 hint; node-a pool heading only for several pools. Post-merge CI fixes: OpenAPI snapshot, neutral badge contrast, system run cards, inline markdown beside badges. 1280px sweep: the Staff Console role context overlays the conversation (closed by default, with its own close button) instead of wrapping under the roster; the Staff page no longer scrolls sideways; project card headers wrap; project cards name the missing GitHub App permission instead of the raw 403 body; Operations tables scroll sideways on phones instead of clipping. v1 holds/schedule routes (500 since #1386) share the legacy route helpers; routing eval engine moved out of `tests/` so `/api/v1/staff/routing/eval` works on deployed hubs.
 - **Next step:** Ship in the consolidated UX PR for epic #1718.
 
 ### DL-#1723 — App shell, primitives and settings polish
@@ -769,7 +769,7 @@ reachable from any live state and `abandoned` from `parked`.
 - **Summary:** Chat-style thread (user bubbles right, assistant prose left, 15px prose type), the composer pinned to the bottom of the console, cards restyled with inline styles moved to CSS; Approve/Deny gating unchanged; accent-text colours use `--text-on-accent`.
 - **Next step:** Ship in the consolidated UX PR for epic #1718.
 
-### DL-0001 · Fix Autoscaler Oglaptop Regression 907
+### DL-0001 · Fix Autoscaler NodeB Regression 907
 
 - **State:** parked
 - **Owner:** unassigned
@@ -778,7 +778,7 @@ reachable from any live state and `abandoned` from `parked`.
   this entry is reactivated.
 - **Started:** 2026-08-28
 - **Last verified:** 2026-08-28 (`fbb4b2b`)
-- **Summary:** Seeded from local branch `fix/autoscaler-oglaptop-regression-907`, which is
+- **Summary:** Seeded from local branch `fix/autoscaler-node-b-regression-907`, which is
   2 commit(s) ahead of the default branch with no
   development-log entry.
 - **Parked:** 2026-08-28 — seeded during fleet rollout. Assign a

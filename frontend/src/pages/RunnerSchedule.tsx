@@ -22,6 +22,7 @@ import { Badge } from "../primitives/Badge";
 import { EmptyState } from "../primitives/EmptyState";
 import { TouchButton } from "../primitives/TouchButton";
 import { FleetMaintenancePanel } from "./FleetMaintenancePanel";
+import { FleetTargetPanel } from "./FleetTargetPanel";
 import { ClockGlyph, PlayGlyph, RefreshGlyph } from "./decompIcons";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -38,6 +39,13 @@ interface ScheduleConfig {
   schedules?: RunnerScheduleEntry[];
 }
 
+interface TargetOverrideState {
+  runners?: number;
+  until?: string | null;
+  reason?: string;
+  actor?: string;
+}
+
 interface ScheduleState {
   desired?: number | null;
   online?: number | null;
@@ -50,6 +58,7 @@ interface ScheduleState {
   error?: string;
   timestamp?: string | number;
   maintenance?: { active?: boolean; drained?: boolean; rebooting?: boolean };
+  target_override?: TargetOverrideState | null;
 }
 
 export interface RunnerScheduleData {
@@ -152,6 +161,18 @@ export function RunnerSchedulePage(): React.ReactElement {
         loading={loading}
         onRefresh={() => refresh()}
         onSave={save}
+      />
+      <FleetTargetPanel
+        host={data.machine || "local"}
+        cap={data.max_runners || data.state?.desired || 0}
+        desired={data.state?.desired ?? undefined}
+        overrideRunners={
+          data.state?.target_override?.runners != null
+            ? Number(data.state.target_override.runners)
+            : null
+        }
+        overrideUntil={data.state?.target_override?.until ?? null}
+        onChanged={() => refresh()}
       />
       <FleetMaintenancePanel
         maintenance={data.state?.maintenance}
@@ -308,6 +329,8 @@ export function RunnerScheduleTab({
                     <td>
                       <input
                         className="runner-schedule__time-input"
+                        aria-label={`Start time for ${entry.name}`}
+                        title={`Start time for ${entry.name}`}
                         value={entry.start}
                         onInput={(e) => {
                           updateSchedule(
@@ -321,6 +344,8 @@ export function RunnerScheduleTab({
                     <td>
                       <input
                         className="runner-schedule__time-input"
+                        aria-label={`End time for ${entry.name}`}
+                        title={`End time for ${entry.name}`}
                         value={entry.end}
                         onInput={(e) => {
                           updateSchedule(
@@ -337,6 +362,8 @@ export function RunnerScheduleTab({
                         type="number"
                         min={0}
                         max={d.max_runners || 99}
+                        aria-label={`Runner count for ${entry.name}`}
+                        title={`Runner count for ${entry.name}`}
                         value={entry.runners}
                         onInput={(e) => {
                           updateSchedule(

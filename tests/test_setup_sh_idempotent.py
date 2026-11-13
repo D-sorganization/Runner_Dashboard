@@ -80,8 +80,8 @@ def test_setup_sh_has_dry_run_flag(script_text: str) -> None:
 
 
 def test_setup_sh_uses_visudo_validation(script_text: str) -> None:
-    """Atomic sudoers replacement must validate via `visudo -c -f`."""
-    assert "visudo -c -f" in script_text, "atomic sudoers replacement using `visudo -c -f` missing"
+    """Sudoers migration must validate each replacement before installing."""
+    assert 'visudo -cf "$legacy_tmp"' in script_text, "sudoers migration validation missing"
 
 
 def test_setup_sh_version_skip_uses_git_sha(script_text: str) -> None:
@@ -116,3 +116,9 @@ def test_setup_sh_installs_deployed_venv(script_text: str) -> None:
 def test_setup_sh_uses_strict_mode(script_text: str) -> None:
     """`set -euo pipefail` must remain enabled."""
     assert "set -euo pipefail" in script_text, "strict mode missing"
+
+
+def test_setup_sh_migrates_legacy_runner_service_rules(script_text: str) -> None:
+    assert 'SUDOERS_LINE="${USER} ALL=(ALL) NOPASSWD: ${RUNNER_BASE_DIR}/runner-*/svc.sh"' not in script_text
+    assert "NOPASSWD:.*svc\\.sh" in script_text
+    assert 'visudo -cf "$legacy_tmp"' in script_text

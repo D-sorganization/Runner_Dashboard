@@ -6,13 +6,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
 from routers.staff_threads import _get_store_or_503
 from staff.conversations import (
     ConversationsUnavailableError,
 )
+from staff.loop_guard import HandoffHopCapExceededError
 from staff.router import (
     BarbRouter,
     RoutingDecision,
@@ -100,6 +101,15 @@ async def execute_handoff(
             store=store,
         )
         return result.to_dict()
+    except HandoffHopCapExceededError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "code": "handoff_hop_cap_exceeded",
+                "message": str(exc),
+                "retryable": False,
+            },
+        ) from exc
     except ConversationsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001

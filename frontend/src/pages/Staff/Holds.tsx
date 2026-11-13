@@ -132,7 +132,12 @@ export function Holds({ roles }: HoldsProps) {
         <h3 className="staff-panel__title">Holds</h3>
         <div className="staff-holds__actions">
           <TouchButton onClick={add}>Add hold</TouchButton>
-          <TouchButton variant="primary" onClick={save} disabled={!dirty || saving}>
+          <TouchButton
+            variant="primary"
+            onClick={save}
+            disabled={!dirty || saving}
+            title="Write hold changes to the server"
+          >
             {saving ? "Saving..." : "Save"}
           </TouchButton>
         </div>
@@ -185,6 +190,8 @@ export function Holds({ roles }: HoldsProps) {
                 <input
                   id={`hold-set-${hold.id}`}
                   className="form-input staff-hold__date"
+                  aria-label={`Set-on date for hold ${hold.id}`}
+                  title="When this hold was set"
                   value={hold.set_on}
                   onChange={(e) => update(hold.id, { set_on: e.target.value })}
                 />
@@ -194,6 +201,8 @@ export function Holds({ roles }: HoldsProps) {
                 <input
                   id={`hold-lift-${hold.id}`}
                   className="form-input"
+                  aria-label={`Lift condition for hold ${hold.id}`}
+                  title="When or under what condition this hold lifts"
                   value={hold.lifted_when}
                   placeholder="condition or date"
                   onChange={(e) => update(hold.id, { lifted_when: e.target.value })}

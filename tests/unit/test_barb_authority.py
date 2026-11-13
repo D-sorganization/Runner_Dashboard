@@ -26,10 +26,10 @@ def test_unset_means_legacy_single_node() -> None:
 
 @pytest.mark.unit
 def test_authority_and_replica_roles() -> None:
-    env = {"BARB_AUTHORITY_NODE": "ControlTower", "BARB_AUTHORITY_URL": "http://ct:8321/", "BARB_AUTHORITY_EPOCH": "4"}
-    auth = AuthorityConfig.from_env(env, local_node="controltower")
+    env = {"BARB_AUTHORITY_NODE": "node-a", "BARB_AUTHORITY_URL": "http://ct:8321/", "BARB_AUTHORITY_EPOCH": "4"}
+    auth = AuthorityConfig.from_env(env, local_node="node-a")
     assert auth.role is AuthorityRole.AUTHORITY and auth.epoch == 4 and auth.url == "http://ct:8321"
-    rep = AuthorityConfig.from_env(env, local_node="DeskComputer")
+    rep = AuthorityConfig.from_env(env, local_node="hub-a")
     assert rep.role is AuthorityRole.REPLICA and rep.url == "http://ct:8321"
 
 
@@ -57,11 +57,11 @@ def test_replica_requires_a_url() -> None:
 @pytest.mark.unit
 def test_registry_hub_default_and_manifest_key_override() -> None:
     machines = [
-        {"name": "DeskComputer", "role": "worker", "dashboard_url": "http://d:8321"},
-        {"name": "ControlTower", "role": "hub", "dashboard_url": "http://ct:8321"},
+        {"name": "hub-a", "role": "worker", "dashboard_url": "http://d:8321"},
+        {"name": "node-a", "role": "hub", "dashboard_url": "http://ct:8321"},
     ]
-    assert registry_hub({"machines": machines}) == ("ControlTower", "http://ct:8321")
-    assert registry_hub({"machines": machines, "barb_authority": "DeskComputer"}) == ("DeskComputer", "http://d:8321")
+    assert registry_hub({"machines": machines}) == ("node-a", "http://ct:8321")
+    assert registry_hub({"machines": machines, "barb_authority": "hub-a"}) == ("hub-a", "http://d:8321")
     assert registry_hub({"machines": []}) is None
 
 
@@ -90,13 +90,13 @@ def _client(t: _Transport, epoch: int = 3) -> AuthorityClient:
 def test_post_carries_epoch_version_and_key_and_maps_outcomes() -> None:
     t = _Transport((200, {"outcome": "applied"}), (200, {"outcome": "duplicate"}), (409, {"code": "stale_version"}))
     c = _client(t)
-    assert c.post("run_card", "thr", "run-1", 2, {"status": "running"}) is DeliveryOutcome.DELIVERED
+    assert c.post("run_card", "thr", "run-1", 2, {"status": "running", "role": "librarian"}) is DeliveryOutcome.DELIVERED
     url, body, headers = t.calls[0]
     assert url == "http://ct:8321/api/v1/staff/threads/thr/relay-card"
     assert body["version"] == 2 and body["epoch"] == 3 and body["run_id"] == "run-1"
     assert headers["Idempotency-Key"] == "run_card:thr:run-1:2"
-    assert c.post("run_card", "thr", "run-1", 2, {"status": "running"}) is DeliveryOutcome.DELIVERED
-    assert c.post("run_card", "thr", "run-1", 1, {"status": "queued"}) is DeliveryOutcome.STALE
+    assert c.post("run_card", "thr", "run-1", 2, {"status": "running", "role": "librarian"}) is DeliveryOutcome.DELIVERED
+    assert c.post("run_card", "thr", "run-1", 1, {"status": "queued", "role": "librarian"}) is DeliveryOutcome.STALE
 
 
 @pytest.mark.unit
@@ -111,11 +111,11 @@ def test_failures_are_classified() -> None:
     c = _client(t)
     for _ in range(3):
         with pytest.raises(AuthorityUnavailable):
-            c.post("run_card", "thr", "run-1", 1, {})
+            c.post("run_card", "thr", "run-1", 1, {"role": "librarian"})
     with pytest.raises(AuthorityEpochMismatch):
-        c.post("run_card", "thr", "run-1", 1, {})
+        c.post("run_card", "thr", "run-1", 1, {"role": "librarian"})
     with pytest.raises(AuthorityRejected):
-        c.post("run_card", "thr", "run-1", 1, {})
+        c.post("run_card", "thr", "run-1", 1, {"role": "librarian"})
 
 
 @pytest.mark.unit

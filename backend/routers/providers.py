@@ -38,7 +38,9 @@ from agent_remediation import probe_provider_availability as probe_legacy_availa
 from agent_remediation.provider_probe import NodeAvailability, probe_provider_availability
 from cache_utils import cache_get, cache_set
 from conductor_constants import AUTH_KINDS, CAPABILITIES, TASK_CLASSES
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from identity import Principal, require_principal
+from model_catalog import catalog_models_for_provider, get_catalog, refresh_catalog
 
 log = logging.getLogger("dashboard.providers")
 
@@ -205,7 +207,8 @@ def build_registry(
         avail = availability.get(entry.dashboard_id)
         is_available = bool(avail and avail.available)
 
-        models = list(entry.models)
+        catalog_models = catalog_models_for_provider(entry.dashboard_id)
+        models = catalog_models if catalog_models else list(entry.models)
         ollama_reachable: bool | None = None
         if entry.models_endpoint:
             try:
@@ -231,6 +234,7 @@ def build_registry(
 
     # Postcondition: every login_status is a legal literal (DbC).
     assert all(p["login_status"] in _LOGIN_STATUS_LITERALS for p in providers)
+    catalog_snap = get_catalog()
 
     return {
         "schema_version": REGISTRY_SCHEMA_VERSION,
@@ -240,6 +244,8 @@ def build_registry(
         "capabilities": list(CAPABILITIES),
         "hostname": socket.gethostname(),
         "node_availability": node,
+        "catalog_age_seconds": catalog_snap["age_seconds"],
+        "catalog_stale": catalog_snap["stale"],
     }
 
 
@@ -247,3 +253,15 @@ def build_registry(
 async def get_provider_registry() -> dict[str, Any]:
     """Return the shared provider registry (dashboard + Conductor contract)."""
     return build_registry(node_availability=cached_node_availability())
+
+
+@router.get("/models/catalog", include_in_schema=False)
+async def get_models_catalog() -> dict[str, Any]:
+    """Return the live per-provider model catalog and cache age (#3533)."""
+    return get_catalog()
+
+
+@router.post("/models/refresh", include_in_schema=False)
+async def post_models_refresh(_principal: Principal = Depends(require_principal)) -> dict[str, Any]:  # noqa: B008
+    """Refresh the per-provider model catalog on demand (#3533)."""
+    return refresh_catalog()

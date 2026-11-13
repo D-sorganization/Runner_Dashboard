@@ -100,6 +100,10 @@ describe('fleet theme WCAG AA contrast', () => {
       `light: --accent-blue ${vars['--accent-blue']} on --bg-secondary ${vars['--bg-secondary']}`,
     ).toBeGreaterThanOrEqual(AA_NORMAL)
     expect(
+      contrastRatio(vars['--text-link'], vars['--bg-primary']),
+      `light: --text-link ${vars['--text-link']} on --bg-primary ${vars['--bg-primary']}`,
+    ).toBeGreaterThanOrEqual(AA_NORMAL)
+    expect(
       contrastRatio(vars['--accent-control-fg'], vars['--accent-control-bg']),
       `light: --accent-control-fg ${vars['--accent-control-fg']} on --accent-control-bg ${vars['--accent-control-bg']}`,
     ).toBeGreaterThanOrEqual(AA_NORMAL)

@@ -25,9 +25,6 @@ import time
 from collections import deque
 from typing import Any
 
-# We import these for concrete dispatch logic
-import quick_dispatch
-
 log = logging.getLogger("dashboard.assistant_tools")
 
 # ─── Allowlist ────────────────────────────────────────────────────────────────
@@ -117,20 +114,6 @@ TOOL_ALLOWLIST: dict[str, dict[str, Any]] = {
                 "prompt": {"type": "string"},
             },
             "required": ["repository", "number", "provider", "prompt"],
-        },
-    },
-    "quick_dispatch_agent": {
-        "description": "Quick-dispatch an AI agent with a freeform prompt.",
-        "requires_confirmation": True,
-        "backend_endpoint": "POST /api/agents/quick-dispatch",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "repository": {"type": "string"},
-                "provider": {"type": "string"},
-                "prompt": {"type": "string"},
-            },
-            "required": ["repository", "provider", "prompt"],
         },
     },
     "dispatch_remediation": {
@@ -373,27 +356,6 @@ async def execute_tool(
             result = await gh_api_fn("/api/repos")
         elif tool_name == "refresh_dashboard_data":
             result = {"action": "refresh", "status": "client_instruction_sent"}
-        elif tool_name == "quick_dispatch_agent":
-            req = quick_dispatch.QuickDispatchRequest(
-                repository=inputs.get("repository", ""),
-                prompt=inputs.get("prompt", ""),
-                provider=inputs.get("provider", "claude_code_cli"),
-                model=inputs.get("model", ""),
-                ref=inputs.get("ref", "main"),
-                task_kind=inputs.get("task_kind", "adhoc"),
-                principal=principal,
-                on_behalf_of=on_behalf_of,
-                correlation_id=correlation_id,
-                requested_by=approved_by,
-            )
-            resp = await quick_dispatch.quick_dispatch(
-                req,
-                run_cmd_fn=run_cmd_fn,
-                org=org,
-                repo_root=repo_root,
-                normalize_repository_fn=normalize_repository_fn,
-            )
-            result = resp.model_dump()
         elif tool_name in (
             "dispatch_agent_to_pr",
             "dispatch_agent_to_issue",

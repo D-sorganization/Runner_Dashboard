@@ -84,6 +84,7 @@ function triggerBadge(trigger: string): React.ReactElement {
     <span
       key={trigger}
       className="section-badge"
+      title={`Workflow trigger: ${trigger}`}
       style={{ background: c.bg, color: c.color, marginRight: 4 }}
     >
       {trigger}
@@ -198,6 +199,7 @@ export function WorkflowsTab({
       >
         <input
           type="text"
+          aria-label="Search workflows or repositories"
           placeholder="Search workflows or repos…"
           value={searchFilter}
           onChange={(e) => setSearchFilter(e.target.value)}
@@ -249,7 +251,13 @@ export function WorkflowsTab({
           <option value="push_pr">Push/PR</option>
           <option value="workflow_run">Workflow run</option>
         </select>
-        <button className="btn" onClick={onRefresh} disabled={loading}>
+        <button
+          className="btn"
+          onClick={onRefresh}
+          disabled={loading}
+          title="Reload the workflow list"
+          aria-label="Refresh workflows"
+        >
           <RefreshGlyph size={12} />
           {loading ? "Loading…" : "Refresh"}
         </button>
@@ -297,7 +305,10 @@ export function WorkflowsTab({
                   <ServerGlyph size={14} />
                   {repoName}
                 </span>
-                <span className="section-badge">
+                <span
+                  className="section-badge"
+                  title={`${repoWfs.length} workflows in this repository`}
+                >
                   {repoWfs.length + " workflows"}
                 </span>
               </div>
@@ -350,6 +361,8 @@ export function WorkflowsTab({
                             className="btn"
                             style={{ fontSize: 11, padding: "3px 10px" }}
                             disabled={dispatchingWf === wf.id}
+                            title={`Manually run ${wf.name}`}
+                            aria-label={`Run workflow ${wf.name}`}
                             onClick={(e) => {
                               e.stopPropagation();
                               openDispatch(wf);
@@ -363,6 +376,8 @@ export function WorkflowsTab({
                             href={wf.html_url}
                             target="_blank"
                             rel="noopener noreferrer"
+                            title={`Open ${wf.name} on GitHub`}
+                            aria-label={`Open ${wf.name} on GitHub`}
                             style={{ fontSize: 11, color: "var(--text-muted)" }}
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -411,6 +426,8 @@ export function WorkflowsTab({
                                     href={r.html_url}
                                     target="_blank"
                                     rel="noopener noreferrer"
+                                    title={`Open workflow run ${r.id} on GitHub`}
+                                    aria-label={`Open workflow run ${r.id} on GitHub`}
                                     style={{ color: "var(--text-secondary)" }}
                                   >
                                     {"#" + r.id}
@@ -533,6 +550,8 @@ export function WorkflowsTab({
                     className="btn"
                     onClick={doDispatch}
                     disabled={!!dispatchingWf}
+                    title="Confirm and start the workflow dispatch"
+                    aria-label="Dispatch workflow now"
                   >
                     {dispatchingWf ? "Dispatching…" : "Dispatch now"}
                   </button>

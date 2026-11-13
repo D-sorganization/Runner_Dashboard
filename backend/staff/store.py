@@ -5,13 +5,17 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from staff.redaction import redact_sensitive_content, redact_value
-from staff.run_schema import _ADDED_COLUMNS
+from activity_producers import record_staff_run_activity
+from staff.dispatcher_metrics import dispatcher_origin
+from staff.redaction import redact_value
+from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
+from staff.run_schema import _ADDED_COLUMNS, _SCHEMA
 
 RUN_STATUSES = ("queued", "preparing", "running", "succeeded", "failed", "cancelled", "blocked", "needs_input")
 ACTIVE_STATUSES = ("queued", "preparing", "running")
@@ -98,6 +102,8 @@ class RunRecord:
     lessons_tokens: int = 0
     execution_mode: str = "local"
     remote_session_url: str = ""
+    dispatched_by: str = ""
+    dispatch_origin: str = ""
 
     def __post_init__(self) -> None:
         self.retryable, self.attempt, self.max_attempts = (
@@ -105,6 +111,8 @@ class RunRecord:
             int(self.attempt),
             int(self.max_attempts),
         )
+        self.dispatched_by = self.dispatched_by or self.requested_by
+        self.dispatch_origin = self.dispatch_origin or dispatcher_origin(self.dispatched_by)
 
     def to_dict(self) -> dict[str, Any]:
         d = dict(self.__dict__)
@@ -123,46 +131,6 @@ def _run_from_row(row: sqlite3.Row) -> RunRecord:
     (``card_version`` is storage-only, #1800), so the API shape is unchanged."""
     return RunRecord(**{k: row[k] for k in row.keys() if k in _RUN_FIELDS})
 
-
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS runs (
-    id TEXT PRIMARY KEY,
-    role TEXT NOT NULL,
-    provider TEXT NOT NULL,
-    model TEXT,
-    machine TEXT NOT NULL,
-    repo TEXT NOT NULL DEFAULT '',
-    target_kind TEXT NOT NULL,
-    target_ref TEXT NOT NULL DEFAULT '',
-    prompt TEXT NOT NULL,
-    status TEXT NOT NULL,
-    requested_by TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    started_at TEXT,
-    ended_at TEXT,
-    exit_code INTEGER,
-    cost_usd REAL NOT NULL DEFAULT 0,
-    input_tokens INTEGER NOT NULL DEFAULT 0,
-    output_tokens INTEGER NOT NULL DEFAULT 0,
-    workdir TEXT NOT NULL DEFAULT '',
-    branch TEXT NOT NULL DEFAULT '',
-    transcript_path TEXT NOT NULL DEFAULT '',
-    lease_id TEXT NOT NULL DEFAULT '',
-    error TEXT NOT NULL DEFAULT '',
-    last_line TEXT NOT NULL DEFAULT ''
-);
-CREATE INDEX IF NOT EXISTS runs_status_idx ON runs(status);
-CREATE INDEX IF NOT EXISTS runs_created_idx ON runs(created_at);
-CREATE TABLE IF NOT EXISTS events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id TEXT NOT NULL,
-    seq INTEGER NOT NULL,
-    ts TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    text TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS events_run_idx ON events(run_id, seq);
-"""
 
 _COLUMNS = tuple(RunRecord.__dataclass_fields__.keys())
 
@@ -201,6 +169,7 @@ class RunStore:
         for name, decl in _ADDED_COLUMNS:
             if name not in present:
                 self._conn.execute(f"ALTER TABLE runs ADD COLUMN {name} {decl}")  # noqa: S608
+        migrate_event_evidence(self._conn)
         self._conn.execute("CREATE INDEX IF NOT EXISTS runs_thread_idx ON runs(thread_id)")
 
     def next_card_version(self, run_id: str) -> int:
@@ -276,6 +245,35 @@ class RunStore:
             rows = self._conn.execute(
                 f"SELECT * FROM runs {where} ORDER BY created_at DESC LIMIT ?",  # noqa: S608
                 (*params, int(limit)),
+            ).fetchall()
+        return [_run_from_row(r) for r in rows]
+
+    def list_runs_for_prs(
+        self,
+        pr_keys: Sequence[tuple[str, int]],
+        *,
+        logical_only: bool = False,
+    ) -> list[RunRecord]:
+        """Runs associated with specific PR numbers (repo is short name), oldest first.
+
+        Unbounded by count but bounded by the caller's PR window. Includes physical
+        retry rows when ``logical_only`` is false (#2117 attribution).
+        """
+        if not pr_keys:
+            return []
+        pairs = [(repo, int(number)) for repo, number in pr_keys]
+        ors = " OR ".join("(repo = ? AND pr_number = ?)" for _ in pairs)
+        clauses = [f"({ors})"]
+        if logical_only:
+            clauses.append("retry_of = ''")
+        where = " AND ".join(clauses)
+        params: list[Any] = []
+        for repo, number in pairs:
+            params.extend([repo, number])
+        with self._lock:
+            rows = self._conn.execute(
+                f"SELECT * FROM runs WHERE {where} ORDER BY created_at ASC",  # noqa: S608
+                params,
             ).fetchall()
         return [_run_from_row(r) for r in rows]
 
@@ -408,8 +406,8 @@ class RunStore:
         ]
 
     # ── events ───────────────────────────────────────────────────────────
-    def append_event(self, run_id: str, kind: str, text: str) -> int:
-        text = redact_sensitive_content(text)
+    def append_event(self, run_id: str, kind: str, text: str, *, lesson_evidence: str | None = None) -> int:
+        text, lesson_evidence = prepare_lesson_evidence(text, lesson_evidence)
         with self._lock:
             seq = self._seq.get(run_id)
             if seq is None:
@@ -421,27 +419,30 @@ class RunStore:
             seq += 1
             self._seq[run_id] = seq
             self._conn.execute(
-                "INSERT INTO events (run_id, seq, ts, kind, text) VALUES (?, ?, ?, ?, ?)",
-                (run_id, seq, _now(), kind, text[:4000]),
+                "INSERT INTO events (run_id, seq, ts, kind, text, lesson_evidence) VALUES (?, ?, ?, ?, ?, ?)",
+                (run_id, seq, _now(), kind, text[:MAX_EVENT_TEXT_CHARS], lesson_evidence),
             )
             if text.strip():
                 self._conn.execute(
                     "UPDATE runs SET last_line = ? WHERE id = ?",
                     (text.strip()[:300], run_id),
                 )
+        record_staff_run_activity(self.get_run(run_id), seq, kind, text)
         return seq
 
     def last_result_line(self, run_id: str) -> str:
         """The newest event text containing ``STAFF_RESULT:`` for the run ('' when none)."""
-        sql = "SELECT text FROM events WHERE run_id = ? AND text LIKE '%STAFF_RESULT:%' ORDER BY seq DESC LIMIT 1"
         with self._lock:
-            row = self._conn.execute(sql, (run_id,)).fetchone()
-        return str(row[0]) if row else ""
+            return latest_result_line(self._conn, run_id)
 
-    def events_after(self, run_id: str, after_seq: int = 0, limit: int = 500) -> list[dict[str, Any]]:
+    def events_after(
+        self, run_id: str, after_seq: int = 0, limit: int = 500, *, with_evidence: bool = False
+    ) -> list[dict[str, Any]]:
+        evidence_column = ", lesson_evidence" if with_evidence else ""
         with self._lock:
             rows = self._conn.execute(
-                "SELECT seq, ts, kind, text FROM events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?",
+                f"SELECT seq, ts, kind, text{evidence_column} FROM events "
+                "WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?",
                 (run_id, int(after_seq), int(limit)),
             ).fetchall()
         return [dict(r) for r in rows]

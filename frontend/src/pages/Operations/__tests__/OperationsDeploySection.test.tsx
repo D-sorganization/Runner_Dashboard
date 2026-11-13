@@ -26,8 +26,8 @@ const DEPLOYMENT_DATA = {
   },
   machines: [
     {
-      name: "controltower",
-      display_name: "ControlTower",
+      name: "node-a",
+      display_name: "node-a",
       rollout_state: "drifted",
       rollout_label: "Drifted",
       desired_version: "4.10.0",
@@ -44,8 +44,8 @@ const DEPLOYMENT_DATA = {
 const ORCHESTRATION_DATA = {
   machines: [
     {
-      name: "controltower",
-      display_name: "ControlTower",
+      name: "node-a",
+      display_name: "node-a",
       role: "hub",
       online: true,
       runner_count: 8,
@@ -62,7 +62,7 @@ const ORCHESTRATION_DATA = {
       audit_id: "audit-101",
       recorded_at: "2026-06-15T12:00:00Z",
       orchestration_type: "fleet_deploy",
-      machine: "controltower",
+      machine: "node-a",
       deploy_action: "restart_runner",
       requested_by: "codex",
       decision: "accepted",
@@ -107,7 +107,7 @@ describe("OperationsDeploySection", () => {
     render(<OperationsDeploySection />);
 
     expect(screen.getByRole("heading", { name: /Deploy & versions/i })).toBeInTheDocument();
-    expect((await screen.findAllByText("ControlTower")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("node-a")).length).toBeGreaterThan(0);
     expect(screen.getAllByText("4.10.0").length).toBeGreaterThan(0);
     expect(screen.getByText("Behind expected version")).toBeInTheDocument();
     expect(screen.getByText("fleet_deploy")).toBeInTheDocument();
@@ -119,7 +119,7 @@ describe("OperationsDeploySection", () => {
 
     render(<OperationsDeploySection />);
 
-    await screen.findAllByText("ControlTower");
+    await screen.findAllByText("node-a");
 
     const actionInput = screen.getByPlaceholderText(/e\.g\. restart_runner/i);
     fireEvent.change(actionInput, { target: { value: "restart_runner" } });
@@ -137,6 +137,90 @@ describe("OperationsDeploySection", () => {
       );
     });
     expect(await screen.findByText(/Deploy signal dispatched/i)).toBeInTheDocument();
+  });
+
+  describe("useSubmit deploy guard (#4276)", () => {
+    it("double-click Execute Deploy sends one POST", async () => {
+      const fetchMock = mockDeployFetch();
+      render(<OperationsDeploySection />);
+      await screen.findAllByText("node-a");
+      fireEvent.change(screen.getByPlaceholderText(/e\.g\. restart_runner/i), {
+        target: { value: "restart_runner" },
+      });
+      fireEvent.click(screen.getByRole("checkbox", { name: /Confirm action/i }));
+      const btn = screen.getByRole("button", { name: /Execute Deploy/i });
+      fireEvent.click(btn);
+      fireEvent.click(btn);
+      await waitFor(() => {
+        const deployCalls = fetchMock.mock.calls.filter(
+          (c) => String(c[0]) === "/api/fleet/orchestration/deploy",
+        );
+        expect(deployCalls).toHaveLength(1);
+      });
+    });
+
+    it("HTTP 500 shows failure alert, not a success message", async () => {
+      vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
+        const urlStr = String(url);
+        if (urlStr === "/api/deployment/state") {
+          return Promise.resolve(jsonResponse(DEPLOYMENT_DATA));
+        }
+        if (urlStr === "/api/fleet/orchestration") {
+          return Promise.resolve(jsonResponse(ORCHESTRATION_DATA));
+        }
+        if (urlStr === "/api/fleet/orchestration/deploy" && init?.method === "POST") {
+          return Promise.resolve(
+            jsonResponse({ detail: "deploy blew up" }, 500),
+          );
+        }
+        return Promise.reject(new Error("unexpected url " + urlStr));
+      });
+      render(<OperationsDeploySection />);
+      await screen.findAllByText("node-a");
+      fireEvent.change(screen.getByPlaceholderText(/e\.g\. restart_runner/i), {
+        target: { value: "restart_runner" },
+      });
+      fireEvent.click(screen.getByRole("checkbox", { name: /Confirm action/i }));
+      fireEvent.click(screen.getByRole("button", { name: /Execute Deploy/i }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/deploy blew up|HTTP 500/i);
+      expect(screen.queryByText(/dispatched successfully/i)).not.toBeInTheDocument();
+    });
+
+    it("retry reuses Idempotency-Key", async () => {
+      let fail = true;
+      const keys: string[] = [];
+      vi.spyOn(globalThis, "fetch").mockImplementation((url, init) => {
+        const urlStr = String(url);
+        if (urlStr === "/api/deployment/state") {
+          return Promise.resolve(jsonResponse(DEPLOYMENT_DATA));
+        }
+        if (urlStr === "/api/fleet/orchestration") {
+          return Promise.resolve(jsonResponse(ORCHESTRATION_DATA));
+        }
+        if (urlStr === "/api/fleet/orchestration/deploy" && init?.method === "POST") {
+          const headers = init?.headers as Record<string, string>;
+          keys.push(headers["Idempotency-Key"]);
+          if (fail) {
+            fail = false;
+            return Promise.resolve(jsonResponse({ detail: "nope" }, 500));
+          }
+          return Promise.resolve(jsonResponse({ message: "Deploy signal dispatched" }));
+        }
+        return Promise.reject(new Error("unexpected url " + urlStr));
+      });
+      render(<OperationsDeploySection />);
+      await screen.findAllByText("node-a");
+      fireEvent.change(screen.getByPlaceholderText(/e\.g\. restart_runner/i), {
+        target: { value: "restart_runner" },
+      });
+      fireEvent.click(screen.getByRole("checkbox", { name: /Confirm action/i }));
+      const btn = screen.getByRole("button", { name: /Execute Deploy/i });
+      fireEvent.click(btn);
+      await screen.findByRole("alert");
+      fireEvent.click(btn);
+      await waitFor(() => expect(keys).toHaveLength(2));
+      expect(keys[0]).toBe(keys[1]);
+    });
   });
 
   it("shows an error banner with a Retry button when fetch fails", async () => {

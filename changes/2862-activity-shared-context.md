@@ -1,0 +1,1 @@
+Added `GET /api/v1/activity/context` (`backend/activity_context.py` and `backend/routers/activity.py`) to provide a deterministic, token-bounded shared running context rollup across priority tiers (`conflicts > claims > live_sessions > recent_events`), aligned with RM #1576/#1577 scope-conflict semantics and accompanied by a reproducible 10,000-event benchmark fixture (#2862).

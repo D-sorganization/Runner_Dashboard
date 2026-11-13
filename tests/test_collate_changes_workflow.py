@@ -63,8 +63,8 @@ def test_runs_on_a_schedule_and_manual_dispatch_not_every_merge() -> None:
     assert len(cron) >= 1
 
 
-def test_routes_to_the_self_hosted_fleet_with_a_timeout() -> None:
-    assert _job()["runs-on"] == "d-sorg-fleet"
+def test_routes_to_hosted_runner_with_a_timeout() -> None:
+    assert _job()["runs-on"] == "ubuntu-latest"
     assert _job()["timeout-minutes"] <= 15
 
 

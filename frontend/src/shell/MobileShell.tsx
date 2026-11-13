@@ -55,6 +55,16 @@ function MoreIcon({ className }: { className?: string }) {
   )
 }
 
+// Compact chat-bubble glyph for the header's icon-only Ask Barb trigger
+// (issue #3749 — a labeled text pill reserved a full header row).
+function AskBarbIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  )
+}
+
 // Tab bar entries: the registry's mobilePrimary items plus the trailing "More"
 // trigger. Derived once from the single source of truth (DRY).
 interface BottomTab {
@@ -91,6 +101,9 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
   const [barbOpen, setBarbOpen] = useState(false)
   const barbToggleRef = useRef<HTMLButtonElement>(null)
   const [drawerAnnouncement, setDrawerAnnouncement] = useState('')
+  const drawerRef = useRef<HTMLDivElement>(null)
+  const drawerCloseRef = useRef<HTMLButtonElement>(null)
+  const drawerWasOpenRef = useRef(false)
 
   const openAsk = useCallback(() => setAskOpen(true), [])
   const closeAsk = useCallback(() => setAskOpen(false), [])
@@ -126,9 +139,54 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
 
   // Determine whether to show the FAB.
   // Visible on Fleet, Workflows, Remediation, Queue. Hidden on Staff itself.
-  const showAskFab = !askOpen && FAB_TABS.has(currentTab)
+  const isFabTab = FAB_TABS.has(currentTab)
+  const showAskFab = !askOpen && isFabTab
 
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({})
+
+  useEffect(() => {
+    if (!drawerOpen) {
+      if (drawerWasOpenRef.current) tabRefs.current[MORE_TAB_ID]?.focus()
+      drawerWasOpenRef.current = false
+      return
+    }
+
+    drawerWasOpenRef.current = true
+    drawerCloseRef.current?.focus()
+
+    const handleDrawerKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        setDrawerOpen(false)
+        return
+      }
+      if (event.key !== 'Tab') return
+
+      const focusable = drawerRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )
+      if (!focusable?.length) return
+
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      const active = document.activeElement
+      if (!drawerRef.current?.contains(active)) {
+        event.preventDefault()
+        const target = event.shiftKey ? last : first
+        target.focus()
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', handleDrawerKeyDown)
+    return () => document.removeEventListener('keydown', handleDrawerKeyDown)
+  }, [drawerOpen])
 
   const handleTabClick = useCallback((tab: BottomTab) => {
     if (tab.isMore) {
@@ -209,11 +267,17 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
             setBarbOpen((open) => !open)
           }}
         >
-          Ask Barb
+          <AskBarbIcon className="mobile-shell__ask-barb-icon" />
         </button>
       </header>
-      {/* Main content area — native mobile component takes precedence when provided */}
-      <main id="main-content" className="mobile-shell__content" role="main" tabIndex={-1}>
+      {/* Main content area — native mobile component takes precedence when provided.
+          On FAB tabs, reserve room so the last card isn't hidden under the FAB (#3751). */}
+      <main
+        id="main-content"
+        className={`mobile-shell__content${isFabTab ? ' mobile-shell__content--fab-clearance' : ''}`}
+        role="main"
+        tabIndex={-1}
+      >
         {nativeContent ?? children}
       </main>
       <div className="visually-hidden" aria-live="polite" aria-atomic="true">
@@ -282,9 +346,10 @@ export function MobileShell({ children, currentTab, onTabChange, onThreadSelecte
       {/* Drawer for additional tabs */}
       {drawerOpen && (
         <div className="mobile-shell__drawer-overlay" onClick={() => setDrawerOpen(false)} role="presentation">
-          <div className="mobile-shell__drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="More options">
+          <div ref={drawerRef} className="mobile-shell__drawer" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="More options">
             <div className="mobile-shell__drawer-header">
               <button
+                ref={drawerCloseRef}
                 className="mobile-shell__drawer-close"
                 onClick={() => setDrawerOpen(false)}
                 type="button"

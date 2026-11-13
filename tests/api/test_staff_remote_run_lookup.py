@@ -372,7 +372,7 @@ def test_remote_run_peer_cache_is_ttl_and_size_bounded(monkeypatch: pytest.Monke
 @pytest.mark.unit
 def test_hub_proxies_remote_cancel(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     remote_data = {
-        "run": {"id": "run-rem-cancel", "machine": "OGLaptop", "status": "running"},
+        "run": {"id": "run-rem-cancel", "machine": "node-b", "status": "running"},
         "events": [],
         "attempts": [],
     }
@@ -392,7 +392,7 @@ def test_hub_proxies_remote_cancel(client: TestClient, monkeypatch: pytest.Monke
 
     monkeypatch.setattr("staff.fleet.get_json", fake_get_json)
     monkeypatch.setattr("staff.fleet.post_json", fake_post_json)
-    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
+    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: {"node-b": "http://og:8321"})
 
     resp = client.post("/api/staff/runs/run-rem-cancel/cancel")
     assert resp.status_code == 200
@@ -404,7 +404,7 @@ def test_hub_proxies_remote_cancel(client: TestClient, monkeypatch: pytest.Monke
 @pytest.mark.unit
 def test_hub_proxies_remote_stream(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     remote_data = {
-        "run": {"id": "run-rem-stream", "machine": "OGLaptop", "status": "running"},
+        "run": {"id": "run-rem-stream", "machine": "node-b", "status": "running"},
         "events": [],
         "attempts": [],
     }
@@ -445,7 +445,7 @@ def test_hub_proxies_remote_stream(client: TestClient, monkeypatch: pytest.Monke
             pass
 
     monkeypatch.setattr("staff.fleet.get_json", fake_get_json)
-    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: {"OGLaptop": "http://og:8321"})
+    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: {"node-b": "http://og:8321"})
     monkeypatch.setattr("httpx.AsyncClient", FakeClient)
 
     resp = client.get("/api/staff/runs/run-rem-stream/stream")

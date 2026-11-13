@@ -10,7 +10,7 @@ A real scan needs:
 
 - a scan host declared ``isolation: "vm"``, reached by ``DOCKER_HOST``, with a
   filtered build network whose filter is live (the boot-time marker written by
-  ``setup-build-network.sh`` matches the network). ControlTower is never a scan
+  ``setup-build-network.sh`` matches the network). node-a is never a scan
   host.
 - an enabled repository, a valid ``.oss-scanner/`` contract that does not set
   ``disabled: true``, and the default-branch head SHA
@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from vuln_scan.operator_config import OperatorConfig, ScanHost
 
-FORBIDDEN_HOST_MARKERS = ("controltower",)
+FORBIDDEN_HOST_MARKERS = ("node-a",)
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,7 @@ def host_problems(host: ScanHost | None) -> list[str]:
     problems: list[str] = []
     text = f"{host.name} {host.docker_host or ''}".lower()
     if any(marker in text for marker in FORBIDDEN_HOST_MARKERS):
-        problems.append(f"{host.name} is ControlTower, which never runs scans")
+        problems.append(f"{host.name} is node-a, which never runs scans")
     if not host.eligible_for_real_scans:
         problems.append(
             f"{host.name} is isolation {host.isolation!r}; real scans need 'vm'"

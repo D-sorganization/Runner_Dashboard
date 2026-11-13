@@ -21,11 +21,11 @@ log = logging.getLogger("dashboard")
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
-SCHEMA_VERSION = "dispatch-envelope.v1"
+SCHEMA_VERSION = "dispatch-envelope.v2"
 ENVELOPE_VERSION = 1
 MIN_ENVELOPE_VERSION = 1
 MAX_ENVELOPE_VERSION = 1
-SUPPORTED_SCHEMA_VERSIONS = frozenset({"dispatch-envelope.v1"})
+SUPPORTED_SCHEMA_VERSIONS = frozenset({SCHEMA_VERSION})
 
 
 def _utc_now() -> _dt_mod.datetime:
@@ -156,6 +156,9 @@ class CommandEnvelope:
                 # Issue #317: include payload hash so captured envelopes
                 # cannot be replayed with a substituted payload.
                 _hash_payload(self.payload),
+                self.envelope_id,
+                self.reason,
+                self.schema_version,
             )
             object.__setattr__(self, "signature", sig)
         # A locally minted envelope (or one constructed with an explicit
@@ -224,6 +227,9 @@ class CommandEnvelope:
                 self.on_behalf_of,
                 self.correlation_id,
                 _hash_payload(self.payload),
+                self.envelope_id,
+                self.reason,
+                self.schema_version,
             )
         except Exception as e:  # justified: broad guard; verify returns False on any signing failure
             if isinstance(e, (KeyboardInterrupt, SystemExit)):

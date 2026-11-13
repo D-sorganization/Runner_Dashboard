@@ -59,6 +59,8 @@ export type RoleLiveness = components["schemas"]["StaffRoleLiveness"];
 export type BoardResponse = components["schemas"]["StaffBoardResponse"];
 export type RunsResponse = components["schemas"]["StaffRunsResponse"];
 export type RunDetailResponse = components["schemas"]["StaffRunDetailResponse"];
+export type RunReferencesResponse = components["schemas"]["StaffRunReferencesResponse"];
+export type RunReference = components["schemas"]["LibraryRunReference"] | components["schemas"]["CodebaseRunReference"];
 export type RunPlan = components["schemas"]["StaffRunPlan"];
 export type DispatchResponse = components["schemas"]["StaffDispatchResponse"];
 export type CancelResponse = components["schemas"]["StaffCancelResponse"];
@@ -144,6 +146,12 @@ export function fetchRuns(filter: RunsFilter = {}, signal?: AbortSignal): Promis
 
 export function fetchRun(id: string, signal?: AbortSignal): Promise<RunDetailResponse> {
   return apiRequest<RunDetailResponse>(`${STAFF_BASE}/runs/${encodeURIComponent(id)}`, { signal });
+}
+
+export function fetchRunReferences(id: string, signal?: AbortSignal): Promise<RunReferencesResponse> {
+  return apiRequest<RunReferencesResponse>(`${STAFF_BASE}/runs/${encodeURIComponent(id)}/references`, {
+    signal,
+  });
 }
 
 export type OutcomesGroupBy = "role" | "provider" | "repo";

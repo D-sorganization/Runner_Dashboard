@@ -89,7 +89,7 @@ def test_update_deployed_ensures_runner_hardening() -> None:
     kills in-flight jobs on stop. update-deployed.sh must idempotently
     ensure the drop-ins exist on every deploy, without restarting busy
     units (the drop-in takes effect on the unit's next natural restart).
-    Observed 2026-05-29 on DeskComputer: its runner units lacked the
+    Observed 2026-05-29 on hub-a: its runner units lacked the
     drop-in entirely because no deploy step ever ensured it.
     """
     src = _read(_DEPLOY / "update-deployed.sh")
@@ -370,7 +370,7 @@ def test_health_gh_api_timeout_is_realistic() -> None:
     floor so a future operator can't re-tighten back to a value that
     breaks the dashboard's GitHub view.
 
-    See d-sorg-local-ControlTower 2026-05-18: the 1 s budget made the
+    See d-sorg-local-node-a 2026-05-18: the 1 s budget made the
     Overview tab render 0 % success rate because /api/stats depends on
     the same `gh api` path and times out identically."""
     src = _read(_BACKEND / "dashboard_config" / "timeouts.py")

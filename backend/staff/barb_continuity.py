@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from staff.barb_lease_fence import BarbLeaseFenceMixin
 from staff.barb_task_inventory import (  # noqa: F401 - re-exported for existing importers
     HANDOFF_STATES,
     TASK_SURFACES,
@@ -20,6 +21,7 @@ from staff.barb_task_inventory import (  # noqa: F401 - re-exported for existing
     _now_iso,
     classify_task_surface,
 )
+from staff.redaction import redact_sensitive_content, redact_value
 
 BARB_SCOPES: tuple[str, ...] = tuple(
     (
@@ -60,17 +62,39 @@ CREATE INDEX IF NOT EXISTS idx_barb_tasks_status ON barb_task_inventory(status, 
 """
 
 
-class BarbContinuityStore(BarbTaskInventoryMixin):
+def normalize_scope(scope: str) -> str:
+    """Return the canonical (stripped) scope; ``ValueError`` unless known, ``barb:<subrole>``, or ``persona:<role>``."""
+    norm = scope.strip()
+    if (
+        norm not in BARB_SCOPES
+        and not (norm.startswith("barb:") and len(norm) > len("barb:"))
+        and not (norm.startswith("persona:") and len(norm) > len("persona:"))
+    ):
+        raise ValueError(
+            f"Invalid Barb scope '{scope}'. Expected one of {BARB_SCOPES}, 'barb:<subrole>', or 'persona:<role>'."
+        )
+    return norm
+
+
+def _is_released(row: sqlite3.Row) -> bool:
+    return bool(str(row["released_at"] or "").strip())
+
+
+class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
     """Thread-safe SQLite store for Multi-Barb leases, turnover log, and task inventory."""
 
     def __init__(self, db_path: Path) -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()  # re-entrant: a fenced write may call store methods
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         with self._lock, self._conn:
             self._conn.executescript(_SCHEMA)
+            # Additive migration (#2911): release keeps the row so the epoch stays monotonic per scope.
+            cols = {r["name"] for r in self._conn.execute("PRAGMA table_info(barb_scoped_leases)")}
+            if "released_at" not in cols:
+                self._conn.execute("ALTER TABLE barb_scoped_leases ADD COLUMN released_at TEXT NOT NULL DEFAULT ''")
 
     def checkout_lease(
         self,
@@ -85,9 +109,7 @@ class BarbContinuityStore(BarbTaskInventoryMixin):
         now: datetime | None = None,
     ) -> dict[str, Any]:
         """Acquire or renew a scoped Barb sub-role lease with monotonic epoch."""
-        norm_scope = scope.strip()
-        if norm_scope not in BARB_SCOPES and not norm_scope.startswith("barb:"):
-            raise ValueError(f"Invalid Barb scope '{scope}'. Expected one of {BARB_SCOPES} or 'barb:<subrole>'.")
+        norm_scope = normalize_scope(scope)
         if not holder.strip():
             raise ValueError("holder must not be empty")
         dt = now if now is not None else datetime.now(UTC)
@@ -99,7 +121,7 @@ class BarbContinuityStore(BarbTaskInventoryMixin):
         with self._lock, self._conn:
             cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
             if cur is not None:
-                is_expired = str(cur["expires_at"]) <= now_s
+                is_expired = _is_released(cur) or str(cur["expires_at"]) <= now_s
                 same_holder = str(cur["holder"]) == holder
                 if not is_expired and not same_holder and not force:
                     return {"acquired": False, "conflict": True, "lease": self._row_to_lease(cur, now_s)}
@@ -111,7 +133,8 @@ class BarbContinuityStore(BarbTaskInventoryMixin):
                 last_to = str(cur["last_turnover_id"]) if keep_turnover else ""
                 self._conn.execute(
                     "UPDATE barb_scoped_leases SET holder=?, persona=?, machine=?, epoch=?, "
-                    "acquired_at=?, heartbeat_at=?, expires_at=?, summary=?, last_turnover_id=? WHERE scope=?",
+                    "acquired_at=?, heartbeat_at=?, expires_at=?, summary=?, last_turnover_id=?, released_at='' "
+                    "WHERE scope=?",
                     (holder, persona, machine, next_epoch, acquired_at, now_s, exp_s, summary, last_to, norm_scope),
                 )
             else:
@@ -134,6 +157,7 @@ class BarbContinuityStore(BarbTaskInventoryMixin):
         now: datetime | None = None,
     ) -> dict[str, Any]:
         """Extend a live lease owned by ``holder`` at ``epoch`` (no epoch bump)."""
+        scope = normalize_scope(scope)
         dt = now if now is not None else datetime.now(UTC)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
@@ -141,7 +165,7 @@ class BarbContinuityStore(BarbTaskInventoryMixin):
         exp_s = _now_iso(datetime.fromtimestamp(dt.timestamp() + max(60, min(ttl_seconds, 14400)), tz=UTC))
         with self._lock, self._conn:
             cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (scope,)).fetchone()
-            if cur is None:
+            if cur is None or _is_released(cur):
                 return {"renewed": False, "reason": "not_found"}
             if str(cur["holder"]) != holder:
                 return {"renewed": False, "reason": "holder_mismatch", "lease": self._row_to_lease(cur, now_s)}
@@ -156,17 +180,31 @@ class BarbContinuityStore(BarbTaskInventoryMixin):
         return {"renewed": True, "lease": self._row_to_lease(row, now_s)}
 
     def release_lease(
-        self, *, scope: str, holder: str, require_turnover: bool = True, now: datetime | None = None
+        self,
+        *,
+        scope: str,
+        holder: str,
+        require_turnover: bool = True,
+        turnover: dict[str, Any] | None = None,
+        now: datetime | None = None,
     ) -> dict[str, Any]:
-        """Release a scoped Barb lease, enforcing shift-end turnover compliance."""
+        """Release a scoped Barb lease, enforcing shift-end turnover compliance.
+
+        ``turnover`` (``append_turnover`` keywords other than scope/author/now) is written only after the
+        holder is validated, in the same transaction as the release. The row is kept (holder cleared,
+        ``released_at`` set) so the scope's epoch stays monotonic across release and re-checkout.
+        """
+        scope = normalize_scope(scope)
         now_s = _now_iso(now)
         with self._lock, self._conn:
             cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (scope,)).fetchone()
-            if cur is None:
+            if cur is None or _is_released(cur):
                 return {"released": False, "reason": "not_found", "turnover_compliant": True}
             if str(cur["holder"]) != holder:
                 return {"released": False, "reason": "holder_mismatch", "lease": self._row_to_lease(cur, now_s)}
-            has_turnover = bool(str(cur["last_turnover_id"]).strip())
+            if turnover is not None:
+                self._insert_turnover(cur, scope=scope, author=holder, now_s=now_s, **turnover)
+            has_turnover = turnover is not None or bool(str(cur["last_turnover_id"]).strip())
             if require_turnover and not has_turnover:
                 return {
                     "released": False,
@@ -174,7 +212,11 @@ class BarbContinuityStore(BarbTaskInventoryMixin):
                     "turnover_compliant": False,
                     "lease": self._row_to_lease(cur, now_s),
                 }
-            self._conn.execute("DELETE FROM barb_scoped_leases WHERE scope = ?", (scope,))
+            # expires_at=now as well, so a pre-#2911 build (no released_at) also sees the seat as vacant.
+            self._conn.execute(
+                "UPDATE barb_scoped_leases SET holder='', released_at=?, expires_at=? WHERE scope=?",
+                (now_s, now_s, scope),
+            )
         return {"released": True, "turnover_compliant": has_turnover, "scope": scope, "holder": holder}
 
     def list_leases(self, *, include_expired: bool = False, now: datetime | None = None) -> list[dict[str, Any]]:
@@ -187,7 +229,7 @@ class BarbContinuityStore(BarbTaskInventoryMixin):
     @staticmethod
     def _row_to_lease(row: sqlite3.Row, now_s: str) -> dict[str, Any]:
         d: dict[str, Any] = {k: (int(row[k]) if k == "epoch" else str(row[k] or "")) for k in row.keys()}
-        d["active"] = str(d["expires_at"]) > now_s
+        d["active"] = str(d["expires_at"]) > now_s and not d.get("released_at")
         d["turnover_compliant"] = bool(d["last_turnover_id"])
         return d
 
@@ -206,39 +248,76 @@ class BarbContinuityStore(BarbTaskInventoryMixin):
         now: datetime | None = None,
     ) -> dict[str, Any]:
         """Append a shift turnover entry and mark any matching active lease compliant."""
-        if not summary.strip():
-            raise ValueError("Turnover summary must not be empty")
         now_s = _now_iso(now)
-        entry_id = f"to-{uuid.uuid4().hex[:10]}"
         with self._lock, self._conn:
             cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (scope,)).fetchone()
-            epoch = int(cur["epoch"]) if cur is not None else 0
-            self._conn.execute(
-                "INSERT INTO barb_turnover_log (id, scope, author, persona, machine, created_at, summary, "
-                "completed_json, in_progress_json, blockers_json, next_actions_json, lease_epoch) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    entry_id,
-                    scope,
-                    author,
-                    persona,
-                    machine,
-                    now_s,
-                    summary.strip(),
-                    json.dumps(completed or []),
-                    json.dumps(in_progress or []),
-                    json.dumps(blockers or []),
-                    json.dumps(next_actions or []),
-                    epoch,
-                ),
+            entry_id = self._insert_turnover(
+                cur,
+                scope=scope,
+                author=author,
+                summary=summary,
+                persona=persona,
+                machine=machine,
+                completed=completed,
+                in_progress=in_progress,
+                blockers=blockers,
+                next_actions=next_actions,
+                now_s=now_s,
             )
-            if cur is not None and str(cur["holder"]) == author:
-                self._conn.execute(
-                    "UPDATE barb_scoped_leases SET last_turnover_id = ?, heartbeat_at = ? WHERE scope = ?",
-                    (entry_id, now_s, scope),
-                )
             row = self._conn.execute("SELECT * FROM barb_turnover_log WHERE id = ?", (entry_id,)).fetchone()
         return self._row_to_turnover(row)
+
+    def _insert_turnover(
+        self,
+        cur: sqlite3.Row | None,
+        *,
+        scope: str,
+        author: str,
+        summary: str,
+        now_s: str,
+        persona: str = "",
+        machine: str = "",
+        completed: list[str] | None = None,
+        in_progress: list[str] | None = None,
+        blockers: list[str] | None = None,
+        next_actions: list[str] | None = None,
+    ) -> str:
+        """Insert a turnover row in the caller's transaction (lock held) and return its id.
+
+        The turnover ledger is a shared surface (#3095): every free-text field
+        runs through the same deny-by-default gate as conversation threads
+        (``staff.redaction``, which also resolves private-role classification
+        spans -- ``staff.private_surface_gate``) before it is persisted.
+        """
+        if not summary.strip():
+            raise ValueError("Turnover summary must not be empty")
+        entry_id = f"to-{uuid.uuid4().hex[:10]}"
+        live = cur if cur is not None and not _is_released(cur) else None
+        self._conn.execute(
+            "INSERT INTO barb_turnover_log (id, scope, author, persona, machine, created_at, summary, "
+            "completed_json, in_progress_json, blockers_json, next_actions_json, lease_epoch) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                entry_id,
+                scope,
+                author,
+                persona,
+                machine,
+                now_s,
+                redact_sensitive_content(summary.strip()),
+                json.dumps(redact_value(completed or [])),
+                json.dumps(redact_value(in_progress or [])),
+                json.dumps(redact_value(blockers or [])),
+                json.dumps(redact_value(next_actions or [])),
+                int(live["epoch"]) if live is not None else 0,
+            ),
+        )
+        if live is not None and str(live["holder"]) == author:
+            self._conn.execute(
+                "UPDATE barb_scoped_leases SET last_turnover_id = ?, heartbeat_at = ? WHERE scope = ?",
+                (entry_id, now_s, scope),
+            )
+        return entry_id
 
     def list_turnover(self, *, scope: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
         cap = max(1, min(limit, 200))

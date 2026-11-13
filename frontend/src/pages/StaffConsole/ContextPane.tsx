@@ -15,6 +15,8 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
   threadContext,
   onToggleSchedule,
   scheduleDisabledReason,
+  onChangeModel,
+  modelDisabledReason,
   className = "",
   isLoading = false,
 }) => {
@@ -23,10 +25,18 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
   const [scheduleEnabled, setScheduleEnabled] = useState<boolean | null>(role?.schedule?.enabled ?? null);
   const [isToggling, setIsToggling] = useState<boolean>(false);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  // "" selects the YAML default; any other value is a runtime override (epic #3295 S2).
+  const [modelOverride, setModelOverride] = useState<string>(role?.model?.override ?? "");
+  const [isChangingModel, setIsChangingModel] = useState<boolean>(false);
+  const [modelError, setModelError] = useState<string | null>(null);
 
   useEffect(() => {
     setScheduleEnabled(role?.schedule?.enabled ?? null);
   }, [role?.schedule?.enabled]);
+
+  useEffect(() => {
+    setModelOverride(role?.model?.override ?? "");
+  }, [role?.model?.override]);
 
   // An enabled switch always persists; otherwise it is disabled and says why (#1804).
   const switchDisabledReason = !onToggleSchedule
@@ -52,6 +62,30 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
       setToggleError(msg);
     } finally {
       setIsToggling(false);
+    }
+  };
+
+  const modelDisabled = !onChangeModel
+    ? "Read-only: model changes are not available here."
+    : modelDisabledReason || null;
+
+  const handleModelChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!role || !onChangeModel || isChangingModel || modelDisabled) return;
+    const nextValue = e.target.value;
+    const previousValue = modelOverride;
+
+    setModelOverride(nextValue);
+    setIsChangingModel(true);
+    setModelError(null);
+
+    try {
+      await onChangeModel(role.name, nextValue || null);
+    } catch (err: unknown) {
+      setModelOverride(previousValue);
+      const msg = err instanceof Error ? err.message : "Failed to change model";
+      setModelError(msg);
+    } finally {
+      setIsChangingModel(false);
     }
   };
 
@@ -228,6 +262,43 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
                 {switchDisabledReason && (
                   <div className="context-schedule-window" data-testid="context-schedule-reason">
                     {switchDisabledReason}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Model Section: runtime model-selector override (epic #3295 S2) */}
+            {role.model && (
+              <div className="context-schedule-card">
+                <div className="context-schedule-header">
+                  <span className="context-section-label" style={{ marginBottom: 0 }}>
+                    Model
+                  </span>
+                  <select
+                    aria-label="Model override"
+                    value={modelOverride}
+                    onChange={handleModelChange}
+                    disabled={isChangingModel || Boolean(modelDisabled)}
+                    title={modelDisabled ?? undefined}
+                    className="context-model-select"
+                  >
+                    <option value="">Default ({role.model.effective ?? "unset"})</option>
+                    {role.model.allowed.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="context-schedule-window">Effective: {role.model.effective ?? "unset"}</div>
+                {modelError && (
+                  <div className="context-schedule-window" data-testid="context-model-error">
+                    {modelError}
+                  </div>
+                )}
+                {modelDisabled && (
+                  <div className="context-schedule-window" data-testid="context-model-reason">
+                    {modelDisabled}
                   </div>
                 )}
               </div>

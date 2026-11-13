@@ -17,6 +17,10 @@ _test_config_root = Path.home() / ".config" / "runner-dashboard" / ".test-runs"
 _test_config_root.mkdir(parents=True, exist_ok=True)
 _test_config_dir = tempfile.TemporaryDirectory(prefix="pytest-", dir=_test_config_root, ignore_cleanup_errors=True)
 os.environ["RUNNER_DASHBOARD_CONFIG_DIR"] = _test_config_dir.name
+# Starlette TestClient defaults to Host: testserver; httpx.AsyncClient's
+# ASGITransport pattern used across this suite defaults to Host: test.
+# Allow both only under pytest.
+os.environ.setdefault("DASHBOARD_TRUSTED_EXTRA_HOSTS", "testserver,test")
 
 # C-extension thread safety. Many "xdist worker crashed" failures
 # come from MKL/OpenBLAS forking under xdist. Pin to single-threaded
@@ -56,6 +60,8 @@ repo_root_str = str(REPO_ROOT)
 if repo_root_str not in sys.path:
     sys.path.insert(0, repo_root_str)
 
+from tests.real_subprocess_popen import REAL_SUBPROCESS_POPEN  # noqa: E402
+
 # Fleet API clients (#1228) are stdlib scripts, imported by module name in tests/clients.
 clients_dir = str(REPO_ROOT / "clients" / "fleet")
 if clients_dir not in sys.path:
@@ -84,9 +90,21 @@ def _isolated_provider_cooldown_file(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_dispatch_overlap_queue():
+    """Prevent path-overlap dispatch sessions from leaking across tests (#4272)."""
+    try:
+        from dispatch_queue_link import reset_dispatch_queue_link_state
+    except ImportError:
+        yield
+        return
+    reset_dispatch_queue_link_state()
+    yield
+    reset_dispatch_queue_link_state()
+
+
+@pytest.fixture(autouse=True)
 def _no_real_provider_cli(monkeypatch):
     """Provider CLIs are never launched by tests; provider fixtures use fakes."""
-    real_popen = subprocess.Popen
     provider_names = {"codex", "claude", "agy", "antigravity"}
 
     def guarded_popen(args, *positional, **kwargs):
@@ -106,9 +124,58 @@ def _no_real_provider_cli(monkeypatch):
         )
         if executable in provider_names:
             raise AssertionError(f"Tests must not execute a real provider CLI: {executable}")
-        return real_popen(args, *positional, **kwargs)
+        return REAL_SUBPROCESS_POPEN(args, *positional, **kwargs)
 
     monkeypatch.setattr(subprocess, "Popen", guarded_popen)
+
+
+def _inside_runner_work_tree(path: Path) -> bool:
+    return "_work" in path.resolve().parts
+
+
+def _work_tree_free_base() -> Path:
+    """A writable scratch directory that is not inside any runner ``_work`` tree.
+
+    Self-hosted runners point ``TMPDIR`` (and so pytest's ``tmp_path``) at
+    ``<runner>/_work/_tmp``. The runner hooks treat everything below the first
+    ``_work`` component as that runner's tree, so a fixture that models "a path
+    outside a runner work tree", or lays out sibling runners of its own, cannot
+    live under ``tmp_path`` there: the hook correctly resolves the *real*
+    runner instead of the fixture's.
+    """
+    for candidate in (Path(tempfile.gettempdir()), Path("/tmp"), Path("/var/tmp")):  # noqa: S108
+        if candidate.is_dir() and not _inside_runner_work_tree(candidate):
+            return candidate
+    raise RuntimeError("no writable scratch directory outside a runner _work tree is available")
+
+
+@pytest.fixture
+def outside_work_tree_path():
+    """Per-test scratch directory guaranteed to sit outside any ``_work`` tree."""
+    root = Path(tempfile.mkdtemp(prefix="rd-deploy-", dir=_work_tree_free_base())).resolve()
+    assert not _inside_runner_work_tree(root), root
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_provider_login_state(monkeypatch, tmp_path_factory):
+    """Keep the host user's real provider logins out of every test.
+
+    Hosted runners have no ``~/.claude`` login, so credential probes see "not
+    signed in". A self-hosted runner's user *is* signed in, and
+    ``claude_oauth_session_alive`` then shells out to ``claude auth status``
+    (which the no-real-provider-CLI guard rightly refuses) and could rewrite the
+    operator's real credential files. Point the config roots at empty per-test
+    directories and drop token env so results never depend on who runs the suite.
+    Tests that exercise a login pin their own ``CLAUDE_CONFIG_DIR``/
+    ``ANTIGRAVITY_HOME`` after this fixture runs.
+    """
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path_factory.mktemp("claude-config")))
+    monkeypatch.setenv("ANTIGRAVITY_HOME", str(tmp_path_factory.mktemp("antigravity-home")))
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
 
 
 @pytest.fixture(autouse=True)
@@ -210,6 +277,15 @@ def _no_real_plan_quota(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_barb_turnover_store(tmp_path, monkeypatch):
+    """Panel completion appends a Barb turnover note (#2511); tests write it to a per-test store, never ``state/``."""
+    from staff import barb_continuity  # noqa: PLC0415
+
+    monkeypatch.setenv("BARB_CONTINUITY_DB", str(tmp_path / "barb_continuity.sqlite3"))
+    monkeypatch.setattr(barb_continuity, "_DEFAULT_STORE", None)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_chat_scratch_sweep(monkeypatch):
     """Chat turns never sweep the node's real temp dir or Claude projects root (#1688).
 
@@ -232,6 +308,13 @@ def _reset_main_cache_between_tests():
     cache_clear()
 
 
+_HOST_DEVELOPMENT_AUTH_FLAGS = (
+    "DASHBOARD_DEV_LOGIN",
+    "DASHBOARD_LOOPBACK_AUTH",
+    "DASHBOARD_LOOPBACK_OPERATOR_WRITES",
+)
+
+
 @pytest.fixture(autouse=True)
 def _no_hub_proxy(monkeypatch):
     """Never forward a test's request to a live hub.
@@ -241,13 +324,28 @@ def _no_hub_proxy(monkeypatch):
     endpoints proxied to the real hub and returned live data. Every proxy path
     requires ``HUB_URL``, so clearing it is enough. Tests of the proxy itself
     set ``HUB_URL`` with ``patch.object``, which overrides this default.
+
+    Self-hosted runners also export ``HUB_FLEET_TOKEN`` and loopback OAuth
+    flags; those must not leak into the default test lane (#3000).
     """
+    monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
+    monkeypatch.delenv("HUB_URL", raising=False)
+    for name in _HOST_DEVELOPMENT_AUTH_FLAGS:
+        monkeypatch.delenv(name, raising=False)
+
     try:
         import dashboard_config  # noqa: PLC0415
     except ImportError:
         return
 
     monkeypatch.setattr(dashboard_config, "HUB_URL", None)
+    try:
+        import staff.github_run_env as github_run_env  # noqa: PLC0415
+    except ImportError:
+        github_run_env = None
+    else:
+        monkeypatch.setattr(github_run_env, "HUB_URL", None)
+
     server = sys.modules.get("server")  # heavy: patch only when a test loaded it
     if server is not None and hasattr(server, "HUB_URL"):
         monkeypatch.setattr(server, "HUB_URL", None)
@@ -359,8 +457,32 @@ def mock_auth():
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _session_staff_workspace(tmp_path_factory):
+    """Keep leaked workers away from operator checkouts between tests (#2925)."""
+    from staff import knowledge_refresh, workspace  # noqa: PLC0415
+
+    root = tmp_path_factory.mktemp("staff-session")
+
+    def configured_roots_only() -> list[Path]:
+        configured = os.environ.get("STAFF_REPOS_ROOT", "")
+        return [Path(p) for p in configured.split(os.pathsep) if p and Path(p).is_dir()]
+
+    def no_clone(*_args, **_kwargs):
+        raise AssertionError("clone_repo() is disabled in tests; provide a fake checkout")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.delenv("STAFF_REPOS_ROOT", raising=False)
+        patch.setenv("STAFF_WORKTREES_ROOT", str(root / "worktrees"))
+        patch.setenv("STAFF_RM_ROOT", str(root / "rm"))
+        patch.setattr(workspace, "repos_roots", configured_roots_only)
+        patch.setattr(knowledge_refresh, "repos_roots", configured_roots_only)
+        patch.setattr(workspace, "clone_repo", no_clone)
+        yield
+
+
 @pytest.fixture(autouse=True)
-def _hermetic_staff_workspace(tmp_path, monkeypatch):
+def _hermetic_staff_workspace(tmp_path, monkeypatch, _session_staff_workspace):
     """Isolate staff.workspace so tests never touch a real checkout (#1521).
 
     ``staff.workspace.repos_roots()`` used to always append the developer's
@@ -381,22 +503,8 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
     # a test that needs a corpus sets its own with monkeypatch.setenv.
     monkeypatch.delenv("STAFF_REPOS_ROOT", raising=False)
 
-    try:
-        from staff import knowledge_refresh as knowledge_refresh_mod  # noqa: PLC0415
-    except ImportError:
-        knowledge_refresh_mod = None
     from staff import workspace as workspace_mod  # noqa: PLC0415
 
-    def configured_roots_only() -> list[Path]:
-        # A test's own STAFF_REPOS_ROOT (a tmp_path corpus) is honoured; the
-        # developer's real ~/Repositories defaults never are.
-        configured = os.environ.get("STAFF_REPOS_ROOT", "")
-        return [Path(p) for p in configured.split(os.pathsep) if p and Path(p).is_dir()]
-
-    monkeypatch.setattr(workspace_mod, "repos_roots", configured_roots_only)
-    # knowledge_refresh binds repos_roots at import time; patch that name too.
-    if knowledge_refresh_mod is not None:
-        monkeypatch.setattr(knowledge_refresh_mod, "repos_roots", configured_roots_only)
     monkeypatch.setenv("STAFF_WORKTREES_ROOT", str(tmp_path / "staff-worktrees"))
     monkeypatch.setenv("STAFF_RM_ROOT", str(tmp_path / "staff-rm-root"))
 
@@ -416,6 +524,24 @@ def _hermetic_staff_workspace(tmp_path, monkeypatch):
         return real_add_worktree(checkout, worktree, branch, **kwargs)
 
     monkeypatch.setattr(workspace_mod, "add_worktree", _guarded_add_worktree)
+
+
+@pytest.fixture(autouse=True)
+def _join_staff_runner_threads_after_test():
+    """Join any outstanding ``StaffRunner`` worker threads after every test (#3778).
+
+    Only ~a third of the call sites that dispatch through the ``get_runner()``
+    singleton remember to call ``reset_runner()`` themselves. Doing it here,
+    autouse and function-scoped, guarantees every test's daemon worker threads
+    finish before the next test's fixtures touch shared/global state (store
+    singleton, config dir), closing the race that produced nondeterministic
+    nightly failures (``sqlite3.ProgrammingError: Cannot operate on a closed
+    database``, stale active-run conflicts, stale status transitions).
+    """
+    yield
+    from staff.runner_registry import reset_runner  # noqa: PLC0415
+
+    reset_runner()
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -534,3 +660,26 @@ def staff_launches(monkeypatch):
     yield launched
     leaked = _live_staff_run_threads() - already_running
     assert not leaked, f"test started a real staff-run worker: {sorted(t.name for t in leaked)}"
+
+
+@pytest.fixture
+def mock_registry_hub_as_example(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve OAuth's registry-derived hub origin against the public example
+    registry instead of the (now-empty) shipped ``machine_registry.yml``.
+
+    #3082 category 1 stopped shipping real fleet topology in git. Tests that
+    exercise "the registry's hub is the production OAuth origin" must supply
+    their own registry data rather than depend on real values that no longer
+    ship; ``backend/machine_registry.example.yml`` already documents a stable
+    placeholder hub (``hub-a.fleet-example.ts.net``) for exactly this purpose.
+    """
+    import oauth_config  # noqa: PLC0415
+    from security import safe_yaml_load  # noqa: PLC0415
+
+    example_path = REPO_ROOT / "backend" / "machine_registry.example.yml"
+    example_registry = safe_yaml_load(example_path)
+    monkeypatch.setattr(
+        oauth_config,
+        "load_machine_registry",
+        lambda *_a, **_k: example_registry,
+    )

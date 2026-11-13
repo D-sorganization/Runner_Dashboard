@@ -88,10 +88,10 @@ def test_explicit_candidate_is_tried_before_search_order() -> None:
 def test_user_owned_runtime_is_rejected_with_reason() -> None:
     probe = FakeProbe()
     _root_tree(probe, "/home")
-    probe.facts["/home/dieterolson"] = selector.PathFacts(uid=USER_UID, mode=0o755, kind="dir")
-    probe.facts["/home/dieterolson/.local"] = selector.PathFacts(uid=USER_UID, mode=0o755, kind="dir")
-    probe.facts["/home/dieterolson/.local/bin"] = selector.PathFacts(uid=USER_UID, mode=0o755, kind="dir")
-    exe = "/home/dieterolson/.local/bin/python3.12"
+    probe.facts["/home/fleet-operator"] = selector.PathFacts(uid=USER_UID, mode=0o755, kind="dir")
+    probe.facts["/home/fleet-operator/.local"] = selector.PathFacts(uid=USER_UID, mode=0o755, kind="dir")
+    probe.facts["/home/fleet-operator/.local/bin"] = selector.PathFacts(uid=USER_UID, mode=0o755, kind="dir")
+    exe = "/home/fleet-operator/.local/bin/python3.12"
     probe.facts[exe] = selector.PathFacts(uid=USER_UID, mode=0o755, kind="file")
     probe.versions[exe] = "3.12.14"
 
@@ -129,7 +129,7 @@ def test_group_writable_interpreter_is_rejected() -> None:
 def test_symlink_into_home_is_rejected() -> None:
     probe = FakeProbe()
     _system_python(probe, "/usr/local/bin/python3.12")
-    target = "/home/dieterolson/.local/bin/python3.12"
+    target = "/home/fleet-operator/.local/bin/python3.12"
     probe.links["/usr/local/bin/python3.12"] = target
     probe.facts[target] = ROOT_EXE  # even if the target looks root-owned, $HOME is denied
     probe.versions[target] = "3.12.14"

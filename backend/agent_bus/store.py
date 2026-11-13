@@ -22,6 +22,15 @@ from time_utils import utc_now_iso
 
 log = logging.getLogger("dashboard.agent_bus")
 
+
+class LiveSessionConflictError(RuntimeError):
+    """Raised when register would displace a different principal on a live lease (#4274 B-12)."""
+
+    def __init__(self, session_id: str) -> None:
+        self.session_id = session_id
+        super().__init__(f"session {session_id!r} already has a live registration")
+
+
 _store: AgentBusStore | None = None
 
 
@@ -65,6 +74,7 @@ class AgentBusStore:
                 "role TEXT NOT NULL, claimed_at TEXT NOT NULL, "
                 "PRIMARY KEY (session_id, repo, issue))"
             )
+            store_ops.ensure_claim_failure_column(conn)
             conn.close()
 
     def _conn(self) -> sqlite3.Connection:
@@ -106,36 +116,47 @@ class AgentBusStore:
     ) -> dict[str, Any]:
         now = utc_now_iso()
         lease_expires = iso_after(lease_seconds)
-        principal_id = principal.id
         token: str | None = None
-        if mint_token:
-            principal_id = f"fleet-session:{session_id}"
-            session_principal = Principal(
-                id=principal_id,
-                type="bot",
-                name=f"{role}@{node}",
-                roles=["bot"],
-            )
-            raw = f"abs_{secrets.token_urlsafe(32)}"
-            identity_manager.add_ephemeral_token(
-                hashlib.sha256(raw.encode()).hexdigest(),
-                session_principal,
-                expires_at=datetime.now(UTC).timestamp() + lease_seconds,
-                name=f"agent-bus-{session_id}",
-            )
-            token = raw
         with self._lock:
             conn = self._conn()
-            conn.execute(
-                "INSERT INTO agent_bus_principals "
-                "(session_id, role, provider, node, principal_id, lease_expires_at, registered_at, last_heartbeat_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
-                "ON CONFLICT(session_id) DO UPDATE SET role=excluded.role, provider=excluded.provider, "
-                "node=excluded.node, principal_id=excluded.principal_id, lease_expires_at=excluded.lease_expires_at, "
-                "last_heartbeat_at=excluded.last_heartbeat_at",
-                (session_id, role, provider, node, principal_id, lease_expires, now, now),
-            )
-            conn.close()
+            try:
+                row = conn.execute(
+                    "SELECT * FROM agent_bus_principals WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+                existing = self._row_principal(row) if row else None
+                if existing is not None and existing.live() and principal.id != existing.principal_id:
+                    raise LiveSessionConflictError(session_id)
+                principal_id = principal.id
+                if mint_token:
+                    principal_id = f"fleet-session:{session_id}"
+                    session_principal = Principal(
+                        id=principal_id,
+                        type="bot",
+                        name=f"{role}@{node}",
+                        roles=["bot"],
+                    )
+                    raw = f"abs_{secrets.token_urlsafe(32)}"
+                    identity_manager.add_ephemeral_token(
+                        hashlib.sha256(raw.encode()).hexdigest(),
+                        session_principal,
+                        expires_at=datetime.now(UTC).timestamp() + lease_seconds,
+                        name=f"agent-bus-{session_id}",
+                    )
+                    token = raw
+                conn.execute(
+                    "INSERT INTO agent_bus_principals "
+                    "(session_id, role, provider, node, principal_id, lease_expires_at, "
+                    "registered_at, last_heartbeat_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(session_id) DO UPDATE SET role=excluded.role, provider=excluded.provider, "
+                    "node=excluded.node, principal_id=excluded.principal_id, "
+                    "lease_expires_at=excluded.lease_expires_at, "
+                    "last_heartbeat_at=excluded.last_heartbeat_at",
+                    (session_id, role, provider, node, principal_id, lease_expires, now, now),
+                )
+            finally:
+                conn.close()
         out: dict[str, Any] = {
             "session": session_id,
             "role": role,
@@ -171,73 +192,85 @@ class AgentBusStore:
             raise RuntimeError(f"session {session_id!r} is not registered or lease expired")
         return row
 
+    @staticmethod
+    def _find_by_key(conn: sqlite3.Connection, body: SendBody) -> sqlite3.Row | None:
+        row: sqlite3.Row | None = conn.execute(
+            "SELECT * FROM agent_bus_inbox WHERE from_session = ? AND idempotency_key = ?",
+            (body.session, body.idempotency_key),
+        ).fetchone()
+        return row
+
     def send(self, body: SendBody) -> dict[str, Any]:
         if len(body.body.encode("utf-8")) > MAX_BODY:
             raise ValueError("message body exceeds size cap")
         sender = self.require_live(body.session)
         to_address = normalize_to_address(body.to)
+        # One critical section for SELECT -> thread write -> INSERT (#3024) so a
+        # concurrent duplicate cannot slip between the replay check and the insert.
         with self._lock:
             conn = self._conn()
-            existing = conn.execute(
-                "SELECT * FROM agent_bus_inbox WHERE from_session = ? AND idempotency_key = ?",
-                (body.session, body.idempotency_key),
-            ).fetchone()
-            if existing:
-                conn.close()
-                return {"message": message_dict(existing), "replayed": True}
-            conn.close()
+            try:
+                existing = self._find_by_key(conn, body)
+                if existing is not None:
+                    return {"message": message_dict(existing), "replayed": True}
 
-        work_number = body.work_number
-        work_kind = body.work_kind
-        assert work_number is not None and work_kind is not None  # noqa: S101
-        cstore = get_conversation_store()
-        thread_id = ensure_work_thread(cstore, body.repo, work_number, work_kind)
-        msg_kind = body.type if body.type in ("handoff", "status") else "text"
-        meta = {
-            "agent_bus": True,
-            "type": body.type,
-            "repo": body.repo,
-            "work_kind": work_kind,
-            "work_number": work_number,
-            "to": to_address,
-            "from_session": body.session,
-            "from_role": sender.role,
-        }
-        thread_msg = cstore.add_message(
-            thread_id=thread_id,
-            author_kind="role",
-            author=sender.role,
-            kind=msg_kind,
-            body_md=body.body,
-            meta=meta,
-            idempotency_key=body.idempotency_key,
-        )
-        message_id = f"abm_{uuid.uuid4().hex[:12]}"
-        now = _now()
-        with self._lock:
-            conn = self._conn()
-            conn.execute(
-                "INSERT INTO agent_bus_inbox "
-                "(message_id, idempotency_key, from_session, to_address, msg_type, repo, work_kind, work_number, "
-                "body_md, thread_id, thread_message_id, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    message_id,
-                    body.idempotency_key,
-                    body.session,
-                    to_address,
-                    body.type,
-                    body.repo,
-                    body.work_kind,
-                    body.work_number,
-                    body.body,
-                    thread_id,
-                    thread_msg.id,
-                    now,
-                ),
-            )
-            row = conn.execute("SELECT * FROM agent_bus_inbox WHERE message_id = ?", (message_id,)).fetchone()
-            conn.close()
+                work_number = body.work_number
+                work_kind = body.work_kind
+                assert work_number is not None and work_kind is not None  # noqa: S101
+                cstore = get_conversation_store()
+                thread_id = ensure_work_thread(cstore, body.repo, work_number, work_kind)
+                msg_kind = body.type if body.type in ("handoff", "status") else "text"
+                meta = {
+                    "agent_bus": True,
+                    "type": body.type,
+                    "repo": body.repo,
+                    "work_kind": work_kind,
+                    "work_number": work_number,
+                    "to": to_address,
+                    "from_session": body.session,
+                    "from_role": sender.role,
+                }
+                thread_msg = cstore.add_message(
+                    thread_id=thread_id,
+                    author_kind="role",
+                    author=sender.role,
+                    kind=msg_kind,
+                    body_md=body.body,
+                    meta=meta,
+                    idempotency_key=body.idempotency_key,
+                )
+                message_id = f"abm_{uuid.uuid4().hex[:12]}"
+                now = _now()
+                try:
+                    conn.execute(
+                        "INSERT INTO agent_bus_inbox "
+                        "(message_id, idempotency_key, from_session, to_address, msg_type, repo, work_kind, "
+                        "work_number, body_md, thread_id, thread_message_id, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            message_id,
+                            body.idempotency_key,
+                            body.session,
+                            to_address,
+                            body.type,
+                            body.repo,
+                            body.work_kind,
+                            body.work_number,
+                            body.body,
+                            thread_id,
+                            thread_msg.id,
+                            now,
+                        ),
+                    )
+                except sqlite3.IntegrityError:
+                    # Another connection/process won UNIQUE(from_session, idempotency_key): replay its row.
+                    existing = self._find_by_key(conn, body)
+                    if existing is None:
+                        raise
+                    return {"message": message_dict(existing), "replayed": True}
+                row = conn.execute("SELECT * FROM agent_bus_inbox WHERE message_id = ?", (message_id,)).fetchone()
+            finally:
+                conn.close()
         log.info(
             "agent_bus: message %s %s -> %s %s#%s",
             message_id,
@@ -246,7 +279,14 @@ class AgentBusStore:
             body.repo,
             body.work_number,
         )
-        out = {"message": message_dict(row), "replayed": False}
+        message = message_dict(row)
+        out = {"message": message, "replayed": False}
+        from agent_bus import doorbell  # noqa: PLC0415
+
+        doorbell.ring()
+        from agent_bus.inbox_webhook import schedule_inbox_webhooks  # noqa: PLC0415
+
+        schedule_inbox_webhooks(to_address, message, store=self)
         from agent_bus.store_rows import BARB_ROLE  # noqa: PLC0415
 
         if body.type == "blocked" and to_address != BARB_ROLE:
@@ -339,6 +379,14 @@ class AgentBusStore:
                     "last_message": msg,
                 }
         backlog = self.build_backlog()
+        empty_reason: str | None = None
+        if not agents:
+            # #3504: a bare empty `agents` list alone must never be read as proof
+            # no fleet agents exist. Distinguish "nothing has ever registered"
+            # from "sessions registered, but all are now stale/expired" -- the
+            # same complete_empty/local_empty contract #3503 established for
+            # activity sessions.
+            empty_reason = "complete_empty" if not principal_rows else "local_empty"
         return {
             "agents": agents,
             "threads": list(threads.values()),
@@ -347,8 +395,15 @@ class AgentBusStore:
                 "stale_sessions": backlog["stale_sessions"],
                 "blocked": backlog["blocked"],
             },
+            "empty_reason": empty_reason,
+            "reaper": self._reaper_diagnostics(),
             "generated_at": utc_now_iso(),
         }
+
+    def _reaper_diagnostics(self) -> dict[str, Any]:
+        from agent_bus.reaper_stats import snapshot
+
+        return snapshot()
 
     def expire_session(self, session_id: str) -> None:
         store_ops.expire_session(self, session_id)

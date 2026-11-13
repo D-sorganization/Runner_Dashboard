@@ -17,14 +17,17 @@ Mounted under ``/api/v1/staff``:
 # ruff: noqa: B008
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 import orchestration_audit as _audit
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from identity import Principal, format_caller, principal_has_scope, require_scope
 from pydantic import BaseModel, Field
 from staff.barb_continuity import classify_task_surface, get_barb_continuity_store
+from staff.barb_lease_fence import barb_write_fence, claim_for_write, is_barb_seat
 from staff.barb_runtime import barb_status
 from staff.runner import get_runner
 
@@ -49,6 +52,17 @@ def bind_holder(caller: Principal, requested: str | None) -> str:
         status_code=403,
         detail={"error": "holder_caller_mismatch", "caller": cid, "holder": requested},
     )
+
+
+@contextmanager
+def _invalid_lease_request_as_422() -> Iterator[None]:
+    """Map the store's contract violations (bad scope, empty holder) to 422 instead of a 500."""
+    try:
+        yield
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail={"error": "invalid_barb_lease_request", "detail": str(exc)}
+        ) from exc
 
 
 class BarbLeaseCheckoutRequest(BaseModel):
@@ -169,24 +183,26 @@ async def post_barb_lease_checkout(
 ) -> dict[str, Any]:
     holder = bind_holder(_caller, req.holder)
     if req.takeover:
-        if not principal_has_scope(_caller, "staff.admin"):
+        if not (principal_has_scope(_caller, "staff.admin") or is_barb_seat(_caller)):
             raise HTTPException(
-                status_code=403, detail={"error": "takeover_requires_operator", "required_scope": "staff.admin"}
+                status_code=403,
+                detail={"error": "takeover_requires_barb_or_operator", "required_scope": "staff.admin or Barb seat"},
             )
         if not req.reason.strip():
             raise HTTPException(status_code=422, detail={"error": "takeover_reason_required"})
     store = get_barb_continuity_store()
-    # SEAM (lease-epoch fencing, pending design panel): dispatch/directive writers should later
-    # validate the lease ``epoch`` returned here; intentionally not enforced yet.
-    res = store.checkout_lease(
-        scope=req.scope,
-        holder=holder,
-        persona=req.persona,
-        machine=req.machine or get_runner().machine,
-        ttl_seconds=req.ttl_sec,
-        summary=req.summary,
-        force=req.takeover,
-    )
+    # Writers prove they still hold the seat by sending the returned ``epoch`` back as
+    # X-Barb-Lease-Epoch (see staff.barb_lease_fence); takeover bumps it under the store lock.
+    with _invalid_lease_request_as_422():
+        res = store.checkout_lease(
+            scope=req.scope,
+            holder=holder,
+            persona=req.persona,
+            machine=req.machine or get_runner().machine,
+            ttl_seconds=req.ttl_sec,
+            summary=req.summary,
+            force=req.takeover,
+        )
     if not res["acquired"]:
         raise HTTPException(status_code=409, detail=res)
     if req.takeover:
@@ -212,9 +228,10 @@ async def post_barb_lease_heartbeat(
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     holder = bind_holder(_caller, req.holder)
-    res = get_barb_continuity_store().heartbeat_lease(
-        scope=req.scope, holder=holder, epoch=req.epoch, ttl_seconds=req.ttl_sec
-    )
+    with _invalid_lease_request_as_422():
+        res = get_barb_continuity_store().heartbeat_lease(
+            scope=req.scope, holder=holder, epoch=req.epoch, ttl_seconds=req.ttl_sec
+        )
     if not res["renewed"]:
         code = 403 if res["reason"] == "holder_mismatch" else 409
         raise HTTPException(status_code=code, detail=res)
@@ -227,19 +244,23 @@ async def post_barb_lease_release(
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     holder = bind_holder(_caller, req.holder)
-    store = get_barb_continuity_store()
-    if req.turnover_summary.strip():
-        store.append_turnover(
-            scope=req.scope,
-            author=holder,
-            machine=get_runner().machine,
-            summary=req.turnover_summary,
-            completed=req.completed_items,
-            in_progress=req.in_progress_items,
-            next_actions=req.next_actions,
-            blockers=req.blockers,
+    turnover = (
+        {
+            "machine": get_runner().machine,
+            "summary": req.turnover_summary,
+            "completed": req.completed_items,
+            "in_progress": req.in_progress_items,
+            "next_actions": req.next_actions,
+            "blockers": req.blockers,
+        }
+        if req.turnover_summary.strip()
+        else None
+    )
+    # The store validates the holder before writing the turnover, then releases in the same transaction.
+    with _invalid_lease_request_as_422():
+        res = get_barb_continuity_store().release_lease(
+            scope=req.scope, holder=holder, require_turnover=not req.force, turnover=turnover
         )
-    res = store.release_lease(scope=req.scope, holder=holder, require_turnover=not req.force)
     if not res["released"]:
         raise HTTPException(status_code=409, detail=res)
     return {"ok": True, **res}
@@ -258,19 +279,29 @@ async def get_barb_turnover(
 @router.post("/barb/turnover", summary="Record a shift turnover log entry")
 async def post_barb_turnover(
     req: BarbTurnoverCreateRequest,
+    request: Request,
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
-    entry = get_barb_continuity_store().append_turnover(
-        scope=req.scope,
-        persona=req.persona,
-        author=bind_holder(_caller, req.holder),
-        machine=req.machine or get_runner().machine,
-        summary=req.summary,
-        completed=req.completed_items,
-        in_progress=req.in_progress_items,
-        next_actions=req.next_actions,
-        blockers=req.blockers,
-    )
+    author = bind_holder(_caller, req.holder)
+    claim = claim_for_write(request.headers, _caller, surface="barb.turnover")
+    if claim is not None and claim.scope != req.scope:
+        raise HTTPException(
+            status_code=422, detail={"error": "barb_scope_mismatch", "header": claim.scope, "body": req.scope}
+        )
+    with barb_write_fence(
+        claim, surface="barb.turnover", target=f"barb:turnover:{req.scope}", principal=format_caller(_caller)
+    ):
+        entry = get_barb_continuity_store().append_turnover(
+            scope=req.scope,
+            persona=req.persona,
+            author=author,
+            machine=req.machine or get_runner().machine,
+            summary=req.summary,
+            completed=req.completed_items,
+            in_progress=req.in_progress_items,
+            next_actions=req.next_actions,
+            blockers=req.blockers,
+        )
     return {"ok": True, "turnover": entry}
 
 
@@ -289,21 +320,26 @@ async def get_barb_inventory(
 @router.post("/barb/inventory", summary="Create or update a task in the Barb inventory")
 async def post_barb_inventory(
     req: BarbTaskUpsertRequest,
+    request: Request,
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
-    task = get_barb_continuity_store().upsert_task(
-        task_id=req.task_id,
-        title=req.title,
-        scope=req.scope,
-        status=req.status,
-        surface=req.surface,
-        owner_persona=req.assigned_persona or req.assigned_holder,
-        machine=req.machine or get_runner().machine,
-        repo=req.repo,
-        issue_or_pr=req.target_ref,
-        priority=req.priority,
-        handoff_request=req.desktop_reason or None,
-    )
+    claim = claim_for_write(request.headers, _caller, surface="barb.inventory")
+    with barb_write_fence(
+        claim, surface="barb.inventory", target=f"barb:inventory:{req.scope}", principal=format_caller(_caller)
+    ):
+        task = get_barb_continuity_store().upsert_task(
+            task_id=req.task_id,
+            title=req.title,
+            scope=req.scope,
+            status=req.status,
+            surface=req.surface,
+            owner_persona=req.assigned_persona or req.assigned_holder,
+            machine=req.machine or get_runner().machine,
+            repo=req.repo,
+            issue_or_pr=req.target_ref,
+            priority=req.priority,
+            handoff_request=req.desktop_reason or None,
+        )
     return {"ok": True, "task": task}
 
 
@@ -319,19 +355,24 @@ _HANDOFF_ACTION_MAP = {
 @router.post("/barb/handoff", summary="Transition CLI <-> Desktop handoff state with monotonic fencing epoch")
 async def post_barb_handoff(
     req: BarbHandoffTransitionRequest,
+    request: Request,
     _caller: Principal = Depends(require_scope("staff.dispatch")),
 ) -> dict[str, Any]:
     target_state = _HANDOFF_ACTION_MAP.get(req.action, req.action)
+    claim = claim_for_write(request.headers, _caller, surface="barb.handoff")
     try:
-        res = get_barb_continuity_store().transition_handoff(
-            task_id=req.task_id,
-            target_state=target_state,
-            actor_persona=req.persona or req.actor,
-            expected_epoch=req.expected_epoch,
-            handoff_request=req.reason or None,
-            handoff_resolution=req.resume_notes or None,
-            artifact_ref=req.artifact_uri or None,
-        )
+        with barb_write_fence(
+            claim, surface="barb.handoff", target=f"barb:handoff:{req.task_id}", principal=format_caller(_caller)
+        ):
+            res = get_barb_continuity_store().transition_handoff(
+                task_id=req.task_id,
+                target_state=target_state,
+                actor_persona=req.persona or req.actor,
+                expected_epoch=req.expected_epoch,
+                handoff_request=req.reason or None,
+                handoff_resolution=req.resume_notes or None,
+                artifact_ref=req.artifact_uri or None,
+            )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail={"error": "task_not_found", "detail": str(exc)}) from exc
     if not res["transitioned"]:

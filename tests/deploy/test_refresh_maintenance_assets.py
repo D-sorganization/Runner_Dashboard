@@ -203,7 +203,7 @@ def test_current_runner_hooks_pass_check(prefix: _Prefix) -> None:
 
 
 # --- runner-hooks-restore itself (#1975) --------------------------------------
-# DeskComputer 2026-10-17: refresh installed the #1971 hooks at 13:39Z and the
+# hub-a 2026-10-17: refresh installed the #1971 hooks at 13:39Z and the
 # installed pre-#1971 restore script ("differs from source -> reinstall")
 # downgraded them from a stale /opt checkout at 13:43Z, on every 5-min tick.
 
@@ -236,7 +236,7 @@ def test_missing_restore_script_is_not_provisioned(prefix: _Prefix) -> None:
 
 # --- the restore timer's hook source (#1977) ------------------------------------
 # HOOK_SRC_DIR was /opt/runner-dashboard/deploy/runner-hooks: a 2026-07-31 checkout
-# on DeskComputer, absent on ControlTower and OGLaptop (restore silently a no-op).
+# on hub-a, absent on node-a and node-b (restore silently a no-op).
 # Refresh now keeps a mirror of the repo hooks current and points the unit at it.
 
 _HOOKS = ("job-started.sh", "job-completed.sh", "force-drain.sh")

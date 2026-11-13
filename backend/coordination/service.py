@@ -13,15 +13,35 @@ a bot can never act for another agent, before any RM script runs.
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import threading
 from datetime import UTC, datetime
 from typing import Any
 
+from activity_producers import emit_activity
 from coordination import board, claims, roster
+from coordination import jobs as jobs_mod
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
-from coordination.models import AckBody, ClaimBody, ClaimReleaseBody, MessageBody, PresenceBody, ReleaseBody
+from coordination.models import (
+    AckBody,
+    ClaimBody,
+    ClaimReleaseBody,
+    JobClaimBody,
+    JobHeartbeatBody,
+    JobReleaseBody,
+    MessageBody,
+    PresenceBody,
+    ReleaseBody,
+)
 from coordination.staff_view import staff_runs
+from staff.rm_sync import stale_source_warning
 
 __all__ = ["ImpersonationError", "MissingAgentError", "NotRegisteredError", "UnknownAgentError"]
+
+SESSION_RESPONSE_DEADLINE_SECONDS = 5.0
+_SESSION_READ_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="coord-sessions")
+_SESSION_READ_LOCK = threading.Lock()
+_SESSION_READS: dict[str, concurrent.futures.Future[Any]] = {}
 
 
 class UnknownAgentError(MissingAgentError):
@@ -66,9 +86,85 @@ def _require_presence(session: str, repo: str) -> None:
 
 
 async def sessions(repo: str | None) -> dict[str, Any]:
-    data = await asyncio.to_thread(board.read_sessions, repo)
-    runs, warnings = await staff_runs(repo)
-    return _stamp({**data, "staff_runs": runs, "warnings": [*data.get("warnings", []), *warnings]})
+    """Read board and staff state in parallel, independently bounded by one response deadline."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + SESSION_RESPONSE_DEADLINE_SECONDS
+    board_future = _shared_session_read("board", lambda: board.read_sessions())
+    staff_future = _shared_session_read("staff", lambda: asyncio.run(staff_runs()))
+    pending = {"board": board_future, "staff": staff_future}
+    while pending and loop.time() < deadline:
+        pending = {name: future for name, future in pending.items() if not future.done()}
+        if pending:
+            await asyncio.sleep(min(0.01, max(0.0, deadline - loop.time())))
+
+    warnings: list[str] = []
+    if board_future.done():
+        try:
+            data = board_future.result()
+        except Exception:  # noqa: BLE001 — independent upstream failure must not fail this endpoint
+            data = _unavailable_sessions("board sessions read failed")
+            warnings.append("board sessions read failed")
+    else:
+        data = _unavailable_sessions("board sessions read timed out")
+        warnings.append("board sessions read timed out")
+
+    if staff_future.done():
+        try:
+            runs, staff_warnings = staff_future.result()
+        except Exception:  # noqa: BLE001 — independent upstream failure must not fail this endpoint
+            runs, staff_warnings = [], ["staff runs unavailable: read failed"]
+    else:
+        runs, staff_warnings = [], ["staff runs read timed out"]
+    if repo:
+        wanted = repo.casefold()
+        if data.get("available"):
+            data = {
+                **data,
+                "sessions": [s for s in data.get("sessions", []) if str(s.get("repo") or "").casefold() == wanted],
+            }
+        runs = [run for run in runs if str(run.get("repo") or "").casefold() == wanted]
+    source_warning = stale_source_warning()
+    if source_warning:
+        warnings.append(source_warning)
+    return _stamp({**data, "staff_runs": runs, "warnings": [*data.get("warnings", []), *warnings, *staff_warnings]})
+
+
+def _shared_session_read(key: str, read: Any) -> concurrent.futures.Future[Any]:
+    """Share a pending board or staff read so timed-out callers cannot queue duplicates."""
+    with _SESSION_READ_LOCK:
+        future = _SESSION_READS.get(key)
+        if future is not None and not future.done():
+            return future
+        future = _SESSION_READ_POOL.submit(read)
+        _SESSION_READS[key] = future
+
+    def finished(completed: concurrent.futures.Future[Any]) -> None:
+        try:
+            completed.exception()  # consume late failures even when every waiter timed out or cancelled
+        except concurrent.futures.CancelledError:
+            pass
+        with _SESSION_READ_LOCK:
+            if _SESSION_READS.get(key) is completed:
+                _SESSION_READS.pop(key, None)
+
+    future.add_done_callback(finished)
+    return future
+
+
+def _unavailable_sessions(reason: str) -> dict[str, Any]:
+    return {
+        "available": False,
+        "reason": reason,
+        "complete": False,
+        "degraded_history": False,
+        "read_warnings": [],
+        "replay_warnings": [],
+        "active_conflicts": [],
+        "sessions": [],
+        "messages": [],
+        "conflicts": [],
+        "warnings": [],
+    }
 
 
 def inbox(session: str, repo: str) -> dict[str, Any]:
@@ -84,19 +180,40 @@ def register_presence(body: PresenceBody, caller: Caller) -> dict[str, Any]:
     for key, outcome in body.goals.items():
         args += ["--goal", f"{key}={outcome}"]
     args += ["--ttl-hours", str(float(body.ttl_hours))]
-    return _stamp(board.publish(body.repo, body.session, "register", *args))
+    result = _stamp(board.publish(body.repo, body.session, "register", *args))
+    emit_activity(
+        source="coordination",
+        session_id=body.session,
+        node="hub",
+        kind="presence_register",
+        repo=body.repo,
+        issue=body.issue,
+        branch=body.branch,
+    )
+    return result
 
 
 def release_presence(body: ReleaseBody, caller: Caller) -> dict[str, Any]:
     _bind(caller, body.session)
-    return _stamp(board.publish(body.repo, body.session, "release"))
+    result = _stamp(board.publish(body.repo, body.session, "release"))
+    emit_activity(source="coordination", session_id=body.session, node="hub", kind="presence_release", repo=body.repo)
+    return result
 
 
 def send_message(body: MessageBody, caller: Caller) -> dict[str, Any]:
     _bind(caller, body.session)
     _require_presence(body.session, body.repo)
     # ``--text=`` keeps a message that starts with '-' from being parsed as an option.
-    return _stamp(board.publish(body.repo, body.session, "send", "--to", body.to, f"--text={body.text}"))
+    result = _stamp(board.publish(body.repo, body.session, "send", "--to", body.to, f"--text={body.text}"))
+    emit_activity(
+        source="coordination",
+        session_id=body.session,
+        node="hub",
+        kind="message_sent",
+        repo=body.repo,
+        payload={"to": body.to, "text": body.text},
+    )
+    return result
 
 
 def ack_message(body: AckBody, caller: Caller) -> dict[str, Any]:
@@ -112,10 +229,100 @@ def check_claim(repo: str, issue: int) -> dict[str, Any]:
 def claim_issue(body: ClaimBody, caller: Caller) -> dict[str, Any]:
     agent = _bind(caller, body.session, body.agent, needs_agent=True)
     assert agent is not None
-    return _stamp(claims.claim(body.repo, body.issue, agent=agent, session=body.session, intent=body.intent))
+    return _stamp(
+        claims.claim(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            intent=body.intent,
+            holder_principal=caller.label.removeprefix("principal:"),
+            paths=body.paths,
+        )
+    )
 
 
 def release_claim(body: ClaimReleaseBody, caller: Caller) -> dict[str, Any]:
     agent = _bind(caller, body.session, body.agent, needs_agent=True)
     assert agent is not None
-    return _stamp(claims.release(body.repo, body.issue, agent=agent, session=body.session, reason=body.reason))
+    return _stamp(
+        claims.release(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            reason=body.reason,
+            holder_principal=caller.label.removeprefix("principal:"),
+        )
+    )
+
+
+def claim_job(body: JobClaimBody, caller: Caller) -> dict[str, Any]:
+    agent = _bind(caller, body.session, body.agent, needs_agent=True)
+    assert agent is not None
+    return _stamp(
+        jobs_mod.claim_job(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            intent=body.intent,
+            holder_principal=caller.label.removeprefix("principal:"),
+            ttl_hours=body.ttl_hours,
+        )
+    )
+
+
+def heartbeat_job(body: JobHeartbeatBody, caller: Caller) -> dict[str, Any]:
+    agent = _bind(caller, body.session, None, needs_agent=True)
+    assert agent is not None
+    return _stamp(
+        jobs_mod.heartbeat_job(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            fence=body.fence,
+            holder_principal=caller.label.removeprefix("principal:"),
+            ttl_hours=body.ttl_hours,
+        )
+    )
+
+
+def release_job(body: JobReleaseBody, caller: Caller) -> dict[str, Any]:
+    agent = _bind(caller, body.session, body.agent, needs_agent=True)
+    assert agent is not None
+    return _stamp(
+        jobs_mod.release_job(
+            body.repo,
+            body.issue,
+            agent=agent,
+            session=body.session,
+            fence=body.fence,
+            reason=body.reason,
+            holder_principal=caller.label.removeprefix("principal:"),
+        )
+    )
+
+
+BOARD_SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "expires")
+
+
+async def board_sessions_bounded() -> tuple[list[dict[str, Any]], str | None]:
+    """Live board sessions for the staff summary, bounded like ``sessions`` (#2980).
+
+    Post: never raises; on an unavailable, failed or slow board read returns ``([], reason)``.
+    Shares the in-flight board read with ``sessions`` and never cancels it.
+    """
+    future = _shared_session_read("board", lambda: board.read_sessions())
+    try:
+        data = await asyncio.wait_for(
+            asyncio.shield(asyncio.wrap_future(future)), timeout=SESSION_RESPONSE_DEADLINE_SECONDS
+        )
+    except TimeoutError:
+        return [], "board sessions read timed out"
+    except Exception:  # noqa: BLE001 — the summary must not fail on a board read
+        return [], "board sessions read failed"
+    if not data.get("available"):
+        return [], f"board unavailable: {data.get('reason') or 'unknown reason'}"
+    return [{k: s.get(k) for k in BOARD_SESSION_KEYS} for s in data.get("sessions", [])], None

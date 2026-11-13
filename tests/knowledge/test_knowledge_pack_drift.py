@@ -35,8 +35,13 @@ _CANDIDATE_REPOS = [
     _REPO_ROOT.parent.parent / "Tools",
 ]
 PINNED_TOOLS_SHA = "09ff428af314969363f8908dcebafb84ddd7a3ef"  # pragma: allowlist secret
+CANONICAL_TOOLS_SHA = "6f064e6091b8fc0f0e5390913602a747ac544fb1"  # pragma: allowlist secret
 
-MODULE_PINS = {"manifest.py": "6f064e6091b8fc0f0e5390913602a747ac544fb1"}  # pragma: allowlist secret
+MODULE_PINS = {
+    "manifest.py": CANONICAL_TOOLS_SHA,
+    "pack.py": CANONICAL_TOOLS_SHA,
+    "search.py": CANONICAL_TOOLS_SHA,
+}  # pragma: allowlist secret
 
 MODULE_FILES = (
     "__init__.py",
@@ -45,6 +50,7 @@ MODULE_FILES = (
     "cli.py",
     "manifest.py",
     "pack.py",
+    "search.py",
     "sources.py",
 )
 

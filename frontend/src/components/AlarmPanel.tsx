@@ -73,6 +73,8 @@ export function AlarmPanel({ alerts, onNavigate }: AlarmPanelProps) {
                     <button
                       type="button"
                       className="alarm-panel__navlink"
+                      title={`Open alarm: ${a.title}`}
+                      aria-label={`Navigate to alarm: ${a.title}`}
                       onClick={() => onNavigate(a.id)}
                     >
                       {a.title}

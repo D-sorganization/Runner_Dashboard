@@ -127,7 +127,7 @@ describe("FleetCommandPage — operator presence before messages", () => {
     fireEvent.change(screen.getByLabelText("Message"), {
       target: { value: "Please rebase" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: /Send fleet message/i }));
   }
 
   it("registers presence once, then sends as the operator session", async () => {
@@ -165,7 +165,7 @@ describe("FleetCommandPage — operator presence before messages", () => {
     fireEvent.change(screen.getByLabelText("Message"), {
       target: { value: "Again" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: /Send fleet message/i }));
     await waitFor(() => expect(calls(fetchMock, "POST")).toHaveLength(3));
     expect(calls(fetchMock, "POST")[2].url).toBe("/api/coordination/messages");
   });
@@ -180,7 +180,7 @@ describe("FleetCommandPage — operator presence before messages", () => {
     fireEvent.change(screen.getByLabelText("Message"), {
       target: { value: "hi" },
     });
-    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /Send fleet message/i })).toBeDisabled();
   });
 
   it("explains a 409 from the message endpoint", async () => {

@@ -27,6 +27,8 @@ import type {
   ProposalItem,
   ProposalsResponse,
   CreateProposalPayload,
+  FlowMetricsResponse,
+  JobsResponse,
   SessionsResponse,
   StaffRunSummary,
   WriteReceipt,
@@ -34,6 +36,7 @@ import type {
 
 export const PRIORITIES_BASE = "/api/priorities";
 export const COORDINATION_BASE = "/api/coordination";
+export const FLOW_METRICS_BASE = "/api/v1/fleet/flow-metrics";
 export const PROPOSALS_BASE = "/api/proposals";
 export const GITHUB_ORG = "D-sorganization";
 export const NOT_AVAILABLE = "Not available on this node.";
@@ -64,6 +67,9 @@ export const createProposal = (payload: CreateProposalPayload) =>
 // ── Calls ────────────────────────────────────────────────────────────────────
 
 export const fetchPriorities = (signal?: AbortSignal) => apiRequest<PrioritiesResponse>(PRIORITIES_BASE, { signal });
+
+export const fetchFlowMetrics = (signal?: AbortSignal) =>
+  apiRequest<FlowMetricsResponse>(FLOW_METRICS_BASE, { signal });
 
 export const fetchMeetings = (signal?: AbortSignal) =>
   apiRequest<MeetingsResponse>(`${PRIORITIES_BASE}/meetings`, { signal });
@@ -99,6 +105,19 @@ export const postClaim = (body: ClaimBody) => apiRequest<WriteReceipt>(`${COORDI
 
 export const releaseClaim = (body: ClaimReleaseBody) =>
   apiRequest<WriteReceipt>(`${COORDINATION_BASE}/claims/release`, { body });
+
+export const fetchJobs = (
+  params?: { repo?: string; limit?: number; include_excluded?: boolean },
+  signal?: AbortSignal,
+) =>
+  apiRequest<JobsResponse>(
+    `${COORDINATION_BASE}/jobs${qs({
+      repo: params?.repo,
+      limit: params?.limit,
+      include_excluded: params?.include_excluded ? "true" : undefined,
+    })}`,
+    { signal },
+  );
 
 // ── Errors and availability ──────────────────────────────────────────────────
 
@@ -172,6 +191,7 @@ export function useResource<T extends object>(
     setError(null);
     load(controller.signal)
       .then((payload) => {
+        if (controller.signal.aborted) return;
         const avail = payload as Availability;
         setUnavailable(avail.available === false ? avail.reason || NOT_AVAILABLE : null);
         setData(payload);
@@ -336,4 +356,19 @@ export function operatorSession(now: Date = new Date()): string {
 export function parseIssue(value: string): number | null {
   const n = Number(value.trim().replace(/^#/, ""));
   return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+export function jobAgeLabel(iso: string): string {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return "";
+  const days = Math.floor((Date.now() - at) / 86_400_000);
+  if (days <= 0) return "today";
+  if (days < 30) return `${days}d`;
+  return `${Math.floor(days / 30)}mo`;
+}
+
+export function jobMatchesPriority(job: { priority: string }, filter: string): boolean {
+  if (!filter) return true;
+  if (filter === "unranked") return !job.priority?.trim();
+  return job.priority.toLowerCase() === filter;
 }

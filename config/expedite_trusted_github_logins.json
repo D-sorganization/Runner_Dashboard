@@ -1,0 +1,4 @@
+{
+  "_comment": "GitHub logins allowed to apply priority:expedite. Barb via agent-grok uses the fleet App (d-sorggeneralagent[bot]) when escalating through the hub; Dieter uses dieterolson.",
+  "logins": ["dieterolson", "d-sorggeneralagent[bot]"]
+}

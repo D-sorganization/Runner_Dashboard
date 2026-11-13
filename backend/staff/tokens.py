@@ -14,7 +14,7 @@ import logging
 import secrets
 import time
 from collections.abc import Iterable
-from typing import Final
+from typing import Any, Final
 
 from identity import SCOPE_PRESETS, Principal, identity_manager
 
@@ -76,11 +76,13 @@ def mint_run_token(
     run_id: str,
     fleet_actions: Iterable[str],
     ttl_seconds: float,
+    library_read: bool = False,
 ) -> str:
     """Mint a short-lived token for a staff run.
 
     Principal ID: ``staff:<role>:<run_id>``
-    Scopes: intersection of role fleet_actions and ACTION_POLICY
+    Scopes: intersection of role fleet_actions and ACTION_POLICY, plus
+    ``library.read`` iff the role spec's ``library_read`` is explicitly True (#2623)
     TTL: run deadline in seconds
     """
     if not role or not run_id:
@@ -88,7 +90,10 @@ def mint_run_token(
     if ttl_seconds <= 0:
         raise ValueError("ttl_seconds must be positive")
 
-    scopes = sorted(set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential"})
+    scope_set = set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential", "staff.relay.write"}
+    if library_read is True:
+        scope_set.add("library.read")
+    scopes = sorted(scope_set)
     principal_id = f"staff:{role}:{run_id}"
     role_preset = f"staff-run:{run_id}"
 
@@ -142,3 +147,70 @@ def revoke_run_token(run_id: str) -> bool:
 
     log.debug("Revoked staff run token for %s", run_id)
     return True
+
+
+def authorization_headers_for_relay_delivery(
+    run_id: str,
+    *,
+    role_hint: str | None = None,
+) -> dict[str, str]:
+    """Mint relay-card bearer headers for a run id (store row or trusted outbox role hint)."""
+    from staff.store import RunRecord, get_store
+
+    rec = get_store().get_run(run_id)
+    if rec is not None:
+        return authorization_headers_for_run(rec)
+    role = (role_hint or "").strip()
+    if not role:
+        raise ValueError(f"run {run_id!r} not in store and no role hint for relay auth")
+    # Outbox payloads carry the Barb role; use only when the local store row is missing (tests).
+    stub = RunRecord(
+        id=run_id,
+        role=role,
+        provider="",
+        model=None,
+        machine="",
+        repo="",
+        target_kind="",
+        target_ref="",
+        prompt="",
+    )
+    return authorization_headers_for_run(stub)
+
+
+def authorization_headers_for_run(
+    run: Any,
+    *,
+    ttl_seconds: float | None = None,
+    fleet_actions: Iterable[str] | None = None,
+) -> dict[str, str]:
+    """Bearer headers for an active staff run to authorize relay-card writes."""
+    from staff.roles import load_roles
+    from staff.store import RunRecord
+
+    if not isinstance(run, RunRecord):
+        raise TypeError("run must be a RunRecord")
+    library_read = False
+    actions: Iterable[str]
+    if fleet_actions is not None:
+        actions = fleet_actions
+    else:
+        role_spec = load_roles().get(run.role)
+        if role_spec is None:
+            actions = ()
+        else:
+            actions = role_spec.fleet_actions
+            library_read = role_spec.library_read
+    ttl = 86400.0 if ttl_seconds is None else ttl_seconds
+    token = mint_run_token(
+        run.role,
+        run.id,
+        actions,
+        ttl_seconds=ttl,
+        library_read=library_read,
+    )
+    return {
+        "Authorization": f"Bearer {token}",
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "application/json",
+    }

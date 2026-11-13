@@ -4,6 +4,7 @@ import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { EmptyState } from "../../primitives/EmptyState";
 import { useToast } from "../../primitives/Toaster";
 import { guidanceForFailure, type ApiFailure } from "../../lib/apiErrorGuidance";
+import { useProviderRegistry } from "../../lib/useProviderRegistry";
 
 import { ActionSheet } from "./ActionSheet";
 import { AutomationsList, IssuesList, PRsList } from "./RemediationLists";
@@ -43,6 +44,7 @@ export function RemediationMobile({
   onAddInFlight,
 }: RemediationMobileProps) {
   const { showToast } = useToast();
+  const { registry } = useProviderRegistry();
 
   const [subtab, setSubtab] = useState<RemediationSubtab>("automations");
   const [providers, setProviders] = useState<Record<string, AgentProvider>>({});
@@ -61,7 +63,7 @@ export function RemediationMobile({
   );
   const [dispatching, setDispatching] = useState(false);
 
-  const recommendedProviderId = pickRecommendedProvider(providers, availability);
+  const recommendedProviderId = pickRecommendedProvider(registry, providers, availability);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -245,6 +247,7 @@ export function RemediationMobile({
           recommendedProviderId={recommendedProviderId}
           providers={providers}
           availability={availability}
+          registry={registry}
           onDispatch={handleDispatch}
           dispatching={dispatching}
         />

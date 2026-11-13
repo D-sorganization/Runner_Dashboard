@@ -43,8 +43,39 @@ There is **no** documented Antigravity subscription path that avoids periodic Go
 
 If used as a provider, follow that CLI's **subscription / Google account** sign-in only. Do not configure API-key billing for unattended staff runs.
 
+## Grok CLI (`grok`)
+
+**Subscription only (SuperGrok plan):** authenticate the CLI using `grok login` (device or browser flow) under the service user. Credentials and session tokens are stored in `~/.grok`.
+
+- Strictly adhere to fleet policy: **no pay-per-use API keys (`XAI_API_KEY`)** are permitted for staff dispatch.
+- Ensure the systemd service drop-in permits reading and writing to `~/.grok` via `ReadWritePaths=%h/.grok`.
+- Distinct from Cursor-hosted Grok (`cursor-agent`), which runs through Cursor's own subscription seat without requiring a separate SuperGrok plan.
+
+## Qwen Code CLI (`qwen`) — Token Plan exception
+
+**Monthly Token Plan subscription (not pay-as-you-go):** Qwen Code authenticates with a QwenCloud **Token Plan** API key (`sk-sp-` prefix) against the OpenAI-compatible endpoint. This is a flat subscription allotment, not metered OpenAI billing.
+
+1. Install: `npm i -g @qwen-code/qwen-code@latest`
+2. Store the key in a root-only env file (example `/etc/runner-dashboard/qwen.env`):
+
+   ```bash
+   QWENCLOUD_TOKEN_PLAN_API_KEY=<sk-sp-token-plan-key>
+   OPENAI_BASE_URL=https://token-plan.maas.qwencloudapi.com/compatible-mode/v1
+   OPENAI_MODEL=qwen3.8-flash
+   ```
+
+   The staff adapter maps the plan key to `OPENAI_API_KEY` **only** in the `qwen` child process. Do not point a general `OPENAI_API_KEY` at pay-as-you-go OpenAI for fleet staff.
+
+3. Reference the file from the dashboard unit (`EnvironmentFile=`). Allow `ReadWritePaths=%h/.qwen` and ensure `qwen` is on `PATH` for the service user.
+
 ## Verification
 
 - Per-node: `GET /api/staff/board?local=1` → `provider_auth`.
 - Fleet: `GET /api/staff/summary` → `provider_auth`.
+- **Mirror drift:** same payloads include `provider_auth.credential_mirrors` (and summary `attention` with `credential_mirror_stale` when a WSL/Windows copy is older than the sync source). Run `python3 deploy/sync_provider_credentials.py` or wait for `runner-dashboard-self-heal.timer`.
 - Dispatch skips `auth_expired` providers in the failover chain; `409 provider_auth_expired` only when no chain member is authenticated.
+
+## Runbooks
+
+- [Stale Antigravity login](stale-antigravity-login.md)
+- [barb-worker Hyper-V unreachable](barb-worker-hyperv-unreachable.md)

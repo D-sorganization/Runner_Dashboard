@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from node_auto_deploy.deploy_lock import try_reclaim_stale_lock, write_lock_metadata
+from node_auto_deploy.registry_migration import migrate_legacy_registry_to_local_config
 from node_auto_deploy.releases import release_root
 
 TransactionResult = Literal["success", "skipped", "failed", "rollback", "rollback_failed"]
@@ -99,7 +101,7 @@ def ensure_candidate_available(live_dir: Path, candidate: Path) -> Path:
 
 @contextmanager
 def deployment_lock(live_dir: Path) -> Iterator[None]:
-    """Serialize local deploy transactions; a stale lock fails closed."""
+    """Serialize local deploy transactions; stale locks are reclaimed by liveness."""
     live = _live_path(live_dir)
     releases_path = live.parent / "dashboard-releases"
     if releases_path.is_symlink():
@@ -112,13 +114,21 @@ def deployment_lock(live_dir: Path) -> Iterator[None]:
     flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
+    for attempt in range(2):
+        try:
+            fd = os.open(lock, flags, 0o600)
+            break
+        except FileExistsError:
+            if attempt == 0 and try_reclaim_stale_lock(lock):
+                continue
+            raise RuntimeError(
+                f"another deployment owns {lock}; inspect the lock metadata and confirm no deploy is in flight"
+            ) from None
+    else:
+        raise RuntimeError(f"unable to acquire deployment lock at {lock}")
     try:
-        fd = os.open(lock, flags, 0o600)
-    except FileExistsError as exc:
-        raise RuntimeError(f"another deployment owns {lock}; inspect and remove a stale lock manually") from exc
-    try:
-        with os.fdopen(fd, "w", encoding="ascii") as stream:
-            stream.write(f"pid={os.getpid()}\n")
+        os.close(fd)
+        write_lock_metadata(lock)
         yield
     finally:
         lock.unlink(missing_ok=True)
@@ -164,6 +174,15 @@ def _copy_tree_contents(source: Path, target: Path, source_root: Path, target_ro
 
 _MUTABLE_TREES = (Path("config"), Path("backend/data"))
 _MUTABLE_FILES = (Path("backend/machine_registry.yml"), Path("agent_profiles.json"), Path("local_apps.json"))
+
+
+def _migrate_machine_registry_to_local_config(live_dashboard_root: Path) -> None:
+    backend_dir = live_dashboard_root / "backend"
+    if not backend_dir.is_dir():
+        return
+    migrate_legacy_registry_to_local_config(deploy_backend_dir=backend_dir)
+
+
 _MUTABLE_SUFFIXES = (
     ".db",
     ".db-wal",
@@ -221,6 +240,7 @@ def _copy_runtime_artifacts(source: Path, target: Path, source_root: Path, targe
 def copy_mutable_state(source_dir: Path, candidate: Path) -> None:
     """Copy documented operator state into the candidate without following symlinks."""
     source = source_dir.resolve(strict=True)
+    _migrate_machine_registry_to_local_config(source)
     target = candidate.resolve(strict=True)
     if source == target:
         raise UnsafeDeploymentPathError("source and candidate must differ")

@@ -21,8 +21,8 @@ const DEPLOYMENT_STATE: DeploymentData = {
   },
   machines: [
     {
-      name: "controltower",
-      display_name: "ControlTower",
+      name: "node-a",
+      display_name: "node-a",
       rollout_state: "drifted",
       rollout_label: "Drifted",
       desired_version: "4.9.17",
@@ -62,7 +62,7 @@ describe("DeploymentTab", () => {
         expect.any(Object),
       );
     });
-    expect(await screen.findByText("ControlTower")).toBeInTheDocument();
+    expect(await screen.findByText("node-a")).toBeInTheDocument();
     expect(screen.getAllByText("4.9.17").length).toBeGreaterThan(0);
     expect(screen.getByText("dashboard update available")).toBeInTheDocument();
   });
@@ -78,7 +78,7 @@ describe("DeploymentTab", () => {
       />,
     );
 
-    expect(screen.getAllByText("ControlTower").length).toBe(1);
+    expect(screen.getAllByText("node-a").length).toBe(1);
     expect(fetchMock).not.toHaveBeenCalledWith(
       "/api/deployment/state",
       expect.any(Object),

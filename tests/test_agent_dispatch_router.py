@@ -2,6 +2,7 @@
 
 from __future__ import annotations  # noqa: E402
 
+import asyncio  # noqa: E402
 import json  # noqa: E402
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "backend"))
 
@@ -403,6 +405,39 @@ async def test_dispatch_to_issues_skips_when_premise_rejected() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dispatch_to_issues_uses_shared_duplicate_guard_before_launch() -> None:
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=99,
+        ),
+        provider="claude_code_cli",
+        prompt="Fix this issue",
+        force=False,
+    )
+    check = AsyncMock(
+        side_effect=HTTPException(
+            status_code=409,
+            detail={"code": "open_pr_exists", "message": "PR #100 already references issue #99"},
+        )
+    )
+    launch = _make_run_cmd(0)
+    with (
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", check),
+        patch("agent_dispatch_router.evaluate_dispatch_premise") as premise,
+    ):
+        result = await _dispatch_issues(req, run_cmd_fn=launch)
+
+    assert isinstance(result, BulkDispatchResponse)
+    assert result.accepted == 0
+    assert result.rejected[0]["reason"].startswith("open_pr_exists:")
+    check.assert_awaited_once_with("D-sorganization/runner-dashboard", 99)
+    premise.assert_not_awaited()
+    launch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: Path) -> None:
     import agent_dispatch_router as adr
 
@@ -420,9 +455,13 @@ async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: 
             prompt="Update Dockerfile: change `ARG NODE_MAJOR=20` to `ARG NODE_MAJOR=22`",
             force=False,
         )
-        with patch(
-            "agent_dispatch_router.evaluate_dispatch_premise",
-            return_value=type("P", (), {"allowed": True, "reason": "ok", "detail": "ok"})(),
+        with (
+            patch(
+                "agent_dispatch_router.evaluate_dispatch_premise",
+                return_value=type("P", (), {"allowed": True, "reason": "ok", "detail": "ok"})(),
+            ),
+            # Keep the launch gate hermetic: no live GitHub claim/PR lookups.
+            patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", AsyncMock(return_value=None)),
         ):
             res1 = await _dispatch_issues(req1)
             assert isinstance(res1, BulkDispatchResponse)
@@ -437,7 +476,7 @@ async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: 
             assert "haiku" in entry["model"].lower()
             assert "dictated_fix" in entry["routing_reason"]
 
-            # Second dispatch: overlapping path on same repo -> queued!
+            # Second sequential dispatch on same repo is admitted after the first releases its session.
             req2 = IssueDispatchRequest(
                 selection=DispatchSelection(
                     mode="single",
@@ -450,11 +489,38 @@ async def test_dispatch_to_issues_model_routing_and_concurrency_queue(tmp_path: 
             )
             res2 = await _dispatch_issues(req2)
             assert isinstance(res2, BulkDispatchResponse)
-            assert res2.accepted == 0
-            assert len(res2.rejected) == 1
-            assert "queued_overlapping_paths" in res2.rejected[0]["reason"]
+            assert res2.accepted == 1
+            assert res2.rejected == []
     finally:
         adr._ISSUE_DISPATCH_HISTORY_PATH = original
+
+
+@pytest.mark.asyncio
+async def test_dispatch_to_issues_rejects_preflight_duplicates() -> None:
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=1847,
+        ),
+        provider="claude_code_cli",
+        prompt="Fix issue #1847",
+        force=False,
+    )
+    conflict = HTTPException(
+        status_code=409,
+        detail={"code": "open_pr_exists", "message": "Open PR already targets this issue"},
+    )
+    with (
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", side_effect=conflict),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock) as premise,
+    ):
+        result = await _dispatch_issues(req)
+    assert isinstance(result, BulkDispatchResponse)
+    assert result.accepted == 0
+    assert len(result.rejected) == 1
+    assert result.rejected[0]["reason"].startswith("open_pr_exists:")
+    premise.assert_not_called()
 
 
 # ─── USE-1 (#1865): effort per dispatch kind and expand_epic_children ────────
@@ -544,3 +610,431 @@ async def test_expand_epic_children_routes_to_cli_sonnet_with_template_prompt(tm
     entry = json.loads((tmp_path / "issue.json").read_text(encoding="utf-8"))[-1]
     assert entry["tier"] == "cli"
     assert entry["dispatch_kind"] == "expand_epic_children"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_releases_overlap_sessions_when_gather_fails() -> None:
+    """Bulk issue dispatch must release path-overlap sessions when fan-out aborts (#4272)."""
+    from dispatch_routing import dispatch_queue_manager
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="single",
+            repository="D-sorganization/runner-dashboard",
+            number=77,
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/dispatch_queue_link.py` for overlap cleanup.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("fan-out aborted"),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="fan-out aborted"):
+            await _dispatch_issues(req)
+    assert dispatch_queue_manager.get_active_sessions() == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_bulk_failure_waits_for_sibling_before_releasing_sessions() -> None:
+    """Overlap sessions must stay held until every bulk fan-out task has settled (#4272)."""
+    from uuid import uuid4
+
+    from dispatch_routing import (
+        ActiveSession,
+        DispatchAttemptResult,
+        dispatch_queue_manager,
+        extract_declared_paths,
+    )
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    slow_gate = asyncio.Event()
+
+    def admit_overlap(**_kwargs: object) -> DispatchAttemptResult:
+        session_id = uuid4().hex
+        session = ActiveSession(
+            session_id=session_id,
+            repository=str(_kwargs.get("repository", "")),
+            number=_kwargs.get("number"),
+            declared_paths=list(_kwargs.get("declared_paths") or []),
+            tier="strong",
+            model="test-model",
+        )
+        dispatch_queue_manager._active_sessions[session_id] = session
+        return DispatchAttemptResult(dispatched=True, session=session)
+
+    async def fanout_side_effect(**kwargs: object) -> tuple[str | None, str | None, str | None]:
+        number = int(kwargs.get("number", 0))
+        if number == 77:
+            raise RuntimeError("fast sibling failed")
+        await slow_gate.wait()
+        return ("env-slow", "fp-slow", None)
+
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="list",
+            items=[
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=77),
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=78),
+            ],
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/slow_a.py` and `backend/slow_b.py`.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch.object(dispatch_queue_manager, "try_dispatch", side_effect=admit_overlap),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=fanout_side_effect,
+        ),
+    ):
+        dispatch_task = asyncio.create_task(_dispatch_issues(req))
+        await asyncio.sleep(0.05)
+        assert not slow_gate.is_set()
+        assert len(dispatch_queue_manager.get_active_sessions()) == 2
+        overlap_paths = extract_declared_paths("Edit `backend/slow_a.py`.")
+        allowed_overlap, blocker = dispatch_queue_manager.can_dispatch(
+            "D-sorganization/runner-dashboard",
+            overlap_paths,
+        )
+        assert not allowed_overlap
+        assert blocker
+        slow_gate.set()
+        with pytest.raises(RuntimeError, match="fast sibling failed"):
+            await dispatch_task
+
+    assert dispatch_queue_manager.get_active_sessions() == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_bulk_cancel_mid_gather_releases_overlap_sessions() -> None:
+    """Caller cancellation during bulk fan-out must still release overlap sessions (#4272)."""
+    from uuid import uuid4
+
+    from dispatch_routing import (
+        ActiveSession,
+        DispatchAttemptResult,
+        dispatch_queue_manager,
+    )
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    slow_gate = asyncio.Event()
+
+    def admit_overlap(**_kwargs: object) -> DispatchAttemptResult:
+        session_id = uuid4().hex
+        session = ActiveSession(
+            session_id=session_id,
+            repository=str(_kwargs.get("repository", "")),
+            number=_kwargs.get("number"),
+            declared_paths=list(_kwargs.get("declared_paths") or []),
+            tier="strong",
+            model="test-model",
+        )
+        dispatch_queue_manager._active_sessions[session_id] = session
+        return DispatchAttemptResult(dispatched=True, session=session)
+
+    async def fanout_side_effect(**_kwargs: object) -> tuple[str | None, str | None, str | None]:
+        await slow_gate.wait()
+        return ("env", "fp", None)
+
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="list",
+            items=[
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=77),
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=78),
+            ],
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/cancel_a.py` and `backend/cancel_b.py`.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch.object(dispatch_queue_manager, "try_dispatch", side_effect=admit_overlap),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=fanout_side_effect,
+        ),
+    ):
+        dispatch_task = asyncio.create_task(_dispatch_issues(req))
+        await asyncio.sleep(0.05)
+        assert len(dispatch_queue_manager.get_active_sessions()) == 2
+        dispatch_task.cancel()
+        slow_gate.set()
+        with pytest.raises(asyncio.CancelledError):
+            await dispatch_task
+
+    assert dispatch_queue_manager.get_active_sessions() == []
+
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_double_cancel_during_post_cancel_gather_releases_once() -> None:
+    """A second cancel while waiting for siblings must still release overlap sessions exactly once (#4375)."""
+    from uuid import uuid4
+
+    from dispatch_routing import (
+        ActiveSession,
+        DispatchAttemptResult,
+        dispatch_queue_manager,
+    )
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    gather_pending = asyncio.Event()
+    unblock_gather = asyncio.Event()
+    post_cancel_shield = asyncio.Event()
+    fanouts_waiting = 0
+
+    def admit_overlap(**_kwargs: object) -> DispatchAttemptResult:
+        session_id = uuid4().hex
+        session = ActiveSession(
+            session_id=session_id,
+            repository=str(_kwargs.get("repository", "")),
+            number=_kwargs.get("number"),
+            declared_paths=list(_kwargs.get("declared_paths") or []),
+            tier="strong",
+            model="test-model",
+        )
+        dispatch_queue_manager._active_sessions[session_id] = session
+        return DispatchAttemptResult(dispatched=True, session=session)
+
+    async def fanout_side_effect(**_kwargs: object) -> tuple[str | None, str | None, str | None]:
+        nonlocal fanouts_waiting
+        fanouts_waiting += 1
+        if fanouts_waiting == 2:
+            gather_pending.set()
+        await unblock_gather.wait()
+        return ("env", "fp", None)
+
+    release_calls: list[str] = []
+    real_release = dispatch_queue_manager.release_session
+
+    def track_release(session_id: str, **kwargs: object) -> object:
+        release_calls.append(session_id)
+        return real_release(session_id, **kwargs)
+
+    shield_invocations = 0
+    real_shield = asyncio.shield
+
+    async def instrument_shield(awaitable: object) -> object:
+        nonlocal shield_invocations
+        shield_invocations += 1
+        if shield_invocations == 2:
+            post_cancel_shield.set()
+        return await real_shield(awaitable)  # type: ignore[arg-type]
+
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="list",
+            items=[
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=77),
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=78),
+            ],
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/cancel_a.py` and `backend/cancel_b.py`.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch.object(dispatch_queue_manager, "try_dispatch", side_effect=admit_overlap),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=fanout_side_effect,
+        ),
+        patch.object(dispatch_queue_manager, "release_session", side_effect=track_release),
+        patch("agent_dispatch_router.asyncio.shield", side_effect=instrument_shield),
+    ):
+        dispatch_task = asyncio.create_task(_dispatch_issues(req))
+        await gather_pending.wait()
+        held = dispatch_queue_manager.get_active_sessions()
+        assert len(held) == 2
+        session_ids = {s.session_id for s in held}
+
+        dispatch_task.cancel()
+        await post_cancel_shield.wait()
+        dispatch_task.cancel()
+        unblock_gather.set()
+        with pytest.raises(asyncio.CancelledError):
+            await dispatch_task
+
+    assert dispatch_queue_manager.get_active_sessions() == []
+    assert set(release_calls) == session_ids
+    assert len(release_calls) == len(session_ids)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_issues_triple_cancel_during_shielded_gather_releases_once() -> None:
+    """Repeated caller cancels during shielded sibling wait must still release overlap sessions (#4375)."""
+    from uuid import uuid4
+
+    from dispatch_routing import (
+        ActiveSession,
+        DispatchAttemptResult,
+        dispatch_queue_manager,
+    )
+
+    dispatch_queue_manager.reset_state_for_tests()
+    allowed = SimpleNamespace(
+        allowed=True,
+        reason="",
+        detail="",
+        comment=None,
+        should_close=False,
+    )
+    gather_pending = asyncio.Event()
+    unblock_gather = asyncio.Event()
+    post_cancel_shield = asyncio.Event()
+    third_shield = asyncio.Event()
+    fanouts_waiting = 0
+
+    def admit_overlap(**_kwargs: object) -> DispatchAttemptResult:
+        session_id = uuid4().hex
+        session = ActiveSession(
+            session_id=session_id,
+            repository=str(_kwargs.get("repository", "")),
+            number=_kwargs.get("number"),
+            declared_paths=list(_kwargs.get("declared_paths") or []),
+            tier="strong",
+            model="test-model",
+        )
+        dispatch_queue_manager._active_sessions[session_id] = session
+        return DispatchAttemptResult(dispatched=True, session=session)
+
+    async def fanout_side_effect(**_kwargs: object) -> tuple[str | None, str | None, str | None]:
+        nonlocal fanouts_waiting
+        fanouts_waiting += 1
+        if fanouts_waiting == 2:
+            gather_pending.set()
+        await unblock_gather.wait()
+        return ("env", "fp", None)
+
+    release_calls: list[str] = []
+    real_release = dispatch_queue_manager.release_session
+
+    def track_release(session_id: str, **kwargs: object) -> object:
+        release_calls.append(session_id)
+        return real_release(session_id, **kwargs)
+
+    shield_invocations = 0
+    real_shield = asyncio.shield
+
+    async def instrument_shield(awaitable: object) -> object:
+        nonlocal shield_invocations
+        shield_invocations += 1
+        if shield_invocations == 2:
+            post_cancel_shield.set()
+        elif shield_invocations == 3:
+            third_shield.set()
+        return await real_shield(awaitable)  # type: ignore[arg-type]
+
+    req = IssueDispatchRequest(
+        selection=DispatchSelection(
+            mode="list",
+            items=[
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=77),
+                DispatchItem(repository="D-sorganization/runner-dashboard", number=78),
+            ],
+        ),
+        provider="claude_code_cli",
+        prompt="Edit `backend/cancel_a.py` and `backend/cancel_b.py`.",
+        force=False,
+    )
+    with (
+        patch("agent_dispatch_router._check_issue_pickable", return_value=None),
+        patch("agent_dispatch_router.evaluate_dispatch_premise", new_callable=AsyncMock, return_value=allowed),
+        patch("staff.preflight_duplicate_guard.check_duplicate_pr_or_run", new_callable=AsyncMock),
+        patch(
+            "dispatch_queue_delay.check_dispatch_queue_delay",
+            return_value=SimpleNamespace(delayed=False, reason=""),
+        ),
+        patch.object(dispatch_queue_manager, "try_dispatch", side_effect=admit_overlap),
+        patch(
+            "agent_dispatch_router._dispatch_one",
+            new_callable=AsyncMock,
+            side_effect=fanout_side_effect,
+        ),
+        patch.object(dispatch_queue_manager, "release_session", side_effect=track_release),
+        patch("agent_dispatch_router.asyncio.shield", side_effect=instrument_shield),
+    ):
+        dispatch_task = asyncio.create_task(_dispatch_issues(req))
+        await gather_pending.wait()
+        held = dispatch_queue_manager.get_active_sessions()
+        assert len(held) == 2
+        session_ids = {s.session_id for s in held}
+
+        dispatch_task.cancel()
+        await post_cancel_shield.wait()
+        dispatch_task.cancel()
+        await third_shield.wait()
+        dispatch_task.cancel()
+        unblock_gather.set()
+        with pytest.raises(asyncio.CancelledError):
+            await dispatch_task
+
+    assert dispatch_queue_manager.get_active_sessions() == []
+    assert set(release_calls) == session_ids
+    assert len(release_calls) == len(session_ids)

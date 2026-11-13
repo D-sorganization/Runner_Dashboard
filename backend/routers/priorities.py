@@ -19,9 +19,9 @@ import logging
 from typing import Any
 
 from coordination.auth import Caller, require_priorities_writer
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import Path as PathParam
-from identity import require_fleet_peer
+from identity import Principal, require_fleet_peer
 from priorities import service
 from priorities.directives import (
     MAX_PRIORITY,
@@ -34,6 +34,7 @@ from priorities.directives import (
 )
 from priorities.sources import DATE_PATTERN, valid_meeting_date
 from pydantic import BaseModel, Field
+from staff.barb_lease_fence import barb_write_fence, claim_for_write
 
 log = logging.getLogger("dashboard.priorities")
 router = APIRouter(prefix="/api/priorities", tags=["priorities"])
@@ -97,13 +98,23 @@ async def get_directives_route(_peer: str = Depends(require_fleet_peer)) -> dict
 @router.put("/directives")
 async def put_directives(
     body: DirectivesBody,
+    request: Request,
     caller: Caller = Depends(require_priorities_writer),  # noqa: B008
 ) -> dict[str, Any]:
     """Replace the directive list. ``set_by`` is the authenticated caller (body values are ignored)."""
     directives = get_directives()
     items = [d.model_dump(exclude_none=True, exclude={"set_by"}) for d in body.directives]
+    caller_id = caller.label.removeprefix("principal:")
+    fence_principal = Principal(
+        id=caller_id,
+        type="bot" if caller.restricted or caller_id.startswith("agent-") or caller_id == "barb" else "human",
+        name=caller_id,
+        roles=["bot"] if caller.restricted else ["operator"],
+    )
+    claim = claim_for_write(request.headers, fence_principal, surface="priorities")
     try:
-        directives.replace(items, author=caller.label, expected_version=body.version)
+        with barb_write_fence(claim, surface="priorities", target="priorities:directives", principal=caller.label):
+            directives.replace(items, author=caller.label, expected_version=body.version)
     except VersionConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except ValueError as exc:

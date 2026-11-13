@@ -13,141 +13,33 @@ Scope:
 from __future__ import annotations
 
 import logging
-import os
-import random
 import sqlite3
-from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from staff.adapters import READ_ONLY_RUN_PROVIDERS
+from staff.failover_dispatch import append_chain_attempt, parse_chain_log
+from staff.provider_fallback import ProviderFallbackTarget, resolve_fallback_target_model
+from staff.retry_admission import automatic_retry_admission
+from staff.retry_policy import (
+    DEFAULT_FALLBACK_CHAIN_CAP,
+    NON_RETRYABLE_FAILURE_CLASSES,  # noqa: F401 - re-exported for staff.retry importers
+    RETRYABLE_FAILURE_CLASSES,  # noqa: F401 - re-exported for staff.retry importers
+    compute_backoff,
+    compute_next_attempt_at,
+    is_retryable_class,
+    next_fallback_provider,
+    should_retry,
+)
 from staff.runner_ops import can_run_unattended, read_only_kwargs
 
 if TYPE_CHECKING:
-    from staff.budget import BudgetGuard
     from staff.holds import HoldsList
     from staff.plan import RunPlan
     from staff.roles import RoleSpec
     from staff.store import RunRecord
 
 log = logging.getLogger("dashboard.staff.retry")
-
-RETRYABLE_FAILURE_CLASSES = frozenset(
-    {
-        "rate_limited",
-        "provider_capacity",
-        "quota_exhausted",
-        "provider_error",
-        "workspace_error",
-    }
-)
-
-NON_RETRYABLE_FAILURE_CLASSES = frozenset(
-    {
-        "needs_input",
-        "auth_expired",
-        "lease_blocked",
-        "cli_missing",
-        "cli_outdated",
-        "config",
-        "orphaned",
-        "unkillable",
-        "timeout",
-        "stalled",
-        "unknown",
-        "no_result",
-    }
-)
-
-DEFAULT_BASE_BACKOFF_SECONDS = float(os.environ.get("STAFF_RETRY_BASE_SECONDS", "2.0"))
-DEFAULT_MAX_BACKOFF_SECONDS = float(os.environ.get("STAFF_RETRY_MAX_SECONDS", "300.0"))
-
-
-def compute_backoff(
-    attempt: int,
-    base_seconds: float | None = None,
-    max_seconds: float | None = None,
-    jitter: bool = True,
-) -> float:
-    """Calculate exponential backoff with optional jitter.
-
-    Pre: attempt >= 1.
-    Post: returned delay >= 0.0 and <= max_seconds + 1.0.
-    """
-    base = base_seconds if base_seconds is not None else float(os.environ.get("STAFF_RETRY_BASE_SECONDS", "2.0"))
-    cap = max_seconds if max_seconds is not None else float(os.environ.get("STAFF_RETRY_MAX_SECONDS", "300.0"))
-    if base <= 0:
-        return 0.0
-
-    exp = min(cap, base * (2.0 ** max(0, attempt - 1)))
-    jitter_val = random.uniform(0.0, min(1.0, exp * 0.25)) if jitter else 0.0  # noqa: S311
-    return float(min(cap, exp + jitter_val))
-
-
-def compute_next_attempt_at(delay_seconds: float) -> str:
-    """Return UTC ISO-8601 string for next attempt after delay_seconds."""
-    next_time = datetime.now(UTC) + timedelta(seconds=max(0.0, delay_seconds))
-    return next_time.isoformat().replace("+00:00", "Z")
-
-
-def is_retryable_class(failure_class: str) -> bool:
-    """Return True if failure_class is eligible for bounded retry."""
-    return failure_class in RETRYABLE_FAILURE_CLASSES and failure_class not in NON_RETRYABLE_FAILURE_CLASSES
-
-
-def should_retry(
-    rec: RunRecord,
-    role: RoleSpec,
-    budget_guard: BudgetGuard | None = None,
-) -> tuple[bool, str]:
-    """Determine whether a failed run is eligible to retry on the same provider.
-
-    Returns (ok, reason).
-    """
-    if not is_retryable_class(rec.failure_class):
-        return False, f"failure class '{rec.failure_class}' is not retryable"
-
-    if rec.failure_class == "provider_capacity":
-        return False, "provider capacity uses declarative fallback, not same-provider retry"
-    if rec.failure_class == "quota_exhausted":
-        return False, f"{rec.failure_class} uses failover chain, not same-provider retry"
-
-    max_att = getattr(rec, "max_attempts", 2) or getattr(role, "max_attempts", 2) or 2
-    if rec.attempt >= max_att:
-        return False, f"retries exhausted ({rec.attempt}/{max_att})"
-
-    if budget_guard is not None:
-        can_run, reason = budget_guard.can_run(role)
-        if not can_run:
-            return False, f"daily budget reached: {reason}"
-
-    return True, "retry allowed"
-
-
-def next_fallback_provider(
-    role: RoleSpec,
-    current_provider: str,
-    usable: Callable[[str], bool] = lambda _pid: True,
-) -> str | None:
-    """Return the next usable provider in the role's fallback chain, or None if exhausted.
-
-    ``usable`` filters out providers that cannot take the run (e.g. chat-only, #1586).
-    """
-    fallback_chain = getattr(role, "fallback_providers", ())
-    if fallback_chain:
-        for p in fallback_chain:
-            if p != current_provider and usable(p):
-                return p
-        return None
-
-    providers = list(role.providers)
-    if current_provider in providers:
-        for p in providers[providers.index(current_provider) + 1 :]:
-            if usable(p):
-                return p
-
-    return None
 
 
 def handle_post_execution_retry(
@@ -181,14 +73,21 @@ def handle_post_execution_retry(
     if latest.status != "failed" or rec.id in runner._cancel_flags:
         return False
 
+    allowed, admission_reason = automatic_retry_admission(runner, latest)
+    if not allowed:
+        blocked_root = latest.retry_of or latest.id
+        store.append_event(blocked_root, "retry_blocked", admission_reason)
+        log.info("retry blocked for %s: %s", latest.id, admission_reason)
+        return False
+
     role = runner.roles().get(plan.role)
     if role is None:
         return False
 
     from staff.budget import BudgetGuard
     from staff.failover_dispatch import try_chain_failover
+    from staff.plan import derive_run_plan
     from staff.provider_fallback import try_declarative_fallback
-    from staff.runner import RunPlan
     from staff.store import RunRecord
 
     guard = BudgetGuard(store)
@@ -226,22 +125,7 @@ def handle_post_execution_retry(
         next_attempt = latest.attempt + 1
         attempt_id = attempt_run_id(root_id, next_attempt)
         next_branch = f"{plan.branch}-retry-{next_attempt}"
-        attempt_plan = RunPlan(
-            role=plan.role,
-            provider=plan.provider,
-            model=plan.model,
-            repo=plan.repo,
-            target_kind=plan.target_kind,
-            target_ref=plan.target_ref,
-            operator_prompt=plan.operator_prompt,
-            prompt=plan.prompt,
-            argv=plan.argv,
-            branch=next_branch,
-            lease_ritual=plan.lease_ritual,
-            consolidation=plan.consolidation,
-            focus=plan.focus,
-            head_ref=plan.head_ref,
-        )
+        attempt_plan = derive_run_plan(plan, branch=next_branch)
         attempt_rec = RunRecord(
             id=attempt_id,
             role=plan.role,
@@ -280,6 +164,13 @@ def handle_post_execution_retry(
 
     # 3. Legacy fallback_providers / providers order
     if is_retryable_class(latest.failure_class):
+        root_rec = store.get_run(root_id) or latest
+        chain = parse_chain_log(getattr(root_rec, "provider_chain", ""))
+        chain_attempts = len(chain)
+        if chain_attempts >= DEFAULT_FALLBACK_CHAIN_CAP:
+            store.append_event(root_id, "fallback", f"fallback chain cap ({DEFAULT_FALLBACK_CHAIN_CAP}) reached")
+            return False
+        visited = frozenset(str(e.get("provider") or "") for e in chain if e.get("provider"))
         fallback = next_fallback_provider(
             role,
             plan.provider,
@@ -287,6 +178,7 @@ def handle_post_execution_retry(
                 can_run_unattended(runner._adapters, pid)
                 and (not role.code_read_only or pid in READ_ONLY_RUN_PROVIDERS)
             ),
+            visited=visited,
         )
         if fallback:
             can_run, _ = guard.can_run(role)
@@ -294,30 +186,28 @@ def handle_post_execution_retry(
                 next_attempt = latest.attempt + 1
                 attempt_id = attempt_run_id(root_id, next_attempt)
                 next_branch = f"{plan.branch}-fallback-{next_attempt}"
-                argv = runner._adapters[fallback].build_command(
-                    plan.prompt, "<workdir>", plan.model, **read_only_kwargs(role)
+                fallback_model = resolve_fallback_target_model(
+                    target=ProviderFallbackTarget(fallback, None),
+                    role=role,
+                    source_provider=plan.provider,
+                    target_provider=fallback,
+                    adapter=runner._adapters[fallback],
                 )
-                fallback_plan = RunPlan(
-                    role=plan.role,
+                argv = runner._adapters[fallback].build_command(
+                    plan.prompt, "<workdir>", fallback_model, **read_only_kwargs(role)
+                )
+                fallback_plan = derive_run_plan(
+                    plan,
                     provider=fallback,
-                    model=plan.model,
-                    repo=plan.repo,
-                    target_kind=plan.target_kind,
-                    target_ref=plan.target_ref,
-                    operator_prompt=plan.operator_prompt,
-                    prompt=plan.prompt,
+                    model=fallback_model,
                     argv=argv,
                     branch=next_branch,
-                    lease_ritual=plan.lease_ritual,
-                    consolidation=plan.consolidation,
-                    focus=plan.focus,
-                    head_ref=plan.head_ref,
                 )
                 fallback_rec = RunRecord(
                     id=attempt_id,
                     role=plan.role,
                     provider=fallback,
-                    model=plan.model,
+                    model=fallback_model,
                     machine=runner.machine,
                     repo=plan.repo,
                     target_kind=plan.target_kind,
@@ -340,7 +230,15 @@ def handle_post_execution_retry(
                     "fallback",
                     f"retries exhausted on {plan.provider}; falling back to {fallback}",
                 )
-                _schedule(runner, fallback_rec, fallback_plan, 0.0)
+                append_chain_attempt(
+                    store,
+                    root_id,
+                    provider=plan.provider,
+                    model=plan.model,
+                    outcome=latest.failure_class or "failed",
+                )
+                delay = compute_backoff(max(1, chain_attempts + 1))
+                _schedule(runner, fallback_rec, fallback_plan, delay)
                 return True
 
     return False
@@ -398,10 +296,29 @@ class RetryDecision:
 
 def retry_plan(runner: Any, rec: RunRecord, role: RoleSpec) -> RunPlan:
     """Re-run ``rec`` as stored: its composed prompt, provider, model and target."""
+    from staff.cloud_dispatch import build_cloud_dispatch, targets_from_record
     from staff.plan import RunPlan
 
     adapter = runner._adapters[rec.provider]
     base_branch = rec.branch or f"staff/{rec.role}-task"
+    execution_mode = (rec.execution_mode or "local").strip().lower()
+    issue, pr = targets_from_record(rec.target_kind, rec.target_ref)
+    if execution_mode == "cloud":
+        cloud = build_cloud_dispatch(
+            rec.provider,
+            rec.prompt,
+            model=rec.model,
+            repo=rec.repo,
+            issue=issue,
+            pr=pr,
+        )
+        argv = cloud.argv
+        cloud_stdin = cloud.stdin or ""
+        lease_ritual = False
+    else:
+        argv = adapter.build_command(rec.prompt, "<workdir>", rec.model, **read_only_kwargs(role))
+        cloud_stdin = ""
+        lease_ritual = bool(role.permissions.get("lease", True)) and rec.target_kind == "issue" and bool(rec.repo)
     return RunPlan(
         role=rec.role,
         provider=rec.provider,
@@ -411,9 +328,11 @@ def retry_plan(runner: Any, rec: RunRecord, role: RoleSpec) -> RunPlan:
         target_ref=rec.target_ref,
         operator_prompt="",
         prompt=rec.prompt,
-        argv=adapter.build_command(rec.prompt, "<workdir>", rec.model, **read_only_kwargs(role)),
+        argv=argv,
         branch=f"{base_branch}-retry-{rec.attempt + 1}",
-        lease_ritual=bool(role.permissions.get("lease", True)) and rec.target_kind == "issue" and bool(rec.repo),
+        lease_ritual=lease_ritual,
+        execution_mode=execution_mode,
+        cloud_stdin=cloud_stdin,
         **_provenance(rec),
     )
 
@@ -449,15 +368,9 @@ def launch_retry(
     ok, reason = should_retry(gated, role, budget_guard=BudgetGuard(store))
     if not ok:
         return RetryDecision(False, reason=reason)
-    hold = holds.blocking(role.name, latest.repo)
-    if hold is not None:
-        return RetryDecision(False, reason=f"hold: {hold.text}")
-
-    from staff.exclusions import ExclusionsList  # noqa: PLC0415
-
-    excluded = ExclusionsList().blocking(latest.repo) if latest.repo else None
-    if excluded is not None:
-        return RetryDecision(False, reason=f"excluded: {excluded.owner}: {excluded.reason}")
+    ok_admission, admission_reason = automatic_retry_admission(runner, latest, holds=holds)
+    if not ok_admission:
+        return RetryDecision(False, reason=admission_reason)
 
     root_id = latest.retry_of or latest.id
     attempt = latest.attempt + 1
@@ -478,6 +391,7 @@ def launch_retry(
         retry_of=root_id,
         attempt=attempt,
         max_attempts=latest.max_attempts,
+        execution_mode=latest.execution_mode or "local",
         **_provenance(latest),
     )
     if not _claim(store, rec):

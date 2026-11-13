@@ -48,6 +48,7 @@ _AUTH_DEP_NAMES = {
     "require_principal",
     "require_fleet_peer",
     "require_library_peer",
+    "require_library_reader",
     "require_scope",
     "checker",
 }

@@ -130,6 +130,14 @@ else
         ok  "wsl-mirrored-port-helper.sh deployed"
     fi
 
+    if ! dry_run "cp hub_tailnet_serve.py -> $DEPLOY_DIR/deploy/"; then
+        mkdir -p "$DEPLOY_DIR/deploy"
+        cp "$REPO/deploy/loopback_bind_guard.py" "$DEPLOY_DIR/deploy/loopback_bind_guard.py"
+        cp "$REPO/deploy/hub_tailnet_serve.py" "$DEPLOY_DIR/deploy/hub_tailnet_serve.py"
+        chmod 0755 "$DEPLOY_DIR/deploy/loopback_bind_guard.py" "$DEPLOY_DIR/deploy/hub_tailnet_serve.py"
+        ok  "hub_tailnet_serve.py deployed"
+    fi
+
     info "Copying frontend..."
     if ! dry_run "sync_dir $REPO/runner-dashboard/frontend $DEPLOY_DIR/frontend"; then
         if [[ ! -d "$REPO/node_modules" ]]; then
@@ -194,6 +202,31 @@ install_cursor_sandbox_dropin() {
 }
 if [[ "$DEPLOY_SCOPE" == "system" ]]; then
     install_cursor_sandbox_dropin
+fi
+
+install_loopback_host_dropin() {
+    local src guard env_file issue dst
+    src="$(dirname "$0")/systemd-dropins/99-loopback-host.conf"
+    guard="$(dirname "$0")/loopback_bind_guard.py"
+    env_file="${HOME}/.config/runner-dashboard/env"
+    [[ -f "$src" && -f "$guard" ]] || return 0
+    issue="$(python3 "$guard" diagnose --env-file "$env_file" 2>/dev/null || echo "null")"
+    if [[ "$issue" == "null" ]]; then
+        return 0
+    fi
+    dst="/etc/systemd/system/${SERVICE}.service.d/99-loopback-host.conf"
+    cmp -s "$src" "$dst" 2>/dev/null && return 0
+    if dry_run "sudo install $src $dst && sudo systemctl daemon-reload"; then
+        return 0
+    fi
+    if sudo -n true 2>/dev/null; then
+        sudo install -D -m 0644 "$src" "$dst" && sudo systemctl daemon-reload \
+            && ok "Installed loopback bind drop-in ($dst)" \
+            || warn "Could not install $dst"
+    fi
+}
+if [[ "$DEPLOY_SCOPE" == "system" ]]; then
+    install_loopback_host_dropin
 fi
 
 info "Restarting $SERVICE..."
@@ -266,6 +299,19 @@ if [[ "$DEPLOY_SCOPE" == "system" ]]; then
     refresh_maintenance_assets
 fi
 
+# ── Host metrics cache probe timer (#4309) ───────────────────────────────────
+install_host_metrics_probe_timer() {
+    local installer; installer="$(dirname "$0")/install-host-metrics-probe.sh"
+    [[ -f "$installer" ]] || { warn "install-host-metrics-probe.sh not found; skipping"; return 0; }
+    if dry_run "bash $installer"; then
+        return 0
+    fi
+    # DEPLOY_DIR is where host-metrics-probe.py is deployed; pass through for non-default layouts.
+    RUNNER_DASHBOARD_DEPLOY_DIR="${DEPLOY_DIR}" \
+        bash "$installer" || warn "host-metrics-probe install failed — run: bash $installer"
+}
+install_host_metrics_probe_timer
+
 # ── Health-gate: verify service came up ──────────────────────────────────────
 _check_health() {
     curl -fsS --max-time 10 "http://localhost:${DASHBOARD_PORT}/health" >/dev/null 2>&1
@@ -282,6 +328,11 @@ if [[ "$DRY_RUN" != "true" ]]; then
     fi
     if deployment_service_command "$DEPLOY_SCOPE" manage is-active --quiet "$SERVICE"; then
         ok "Service is running"
+        HUB_SERVE="${DEPLOY_DIR}/deploy/hub_tailnet_serve.py"
+        ENV_FILE="${HOME}/.config/runner-dashboard/env"
+        if [[ -f "${HUB_SERVE}" && -x "${DEPLOY_DIR}/.venv/bin/python" ]]; then
+            "${DEPLOY_DIR}/.venv/bin/python" "${HUB_SERVE}" ensure --env-file "${ENV_FILE}" --port "${DASHBOARD_PORT}" >/dev/null 2>&1 || true
+        fi
         echo ""
         echo "  Dashboard: http://localhost:${DASHBOARD_PORT}"
         echo "  Health:    http://localhost:${DASHBOARD_PORT}/api/health"

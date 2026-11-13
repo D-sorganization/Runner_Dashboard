@@ -26,7 +26,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from staff import adapters as adapters_mod
 from staff import budget as budget_mod
-from staff import consolidation
+from staff import consolidation, runner_registry
 from staff import holds as holds_mod
 from staff import roles as roles_mod
 from staff import runner as runner_mod
@@ -260,12 +260,19 @@ def staff(tmp_path: Path, role_dir: Path, monkeypatch: pytest.MonkeyPatch) -> It
     # Repo-scoped runs would clone and add a git worktree; stub both so the test stays offline.
     monkeypatch.setattr(workspace_mod, "find_repo_checkout", lambda _repo: tmp_path / "checkout")
     monkeypatch.setattr(workspace_mod, "add_worktree", lambda _c, wt, _b: wt.mkdir(parents=True, exist_ok=True))
+    # The worktree above has no real repo contents, so the bootstrap preflight (#2796)
+    # would fail fast; stub it so these tests keep exercising consolidation, not bootstrap.
+    monkeypatch.setattr(
+        runner_mod.ops,
+        "ensure_worktree_bootstrap_ready",
+        lambda *_a, **_k: runner_mod.ops.WorktreeBootstrapPreflight(ok=True),
+    )
     store_mod.reset_store()
     runner_mod.reset_runner()
     r = runner_mod.StaffRunner(
         store=store_mod.RunStore(tmp_path / "runs.sqlite3"), adapters=adapters, machine="TestNode"
     )
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()
@@ -405,3 +412,26 @@ def test_dispatch_dry_run_and_submit_report_the_decision(
         "/api/staff/pr-remediator/run", json={"provider": "fake", "prompt": "x", "dry_run": True}, headers=_XHR
     )
     assert resp.json()["plan"]["consolidation"] is None
+
+
+# ── operator PR boundary through the dispatch route (RM#2712) ────────────
+@pytest.mark.unit
+def test_dispatch_dry_run_consumes_operator_pr_boundary(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from staff.lifecycle_fence import FENCED_LIFECYCLE  # noqa: PLC0415
+
+    monkeypatch.setattr(consolidation, "decide", lambda role, repo: None)
+    body = {"provider": "fake", "repo": "UpstreamDrift", "prompt": "fix", "dry_run": True}
+    fenced = client.post(
+        "/api/staff/pr-remediator/run", json={**body, "pr_restrictions": ["draft_only", "no_arm"]}, headers=_XHR
+    )
+    assert fenced.status_code == 200, fenced.text
+    plan = fenced.json()["plan"]
+    assert plan["pr_lifecycle"] == FENCED_LIFECYCLE
+    assert plan["prompt"].rstrip().endswith("report the blocker in the STAFF_RESULT line.")
+    assert "OPERATOR PR BOUNDARY" in plan["prompt"]
+
+    ordinary = client.post("/api/staff/pr-remediator/run", json=body, headers=_XHR).json()["plan"]
+    assert ordinary["pr_lifecycle"] == "arm_and_exit" and "OPERATOR PR BOUNDARY" not in ordinary["prompt"]
+
+    rejected = client.post("/api/staff/pr-remediator/run", json={**body, "pr_restrictions": ["arm"]}, headers=_XHR)
+    assert rejected.status_code == 422

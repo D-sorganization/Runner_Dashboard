@@ -41,6 +41,11 @@ def validate_envelope_crypto(envelope: object) -> CryptoValidationResult:
     - Timestamp is fresh (issued_at within ±5 minutes)
     - Confirmation timestamp is fresh if confirmation is present (approved_at within ±5 minutes)
     """
+    from dispatch.envelope import SUPPORTED_SCHEMA_VERSIONS
+
+    if getattr(envelope, "schema_version", None) not in SUPPORTED_SCHEMA_VERSIONS:
+        return CryptoValidationResult(valid=False, reason="unsupported schema version")
+
     # Issue #919: an envelope parsed from the wire that arrived WITHOUT a
     # signature must be rejected outright. The server must never mint a
     # signature on the caller's behalf during parsing. ``signature_authentic``

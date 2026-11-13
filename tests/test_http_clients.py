@@ -28,7 +28,6 @@ class TestHttpClients:
         clients = HttpClients()
 
         assert clients.gh_client is not None
-        assert clients.maxwell_client is not None
         assert clients.fleet_client is not None
 
     @pytest.mark.asyncio
@@ -79,7 +78,6 @@ class TestHttpClients:
 
         # Verify timeouts are set from config (check they're not None/default)
         assert clients.gh_client.timeout is not None
-        assert clients.maxwell_client.timeout is not None
         assert clients.fleet_client.timeout is not None
 
 

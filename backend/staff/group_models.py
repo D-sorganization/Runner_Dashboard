@@ -136,7 +136,7 @@ def validate_seat_providers(seats: tuple[SeatSpec, ...]) -> tuple[SeatSpec, ...]
 
 
 # Board personas (owner request 2026-10-23): Fable, Astra, top Grok, Argon. Every model id
-# was checked on DeskComputer and Brick against the subscription CLI's own model list and a
+# was checked on hub-a and node-c against the subscription CLI's own model list and a
 # one-line turn; none is a pay-per-use API. Grok runs through the Cursor subscription.
 BOARD_SEATS: tuple[SeatSpec, ...] = validate_seat_providers(
     (
@@ -188,6 +188,8 @@ def get_group_threshold() -> float:
 
 
 def lookup_seat_price(provider: str, model: str) -> Price:
+    if provider.lower() == "deepseek-api" and not model:
+        model = "deepseek-flash"
     prov_dict = PRICE_TABLE.get(provider.lower(), {})
     for k, price in prov_dict.items():
         if k in model.lower():

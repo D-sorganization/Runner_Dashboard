@@ -56,7 +56,7 @@ describe("MachinesTab", () => {
               JSON.stringify({
                 nodes: [
                   {
-                    name: "ControlTower",
+                    name: "node-a",
                     online: true,
                     dashboard_reachable: true,
                     system: SYS,
@@ -74,7 +74,7 @@ describe("MachinesTab", () => {
                 runners: [
                   {
                     id: 1,
-                    name: "d-sorg-local-ControlTower-1",
+                    name: "d-sorg-local-node-a-1",
                     status: "online",
                     busy: false,
                   },
@@ -90,7 +90,7 @@ describe("MachinesTab", () => {
     render(<MachinesPage />);
 
     await waitFor(() =>
-      expect(screen.getByText("ControlTower")).toBeInTheDocument(),
+      expect(screen.getByText("node-a")).toBeInTheDocument(),
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/fleet/nodes",
@@ -119,7 +119,7 @@ describe("MachinesTab", () => {
     const data = {
       nodes: [
         {
-          name: "ControlTower",
+          name: "node-a",
           online: true,
           dashboard_reachable: true,
           system: { ...SYS, gpu: { count: 1, gpus: [{ name: "RTX", vram_used_mb: 1, vram_total_mb: 2, vram_percent: 50, gpu_util_percent: 10, temp_c: 40 }] } },
@@ -127,15 +127,15 @@ describe("MachinesTab", () => {
       ],
     };
     const runners = [
-      { id: 1, name: "d-sorg-local-ControlTower-1", status: "online", busy: true },
-      { id: 2, name: "d-sorg-local-DeskComputer-1", status: "online", busy: false },
+      { id: 1, name: "d-sorg-local-node-a-1", status: "online", busy: true },
+      { id: 2, name: "d-sorg-local-hub-a-1", status: "online", busy: false },
     ];
     render(<MachinesTab data={data} runners={runners} loading={false} />);
     expect(screen.getByText("Machines")).toBeInTheDocument();
     expect(screen.getByText("Total Runners")).toBeInTheDocument();
     expect(screen.getByText("GPU Nodes")).toBeInTheDocument();
-    // ControlTower (telemetry node) + DeskComputer (runner-only stub) = 2 cards
-    expect(screen.getAllByText(/ControlTower|DeskComputer/).length).toBeGreaterThanOrEqual(2);
+    // node-a (telemetry node) + hub-a (runner-only stub) = 2 cards
+    expect(screen.getAllByText(/node-a|hub-a/).length).toBeGreaterThanOrEqual(2);
   });
 
   it("shows the loading state with no nodes", () => {
@@ -145,10 +145,10 @@ describe("MachinesTab", () => {
 
   it("renders an offline stub card for runner-only machines", () => {
     const runners = [
-      { id: 9, name: "d-sorg-local-DeskComputer-1", status: "offline", busy: false },
+      { id: 9, name: "d-sorg-local-hub-a-1", status: "offline", busy: false },
     ];
     render(<MachinesTab data={{ nodes: [] }} runners={runners} loading={false} />);
-    expect(screen.getByText("DeskComputer")).toBeInTheDocument();
+    expect(screen.getByText("hub-a")).toBeInTheDocument();
     expect(screen.getByText(/Runner services offline/)).toBeInTheDocument();
   });
 });
@@ -156,7 +156,7 @@ describe("MachinesTab", () => {
 describe("MachineCard", () => {
   it("renders runner badges, uptime, and the resources panel", () => {
     const node = {
-      name: "ControlTower",
+      name: "node-a",
       online: true,
       dashboard_reachable: true,
       role: "hub",
@@ -167,11 +167,11 @@ describe("MachineCard", () => {
         node={node}
         relatedNodes={[node]}
         machineRunners={[
-          { id: 1, name: "d-sorg-local-ControlTower-1", status: "online", busy: false },
+          { id: 1, name: "d-sorg-local-node-a-1", status: "online", busy: false },
         ]}
       />,
     );
-    expect(screen.getByText("ControlTower")).toBeInTheDocument();
+    expect(screen.getByText("node-a")).toBeInTheDocument();
     expect(screen.getByText(/Runners \(1 online, 0 busy\)/)).toBeInTheDocument();
     expect(screen.getByText(/Uptime:/)).toBeInTheDocument();
     expect(screen.getByText("CPU per-core")).toBeInTheDocument();
@@ -179,7 +179,7 @@ describe("MachineCard", () => {
 
   it("shows an error/offline reason for an unreachable node", () => {
     const node = {
-      name: "OGLaptop",
+      name: "node-b",
       online: false,
       dashboard_reachable: false,
       offline_reason: "computer_offline",

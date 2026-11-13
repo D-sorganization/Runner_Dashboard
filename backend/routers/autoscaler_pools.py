@@ -1,6 +1,6 @@
 """Autoscaler pool state and control routes (issue #755).
 
-Exposes per-pool scaling state for the ControlTower NVMe and HDD pools.
+Exposes per-pool scaling state for the node-a NVMe and HDD pools.
 The single read endpoint is intentionally simple and side-effect-free:
 it assembles state from the already-evaluated autoscaler config constants
 and the live systemd unit list, returning it in a structure the frontend

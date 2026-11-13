@@ -26,6 +26,7 @@ import subprocess  # noqa: S404
 import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import quote
 
@@ -38,13 +39,26 @@ CLAIM_PREFIX = "claim:"
 STAFF_LABEL = "claim:staff"
 ROLE_LABELS = frozenset({"claim:issue-remediator", "claim:pr-remediator"})
 OWN_LABELS = frozenset({STAFF_LABEL}) | ROLE_LABELS
-TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled"})
+TERMINAL_STATUSES = frozenset({"succeeded", "failed", "cancelled", "blocked"})
 OVERRIDE_SCOPE = "staff.admin"
 DEFAULT_ORG = "D-sorganization"
 PULLS_TTL_SECONDS = 30.0
 GH_TIMEOUT_SECONDS = 20
 
 _CLOSING = r"(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)"
+_SKIP_LABELS = frozenset(
+    {
+        "blocked",
+        "do-not-automate",
+        "judgement:contested",
+        "judgement:design",
+        "measurement",
+        "research",
+    }
+)
+ISSUE_ATTEMPT_CAP = max(1, int(float(os.environ.get("STAFF_ISSUE_ATTEMPT_CAP", "3"))))
+ISSUE_ATTEMPT_WINDOW = timedelta(hours=max(1.0, float(os.environ.get("STAFF_ISSUE_ATTEMPT_WINDOW_HOURS", "24"))))
+NO_CHANGE_COOLDOWN = timedelta(hours=max(1.0, float(os.environ.get("STAFF_NO_CHANGE_COOLDOWN_HOURS", "24"))))
 
 AsyncGet = Callable[[str], Awaitable[Any]]
 AsyncWrite = Callable[..., Awaitable[Any]]
@@ -114,6 +128,12 @@ def _label_names(payload: Any) -> list[str]:
     return [n for n in names if n]
 
 
+def _skip_label(names: list[str]) -> str | None:
+    lowered = {name.strip().lower() for name in names if name}
+    matched = sorted(label for label in lowered if label in _SKIP_LABELS)
+    return matched[0] if matched else None
+
+
 def closing_pr_for(pulls: Any, issue: int) -> dict[str, Any] | None:
     """First open PR whose title/body has a closing keyword for ``issue`` (``Closes #7``, not ``#70``)."""
     pattern = re.compile(rf"\b{_CLOSING}\b[:\s]+(?:[\w.-]+/[\w.-]+)?#{issue}\b", re.IGNORECASE)
@@ -124,6 +144,22 @@ def closing_pr_for(pulls: Any, issue: int) -> dict[str, Any] | None:
 
 
 def evaluate(payload: Any, pulls: Any, *, repo: str, issue: int | None, pr: int | None) -> ClaimVerdict:
+    if isinstance(payload, dict) and str(payload.get("state") or "").lower() == "closed":
+        target = f"{repo}#{issue or pr}"
+        return ClaimVerdict(
+            "blocked",
+            "issue_closed",
+            f"{target} is closed; automation must not dispatch or retry it.",
+        )
+    labels = _label_names(payload)
+    if issue:
+        if skipped := _skip_label(labels):
+            target = f"{repo}#{issue}"
+            return ClaimVerdict(
+                "blocked",
+                "skip_label",
+                f"{target} carries skip label '{skipped}'; automation must not dispatch this issue.",
+            )
     foreign = [n for n in _label_names(payload) if n.startswith(CLAIM_PREFIX) and n not in OWN_LABELS]
     target = f"{repo}#{issue or pr}"
     if foreign:
@@ -147,6 +183,75 @@ def evaluate(payload: Any, pulls: Any, *, repo: str, issue: int | None, pr: int 
             pr_url=url,
         )
     return ClaimVerdict("clear")
+
+
+def _parse_iso(raw: str) -> datetime | None:
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def issue_attempt_blocker(
+    store: Any,
+    *,
+    role: str,
+    repo: str,
+    issue: int | None = None,
+    pr: int | None = None,
+    now: datetime | None = None,
+) -> ClaimVerdict | None:
+    """Block repeated dispatches to one issue or PR after retries/no_change outcomes.
+
+    ``target_ref`` must match ``WorkItem.target_ref`` (``plan.py``): ``#N`` for an issue,
+    ``PR #N`` for a PR — the two never collide since GitHub shares one numbering sequence
+    between them. The cap and cooldown are scoped per ``role`` by design: two roles working
+    the same target each get their own attempt budget (#3278).
+    """
+    if store is None:
+        return None
+    target_ref = f"#{issue}" if issue else (f"PR #{pr}" if pr else "")
+    if not target_ref:
+        return None
+    target_label = f"{repo}#{issue}" if issue else f"{repo} PR #{pr}"
+    runs = store.list_runs_for_target(role=role, repo=repo, target_ref=target_ref)
+    if not runs:
+        return None
+    now_dt = now or datetime.now(UTC)
+    window_start = now_dt - ISSUE_ATTEMPT_WINDOW
+    active_window: list[Any] = []
+    latest_no_change: tuple[Any, datetime] | None = None
+    for run in runs:
+        created = _parse_iso(str(run.created_at or ""))
+        if created is None or created < window_start:
+            continue
+        if run.status != "cancelled":
+            active_window.append(run)
+        if str(run.verification or "") == "no_change":
+            ended = _parse_iso(str(run.ended_at or "")) or created
+            if latest_no_change is None or ended > latest_no_change[1]:
+                latest_no_change = (run, ended)
+    if len(active_window) >= ISSUE_ATTEMPT_CAP:
+        return ClaimVerdict(
+            "blocked",
+            "attempt_cap_reached",
+            (
+                f"{target_label} has {len(active_window)} attempts in the last "
+                f"{int(ISSUE_ATTEMPT_WINDOW.total_seconds() // 3600)}h (cap {ISSUE_ATTEMPT_CAP})"
+            ),
+        )
+    if latest_no_change is not None:
+        reset_at = latest_no_change[1] + NO_CHANGE_COOLDOWN
+        if now_dt < reset_at:
+            return ClaimVerdict(
+                "blocked",
+                "no_change_cooldown",
+                (
+                    f"{target_label} is cooling down after no_change until "
+                    f"{reset_at.astimezone(UTC).isoformat().replace('+00:00', 'Z')}"
+                ),
+            )
+    return None
 
 
 # ── GitHub I/O (async: pooled gh_client via gh_utils; sync: gh CLI for non-loop threads) ──
@@ -221,11 +326,16 @@ def scheduler_blocker(
     role: str,
     *,
     fetch: SyncFetch | None = None,
+    store: Any | None = None,
+    now: datetime | None = None,
 ) -> str:
     """Skip reason ('' = go) for a scheduled run that targets an issue/PR. Fails closed on GitHub errors."""
     number = issue or pr
     if not enabled() or not number:
         return ""
+    attempt_block = issue_attempt_blocker(store or _live_store(), role=role, repo=repo, issue=issue, pr=pr, now=now)
+    if attempt_block is not None:
+        return f"{attempt_block.code}: {attempt_block.message}"
     get = fetch or _gh_cli
     repo_full = full_repo(repo)
     try:
@@ -325,9 +435,9 @@ async def apply_claim(run_id: str, repo: str, issue: int, role: str, *, write: A
 
 def _live_store() -> Any:
     """The process runner's store when one exists (never constructs a runner)."""
-    from staff import runner as runner_mod  # noqa: PLC0415
+    from staff import runner_registry  # noqa: PLC0415
 
-    live = runner_mod._runner  # noqa: SLF001
+    live = runner_registry._runner  # noqa: SLF001
     return live.store if live is not None else None
 
 
@@ -355,6 +465,12 @@ def _recover_entry(run_id: str) -> tuple[str, int, str] | None:
         if ev.get("kind") == "claim_label" and match:
             return match.group(1), int(match.group(2)), match.group(3)
     return None
+
+
+def applied_label_entry(run_id: str) -> tuple[str, int, str] | None:
+    with _applied_lock:
+        entry = _applied.get(run_id)
+    return entry if entry is not None else _recover_entry(run_id)
 
 
 def release_claim(

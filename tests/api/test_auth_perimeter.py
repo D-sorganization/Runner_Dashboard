@@ -28,7 +28,7 @@ if str(_BACKEND) not in sys.path:
 os.environ.setdefault("DASHBOARD_API_KEY", "test-key")
 
 import server  # noqa: E402
-from conftest import make_principal  # noqa: E402
+from tests.conftest import make_principal  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 from identity import require_principal  # noqa: E402
 
@@ -80,6 +80,7 @@ ADMIN_ONLY_ROUTES = [
     ("GET", "/api/admin/principals"),
     ("GET", "/api/admin/tokens"),
     ("POST", "/api/admin/principals/test-id/token"),
+    ("POST", "/api/admin/agent-principals/reload"),
 ]
 
 

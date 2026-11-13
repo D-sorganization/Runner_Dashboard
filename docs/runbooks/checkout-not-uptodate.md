@@ -42,7 +42,7 @@ Cannot merge."), which would abort the checkout. That distinction is the tell:
 if you see `Path '...' ... will not remove from working tree`, sparse-checkout
 was active.
 
-Verified on ControlTower (git 2.43): with `core.sparseCheckout=true` and an
+Verified on node-a (git 2.43): with `core.sparseCheckout=true` and an
 empty pattern file, `git checkout --progress --force <ref>` exits 0 and leaves
 the working tree empty.
 
@@ -59,7 +59,7 @@ alone. Git's index caches per-file stat data, so afterwards `git status` and
 `git reset --hard` re-hash content, see no change, report a clean tree — and
 therefore **do not rewrite the index**.
 
-Measured live on ControlTower runner-4: **13,220 of 13,224** tracked paths
+Measured live on node-a runner-4: **13,220 of 13,224** tracked paths
 stat-dirty, `git status --porcelain` empty, ctime diverged by ~17 minutes
 while mtime, size and inode matched exactly.
 
@@ -69,14 +69,14 @@ is usually _not_ the job that fails. Known offenders:
 - `UpstreamDrift/.github/workflows/cross-engine-equivalence.yml` (2 sites)
 - `Tools_Private/.github/workflows/ci-standard.yml` (2 sites)
 
-all of the form `sudo chown -R $(id -u):$(id -g) /home/dieterolson/actions-runners`.
+all of the form `sudo chown -R $(id -u):$(id -g) /home/fleet-operator/actions-runners`.
 
 ## Confirming it
 
 First, the sparse state:
 
 ```bash
-W=/home/dieterolson/actions-runners/runner-N/_work/<Repo>/<Repo>
+W=/home/fleet-operator/actions-runners/runner-N/_work/<Repo>/<Repo>
 git -C "$W" config --get core.sparseCheckout          # "true" is the trigger
 ls -l "$W/.git/info/sparse-checkout"                  # absent/empty => matches nothing
 ```
@@ -86,7 +86,7 @@ Then the stat cache:
 On the host, in the failing workspace:
 
 ```bash
-W=/home/dieterolson/actions-runners/runner-N/_work/<Repo>/<Repo>
+W=/home/fleet-operator/actions-runners/runner-N/_work/<Repo>/<Repo>
 git -C "$W" diff-files --name-only | wc -l   # large  -> stat cache is stale
 git -C "$W" status --porcelain | wc -l       # 0      -> content is clean
 git -C "$W" ls-files --debug -- <one-path>   # index ctime ...
@@ -122,7 +122,7 @@ modifications. Then re-run the failed jobs
    below for what it does. A sparse checkout is **not** left alone any more:
    at job start, any sparse state is residue from a previous job.
 2. **Remove the sweeps.** Workflow steps must never run
-   `sudo chown -R … /home/dieterolson/actions-runners`. Scope ownership
+   `sudo chown -R … /home/fleet-operator/actions-runners`. Scope ownership
    repairs to the specific directory that needs them — never a repository
    working tree, and never another runner's tree.
 
@@ -132,7 +132,7 @@ modifications. Then re-run the failed jobs
 
 ## Workspace residue from a previous job
 
-Diagnosed 2026-10-17 on DeskComputer (Gasification_Model). Self-hosted runners
+Diagnosed 2026-10-17 on hub-a (Gasification_Model). Self-hosted runners
 reuse `_work/<repo>/<repo>`, and three kinds of residue break the next job's
 `actions/checkout`:
 
@@ -143,7 +143,7 @@ reuse `_work/<repo>/<repo>`, and three kinds of residue break the next job's
 | Stale `.git/**.lock` from a killed job                                                                             | Checkout cannot lock the index                                                                                                                                                                                                                                                           | `*.lock` older than 1 minute under this workspace's own `.git` (including `.git/modules/**`) is removed.                                                                                                               |
 
 A promisor clone whose index blobs are all present is **healthy** and is left
-alone: once checkout's auth is set, later lazy fetches work. ControlTower (a
+alone: once checkout's auth is set, later lazy fetches work. node-a (a
 ~6 Mbit/s uplink) runs 14 such workspaces. The blob check is local only:
 `GIT_ALLOW_PROTOCOL=none` refuses every transport, including lazy fetches
 (`GIT_NO_LAZY_FETCH` needs git 2.44; the fleet runs 2.34).
@@ -182,11 +182,11 @@ The canonical hooks only help if the runner runs them:
   `actions.runner.*.service` whose effective Environment lacks the canonical
   `ACTIONS_RUNNER_HOOK_JOB_STARTED`/`_COMPLETED` a
   `<unit>.d/15-runner-hooks.conf` drop-in, then one `daemon-reload`.
-  ControlTower's units had none. It never restarts a unit: the new environment
+  node-a's units had none. It never restarts a unit: the new environment
   applies at the next restart, which the nightly cleanup does only for idle
   runners.
 - **`.env` overrides.** The runner's `<runner>/.env` wins over the unit. On
-  DeskComputer every `.env` pointed `ACTIONS_RUNNER_HOOK_JOB_COMPLETED` at a
+  hub-a every `.env` pointed `ACTIONS_RUNNER_HOOK_JOB_COMPLETED` at a
   legacy `fleet/runner-post-job.sh` that only cleared `_work/_temp`. The restore
   timer removes any hook override that is not the canonical path, after a
   timestamped `.env.bak.*`. `job-completed.sh` now clears `_work/_temp` itself

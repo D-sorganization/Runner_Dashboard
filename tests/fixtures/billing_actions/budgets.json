@@ -1,0 +1,11 @@
+{
+  "budgets": [
+    {
+      "id": "budget_actions_example",
+      "name": "Actions monthly cap",
+      "scope": "actions",
+      "amount": 500.0,
+      "prevent_further_usage": true
+    }
+  ]
+}

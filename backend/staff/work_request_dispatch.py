@@ -21,6 +21,8 @@ from uuid import uuid4
 from code_requests.dispatch_service import CodeDispatch
 from code_requests.profiles import AgentProfileStore
 from dashboard_config import ORG, REPO_ROOT
+from fastapi import HTTPException
+from staff.preflight_duplicate_guard import check_duplicate_pr_or_run
 from system_utils import run_cmd
 
 log = logging.getLogger("dashboard.staff.work_request_dispatch")
@@ -96,6 +98,14 @@ async def _dispatch_issue_or_pr_action(
     from routers.remediation import _normalize_repository_input
 
     _, full_repo = _normalize_repository_input(repo)
+    if kind == "issue":
+        try:
+            await check_duplicate_pr_or_run(full_repo, number)
+        except HTTPException as exc:
+            detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
+            code = str(detail.get("code") or "launch_gate_rejected")
+            message = str(detail.get("message") or detail)
+            raise RuntimeError(f"duplicate_guard: {code} ({message})") from exc
     envelope_id = uuid4().hex
     workflow_file = "Agent-Issue-Dispatch.yml" if kind == "issue" else "Agent-PR-Dispatch.yml"
     endpoint = f"/repos/{ORG}/Repository_Management/actions/workflows/{workflow_file}/dispatches"

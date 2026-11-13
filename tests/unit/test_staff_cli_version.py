@@ -48,7 +48,7 @@ def _rec(run_id: str, status: str) -> RunRecord:
         role="barb",
         provider="claude",
         model=None,
-        machine="DeskComputer",
+        machine="hub-a",
         repo="UpstreamDrift",
         target_kind="issue",
         target_ref="7",
@@ -314,7 +314,10 @@ def test_cli_outdated_outranks_generic_chat_failures() -> None:
 def test_provider_versions_reports_floored_providers(monkeypatch: pytest.MonkeyPatch) -> None:
     _pin(monkeypatch, "2.1.79")
     versions = cli_version.provider_versions(ADAPTERS)
-    assert set(versions) == {"claude", "claude-ollama"}
+    assert set(versions) == {"claude", "claude-ollama", "anthropic-api", "deepseek-api"}
+    # anthropic-api (#3534) and deepseek-api (#4231) share the ``claude`` executable, so they floor identically.
+    assert versions["anthropic-api"] == versions["claude"]
+    assert versions["deepseek-api"] == versions["claude"]
     assert versions["claude"] == {
         "executable": "claude",
         "installed": True,
@@ -331,7 +334,7 @@ def test_roster_models_accept_provider_versions() -> None:
     from staff.models import StaffRosterResponse
 
     body = StaffRosterResponse(
-        machine="DeskComputer",
+        machine="hub-a",
         roles=[],
         providers={"claude": True},
         provider_versions={

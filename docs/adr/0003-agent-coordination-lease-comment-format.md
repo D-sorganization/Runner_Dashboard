@@ -72,3 +72,57 @@ The richer "design opinion" structure used for `panel-review` issues _is_ a stru
 - The lease comment is just a comment — it cannot block a PR from being opened by a different agent. Enforcement is post-hoc via the Redundant PR Closer workflow, not pre-emptive.
 
 If contention grows past what the priority order can resolve, the contract is structured to allow lifting leases into a stronger backend (a coordination service, a single `coordination` repo) without changing the human-visible format.
+
+## Addendum (2026-11-02, #3300 upgrade 2): the `bar:` field — freezing the acceptance bar at claim time
+
+Status: accepted. Expert Panel verdict 4-0, two rounds (thread `th_b01730d15a37`), recorded on
+Runner_Dashboard#3300: "Bar frozen at claim: adopt. Hash the canonicalized checklist, not the raw
+text. A mismatch forces a re-claim." Second of the four ADR/spec docs in #3300's build order
+(ADR 0010 is the first); the implementation PR for this upgrade follows after this doc merges.
+
+**Problem.** A claim fixes *who* is working an issue (the existing lease format above), but not
+*what they were asked to do*. An issue's acceptance criteria can change — a checkbox added, a
+Dependencies section edited — after the lease is taken, while the builder keeps working from the
+version they first read. The verifier (ADR 0010) then judges the PR against whatever criteria are
+on the issue *now*, which may not be what the builder claimed against.
+
+**Decision.** Extend the lease comment with one additional field, appended to the existing line:
+
+```
+lease: <agent-id> expires <ISO-8601 timestamp> bar:<criteria-hash>
+```
+
+Example: `lease: claude-398 expires 2026-04-30T18:00:00Z bar:3f9a1c2e...`
+
+- `<criteria-hash>` is a hash of the issue body's **canonicalized** acceptance-criteria checklist at
+  claim time — not the raw markdown text. Canonicalization strips checkbox check-state, whitespace,
+  and comment/thread content outside the checklist, so an unrelated edit elsewhere in the issue body
+  (a typo fix, a new comment) does not change the hash; an actual criteria edit does.
+- The hash is computed and stored once, when `post_agent_lease` writes the claim; it is never
+  recomputed for the life of that lease.
+- A builder's PR is judged (by the ADR 0010 verifier) against the criteria captured in `bar:` at
+  claim time, not against the issue's current body.
+- If the issue's canonicalized criteria no longer match the lease's stored `bar:` hash — the
+  criteria changed after the claim was taken — the lease is stale: `check_agent_claim` reports a
+  bar mismatch and the holder must re-claim (posting a fresh lease with the new hash) before the
+  verifier will accept a PR against the new criteria. A stale-bar PR judged against old criteria is
+  not silently accepted as meeting the new ones.
+- The existing lease format (agent id, expiry, priority order, renewal, release, reaper) is
+  unchanged; `bar:` is additive and parsed by the same single-line regex extended with one more
+  capture group, so a lease comment with no `bar:` field (older agents, or issues with no
+  checklist) stays valid exactly as it is read today.
+
+**Lands in (implementation PR, not this doc):** `backend/coordination/claims.py` (canonicalize +
+hash the checklist at claim time; compare on `check()`), and the shared RM lease-writer helper
+(`post_agent_lease`) that already owns the single-line format this ADR defines.
+
+**Consequences.**
+
+- *Easier:* the verifier always judges a PR against a frozen, named version of the bar; a Barb or
+  reviewer disputing a PR can point at the exact `bar:` hash it was built against.
+- *Harder / cost:* an issue whose criteria legitimately need mid-flight clarification now requires
+  an explicit re-claim rather than a silent continuation; this is intentional (the panel's "a
+  mismatch forces a re-claim"), but it does add one more step to a long-running claim when the
+  issue author tightens wording after work has started.
+- Canonicalization itself needs a precise, tested definition (what counts as "the checklist", how
+  whitespace/ordering is normalized) — that is implementation-PR scope, not this ADR.

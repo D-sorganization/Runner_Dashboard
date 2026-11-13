@@ -1,0 +1,13 @@
+[Unit]
+Description=Runner Dashboard fleet restic rollout (dry-run unless apply env set)
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-@ENV_FILE@
+Environment=FLEET_RESTIC_ROLLOUT_APPLY=0
+WorkingDirectory=@DEPLOY_DIR@
+ExecStart=@PYTHON_BIN@ deploy/restic_rollout_plan.py
+
+[Install]
+WantedBy=multi-user.target

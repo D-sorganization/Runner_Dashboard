@@ -15,6 +15,9 @@ export type DeliveryMetricsState =
 export function useDeliveryMetrics() {
   const [state, setState] = useState<DeliveryMetricsState>({ kind: "loading" });
   const [repoFilter, setRepoFilter] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState<string | null>(null);
+  const [agentFilter, setAgentFilter] = useState<string | null>(null);
+  const [modelFilter, setModelFilter] = useState<string | null>(null);
   const [pullDetail, setPullDetail] = useState<PullDrillDown | null>(null);
   const [pullLoading, setPullLoading] = useState(false);
   const [pullError, setPullError] = useState<string | null>(null);
@@ -63,6 +66,12 @@ export function useDeliveryMetrics() {
     state,
     repoFilter,
     setRepoFilter,
+    roleFilter,
+    setRoleFilter,
+    agentFilter,
+    setAgentFilter,
+    modelFilter,
+    setModelFilter,
     refetch: () => void load(repoFilter),
     pullDetail,
     pullLoading,

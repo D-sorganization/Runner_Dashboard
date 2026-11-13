@@ -9,7 +9,7 @@ Provide a unified, secure web control console and AI Staff Console for the D-sor
 
 ## Non-Goals
 
-- Running Maxwell pipeline execution, Strategist, Crucible, or sandboxes directly (owned exclusively by `Maxwell-Daemon`).
+- Running Maxwell pipeline execution, Strategist, Crucible, or sandboxes directly (`Maxwell_Daemon` was archived 2026-10-22; the dashboard no longer proxies it).
 - Fleet-wide CI workflow orchestration, skill definitions, and central governance policies (owned by `Repository_Management`).
 - Operating as an unauthenticated or public network service (must fail closed with strict identity, OAuth, and RBAC).
 - Executing unverified mutating maintenance actions without dry-run previews and explicit human or policy approval gates.
@@ -23,12 +23,12 @@ Provide a unified, secure web control console and AI Staff Console for the D-sor
 | F2  | Operations Console and Unified Dispatch | shipped     | #1325    | Merged view for deployments, runner hours, conductor, and schedules.      |
 | F3  | Queue Health and Automated Job Reaper   | shipped     | -        | Stale queued run detection, bulk cancellation API, and cleanup daemon.    |
 | F4  | Authentication and RBAC Perimeter       | shipped     | #1295    | Session management, OAuth, WebAuthn, and explicit role scopes.            |
-| F5  | Staff Console Conversation Engine       | in-progress | #1348    | Threaded chat turns, session resume, and structured action cards.         |
-| F6  | Barb Routing and Follow-Up Engine       | in-progress | #1349    | Autonomous task routing, work-item ledger, and stalled-job follow-up.     |
-| F7  | Fleet Maintenance Automation            | in-progress | #1351    | Typed maintenance action catalogue, preflight checks, and dry-runs.       |
-| F8  | Staff Agent and Tooling APIs            | in-progress | #1352    | Versioned /api/v1/staff API, MCP tools, and external agent connectors.    |
-| F9  | Staff Console Shell and Navigation      | in-progress | #1350    | Four-area layout, staff roster sidebar, and mobile responsive shell.      |
-| F10 | UI Modernization and Legacy Pruning     | in-progress | #1353    | Retiring classic layout and consolidating off-theme legacy dispatch tabs. |
+| F5  | Staff Console Conversation Engine       | shipped     | #1348    | Epic SC-B closed 2026-10-14.                                               |
+| F6  | Barb Routing and Follow-Up Engine       | shipped     | #1349    | Epic SC-C closed 2026-10-14.                                               |
+| F7  | Fleet Maintenance Automation            | shipped     | #1351    | Epic SC-E closed 2026-10-14.                                               |
+| F8  | Staff Agent and Tooling APIs            | shipped     | #1352    | Epic SC-F closed 2026-10-14.                                               |
+| F9  | Staff Console Shell and Navigation      | shipped     | #1350    | Epic SC-D closed 2026-10-14.                                               |
+| F10 | UI Modernization and Legacy Pruning     | shipped     | #1353    | Epic SC-G closed 2026-10-14.                                               |
 | F11 | Code Requests and Proposals Pipeline    | shipped     | #1279    | Agent-agnostic planner-to-executor pipeline and board suggestion box.     |
 | F12 | Multi-Host Node Infrastructure          | shipped     | #1258    | Node cluster synchronization, self-updating roles, and Ollama bridges.    |
 | F13 | Projects and Fleet Stewardship          | shipped     | #1248    | Per-repo charters, status reporting, and deferred-plan owner tracking.    |

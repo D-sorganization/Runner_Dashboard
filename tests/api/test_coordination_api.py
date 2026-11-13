@@ -295,3 +295,196 @@ def test_send_ack_and_release_call_the_matching_subcommands(rm: FakeRM, client: 
 def test_request_contracts_reject_bad_input(rm: FakeRM, client: TestClient, path: str, body: dict) -> None:
     assert client.post(path, json=body, headers=_BOT).status_code == 422
     assert rm.calls() == []
+
+
+# ── activity log producer adapter (#2859) ──────────────────────────────────
+@pytest.fixture
+def activity_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):  # noqa: ANN201
+    import activity_producers
+    from activity import ActivityStore
+
+    activity_producers._next_seq.clear()
+    real_store = ActivityStore(tmp_path / "activity.sqlite3")
+    monkeypatch.setattr(activity_producers, "get_activity_store", lambda: real_store)
+    return real_store
+
+
+@pytest.mark.unit
+def test_presence_register_and_release_feed_the_activity_log(
+    rm: FakeRM, client: TestClient, activity_store: Any
+) -> None:
+    rm.respond("agent_communicate:register", {"ok": True})
+    body = {"session": "codex-42", "repo": "Tools", "issue": 42, "branch": "feat/x"}
+    assert client.post("/api/coordination/presence", json=body, headers=_BOT).status_code == 200
+    rm.respond("agent_communicate:release", {"ok": True})
+    rel = {"session": "codex-42", "repo": "Tools"}
+    assert client.post("/api/coordination/presence/release", json=rel, headers=_BOT).status_code == 200
+    page = activity_store.read(session_id="codex-42")
+    assert [item.kind for item in page.items] == ["presence_register", "presence_release"]
+    assert page.items[0].source == "coordination"
+    assert page.items[0].issue == 42
+    assert page.items[0].branch == "feat/x"
+
+
+@pytest.mark.unit
+def test_send_message_feeds_the_activity_log(rm: FakeRM, client: TestClient, activity_store: Any) -> None:
+    rm.respond("agent_communicate:list", board(session("codex-1", "Tools", agent="codex")))
+    rm.respond("agent_communicate:send", {"ok": True})
+    msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "rebasing"}
+    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 200
+    page = activity_store.read(session_id="codex-1")
+    assert [item.kind for item in page.items] == ["message_sent"]
+    assert page.items[0].payload == {"to": "claude-2", "text": "rebasing"}
+
+
+@pytest.mark.unit
+def test_presence_register_survives_a_broken_activity_store(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import activity_producers
+
+    def broken_store():  # noqa: ANN202
+        raise RuntimeError("activity store unavailable")
+
+    monkeypatch.setattr(activity_producers, "get_activity_store", broken_store)
+    rm.respond("agent_communicate:register", {"ok": True})
+    body = {"session": "codex-42", "repo": "Tools", "issue": 42, "branch": "feat/x"}
+    resp = client.post("/api/coordination/presence", json=body, headers=_BOT)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["ok"] is True
+
+
+@pytest.mark.unit
+def test_claim_release_expiry_and_conflict_feed_the_activity_log_only_on_authoritative_transitions(
+    rm: FakeRM, client: TestClient, activity_store: Any
+) -> None:
+    from coordination import claims
+    from coordination_fake_rm import lease_result, release_result
+
+    # 1. Failed claim check (RM unavailable) -> 502, NO event emitted.
+    rm.respond("check_agent_claim", claim_status(False, "", "error:CalledProcessError"))
+    claim_body = {"session": "codex-12", "repo": "Tools", "issue": 12, "agent": "codex", "intent": "implement"}
+    assert client.post("/api/coordination/claims", json=claim_body, headers=_BOT).status_code == 502
+    assert activity_store.read(session_id="codex-12").items == []
+
+    # 2. Failed lease write (comment_posted=False) -> 502, NO event emitted.
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", lease_result(label=False, comment=False, errors=["HTTP 502"]))
+    assert client.post("/api/coordination/claims", json=claim_body, headers=_BOT).status_code == 502
+    assert activity_store.read(session_id="codex-12").items == []
+
+    # 3. Authoritative claim succeeds -> emits 'claim' envelope with required fields.
+    rm.respond("post_agent_lease", lease_result())
+    resp = client.post("/api/coordination/claims", json=claim_body, headers=_BOT)
+    assert resp.status_code == 200, resp.text
+
+    # 4. Conflicting claim by another session when held -> 409, emits 'conflict' envelope.
+    rm.respond("check_agent_claim", {**claim_status(True, "claude", "active lease"), "session": "claude-99"})
+    conflict_body = {"session": "codex-99", "repo": "Tools", "issue": 12, "agent": "codex", "intent": "takeover"}
+    assert client.post("/api/coordination/claims", json=conflict_body, headers=_BOT).status_code == 409
+
+    # 5. Failed release write -> 502, NO release event emitted.
+    rm.respond("release_agent_lease", release_result(label=False, comment=False, errors=["mismatch"]), rc=1)
+    rel_body = {"session": "codex-12", "repo": "Tools", "issue": 12, "agent": "codex", "reason": "done"}
+    assert client.post("/api/coordination/claims/release", json=rel_body, headers=_BOT).status_code == 502
+
+    # 6. Authoritative manual release -> emits 'release' envelope.
+    rm.respond("release_agent_lease", release_result())
+    assert client.post("/api/coordination/claims/release", json=rel_body, headers=_BOT).status_code == 200
+
+    # 7. Authoritative expiry sweep release (reaper path) -> emits 'expiry' envelope.
+    claims.release("Tools", 12, agent="codex", session="codex-12", reason="agent_bus lease expired")
+
+    claim_events = activity_store.read(session_id="codex-12").items
+    assert [e.kind for e in claim_events] == ["claim", "release", "expiry"]
+    for ev in claim_events:
+        assert ev.source == "job_board"
+        assert ev.repo == "Tools" and ev.issue == 12
+        assert ev.payload["repo"] == "Tools"
+        assert ev.payload["issue"] == 12
+        assert ev.payload["holder_principal"] == "agent-codex"
+        assert ev.payload["session"] == "codex-12"
+        assert ev.payload["fencing_token_id"] == "lease-1"
+
+    conflict_events = activity_store.read(session_id="codex-99").items
+    assert [e.kind for e in conflict_events] == ["conflict"]
+    cev = conflict_events[0]
+    assert cev.source == "job_board"
+    assert cev.payload["repo"] == "Tools"
+    assert cev.payload["issue"] == 12
+    assert cev.payload["holder_principal"] == "agent-claude"
+    assert cev.payload["challenger_principal"] == "agent-codex"
+    assert cev.payload["session"] == "codex-99"
+    assert cev.payload["fencing_token_id"].startswith("ftk_")
+
+
+@pytest.mark.unit
+def test_sessions_complete_with_degraded_history_when_warnings_are_historical_only(
+    rm: FakeRM, client: TestClient
+) -> None:
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": True,
+            "degraded_history": True,
+            "read_warnings": [],
+            "replay_warnings": ["Rejected identity change for expired-session"],
+            "active_conflicts": [],
+            "sessions": [session("s1", "Tools")],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["Rejected identity change for expired-session"],
+        },
+    )
+    body = client.get("/api/coordination/sessions").json()
+    assert body["available"] is True
+    assert body["complete"] is True
+    assert body["degraded_history"] is True
+    assert body["read_warnings"] == []
+    assert body["replay_warnings"] == ["Rejected identity change for expired-session"]
+    assert body["active_conflicts"] == []
+    assert "Rejected identity change for expired-session" in body["warnings"]
+    assert [s["session"] for s in body["sessions"]] == ["s1"]
+
+
+@pytest.mark.unit
+def test_sessions_fail_closed_on_active_conflicts_or_unclassified_warnings(rm: FakeRM, client: TestClient) -> None:
+    # Sub-case A: classified live active_conflicts even when complete in raw payload is True
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": False,
+            "complete": True,
+            "degraded_history": True,
+            "read_warnings": [],
+            "replay_warnings": ["Rejected identity change for live-s1"],
+            "active_conflicts": ["Rejected identity change for live-s1"],
+            "sessions": [session("live-s1", "Tools")],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["Rejected identity change for live-s1"],
+        },
+    )
+    body = client.get("/api/coordination/sessions").json()
+    assert body["available"] is True
+    assert body["complete"] is False
+    assert body["active_conflicts"] == ["Rejected identity change for live-s1"]
+    with pytest.raises(board_mod.RMScriptError):
+        board_mod.has_live_session("missing-s", "Tools")
+
+    # Sub-case B: legacy/unclassified payload (missing structured lists) with non-empty warnings
+    board_mod.reset_cache()
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "complete": True,
+            "sessions": [session("s1", "Tools")],
+            "warnings": ["unclassified warning"],
+        },
+    )
+    body_b = client.get("/api/coordination/sessions").json()
+    assert body_b["available"] is True
+    assert body_b["complete"] is False
+    assert "unclassified warning" in body_b["read_warnings"]
+    assert "unclassified warning" in body_b["warnings"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from identity import Principal
 from staff import claim_guard
 from staff.audit import get_audit_store, reset_audit_store
 from staff.dispatch_service import DispatchCommand
+from staff.store import RunRecord, RunStore
 
 REPO = "D-sorganization/Runner_Dashboard"
 OPERATOR = Principal(id="op", type="human", name="Op", roles=["operator"])
@@ -99,6 +101,119 @@ async def test_pr_target_checks_labels_only() -> None:
 async def test_github_failure_is_unavailable_not_clear() -> None:
     v = await claim_guard.check_claim(REPO, issue=7, role="r", get=_fake_get(RuntimeError("boom")))
     assert v.status == "unavailable" and "boom" in v.message
+
+
+@pytest.mark.asyncio
+async def test_skip_labels_refuse_dispatch() -> None:
+    v = await claim_guard.check_claim(REPO, issue=7, role="issue-remediator", get=_fake_get(_issue("do-not-automate")))
+    assert v.status == "blocked" and v.code == "skip_label"
+
+
+def test_issue_attempt_blocker_enforces_no_change_cooldown(tmp_path: Any) -> None:
+    now = datetime.now(UTC)
+    store = RunStore(tmp_path / "runs.sqlite3")
+    store.create_run(
+        RunRecord(
+            id="run-old",
+            role="ad-hoc",
+            provider="claude",
+            model=None,
+            machine="Desk",
+            repo="Runner_Dashboard",
+            target_kind="issue",
+            target_ref="#7",
+            prompt="x",
+            status="succeeded",
+            created_at=(now - timedelta(hours=2)).isoformat().replace("+00:00", "Z"),
+            ended_at=(now - timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+            verification="no_change",
+        )
+    )
+    verdict = claim_guard.issue_attempt_blocker(store, role="ad-hoc", repo="Runner_Dashboard", issue=7, now=now)
+    assert verdict is not None and verdict.code == "no_change_cooldown"
+
+
+def test_issue_attempt_blocker_enforces_attempt_cap(tmp_path: Any) -> None:
+    now = datetime.now(UTC)
+    store = RunStore(tmp_path / "runs.sqlite3")
+    for idx in range(3):
+        when = now - timedelta(hours=idx + 1)
+        store.create_run(
+            RunRecord(
+                id=f"run-{idx}",
+                role="ad-hoc",
+                provider="claude",
+                model=None,
+                machine="Desk",
+                repo="Runner_Dashboard",
+                target_kind="issue",
+                target_ref="#9",
+                prompt="x",
+                status="failed",
+                created_at=when.isoformat().replace("+00:00", "Z"),
+                ended_at=(when + timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+            )
+        )
+    verdict = claim_guard.issue_attempt_blocker(store, role="ad-hoc", repo="Runner_Dashboard", issue=9, now=now)
+    assert verdict is not None and verdict.code == "attempt_cap_reached"
+
+
+def test_issue_attempt_blocker_caps_are_scoped_per_role(tmp_path: Any) -> None:
+    """Per-role scoping is intentional (#3278): a saturated role's cap does not block another role."""
+    now = datetime.now(UTC)
+    store = RunStore(tmp_path / "runs.sqlite3")
+    for idx in range(3):
+        when = now - timedelta(hours=idx + 1)
+        store.create_run(
+            RunRecord(
+                id=f"run-{idx}",
+                role="issue-remediator",
+                provider="claude",
+                model=None,
+                machine="Desk",
+                repo="Runner_Dashboard",
+                target_kind="issue",
+                target_ref="#11",
+                prompt="x",
+                status="failed",
+                created_at=when.isoformat().replace("+00:00", "Z"),
+                ended_at=(when + timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+            )
+        )
+    saturated = claim_guard.issue_attempt_blocker(
+        store, role="issue-remediator", repo="Runner_Dashboard", issue=11, now=now
+    )
+    other_role = claim_guard.issue_attempt_blocker(
+        store, role="pr-remediator", repo="Runner_Dashboard", issue=11, now=now
+    )
+    assert saturated is not None and saturated.code == "attempt_cap_reached"
+    assert other_role is None
+
+
+def test_issue_attempt_blocker_matches_pr_targets(tmp_path: Any) -> None:
+    """A PR target's attempts are stored as ``PR #N`` (``plan.py``'s ``target_ref``), not ``#N`` (#3278)."""
+    now = datetime.now(UTC)
+    store = RunStore(tmp_path / "runs.sqlite3")
+    for idx in range(3):
+        when = now - timedelta(hours=idx + 1)
+        store.create_run(
+            RunRecord(
+                id=f"run-pr-{idx}",
+                role="pr-remediator",
+                provider="claude",
+                model=None,
+                machine="Desk",
+                repo="Runner_Dashboard",
+                target_kind="pr",
+                target_ref="PR #42",
+                prompt="x",
+                status="failed",
+                created_at=when.isoformat().replace("+00:00", "Z"),
+                ended_at=(when + timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+            )
+        )
+    verdict = claim_guard.issue_attempt_blocker(store, role="pr-remediator", repo="Runner_Dashboard", pr=42, now=now)
+    assert verdict is not None and verdict.code == "attempt_cap_reached"
 
 
 # ── manual dispatch enforcement ──────────────────────────────────────────────
@@ -197,6 +312,16 @@ def test_label_removed_on_terminal_state() -> None:
     assert "run-1" not in claim_guard._applied
 
 
+def test_label_removed_when_lease_blocks_run() -> None:
+    claim_guard._applied["run-blocked"] = (REPO, 7, "claim:issue-remediator")
+    calls: list[tuple[str, str]] = []
+    claim_guard.release_claim(
+        "run-blocked", "blocked", write=lambda ep, method: calls.append((ep, method)), others_active=lambda *_: False
+    )
+    assert calls == [(f"/repos/{REPO}/issues/7/labels/claim%3Aissue-remediator", "DELETE")]
+    assert "run-blocked" not in claim_guard._applied
+
+
 def test_label_not_removed_while_non_terminal_or_shared() -> None:
     claim_guard._applied["run-1"] = (REPO, 7, "claim:staff")
     calls: list[Any] = []
@@ -206,6 +331,21 @@ def test_label_not_removed_while_non_terminal_or_shared() -> None:
 
 
 # ── scheduler ────────────────────────────────────────────────────────────────
+
+
+def test_scheduler_gate_refuses_closed_issue() -> None:
+    reason = claim_guard.scheduler_blocker(
+        REPO,
+        7,
+        None,
+        "issue-remediator",
+        fetch=lambda ep: (
+            {"number": 7, "state": "closed", "labels": []}
+            if "/issues/" in ep
+            else []
+        ),
+    )
+    assert reason and "issue_closed" in reason
 
 
 def test_scheduler_gate_skips_claimed_target() -> None:
@@ -226,6 +366,39 @@ def test_scheduler_gate_fails_closed_on_github_error() -> None:
 def test_scheduler_gate_clear_and_untargeted() -> None:
     assert claim_guard.scheduler_blocker(REPO, 7, None, "r", fetch=lambda ep: _sync(ep, _issue())) == ""
     assert claim_guard.scheduler_blocker(REPO, None, None, "r", fetch=lambda ep: 1 / 0) == ""
+
+
+def test_scheduler_gate_refuses_skip_label_even_without_claim() -> None:
+    reason = claim_guard.scheduler_blocker(
+        REPO, 7, None, "issue-remediator", fetch=lambda ep: _sync(ep, _issue("do-not-automate"))
+    )
+    assert "skip_label" in reason
+
+
+def test_scheduler_gate_enforces_attempt_cap_for_pr_target(tmp_path: Any) -> None:
+    """A scheduled run against a PR must count attempts stored against that PR (#3278)."""
+    now = datetime.now(UTC)
+    store = RunStore(tmp_path / "runs.sqlite3")
+    for idx in range(3):
+        when = now - timedelta(hours=idx + 1)
+        store.create_run(
+            RunRecord(
+                id=f"run-pr-{idx}",
+                role="pr-remediator",
+                provider="claude",
+                model=None,
+                machine="Desk",
+                repo=REPO,
+                target_kind="pr",
+                target_ref="PR #42",
+                prompt="x",
+                status="failed",
+                created_at=when.isoformat().replace("+00:00", "Z"),
+                ended_at=(when + timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+            )
+        )
+    reason = claim_guard.scheduler_blocker(REPO, None, 42, "pr-remediator", store=store, now=now)
+    assert reason and "attempt_cap_reached" in reason
 
 
 def _sync(endpoint: str, issue: dict[str, Any]) -> Any:
@@ -291,6 +464,32 @@ def test_route_own_claim_admits_without_override(client: Any, monkeypatch: pytes
     resp = client.post("/api/staff/ad-hoc/run", json={"repo": "Runner_Dashboard", "issue": 7, "prompt": "fix"})
     assert resp.status_code == 200, resp.text
     assert resp.json()["claim_check"] == "clear"
+
+
+def test_route_refuses_recent_no_change_issue(client: Any, staff: Any, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
+    writes: list[Any] = []
+    _stub_github(monkeypatch, _issue("bug"), writes)
+    now = datetime.now(UTC)
+    staff.store.create_run(
+        RunRecord(
+            id="run-prev",
+            role="ad-hoc",
+            provider="claude",
+            model=None,
+            machine="Desk",
+            repo="Runner_Dashboard",
+            target_kind="issue",
+            target_ref="#7",
+            prompt="previous",
+            status="succeeded",
+            created_at=(now - timedelta(hours=2)).isoformat().replace("+00:00", "Z"),
+            ended_at=(now - timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+            verification="no_change",
+        )
+    )
+    resp = client.post("/api/staff/ad-hoc/run", json={"repo": "Runner_Dashboard", "issue": 7, "prompt": "retry"})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["code"] == "no_change_cooldown"
 
 
 def test_scheduler_tick_records_claim_skip(sched: Any, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811

@@ -4,6 +4,10 @@
 kind both call :func:`run_code_dispatch`, so either path resolves the agent
 profile, injects prompt notes and engineering standards server-side, and
 records the dispatch in the Code Requests history.
+
+Issue-number workflow launches from :mod:`agent_dispatch_router` share the Staff
+duplicate guard (:func:`staff.preflight_duplicate_guard.check_duplicate_pr_or_run`);
+see issue #2765.
 """
 
 from __future__ import annotations
@@ -23,7 +27,11 @@ from system_utils import run_cmd
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
-HISTORY_PATH = Path.home() / "actions-runners" / "dashboard" / "code_requests.json"
+_DEFAULT_DASHBOARD_DIR = Path.home() / "actions-runners" / "dashboard"
+CODE_REQUEST_CACHE_PATH = _DEFAULT_DASHBOARD_DIR / "code_requests.json"
+DISPATCH_HISTORY_PATH = _DEFAULT_DASHBOARD_DIR / "code_request_dispatches.json"
+# Legacy import name: dispatch history only (not the Code Request cache).
+HISTORY_PATH = DISPATCH_HISTORY_PATH
 PROMPT_NOTES_PATH = Path.home() / "actions-runners" / "dashboard" / "prompt_notes.json"
 HISTORY_LIMIT = 200
 FALLBACK_PROVIDER = "codex_cli"
@@ -119,15 +127,28 @@ def history_entry(req: CodeDispatch, resolved: ResolvedDispatch, code: int, stde
     return entry
 
 
+def _append_history_sync(path: Path, entry: dict[str, Any]) -> None:
+    """Append under the same storage lock used by first-use migration."""
+    from code_requests.storage_split import (
+        _migrate_combined_storage_under_lock,
+        code_requests_storage_lock,
+    )
+
+    target = path if path != CODE_REQUEST_CACHE_PATH else DISPATCH_HISTORY_PATH
+    with code_requests_storage_lock(CODE_REQUEST_CACHE_PATH):
+        _migrate_combined_storage_under_lock(CODE_REQUEST_CACHE_PATH, DISPATCH_HISTORY_PATH)
+        history: list[dict[str, Any]] = []
+        if target.exists():
+            history = json.loads(target.read_text(encoding="utf-8"))
+        history.append(entry)
+        config_schema.atomic_write_json(target, history[-HISTORY_LIMIT:])
+
+
 async def append_history(path: Path, entry: dict[str, Any]) -> None:
-    """Append ``entry`` to the history file, keeping the newest :data:`HISTORY_LIMIT`."""
+    """Append ``entry`` to the dispatch history file, keeping the newest :data:`HISTORY_LIMIT`."""
     async with HISTORY_LOCK:
         try:
-            history: list[dict[str, Any]] = []
-            if path.exists():
-                history = json.loads(path.read_text(encoding="utf-8"))
-            history.append(entry)
-            config_schema.atomic_write_json(path, history[-HISTORY_LIMIT:])
+            await asyncio.to_thread(_append_history_sync, path, entry)
         except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             pass
 

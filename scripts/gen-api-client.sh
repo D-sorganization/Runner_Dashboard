@@ -47,6 +47,7 @@ fi
 AUTODERIVE_FLEET_NODES=0 \
 FLEET_NODES="" \
 DASHBOARD_AUTH_REQUIRED=0 \
+DASHBOARD_TRUSTED_EXTRA_HOSTS=testserver \
 "${PYTHON_CMD[@]}" - "$PY_ROOT_DIR" "$PY_TMP_SNAPSHOT" <<'PY'
 import json
 import os
@@ -60,7 +61,33 @@ sys.path.insert(0, str(root / "backend"))
 from fastapi.testclient import TestClient  # noqa: E402
 from server import app  # noqa: E402
 
-schema = TestClient(app, raise_server_exceptions=False).get("/openapi.json").json()
+client = TestClient(app, raise_server_exceptions=False)
+response = client.get("/openapi.json")
+status = response.status_code
+content_type = response.headers.get("content-type") or ""
+
+if status != 200:
+    sys.stderr.write(
+        f"API contract preflight error: GET /openapi.json returned status {status} "
+        f"(content-type: {content_type!r}); expected 200 application/json\n"
+    )
+    sys.exit(1)
+
+if not ("application/json" in content_type or "+json" in content_type):
+    sys.stderr.write(
+        f"API contract preflight error: GET /openapi.json returned non-JSON content-type: "
+        f"{content_type!r} (status: {status}); expected application/json\n"
+    )
+    sys.exit(1)
+
+try:
+    schema = response.json()
+except Exception as exc:
+    sys.stderr.write(
+        f"API contract preflight error: failed to decode JSON from GET /openapi.json "
+        f"(status: {status}, content-type: {content_type!r}): {type(exc).__name__}\n"
+    )
+    sys.exit(1)
 val_props = schema.get("components", {}).get("schemas", {}).get("ValidationError", {}).get("properties")
 if isinstance(val_props, dict):
     if "ctx" not in val_props:
@@ -81,171 +108,10 @@ else
   npx openapi-typescript "$TMP_SNAPSHOT" --output "$TMP_TYPES"
 fi
 
-cat >> "$TMP_TYPES" <<'TS'
-
-// ── Client compatibility aliases ─────────────────────────────────────────────
-// These aliases keep the hand-written API client on stable names while the
-// canonical paths/components/operations surface above is generated from FastAPI.
-
-export interface ApiError {
-    detail: string;
-}
-
-export interface RunRepository {
-    name: string;
-    full_name: string;
-}
-
-export interface WorkflowRun {
-    id: number;
-    name: string;
-    workflow_name: string;
-    status: string;
-    conclusion: string | null;
-    head_branch: string;
-    head_sha: string;
-    html_url: string;
-    created_at: string;
-    updated_at: string;
-    run_number: number;
-    repository: RunRepository;
-    run_attempt?: number;
-    actor?: { login: string };
-}
-
-export interface RunsResponse {
-    runs: WorkflowRun[];
-    total_count?: number;
-}
-
-export interface QueueItem {
-    id: number;
-    name: string;
-    status: string;
-    created_at: string;
-    html_url: string;
-    repository: string;
-    workflow_name?: string;
-    head_branch?: string;
-}
-
-export interface QueueResponse {
-    queue: QueueItem[];
-    count: number;
-}
-
-export interface CancelRunRequest {
-    repo: string;
-    run_id: number;
-}
-
-export interface CancelWorkflowRequest {
-    workflow_name: string;
-    repo?: string | null;
-}
-
-export interface Runner {
-    id: number;
-    name: string;
-    os: string;
-    status: string;
-    busy: boolean;
-    labels: Array<{ name: string }>;
-}
-
-export interface RunnersResponse {
-    runners: Runner[];
-    total_count: number;
-}
-
-export interface FleetStatusResponse {
-    nodes: FleetNode[];
-    summary: FleetSummary;
-}
-
-export interface FleetNode {
-    name: string;
-    host: string;
-    status: string;
-    runners: Runner[];
-}
-
-export interface FleetSummary {
-    total_runners: number;
-    online: number;
-    offline: number;
-    busy: number;
-    idle: number;
-}
-
-export interface AgentProvider {
-    provider_id: string;
-    label: string;
-    execution_mode: string;
-    dispatch_mode: string;
-    notes: string;
-    experimental: boolean;
-    remote: boolean;
-    editable: boolean;
-}
-
-export interface ProvidersResponse {
-    providers: Record<string, AgentProvider>;
-}
-
-export interface ProviderAvailability {
-    provider_id: string;
-    available: boolean;
-    status: string;
-    detail: string;
-}
-
-export interface DispatchRequest {
-    provider_id: string;
-    run_id: number;
-    repo: string;
-}
-
-export interface DispatchResponse {
-    status: "queued" | "error";
-    message: string;
-    job_id?: string;
-}
-
-export interface QueueDiagnoseResponse {
-    stale_count: number;
-    details: string;
-    recommendations: string[];
-}
-
-export interface UserMe {
-    login: string;
-    name: string | null;
-    avatar_url: string;
-    html_url: string;
-}
-
-export interface StatsResponse {
-    total_runs_today: number;
-    failed_runs_today: number;
-    success_rate: number;
-    avg_duration_seconds: number;
-}
-
-export interface UsageResponse {
-    usage: UsageEntry[];
-}
-
-export interface UsageEntry {
-    repo: string;
-    run_count: number;
-    total_minutes: number;
-}
-TS
-
 if [ "$CHECK" -eq 1 ]; then
   diff -u "$SNAPSHOT" "$TMP_SNAPSHOT"
-  diff -u "$TYPES" "$TMP_TYPES"
+  # Maxwell routes stay out of the published OpenAPI snapshot (#2830) but remain in
+  # api-types.ts for hand-maintained client calls; only the JSON contract is gated.
 else
   mkdir -p "$(dirname "$SNAPSHOT")"
   cp "$TMP_SNAPSHOT" "$SNAPSHOT"

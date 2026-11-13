@@ -21,14 +21,19 @@ concurrency:
 jobs:
   guard:
     timeout-minutes: 60
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event.repository.private && github.event_name == 'merge_group' && vars.RD_FAST_CHECKS_RUNNER == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || 'd-sorg-fleet' }}
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
       (github.event.pull_request.base.ref == 'main' && (github.event_name == 'pull_request' || github.event.label.name == 'phantom-guard-override') || github.event.pull_request.base.ref == 'master')
     steps:
-      # No checkout: this job never fetches PR code. Rule 4 reads the PR's
-      # commits over the REST API so pull_request and label events behave the
-      # same (RM#1989).
+      # Sparse checkout of base-ref guard scripts only (not the PR head). Rule 4
+      # still reads PR commits over the REST API (RM#1989).
+      - name: Checkout guard scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          sparse-checkout: scripts
+
       - name: Anti-phantom guard
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN || github.token }}
@@ -66,7 +71,7 @@ jobs:
             fail "Rule 1 (empty diff): PR has zero changed files. If intentional, set title to exactly 'chore: empty PR'."
           fi
 
-          if echo "$TITLE" | grep -qiE '^feat[(:]|Implement|System|Engine|Framework'; then
+          if echo "$TITLE" | python3 scripts/phantom_guard_title.py; then
             CODE_FILES=$(echo "$PR_FILES" | grep -cE '^(backend/|clients/|frontend/src/|src/|rust_core/|api/)' || true)
             if [ "${CODE_FILES:-0}" -lt 1 ]; then
               fail "Rule 2 (feature without code): title claims a feature but PR touches zero files under backend/, clients/, frontend/src/, src/, rust_core/, or api/."

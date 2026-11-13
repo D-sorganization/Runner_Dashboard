@@ -22,15 +22,13 @@ router = APIRouter(prefix="/api/fleet/dispatch", tags=["dispatch"])
 log = logging.getLogger("dashboard.dispatch")
 
 
-_is_envelope_replay: Callable[[str], Awaitable[bool]] | None = None
-_record_processed_envelope: Callable[[str], Awaitable[None]] | None = None
+_claim_envelope: Callable[[str], Awaitable[bool]] | None = None
 
 
-def set_replay_functions(is_replay_fn, record_fn) -> None:
-    """Set replay detection functions (called from server.py after they're defined)."""
-    global _is_envelope_replay, _record_processed_envelope
-    _is_envelope_replay = is_replay_fn
-    _record_processed_envelope = record_fn
+def set_replay_function(claim_fn: Callable[[str], Awaitable[bool]]) -> None:
+    """Set the atomic replay claim callback (called from server.py at startup)."""
+    global _claim_envelope
+    _claim_envelope = claim_fn
 
 
 @router.get("/actions")
@@ -98,13 +96,6 @@ async def submit_dispatch_command(request: Request) -> dict:
             detail=f"Envelope validation failed: {crypto_result.reason}",
         )
 
-    if _is_envelope_replay and await _is_envelope_replay(envelope.envelope_id):
-        log.warning("replay detected: envelope_id=%s", _sanitize_log_value(envelope.envelope_id))
-        raise HTTPException(
-            status_code=400,
-            detail="Envelope has already been processed (replay detected)",
-        )
-
     result = dispatch_contract.validate_envelope(envelope)
     audit = dispatch_contract.build_audit_log_entry(envelope, result)
 
@@ -119,8 +110,11 @@ async def submit_dispatch_command(request: Request) -> dict:
     if not result.accepted:
         raise HTTPException(status_code=403, detail=result.reason)
 
-    if _record_processed_envelope:
-        await _record_processed_envelope(envelope.envelope_id)
+    if _claim_envelope is None:
+        raise HTTPException(status_code=503, detail="Dispatch replay protection is unavailable")
+    if not await _claim_envelope(envelope.envelope_id):
+        log.warning("replay detected: envelope_id=%s", _sanitize_log_value(envelope.envelope_id))
+        raise HTTPException(status_code=400, detail="Envelope has already been processed (replay detected)")
 
     prototype_cmd = dispatch_contract.command_preview(envelope.action, envelope.payload)
     return {

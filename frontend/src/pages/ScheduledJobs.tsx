@@ -197,7 +197,10 @@ export default function ScheduledJobs(): React.ReactElement {
         <span className="section-title">
           <ClockGlyph size={14} /> Scheduled Workflows
           {allWorkflows.length > 0 ? (
-            <span className="section-badge scheduled-jobs__count-badge">
+            <span
+              className="section-badge scheduled-jobs__count-badge"
+              title={`${filtered.length} scheduled workflows shown`}
+            >
               {filtered.length}
             </span>
           ) : null}
@@ -311,6 +314,8 @@ export default function ScheduledJobs(): React.ReactElement {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="scheduled-jobs__run-link"
+                        title="Open last workflow run on GitHub"
+                        aria-label={`Open last workflow run (${lr.conclusion || lr.status || "in progress"}) on GitHub`}
                       >
                         {lr.conclusion || lr.status || "in progress"}
                       </a>
@@ -330,7 +335,10 @@ export default function ScheduledJobs(): React.ReactElement {
           <div className="section-header scheduled-jobs__dry-run-header">
             <span className="section-title">
               Dry-Run Plan
-              <span className="section-badge scheduled-jobs__dry-run-badge">
+              <span
+                className="section-badge scheduled-jobs__dry-run-badge"
+                title={`${dryRunSteps} dry-run plan steps`}
+              >
                 {dryRunSteps}
               </span>
             </span>

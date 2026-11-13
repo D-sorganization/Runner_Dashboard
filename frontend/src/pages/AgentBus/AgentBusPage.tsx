@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../../lib/api";
+import { guidanceForFailure, guidanceForResponse, type OperatorGuidance } from "../../lib/apiErrorGuidance";
 import { EmptyState } from "../../primitives/EmptyState";
+import { tabIdToPath } from "../../shell/routing";
 
 interface AgentRow {
   session: string;
@@ -10,6 +12,10 @@ interface AgentRow {
   lease_expires_at: string;
   inbox_preview: Array<{ id: string; type: string; from_session: string; body: string }>;
 }
+
+/** Why `agents` came back empty (#3504): mirrors the #3503 activity-sessions
+ * contract so a bare empty list is never read as proof no fleet agents exist. */
+type EmptyReason = "complete_empty" | "local_empty";
 
 interface OverviewResponse {
   agents: AgentRow[];
@@ -33,20 +39,41 @@ interface OverviewResponse {
     stale_sessions: Array<{ session: string; role: string }>;
     blocked: Array<{ id: string; repo: string; work_number: number; body: string }>;
   };
+  empty_reason?: EmptyReason | null;
+  reaper?: {
+    last_tick_age_seconds: number | null;
+    stale_sessions: number;
+    released_claims: number;
+    deferred_sessions: number;
+    errors: number;
+  };
+}
+
+/** Deep-link into the existing #2864 Activity session inspector, never a second viewer. */
+function activitySessionHref(session: string): string {
+  return `${tabIdToPath("activity")}?session=${encodeURIComponent(`agent_bus:${session}`)}`;
 }
 
 export function AgentBusPage(): React.ReactElement {
   const [data, setData] = useState<OverviewResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<OperatorGuidance | null>(null);
 
   const load = useCallback(() => {
     legacyFetch("/api/v1/agent/overview")
       .then((r) => {
-        if (!r.ok) throw new Error(`overview ${r.status}`);
+        if (!r.ok) {
+          setError(guidanceForResponse(r));
+          return null;
+        }
         return r.json() as Promise<OverviewResponse>;
       })
-      .then(setData)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      .then((res) => {
+        if (res) {
+          setData(res);
+          setError(null);
+        }
+      })
+      .catch((e: unknown) => setError(guidanceForFailure({ error: e })));
   }, []);
 
   useEffect(() => {
@@ -58,7 +85,7 @@ export function AgentBusPage(): React.ReactElement {
   if (error) {
     return (
       <div className="agent-bus-page">
-        <p className="events-tab__degraded">Agent bus overview unavailable: {error}</p>
+        <EmptyState variant="error" title={error.title} description={error.action} onRetry={load} />
       </div>
     );
   }
@@ -71,11 +98,38 @@ export function AgentBusPage(): React.ReactElement {
     <div className="agent-bus-page">
       <h1>Agent bus</h1>
       <p>Live fleet sessions, inboxes, and work-item threads (#2155).</p>
+      {data.reaper ? (
+        <p className="agent-bus-reaper-meta" data-testid="agent-bus-reaper-meta">
+          Reaper last tick:{" "}
+          {data.reaper.last_tick_age_seconds == null
+            ? "never"
+            : `${Math.round(data.reaper.last_tick_age_seconds)}s ago`}
+          ; cleared {data.reaper.released_claims} claim(s) on last pass
+          {data.reaper.deferred_sessions > 0
+            ? `; deferred ${data.reaper.deferred_sessions} stale session(s) (health gate)`
+            : ""}
+          .
+        </p>
+      ) : null}
 
       <section>
         <h2>Live agents ({data.agents.length})</h2>
         {data.agents.length === 0 ? (
-          <EmptyState title="No live sessions" description="Agents appear after session-start hook registration." />
+          data.empty_reason === "local_empty" ? (
+            <>
+              <EmptyState
+                title="No currently live sessions"
+                description="Every known session is stale or expired — not a sign no fleet agents exist."
+              />
+              <ul>
+                {data.backlog.stale_sessions.map((s) => (
+                  <li key={s.session}>{s.session}</li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <EmptyState title="No live sessions" description="Agents appear after session-start hook registration." />
+          )
         ) : (
           <table className="data-table">
             <thead>
@@ -89,7 +143,9 @@ export function AgentBusPage(): React.ReactElement {
             <tbody>
               {data.agents.map((a) => (
                 <tr key={a.session}>
-                  <td>{a.session}</td>
+                  <td>
+                    <a href={activitySessionHref(a.session)}>{a.session}</a>
+                  </td>
                   <td>{a.role}</td>
                   <td>{a.node}</td>
                   <td>

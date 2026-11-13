@@ -1,8 +1,11 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from identity import Principal, identity_manager, require_scope
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+log = logging.getLogger("dashboard.admin")
 
 
 class TokenCreateRequest(BaseModel):
@@ -26,6 +29,34 @@ def list_principals(_auth: Principal = Depends(require_scope("admin"))):  # noqa
 def list_tokens(_auth: Principal = Depends(require_scope("admin"))):  # noqa: B008
     """List all active service tokens (hashes only)."""
     return {"tokens": [t.model_dump() for t in identity_manager.tokens]}
+
+
+@router.get("/token-health", dependencies=[Depends(require_scope("admin"))])
+def get_token_health():
+    """Agent token presence, validity and days to expiry per configured principal (#3895)."""
+    from agent_token_health import token_health_report  # noqa: PLC0415
+
+    return {"principals": token_health_report(identity_manager)}
+
+
+@router.post("/agent-principals/reload")
+def reload_agent_principals_route(auth: Principal = Depends(require_scope("admin"))):  # noqa: B008
+    """Ingest new agent principals and token files without a hub restart; admin only, ids only (#4256)."""
+    # Sync route on purpose: the config and token file reads run in the threadpool.
+    from agent_principal_defaults import AgentPrincipalReloadError, reload_agent_principals  # noqa: PLC0415
+
+    try:
+        result = reload_agent_principals(identity_manager)
+    except AgentPrincipalReloadError as exc:
+        raise HTTPException(status_code=500, detail="Agent principals could not be reloaded") from exc
+    log.info(
+        "audit: agent-principals reload by=%s added=%s updated=%s tokens_ingested=%s",
+        auth.id,
+        result["added"],
+        result["updated"],
+        result["tokens_ingested"],
+    )
+    return result
 
 
 @router.post("/principals/{principal_id}/token")

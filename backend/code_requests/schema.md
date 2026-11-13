@@ -92,7 +92,7 @@ Whenever a transition occurs, an issue comment is posted:
 For operator overrides, `(override)` is appended to the header line:
 
 ```markdown
-**[Code Request]** State changed from `draft` to `planning` by `dieterolson`. (override)
+**[Code Request]** State changed from `draft` to `planning` by `fleet-operator`. (override)
 
 **Reason:** Fast-tracking urgent fix
 ```

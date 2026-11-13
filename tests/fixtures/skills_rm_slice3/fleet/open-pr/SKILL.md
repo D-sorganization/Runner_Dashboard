@@ -6,4 +6,4 @@ roles: [issue-remediator, pr-remediator, project-steward, barb]
 repos: ["*"]
 task_types: [open-pr, staff-dispatch]
 ---
-Use change fragments, PR Handoff, ready (non-draft) PRs, arm squash auto-merge, stay under 500 lines.
+Use change fragments, PR Handoff, ready (non-draft) PRs, arm squash auto-merge; prefer small cohesive PRs (do not split a cohesive fix only to hit a line count).

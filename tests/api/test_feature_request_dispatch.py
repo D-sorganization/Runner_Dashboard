@@ -1,6 +1,6 @@
 """Feature Request dispatch must report the real outcome (issue #1280).
 
-The dispatch target ``Jules-Feature-Request.yml`` does not exist in
+The dispatch target ``Agent-Quick-Dispatch.yml`` may be missing in
 Repository_Management, so ``gh api`` fails with HTTP 404.  The handler used to
 swallow that failure, record the request as ``dispatched`` and return success,
 silently dropping every request.
@@ -18,13 +18,13 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "backend"))
 
-from routers import feature_requests  # noqa: E402
+from routers import code_requests as feature_requests  # noqa: E402
 from server import app  # noqa: E402
 
 _NOT_FOUND = (
     1,
     "",
-    "gh: Not Found (HTTP 404)\nworkflow Jules-Feature-Request.yml not found on the default branch",
+    "gh: Not Found (HTTP 404)\nworkflow Agent-Quick-Dispatch.yml not found on the default branch",
 )
 _BODY = {
     "repository": "Runner_Dashboard",
@@ -61,11 +61,11 @@ def _history(path: Path) -> list[dict]:
 
 
 def test_dispatch_failure_returns_502_and_records_failed(client: TestClient, history_path: Path) -> None:
-    with patch("routers.feature_requests.run_cmd", new=AsyncMock(return_value=_NOT_FOUND)):
+    with patch("routers.code_requests.run_cmd", new=AsyncMock(return_value=_NOT_FOUND)):
         resp = client.post("/api/feature-requests/dispatch", json=_BODY)
 
     assert resp.status_code == 502
-    assert "Jules-Feature-Request.yml" in resp.json()["detail"]
+    assert "Agent-Quick-Dispatch.yml" in resp.json()["detail"]
     entries = _history(history_path)
     assert len(entries) == 1
     assert entries[0]["status"] == "failed"
@@ -73,7 +73,7 @@ def test_dispatch_failure_returns_502_and_records_failed(client: TestClient, his
 
 
 def test_dispatch_success_records_dispatched(client: TestClient, history_path: Path) -> None:
-    with patch("routers.feature_requests.run_cmd", new=AsyncMock(return_value=(0, "", ""))):
+    with patch("routers.code_requests.run_cmd", new=AsyncMock(return_value=(0, "", ""))):
         resp = client.post("/api/feature-requests/dispatch", json=_BODY)
 
     assert resp.status_code == 200
@@ -85,19 +85,19 @@ def test_dispatch_success_records_dispatched(client: TestClient, history_path: P
 
 def test_list_reports_unavailable_dispatch_target(client: TestClient) -> None:
     probe = AsyncMock(return_value=_NOT_FOUND)
-    with patch("routers.feature_requests.run_cmd", new=probe):
+    with patch("routers.code_requests.run_cmd", new=probe):
         first = client.get("/api/feature-requests").json()
         second = client.get("/api/feature-requests").json()
 
     assert first["dispatchTarget"]["available"] is False
-    assert "Jules-Feature-Request.yml" in first["dispatchTarget"]["detail"]
+    assert "Agent-Quick-Dispatch.yml" in first["dispatchTarget"]["detail"]
     assert second["dispatchTarget"]["available"] is False
     assert probe.await_count == 1, "probe result should be cached between list calls"
 
 
 def test_dispatch_failure_marks_target_unavailable(client: TestClient) -> None:
     calls = AsyncMock(return_value=_NOT_FOUND)
-    with patch("routers.feature_requests.run_cmd", new=calls):
+    with patch("routers.code_requests.run_cmd", new=calls):
         client.post("/api/feature-requests/dispatch", json=_BODY)
         listed = client.get("/api/feature-requests").json()
 

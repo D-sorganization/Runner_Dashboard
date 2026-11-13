@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { legacyFetch } from "../../lib/api";
+import { throwIfHttpError, useSubmit } from "../../hooks/useSubmit";
 import type {
   DeploymentMachine,
   DeploymentStateData,
@@ -35,8 +36,7 @@ export function OperationsDeploySection({
   const [deployMachine, setDeployMachine] = useState("");
   const [deployAction, setDeployAction] = useState("");
   const [deployConfirmed, setDeployConfirmed] = useState(false);
-  const [deployBusy, setDeployBusy] = useState(false);
-  const [deployMessage, setDeployMessage] = useState<string | null>(null);
+  const deploySubmit = useSubmit<{ message?: string }>();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -79,35 +79,30 @@ export function OperationsDeploySection({
 
   const handleExecuteDeploy = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!deployAction || !deployConfirmed) return;
-    setDeployBusy(true);
-    setDeployMessage(null);
+    if (!deployAction || !deployConfirmed || deploySubmit.isSubmitting) return;
 
-    legacyFetch("/api/fleet/orchestration/deploy", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-      },
-      body: JSON.stringify({
-        machine: deployMachine || (deployData?.machines?.[0]?.name ?? "controltower"),
-        action: deployAction,
-        confirmed: deployConfirmed,
-      }),
-    })
-      .then((r) => r.json() as Promise<{ message?: string }>)
-      .then((res) => {
-        setDeployMessage(res.message || "Deploy action dispatched successfully");
-        setDeployAction("");
-        setDeployConfirmed(false);
-        load();
-      })
-      .catch((err: unknown) => {
-        setDeployMessage(err instanceof Error ? err.message : "Deploy action failed");
-      })
-      .finally(() => {
-        setDeployBusy(false);
+    deploySubmit.submit(async ({ idempotencyKey, signal }) => {
+      const response = await legacyFetch("/api/fleet/orchestration/deploy", {
+        method: "POST",
+        signal,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "Idempotency-Key": idempotencyKey,
+        },
+        body: JSON.stringify({
+          machine: deployMachine || (deployData?.machines?.[0]?.name ?? "node-a"),
+          action: deployAction,
+          confirmed: deployConfirmed,
+        }),
       });
+      await throwIfHttpError(response, "Deploy action failed");
+      const res = (await response.json()) as { message?: string };
+      setDeployAction("");
+      setDeployConfirmed(false);
+      load();
+      return res;
+    });
   };
 
   const machines = deployData?.machines || [];
@@ -163,6 +158,7 @@ export function OperationsDeploySection({
             type="button"
             onClick={load}
             disabled={loading}
+            title="Reload deployment rollout status and version drift"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",
@@ -406,7 +402,8 @@ export function OperationsDeploySection({
 
           <button
             type="submit"
-            disabled={deployBusy || !deployAction || !deployConfirmed}
+            disabled={deploySubmit.isSubmitting || !deployAction || !deployConfirmed}
+            title="Run the selected deployment action on the chosen targets"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",
@@ -418,12 +415,28 @@ export function OperationsDeploySection({
               border: "1px solid var(--border-green, #2ea043)",
             }}
           >
-            {deployBusy ? "Dispatching..." : "Execute Deploy"}
+            {deploySubmit.isSubmitting ? "Dispatching..." : "Execute Deploy"}
           </button>
         </form>
 
-        {deployMessage && (
+        {deploySubmit.failureText ? (
           <div
+            role="alert"
+            style={{
+              marginTop: "0.75rem",
+              padding: "0.5rem 0.75rem",
+              borderRadius: "4px",
+              fontSize: "0.75rem",
+              background: "var(--bg-danger-subtle, rgba(248,81,73,0.1))",
+              color: "var(--text-danger, #f85149)",
+            }}
+          >
+            {deploySubmit.failureText}
+          </div>
+        ) : null}
+        {deploySubmit.state.status === "succeeded" ? (
+          <div
+            role="status"
             style={{
               marginTop: "0.75rem",
               padding: "0.5rem 0.75rem",
@@ -433,9 +446,9 @@ export function OperationsDeploySection({
               color: "var(--text-primary, #c9d1d9)",
             }}
           >
-            {deployMessage}
+            {deploySubmit.state.value.message || "Deploy action dispatched successfully"}
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Audit Log (Last 5) */}

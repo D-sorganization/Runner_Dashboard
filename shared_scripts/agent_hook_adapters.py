@@ -15,6 +15,8 @@ BRIDGE_REL = "scripts/agent-check-hook-bridge.py"
 AGENT_BUS_BRIDGE_REL = "scripts/agent-bus-hook-bridge.py"
 CURSOR_HOOK_VERSION = 1
 ANTIGRAVITY_HOOK_GROUP = "fleet-agent-check"
+AGY_BARB_HOOK_GROUP = "fleet-agent-barb"
+AGY_BARB_HOOK_REL = "scripts/wrappers/agy_barb_hook.py"
 SUPPORTED_TARGETS = frozenset({"cursor", "claude", "codex", "antigravity", "gemini", "pre-push"})
 
 
@@ -49,6 +51,28 @@ def bridge_command(mode: str) -> str:
 def bridge_command_git_root(mode: str) -> str:
     """Resolve the bridge from ``git rev-parse --show-toplevel`` (Codex cwd)."""
     return f'bash -lc \'root="$(git rev-parse --show-toplevel)"; exec python3 "$root/{BRIDGE_REL}" {mode}\'"'
+
+
+def agent_bus_bridge_command(mode: str) -> str:
+    """Run the agent-bus bridge from any repo checkout (#2982)."""
+    return (
+        "bash -lc '"
+        'for root in "${RUNNER_DASHBOARD_REPO_ROOT}" "${RUNNER_DASHBOARD_DEPLOY_DIR}" '
+        '"$HOME/actions-runners/dashboard/current" "$(git rev-parse --show-toplevel 2>/dev/null || true)"; do '
+        f'[ -n "$root" ] && [ -f "$root/{AGENT_BUS_BRIDGE_REL}" ] && '
+        f'exec python3 "$root/{AGENT_BUS_BRIDGE_REL}" {mode}; done; exit 0\''
+    )
+
+
+def barb_hook_command(script_rel: str) -> str:
+    """Run a Barb mention-wake wrapper from any repo checkout (#3663)."""
+    return (
+        "bash -lc '"
+        'for root in "${RUNNER_DASHBOARD_REPO_ROOT}" "${RUNNER_DASHBOARD_DEPLOY_DIR}" '
+        '"$HOME/actions-runners/dashboard/current" "$(git rev-parse --show-toplevel 2>/dev/null || true)"; do '
+        f'[ -n "$root" ] && [ -f "$root/{script_rel}" ] && '
+        f'exec python3 "$root/{script_rel}"; done; exit 0\''
+    )
 
 
 def retire_project_quality_hooks(existing: dict[str, Any]) -> dict[str, Any]:
@@ -91,9 +115,43 @@ def retire_project_quality_hooks(existing: dict[str, Any]) -> dict[str, Any]:
 def _agent_bus_hook(mode: str, timeout_seconds: int) -> dict[str, Any]:
     return {
         "type": "command",
-        "command": f"python3 {AGENT_BUS_BRIDGE_REL} {mode}",
+        "command": agent_bus_bridge_command(mode),
         "timeout": timeout_seconds,
     }
+
+
+def _claude_session_start_bus(timeout_seconds: int) -> dict[str, Any]:
+    command = agent_bus_bridge_command("session-start")
+    return {
+        "matcher": "startup|resume|clear|compact|fork|cli",
+        "hooks": [{"type": "command", "command": command, "timeout": timeout_seconds}],
+    }
+
+
+def _codex_session_start_bus(timeout_seconds: int) -> dict[str, Any]:
+    command = agent_bus_bridge_command("session-start")
+    return {
+        "matcher": "startup|resume|clear|compact|fork|cli",
+        "hooks": [{"type": "command", "command": command, "timeout": timeout_seconds}],
+    }
+
+
+def _hook_commands(entry: Any) -> list[str]:
+    if not isinstance(entry, dict):
+        return []
+    command = entry.get("command")
+    if isinstance(command, str):
+        return [command]
+    nested = entry.get("hooks")
+    if not isinstance(nested, list):
+        return []
+    return [cmd for item in nested for cmd in _hook_commands(item)]
+
+
+def _append_bus_hook(entries: list[Any], hook: dict[str, Any], command: str) -> None:
+    if any(command in _hook_commands(item) for item in entries):
+        return
+    entries.append(hook)
 
 
 def generate_cursor_hooks(root: Path, *, timeout_seconds: int) -> dict[str, Any]:
@@ -103,15 +161,18 @@ def generate_cursor_hooks(root: Path, *, timeout_seconds: int) -> dict[str, Any]
     hooks.setdefault("stop", [])
     starts = hooks.setdefault("sessionStart", [])
     bus = _agent_bus_hook("session-start", timeout_seconds)
-    if not any(isinstance(item, dict) and item.get("command") == bus["command"] for item in starts):
-        starts.append(bus)
+    _append_bus_hook(starts, bus, bus["command"])
     return doc
 
 
 def merge_claude_settings(existing: dict[str, Any], *, timeout_seconds: int) -> dict[str, Any]:
     require(isinstance(existing, dict), "settings must be an object")
     merged = retire_project_quality_hooks(existing)
-    merged.setdefault("hooks", {}).setdefault("Stop", [])
+    hooks = merged.setdefault("hooks", {})
+    hooks.setdefault("Stop", [])
+    starts = hooks.setdefault("SessionStart", [])
+    start_bus = _claude_session_start_bus(timeout_seconds)
+    _append_bus_hook(starts, start_bus, start_bus["hooks"][0]["command"])
     return merged
 
 
@@ -133,7 +194,11 @@ def generate_codex_hooks(root: Path, *, timeout_seconds: int) -> dict[str, Any]:
     doc = retire_project_quality_hooks(_read_json_object(root / ".codex/hooks.json"))
     if doc.get("description", "").startswith("Fleet agent-check hooks (Codex CLI pin "):
         doc["description"] = "Fleet quality hooks are installed in the protected global profile."
-    doc.setdefault("hooks", {}).setdefault("Stop", [])
+    hooks = doc.setdefault("hooks", {})
+    hooks.setdefault("Stop", [])
+    starts = hooks.setdefault("SessionStart", [])
+    start_bus = _codex_session_start_bus(timeout_seconds)
+    _append_bus_hook(starts, start_bus, start_bus["hooks"][0]["command"])
     return doc
 
 
@@ -142,6 +207,14 @@ def generate_antigravity_hooks(root: Path, *, timeout_seconds: int) -> dict[str,
     group = doc.setdefault(ANTIGRAVITY_HOOK_GROUP, {})
     group.setdefault("PostToolUse", [])
     group.setdefault("Stop", [])
+    bus_group = doc.setdefault("fleet-agent-bus", {})
+    starts = bus_group.setdefault("SessionStart", [])
+    bus = _agent_bus_hook("session-start", timeout_seconds)
+    _append_bus_hook(starts, bus, bus["command"])
+    barb_command = barb_hook_command(AGY_BARB_HOOK_REL)
+    barb_hook = {"type": "command", "command": barb_command, "timeout": timeout_seconds}
+    barb_stops = doc.setdefault(AGY_BARB_HOOK_GROUP, {}).setdefault("Stop", [])
+    _append_bus_hook(barb_stops, barb_hook, barb_command)
     return doc
 
 
@@ -155,11 +228,12 @@ def merge_gemini_settings(existing: dict[str, Any], *, timeout_seconds: int) -> 
 
 
 def generate_pre_push_sample() -> str:
+    bridge = agent_bus_bridge_command("pre-push")
     return (
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
+        f"{bridge} || true\n"
         'root="$(git rev-parse --show-toplevel)"\n'
-        'python3 "$root/scripts/agent-bus-hook-bridge.py" pre-push || true\n'
         'exec python3 "$root/scripts/pre_push_agent_check.py"\n'
     )
 

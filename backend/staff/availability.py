@@ -92,6 +92,17 @@ def resolve_provider_chain(
     chain: list[str] = []
     if requested_provider:
         chain.append(requested_provider.lower().strip())
+    elif role_name.strip():
+        from staff.rd_barb_provider_state import read_active_provider  # noqa: PLC0415
+
+        allowed = (
+            tuple(role.providers)
+            if role and role.providers
+            else ("claude", "codex", "antigravity", "cursor-agent", *DEFAULT_PROVIDER_CHAIN)
+        )
+        snap = read_active_provider(role_name, allowed_providers=allowed)
+        if snap is not None and snap.provider not in chain:
+            chain.append(snap.provider)
 
     if role_name.lower() == "barb":
         for p in DEFAULT_PROVIDER_CHAIN:

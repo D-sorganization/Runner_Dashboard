@@ -84,7 +84,7 @@ Deferred item: `{item, project, reason, reassess}`. Borda row:
 - PUT: `coordination.auth.require_priorities_writer` — a principal whose roles grant
   `priorities.write` (`operator` preset, `admin` via `*`; `bot`, `viewer` and other
   principals get 403). Production operator sessions come from GitHub OAuth
-  (`docs/runbooks/oglaptop-production-oauth.md`). Loopback callers are accepted only
+  (`docs/runbooks/node-b-production-oauth.md`). Loopback callers are accepted only
   when `DASHBOARD_LOOPBACK_AUTH=1` **and** the dev-only operator-write flag is set
   (issue #2068). Directives steer every staff prompt, so agent bot tokens (which hold
   `coordination.write`) cannot set them (#1243). The shared fleet token alone is

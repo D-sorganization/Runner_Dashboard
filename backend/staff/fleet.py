@@ -15,16 +15,13 @@ HTTP calls go through two small injectable functions (``get_json`` /
 from __future__ import annotations
 
 import asyncio
-import base64
-import hashlib
-import hmac
-import json
 import logging
 import os
 import sys
+import threading
 import time
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -33,6 +30,8 @@ from fleet_autoconfig import derive_fleet_nodes_from_registry
 from machine_registry import load_machine_registry
 from staff import liveness as staff_liveness
 from staff.adapters import available_providers, chat_only_providers
+from staff.barb_lease_fence import BarbClaim
+from staff.liveness import _parse_iso
 from staff.rm_sync import source_status
 from staff.store import ACTIVE_STATUSES
 from staff.usage import today_iso
@@ -41,7 +40,10 @@ log = logging.getLogger("dashboard.staff.fleet")
 
 PEER_TIMEOUT_SECONDS = float(os.environ.get("STAFF_PEER_TIMEOUT_SECONDS", "12"))
 PEER_STALE_GRACE_SECONDS = float(os.environ.get("STAFF_PEER_STALE_GRACE_SECONDS", "120"))
+SCHEDULER_WATCHDOG_DEBOUNCE_SECONDS = float(os.environ.get("STAFF_SCHEDULER_WATCHDOG_DEBOUNCE_SECONDS", "300"))
 _LAST_GOOD_PEER_BOARD: dict[tuple[str, str], tuple[float, dict[str, Any]]] = {}
+_LAST_SCHEDULER_ALERT_AT: dict[str, float] = {}
+_SCHEDULER_ALERT_LOCK = threading.Lock()
 LOCAL_MACHINE_ALIASES = frozenset({"local", "", "self", "here"})
 
 GetJson = Callable[[str, dict[str, str]], Awaitable[dict[str, Any]]]
@@ -135,6 +137,104 @@ async def fetch_peer_board(name: str, url: str) -> tuple[str, dict[str, Any]]:
         return name, {"machine": name, "status": "offline", "error": str(exc)[:200]}
 
 
+def scheduler_watchdog_alerts(machines: dict[str, dict[str, Any]], now: datetime) -> list[dict[str, Any]]:
+    """Fleet-level scheduler health alerts: no scheduler runner or stale next-fire slots."""
+    online = {name: board for name, board in machines.items() if board.get("status") == "online"}
+    if not any("scheduler" in board for board in online.values()):
+        return []
+    alerts: list[dict[str, Any]] = []
+    running_hosts = [
+        name
+        for name, board in online.items()
+        if bool((board.get("scheduler") or {}).get("enabled")) and bool((board.get("scheduler") or {}).get("running"))
+    ]
+    if not running_hosts:
+        alerts.append(
+            {
+                "key": "no-running-scheduler",
+                "severity": "warning",
+                "title": "No running staff scheduler host",
+                "detail": "No online node reports scheduler enabled and running.",
+                "node": None,
+            }
+        )
+    for name, board in online.items():
+        pause = (board.get("scheduler") or {}).get("pause") or {}
+        if pause.get("expired"):
+            alerts.append(
+                {
+                    "key": f"scheduler-pause-expired:{name}",
+                    "severity": "warning",
+                    "title": "Staff scheduler pause TTL expired",
+                    "detail": f"Node {name} scheduler pause_until {pause.get('pause_until')} has elapsed.",
+                    "node": name,
+                }
+            )
+    for name, board in online.items():
+        scheduler = board.get("scheduler") or {}
+        if not bool(scheduler.get("enabled")):
+            continue
+        tick = float(scheduler.get("tick_seconds") or 30.0)
+        stale_before = now - timedelta(seconds=max(60.0, tick * 2))
+        for row in scheduler.get("roles") or []:
+            if not isinstance(row, dict) or not bool(row.get("enabled", True)):
+                continue
+            role = str(row.get("role") or "")
+            nxt = _parse_iso(str(row.get("next_fire") or ""))
+            if not role or nxt is None or nxt >= stale_before:
+                continue
+            alerts.append(
+                {
+                    "key": f"stale-next-fire:{name}:{role}",
+                    "severity": "warning",
+                    "title": f"Scheduler stale next-fire on {name}",
+                    "detail": f"Role {role} next_fire {nxt.isoformat()} is behind scheduler cadence.",
+                    "node": name,
+                }
+            )
+    return alerts
+
+
+def _emit_scheduler_watchdog_alerts(alerts: list[dict[str, Any]], now: datetime) -> None:
+    if not alerts:
+        return
+    now_s = now.timestamp()
+    fresh: list[dict[str, Any]] = []
+    with _SCHEDULER_ALERT_LOCK:
+        for alert in alerts:
+            key = str(alert.get("key") or "")
+            if not key:
+                continue
+            last = _LAST_SCHEDULER_ALERT_AT.get(key, float("-inf"))
+            if now_s - last < SCHEDULER_WATCHDOG_DEBOUNCE_SECONDS:
+                continue
+            _LAST_SCHEDULER_ALERT_AT[key] = now_s
+            fresh.append(alert)
+    if not fresh:
+        return
+    import push  # noqa: PLC0415
+    from fleet_events import FleetEvent, get_event_store  # noqa: PLC0415
+
+    store = get_event_store()
+    ts = int(now_s * 1000)
+    for alert in fresh:
+        store.record(
+            FleetEvent(
+                ts=ts,
+                severity=str(alert.get("severity") or "warning"),  # type: ignore[arg-type]
+                kind="watchdog",
+                title=str(alert.get("title") or "Scheduler watchdog alert"),
+                detail=str(alert.get("detail") or ""),
+                node=alert.get("node"),
+            )
+        )
+        push.notify(
+            "staff.escalation",
+            str(alert.get("title") or "Scheduler watchdog alert"),
+            str(alert.get("detail") or ""),
+        )
+
+
 async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | None = None) -> dict[str, Any]:
     """Merge this node's board with every peer's board into one fleet view.
 
@@ -167,9 +267,12 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
                 spend[provider] = round(spend.get(provider, 0.0) + float(usd), 6)
         providers[name] = dict(board.get("providers") or {})
         providers_cooldown[name] = list(board.get("providers_cooldown") or [])
+    now = datetime.now(UTC)
+    scheduler_alerts = scheduler_watchdog_alerts(machines, now)
+    _emit_scheduler_watchdog_alerts(scheduler_alerts, now)
     spend["total"] = round(sum(v for k, v in spend.items() if k != "total"), 6)
     return {
-        "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "generated_at": now.isoformat().replace("+00:00", "Z"),
         "hub": local_name,
         "machine": local_name,
         "machines": machines,
@@ -182,127 +285,39 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
         "providers": providers,
         "providers_cooldown": providers_cooldown,
         "liveness_alerts": liveness_alerts,
+        "scheduler_alerts": scheduler_alerts,
     }
 
 
-def choose_machine(board: dict[str, Any], provider: str | None, local_name: str) -> str:
-    """Pick the online machine with the fewest active runs that has ``provider`` installed.
+def _placement_load(node: dict[str, Any]) -> tuple[int, float, float]:
+    """Staff runs first, then live CPU %, then memory % (lower is better; #4357)."""
+    runs = len(node.get("running", [])) + len(node.get("queued", []))
+    resources = node.get("dispatch_resources") or {}
+    cpu = float(resources.get("cpu_percent", 0) or 0)
+    mem = float(resources.get("mem_percent", 0) or 0)
+    return runs, cpu, mem
 
-    Ties go to the local node. Falls back to local when nothing qualifies, so a
-    degraded fleet still runs work somewhere.
+
+def choose_machine(board: dict[str, Any], provider: str | None, local_name: str) -> str:
+    """Pick the online machine with the lowest placement load that has ``provider`` installed.
+
+    Load weighs in-flight staff runs, then CPU %, then memory % from each board's
+    ``dispatch_resources``. Among equal loads, prefer a peer over the local hub (#4357).
+    Falls back to local when nothing qualifies.
     """
-    best: tuple[int, int, str] | None = None
+    best: tuple[int, float, float, int, str] | None = None
     for name, node in board.get("machines", {}).items():
         if node.get("status") != "online":
             continue
         installed = node.get("providers") or {}
         if provider and not installed.get(provider, False):
             continue
-        load = len(node.get("running", [])) + len(node.get("queued", []))
-        rank = (load, 0 if name == local_name else 1, name)
+        runs, cpu, mem = _placement_load(node)
+        local_tie = 1 if name == local_name else 0
+        rank = (runs, cpu, mem, local_tie, name)
         if best is None or rank < best:
             best = rank
-    return best[2] if best else local_name
-
-
-def sign_on_behalf_of(
-    principal: str,
-    surface: str = "api",
-    thread_id: str = "",
-    request_id: str = "",
-    secret: str | None = None,
-    origin_node: str = "",
-) -> str:
-    """Create a signed X-Staff-On-Behalf-Of header value (issue #1311).
-
-    Format: base64url(json_payload).hmac_signature_hex
-    """
-    key = secret if secret is not None else os.environ.get("HUB_FLEET_TOKEN") or os.environ.get("SESSION_SECRET") or ""
-    payload = {
-        "principal": principal,
-        "surface": surface,
-        "thread_id": thread_id,
-        "request_id": request_id,
-        "origin_node": origin_node,
-        "iat": int(time.time()),
-    }
-    payload_json = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    payload_b64 = base64.urlsafe_b64encode(payload_json).decode("ascii")
-    sig = hmac.new(key.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
-    return f"{payload_b64}.{sig}"
-
-
-def verify_on_behalf_of(
-    header: str,
-    secret: str | None = None,
-    ttl_seconds: int = 300,
-) -> dict[str, Any] | None:
-    """Verify an X-Staff-On-Behalf-Of header value (issue #1311).
-
-    Returns payload dict if valid, unexpired, and non-empty principal, else None.
-    """
-    key = secret if secret is not None else os.environ.get("HUB_FLEET_TOKEN") or os.environ.get("SESSION_SECRET") or ""
-    if not header or "." not in header:
-        return None
-    try:
-        payload_b64, sig = header.split(".", 1)
-        expected_sig = hmac.new(key.encode("utf-8"), payload_b64.encode("ascii"), hashlib.sha256).hexdigest()
-        if not hmac.compare_digest(sig, expected_sig):
-            return None
-        payload_json = base64.urlsafe_b64decode(payload_b64.encode("ascii")).decode("utf-8")
-        payload = json.loads(payload_json)
-        if not isinstance(payload, dict):
-            return None
-        principal = payload.get("principal")
-        if not principal or not isinstance(principal, str) or not principal.strip():
-            return None
-        iat = payload.get("iat")
-        if not isinstance(iat, (int, float)):
-            return None
-        now = time.time()
-        if now - iat > ttl_seconds or iat - now > 60:
-            return None
-        return payload
-    except Exception as exc:  # noqa: BLE001
-        log.debug("verify_on_behalf_of failed: %s", exc)
-        return None
-
-
-def is_fleet_peer(principal: Any) -> bool:
-    """True if principal is authenticated as a fleet peer (issue #1311)."""
-    roles = getattr(principal, "roles", []) or []
-    pid = getattr(principal, "id", "")
-    return pid in ("fleet-peer", "test-peer") or "fleet-peer" in roles
-
-
-def caller_identity(principal: Any) -> str:
-    """Format principal identity for run records (issue #1311)."""
-    pid = getattr(principal, "id", str(principal))
-    if pid in (
-        "fleet-peer",
-        "__loopback__",
-        "loopback-dev",
-        "test-orchestrator",
-        "test-peer",
-    ):
-        return pid
-    if pid.startswith("user:") or pid.startswith("principal:"):
-        return pid
-    return f"principal:{pid}"
-
-
-def extract_on_behalf_of(header: str | None, is_peer: bool) -> dict[str, Any] | None:
-    """Validate and unpack on-behalf-of header if caller is a peer (issue #1311)."""
-    if not header:
-        return None
-    if not is_peer:
-        log.warning("staff: ignored X-Staff-On-Behalf-Of header from non-peer")
-        return None
-    verified = verify_on_behalf_of(header)
-    if verified is None:
-        log.warning("staff: invalid X-Staff-On-Behalf-Of header from peer")
-        return None
-    return verified
+    return best[4] if best else local_name
 
 
 async def forward_run(
@@ -310,12 +325,24 @@ async def forward_run(
     role: str,
     body: dict[str, Any],
     on_behalf_of: str | None = None,
+    barb_claim: BarbClaim | None = None,
+    *,
+    origin_node: str = "",
 ) -> tuple[int, dict[str, Any]]:
     """POST a dispatch to a peer node; returns (status_code, json)."""
+    from staff.barb_origin_fence import ORIGIN_FENCE_HEADER, sign_barb_origin_fence  # noqa: PLC0415
+
     payload = {**body, "machine": "local"}
     headers = fleet_headers()
     if on_behalf_of:
         headers["X-Staff-On-Behalf-Of"] = on_behalf_of
+    if barb_claim is not None:
+        headers["X-Barb-Scope"] = barb_claim.scope
+        headers["X-Barb-Lease-Epoch"] = str(barb_claim.epoch)
+        if barb_claim.holder:
+            headers["X-Barb-Holder"] = barb_claim.holder
+        if origin_node.strip():
+            headers[ORIGIN_FENCE_HEADER] = sign_barb_origin_fence(barb_claim, origin_node=origin_node)
     return await post_json(f"{url}/api/staff/{role}/run", payload, headers)
 
 
@@ -341,6 +368,8 @@ def local_board(runner: Any) -> dict[str, Any]:
         from staff.provider_auth_preflight import run_preflight_and_cache  # noqa: PLC0415
 
         provider_auth = run_preflight_and_cache(runner.machine)
+    from routers.staff_schedule import schedule_snapshot  # noqa: PLC0415
+    from staff.resource_admission import sample_dispatch_resources  # noqa: PLC0415
 
     return {
         "machine": runner.machine,
@@ -354,8 +383,10 @@ def local_board(runner: Any) -> dict[str, Any]:
         "chat_only_providers": chat_only_providers(),
         "availability": avail_stats,
         "liveness": liveness,
+        "scheduler": schedule_snapshot(),
         "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),
         "provider_auth": provider_auth,
+        "dispatch_resources": sample_dispatch_resources().to_dict(),
     }
 
 
@@ -373,3 +404,14 @@ def holds_snapshot() -> list[dict[str, Any]]:
     except Exception as exc:  # noqa: BLE001
         log.warning("staff: holds unavailable: %s", exc)
         return []
+
+
+# Re-export delegation helpers (module split for fleet.py line cap; #4025).
+from staff.on_behalf_of import (  # noqa: E402, F401
+    caller_identity,
+    extract_on_behalf_of,
+    hub_fleet_bearer_authenticated,
+    is_fleet_peer,
+    sign_on_behalf_of,
+    verify_on_behalf_of,
+)

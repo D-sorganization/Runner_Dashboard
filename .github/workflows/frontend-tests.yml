@@ -6,24 +6,32 @@ on:
   push:
     branches: [main]
   merge_group:
+  workflow_call:
 
 permissions:
   contents: read
   pull-requests: read
 
-# Main-push / merge-group runs are never cancelled by a newer merge: a cancelled
-# required check leaves that commit permanently non-green, so node auto-deploy and
-# main-ci-auto-release would never find a releasable commit. Only superseded
-# pull_request runs are cancelled. Contract: tests/test_main_push_concurrency.py
+# Main-push and live merge_group runs are never concurrency-cancelled. Only
+# pull_request runs cancel in progress. Obsolete merge_group runs self-cancel
+# when their gh-readonly-queue ref is deleted (queue-entry-alive).
 concurrency:
-  group: frontend-tests-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.event_name == 'merge_group' && (github.event.merge_group.head_ref || github.ref || github.run_id) || format('{0}-{1}', github.event_name, github.sha) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  pr-guard:
+    if: >-
+      github.event_name == 'pull_request' &&
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    uses: ./.github/workflows/reusable-pr-freshness-guard.yml
+
   frontend-required:
     name: frontend-required
     needs:
       [
+        pr-guard,
         frontend-scope,
         typecheck,
         vitest,
@@ -31,13 +39,19 @@ jobs:
         playwright-e2e,
         staff-console-e2e,
       ]
-    if: always()
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    if: >-
+      always() &&
+      !cancelled() &&
+      (needs.pr-guard.result == 'success' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.result == 'failure')
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event.repository.private && github.event_name == 'merge_group' && vars.RD_FAST_CHECKS_RUNNER == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 5
     steps:
       - name: Require all applicable frontend checks
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           python3 - <<'PY'
           import json
@@ -45,24 +59,41 @@ jobs:
           import sys
 
           needs = json.loads(os.environ["NEEDS_JSON"])
+          guard = needs.get("pr-guard", {})
+          if guard.get("result") != "skipped" and guard.get("outputs", {}).get("skip_heavy") == "true":
+              print("PR early-exit; frontend-required neutral")
+              sys.exit(0)
           scope = needs["frontend-scope"]
           outputs = scope.get("outputs", {})
           flags = [outputs.get(key) for key in ("run_frontend_tests", "run_staff_e2e")]
           if scope["result"] != "success" or any(flag not in ("true", "false") for flag in flags):
               sys.exit("Frontend scope failed or did not report explicit scope decisions")
           frontend, staff = (flag == "true" for flag in flags)
-          required = {
-              "typecheck": True,
-              "vitest": frontend,
-              "perf-budget": frontend,
-              "playwright-e2e": frontend,
-              "staff-console-e2e": staff,
-          }
+          if os.environ.get("GITHUB_EVENT_NAME") == "merge_group":
+              required = {
+                  "typecheck": True,
+                  "vitest": frontend,
+                  "perf-budget": False,
+                  "playwright-e2e": False,
+                  "staff-console-e2e": False,
+              }
+          else:
+              required = {
+                  "typecheck": True,
+                  "vitest": frontend,
+                  "perf-budget": frontend,
+                  "playwright-e2e": frontend,
+                  "staff-console-e2e": staff,
+              }
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+          merge_group = event_name == "merge_group"
           failed = []
           for job, applicable in required.items():
               result = needs[job]["result"]
-              allowed = {"success"} if applicable else {"success", "skipped"}
-              if result not in allowed:
+              if applicable:
+                  if result != "success":
+                      failed.append(f"{job}={result}")
+              elif result not in {"success", "skipped"}:
                   failed.append(f"{job}={result}")
           if failed:
               sys.exit("Frontend checks did not succeed: " + ", ".join(failed))
@@ -70,15 +101,36 @@ jobs:
           PY
 
   frontend-scope:
+    needs: [pr-guard]
+    if: >-
+      always() &&
+      !cancelled() &&
+      (github.event_name != 'pull_request' ||
+      needs.pr-guard.result == 'skipped' ||
+      needs.pr-guard.outputs.skip_heavy != 'true')
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     name: Determine frontend validation scope
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event.repository.private && github.event_name == 'merge_group' && vars.RD_FAST_CHECKS_RUNNER == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
     outputs:
       run_frontend_tests: ${{ steps.scope.outputs.run_frontend_tests }}
       run_staff_e2e: ${{ steps.scope.outputs.run_staff_e2e }}
       run_api_contract: ${{ steps.scope.outputs.run_api_contract }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
+        with:
+          sparse-checkout: .github/scripts
+      - name: Stop obsolete merge queue entries
+        if: github.event_name == 'merge_group'
+        shell: bash
+        env:
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+        run: bash .github/scripts/merge-queue-ref-guard.sh
       - name: Detect changed frontend surface
         id: scope
         env:
@@ -87,6 +139,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         run: |
+          if [ "$EVENT_NAME" = "merge_group" ]; then
+            {
+              echo "run_frontend_tests=true"
+              echo "run_staff_e2e=false"
+              echo "run_api_contract=true"
+            } >> "$GITHUB_OUTPUT"
+            echo "merge_group: slim frontend gate (tsc + Vitest only)."
+            exit 0
+          fi
           if [ "$EVENT_NAME" != "pull_request" ]; then
             {
               echo "run_frontend_tests=true"
@@ -138,13 +199,27 @@ jobs:
               "tsconfig.app.json",
               "tsconfig.node.json",
           }
-          run_frontend = any(path.startswith(("frontend/", "scripts/")) or path in exact for path in files)
+          api_generated = {
+              "frontend/src/lib/api-types.ts",
+              "frontend/src/lib/openapi.json",
+          }
+          run_frontend = any(
+              (
+                  (path.startswith("frontend/") and path not in api_generated)
+                  or (path.startswith("scripts/") and not path.startswith("scripts/ci/"))
+              )
+              or path in exact
+              for path in files
+          )
           print(f"run_frontend_tests={'true' if run_frontend else 'false'}")
           staff_prefixes = ("frontend/src/pages/Staff", "backend/staff/", "backend/routers/staff", "tests/e2e/")
           run_staff = run_frontend or any(path.startswith(staff_prefixes) for path in files)
           print(f"run_staff_e2e={'true' if run_staff else 'false'}")
           # Backend routes and models change the generated OpenAPI snapshot (#1819).
-          run_api_contract = run_frontend or any(path.startswith("backend/") for path in files)
+          run_api_contract = (
+              run_frontend
+              or any(path.startswith("backend/") or path in api_generated for path in files)
+          )
           print(f"run_api_contract={'true' if run_api_contract else 'false'}")
           print(f"changed_file_count={len(files)}", file=sys.stderr)
           EOF
@@ -152,9 +227,10 @@ jobs:
   typecheck:
     name: TypeScript typecheck (tsc)
     needs: frontend-scope
+    if: always() && !cancelled() && needs.frontend-scope.result == 'success'
     # Required on main: never skip the job — gate heavy steps so the context
     # always reports (docs-only PRs and merge_group included).
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event.repository.private && github.event_name == 'merge_group' && vars.RD_FAST_CHECKS_RUNNER == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - name: Note when TypeScript validation is out of scope
@@ -208,8 +284,10 @@ jobs:
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      always() &&
+      !cancelled() &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event.repository.private && github.event_name == 'merge_group' && vars.RD_FAST_CHECKS_RUNNER == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -243,8 +321,11 @@ jobs:
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
+      always() &&
+      !cancelled() &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event.repository.private && github.event_name == 'merge_group' && vars.RD_FAST_CHECKS_RUNNER == 'hosted' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet' }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -273,15 +354,32 @@ jobs:
 
   playwright-e2e:
     name: Playwright E2E smoke tests
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
-    timeout-minutes: 20
+    # Heavy job: stays self-hosted even once the repo is public (#3084); see
+    # config/public_repo_heavy_jobs.json and docs/runner-labels.md.
+    environment:
+      name: ci-self-hosted-heavy-public
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet-public-heavy' }}
+    # +5 min for the mobile viewport run added in #3717.
+    timeout-minutes: 25
     needs:
       - frontend-scope
       - vitest
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
+      always() &&
+      !cancelled() &&
+      needs.vitest.result == 'success' &&
       (needs.frontend-scope.outputs.run_frontend_tests == 'true')
     steps:
+      # A prior merge-queue speculative-merge checkout on this self-hosted
+      # runner can leave the persistent workspace mid sparse-checkout
+      # transition, which actions/checkout's own clean/reset sequence can't
+      # always reconcile (#3612). Wipe it so every run starts from a
+      # guaranteed-empty directory; a no-op on ephemeral ubuntu-latest.
+      - name: Reset workspace (stale self-hosted checkout guard)
+        run: rm -rf "${GITHUB_WORKSPACE:?}" && mkdir -p "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -292,7 +390,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers (Chromium only)
-        run: npx playwright install chromium --with-deps
+        run: bash scripts/ci_install_playwright_browsers.sh chromium
 
       - name: Set up Python for backend
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
@@ -326,25 +424,25 @@ jobs:
 
       - name: Start dashboard backend
         run: |
-          cd backend
-          GH_TOKEN=dummy DASHBOARD_PORT="$DASHBOARD_PORT" DASHBOARD_LOOPBACK_AUTH=1 python server.py &
-          echo "$!" > "$RUNNER_TEMP/dashboard-backend.pid"
-          # Wait for backend to be ready
-          for i in $(seq 1 30); do
-            if curl -sf "http://localhost:${DASHBOARD_PORT}/api/health" > /dev/null 2>&1; then
-              echo "Backend ready after ${i}s"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "Backend did not become ready on port ${DASHBOARD_PORT}" >&2
-          exit 1
+          # Hermetic launcher: isolated HOME/config, no fleet derivation, temp
+          # leader lock, 90s readiness budget, backend log tail on failure (#2943).
+          python scripts/start_e2e_backend.py             --port "$DASHBOARD_PORT"             --root "$RUNNER_TEMP/e2e-backend"             --pid-file "$RUNNER_TEMP/dashboard-backend.pid"
 
       - name: Run Playwright e2e smoke tests
         run: |
           DASHBOARD_URL="http://localhost:5173" \
           VITE_BACKEND_URL="http://127.0.0.1:${DASHBOARD_PORT}" \
           npm run test:e2e -- --project=chromium-desktop
+
+      # tests/e2e/mobile.spec.ts skips every test unless the `isMobile`
+      # fixture is set, so it only runs under these mobile projects (#3717).
+      # Scoped to that one spec file (not the full suite) to keep this
+      # self-hosted job's runtime bounded.
+      - name: Run Playwright mobile viewport smoke tests
+        run: |
+          DASHBOARD_URL="http://localhost:5173" \
+          VITE_BACKEND_URL="http://127.0.0.1:${DASHBOARD_PORT}" \
+          npm run test:e2e -- --project=chromium-iphone-12 --project=chromium-pixel-5 tests/e2e/mobile.spec.ts
 
       - name: Stop dashboard backend
         if: always()
@@ -366,13 +464,28 @@ jobs:
   staff-console-e2e:
     # Staff Console flows against the real backend with fake provider CLIs (#1341).
     name: Staff Console e2e (fake providers)
-    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}
+    # Heavy job: stays self-hosted even once the repo is public (#3084); see
+    # config/public_repo_heavy_jobs.json and docs/runner-labels.md.
+    environment:
+      name: ci-self-hosted-heavy-public
+    runs-on: ${{ github.event.pull_request && github.event.pull_request.head.repo.full_name != github.repository && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL || vars.CI_BROWSER_RUNNER_LABEL || 'd-sorg-fleet-public-heavy' }}
     timeout-minutes: 20
     needs: frontend-scope
     # Fork PRs are routed to ubuntu-latest, never skipped (RM#1989).
     if: >-
+      github.event_name != 'merge_group' &&
+      always() &&
+      !cancelled() &&
       (needs.frontend-scope.outputs.run_staff_e2e == 'true')
     steps:
+      # A prior merge-queue speculative-merge checkout on this self-hosted
+      # runner can leave the persistent workspace mid sparse-checkout
+      # transition, which actions/checkout's own clean/reset sequence can't
+      # always reconcile (#3612). Wipe it so every run starts from a
+      # guaranteed-empty directory; a no-op on ephemeral ubuntu-latest.
+      - name: Reset workspace (stale self-hosted checkout guard)
+        run: rm -rf "${GITHUB_WORKSPACE:?}" && mkdir -p "$GITHUB_WORKSPACE"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -387,7 +500,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers (Chromium only)
-        run: npx playwright install chromium --with-deps
+        run: bash scripts/ci_install_playwright_browsers.sh chromium
 
       - name: Install backend dependencies
         run: |
@@ -395,6 +508,12 @@ jobs:
           "$RUNNER_TEMP/staff-e2e-venv/bin/python" -m pip install --upgrade pip
           "$RUNNER_TEMP/staff-e2e-venv/bin/python" -m pip install -r requirements.txt
           echo "STAFF_E2E_PYTHON=$RUNNER_TEMP/staff-e2e-venv/bin/python" >> "$GITHUB_ENV"
+
+      - name: Verify Staff E2E port allocation
+        run: python -m unittest discover -s tests/e2e/staff -p 'test_port_allocator.py'
+
+      - name: Allocate Staff E2E ports
+        run: python tests/e2e/staff/port_allocator.py
 
       - name: Run Staff Console e2e suite
         run: npx playwright test -c tests/e2e/staff/playwright.config.ts

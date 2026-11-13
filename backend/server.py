@@ -1,4 +1,5 @@
-# ruff: noqa: B008
+# ruff: noqa: B008, E402
+# The worker contract must run before imports initialize process-local state.
 #!/usr/bin/env python3
 """
 D-sorganization Runner Dashboard — FastAPI Backend
@@ -18,6 +19,7 @@ Then open http://localhost:8321 in your browser.
 """
 
 import asyncio
+import contextlib
 import datetime as _dt_mod
 import errno
 import json
@@ -37,33 +39,72 @@ from collections import deque
 from pathlib import Path
 from typing import Any
 
+
+def _require_single_worker() -> None:
+    """Refuse unsafe worker counts before importing process-local state (#3029)."""
+    counts = [os.environ.get(name, "1") for name in ("WORKERS", "WEB_CONCURRENCY")]
+    # Also cover `uvicorn server:asgi_app --workers N` and --workers=N.
+    for index, arg in enumerate(sys.argv[1:], start=1):
+        if arg == "--workers" and index + 1 < len(sys.argv):
+            counts.append(sys.argv[index + 1])
+        elif arg.startswith("--workers="):
+            counts.append(arg.partition("=")[2])
+    for raw in counts:
+        try:
+            count = int(raw)
+        except ValueError:
+            continue  # The existing configuration parser handles malformed values.
+        if count > 1:
+            message = (
+                "Runner Dashboard: single-worker is the only supported mode; "
+                "use WORKERS=1 and uvicorn --workers 1. Leases, locks, rate limiters, "
+                "bearer tokens and event sequences are process-local."
+            )
+            logging.getLogger(__name__).critical(message)
+            raise SystemExit(1)
+
+
+_require_single_worker()
+
+# Issue #3248: the Docker CMD invokes this module as `python -m backend.server`
+# from WORKDIR /app, where sys.path[0] is /app (not /app/backend). The
+# unqualified sibling imports just below (browser_ingress_guard etc.) only
+# resolve once backend/ itself is on sys.path, so this guard must run first.
+BACKEND_DIR = Path(__file__).resolve().parent
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
+
 # systemd watchdog / ready notification (issue #391 AC-3)
 try:
     from systemd.daemon import notify as _sd_notify
 except ImportError:
     _sd_notify = None
 
-import httpx
-from browser_ingress_guard import BrowserIngressMiddleware
-from browser_sessions import BrowserSessionMiddleware
-from cloudflare_access import CloudflareAccessValidator
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.exceptions import RequestValidationError
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import (
+import httpx  # noqa: E402
+from browser_ingress_guard import BrowserIngressMiddleware  # noqa: E402
+from browser_sessions import BrowserSessionMiddleware  # noqa: E402
+from cloudflare_access import CloudflareAccessValidator  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Request  # noqa: E402
+from fastapi.exceptions import RequestValidationError  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import (  # noqa: E402
     FileResponse,
     HTMLResponse,
     JSONResponse,
 )
-from fastapi.staticfiles import StaticFiles
-from identity import Principal, require_scope  # noqa: B008
-from middleware import MaxBodySizeMiddleware
-from pydantic import BaseModel, Field
-from routers import admin as admin_router
-from routers import auth as auth_router
-from starlette.middleware.base import BaseHTTPMiddleware
-from tailnet_identity import build_asgi_app
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from identity import Principal, require_scope  # noqa: B008, E402
+from middleware import DEFAULT_MAX_BODY_SIZE, MaxBodySizeMiddleware  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
+from routers import admin as admin_router  # noqa: E402
+from routers import auth as auth_router  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.middleware.gzip import GZipMiddleware  # noqa: E402
+from tailnet_identity import build_asgi_app  # noqa: E402
 
+# Re-affirms the Issue #3248 guard above; kept here (idempotent, see the
+# `not in sys.path` check) so this statement still separates the two
+# sibling-import blocks for import-sort tooling, as it always has.
 BACKEND_DIR = Path(__file__).resolve().parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
@@ -88,6 +129,7 @@ import prometheus_metrics as _prometheus_metrics_router  # noqa: E402
 import proxy_utils as _proxy_utils  # noqa: E402  # single hub-proxy implementation (issue #923)
 import push as _push_router  # noqa: E402
 import quota_enforcement as quota_enforcement  # noqa: E402
+import runner_host_capacity  # noqa: E402
 import unified_issue_inventory as unified_issue_inventory  # noqa: E402
 import usage_monitoring as usage_monitoring  # noqa: E402
 from cache_utils import cache_delete as _cache_delete  # noqa: E402
@@ -129,7 +171,6 @@ from middleware import (  # noqa: E402
     add_security_headers,
     auth_perimeter_check,
     csrf_check,
-    max_body_size_check,
 )
 from models.requests import HelpChatRequest  # noqa: E402
 from platform_utils.wsl_paths import windows_repositories_root  # noqa: E402
@@ -153,16 +194,17 @@ from routers import deployment as _deployment_router  # noqa: E402
 from routers import diagnostics as _diagnostics_router  # noqa: E402
 from routers import diagnostics_logs as _diagnostics_logs_router  # noqa: E402
 from routers import dispatch as _dispatch_router  # noqa: E402
+from routers import escalation as _escalation_router  # noqa: E402
 from routers import events as _events_router  # noqa: E402  # issue #863
 from routers import fleet as _fleet_router  # noqa: E402
 from routers import fleet_run_token as _fleet_run_token_router  # noqa: E402
+from routers import github_app_token as _github_app_token_router  # noqa: E402
 from routers import heavy_tests as _heavy_tests_router  # noqa: E402
 from routers import label_guidance as _label_guidance_router  # noqa: E402  # issue #757
 from routers import library as _library_router  # noqa: E402  # issue #2165
 from routers import linear as _linear_router  # noqa: E402
 from routers import linear_sync as _linear_sync_router  # noqa: E402  # issue #236
 from routers import linear_webhook as _linear_webhook_router  # noqa: E402
-from routers import maxwell as _maxwell_router  # noqa: E402
 from routers import orchestration as _orchestration_router  # noqa: E402
 from routers import providers as _providers_router  # noqa: E402  # issue #810
 from routers import queue as _queue_router  # noqa: E402
@@ -170,6 +212,7 @@ from routers import queue_diagnostics as _queue_diagnostics_router  # noqa: E402
 from routers import remediation as _remediation_router  # noqa: E402
 from routers import reports as _reports_router  # noqa: E402
 from routers import repos as _repos_router  # noqa: E402
+from routers import run_jwt as _run_jwt_router  # noqa: E402
 from routers import runner_audit as _runner_audit_router  # noqa: E402  # issue #298
 from routers import runner_diagnostics as _runner_diagnostics_router  # noqa: E402
 from routers import runner_groups as _runner_groups_router  # noqa: E402
@@ -187,7 +230,6 @@ from runners.service_control import (  # noqa: E402
 )
 from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
-    sanitize_log_value,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
 )
 from system_utils import get_system_metrics_snapshot  # noqa: E402
@@ -419,6 +461,17 @@ app = FastAPI(
     description="Monitor and control self-hosted GitHub Actions runners",
 )
 
+from demo_mode import demo_api_block  # noqa: E402
+
+
+@app.middleware("http")
+async def _demo_api_guard(request: Request, call_next):
+    blocked = demo_api_block(
+        request.url.path,
+        enabled=os.environ.get("RUNNER_DASHBOARD_DEMO") == "1",
+    )
+    return blocked if blocked is not None else await call_next(request)
+
 
 @app.exception_handler(gh_utils.RateLimitedError)
 async def _github_rate_limited_handler(_request: Request, exc: gh_utils.RateLimitedError) -> JSONResponse:
@@ -493,16 +546,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-# Issue #331 — request_id correlation middleware (outermost so all subsequent
-# middleware and handlers have access to the request_id context var).
-app.add_middleware(RequestIdMiddleware)
-
-# Issue #350 — early body-size guard (ASGI middleware, runs before routing)
-app.add_middleware(
-    MaxBodySizeMiddleware,
-    default_limit=1 * 1024 * 1024,  # 1 MB
-)
-
 # Issue #330 — Prometheus HTTP instrumentation middleware
 app.add_middleware(_prometheus_metrics_router.PrometheusMiddleware)
 
@@ -526,14 +569,9 @@ _replay_store: ReplayStore = ReplayStore(_REPLAY_STORE_PATH)
 migrate_json_to_sqlite(_PROCESSED_ENVELOPES_PATH, _replay_store)
 
 
-async def _is_envelope_replay(envelope_id: str) -> bool:
-    """Check if envelope_id has already been processed (replay detection)."""
-    return _replay_store.is_replay(envelope_id)
-
-
-async def _record_processed_envelope(envelope_id: str, ttl_seconds: int = 86400) -> None:
-    """Record that envelope_id has been processed (for replay detection)."""
-    _replay_store.record(envelope_id)
+async def _claim_envelope_once(envelope_id: str) -> bool:
+    """Atomically claim a dispatch envelope identifier for one submission."""
+    return _replay_store.claim_once(envelope_id)
 
 
 async def _watchdog_heartbeat() -> None:
@@ -573,8 +611,7 @@ async def _watchdog_heartbeat() -> None:
         try:
             _notifier("WATCHDOG=1")
         except Exception as exc:  # noqa: BLE001
-            log.warning("watchdog_heartbeat: sd_notify failed (%s), exiting task", exc)
-            return
+            log.warning("watchdog_heartbeat: sd_notify failed (%s), continuing", exc)
 
 
 _LEASE_REAPER_INTERVAL_S: int = max(30, int(os.environ.get("LEASE_REAPER_INTERVAL_S", "300")))
@@ -680,7 +717,7 @@ _BROWSER_ACCESS_VALIDATOR = CloudflareAccessValidator(
 app.state.browser_access_validator = _BROWSER_ACCESS_VALIDATOR
 
 app.include_router(_dispatch_router.router)
-_dispatch_router.set_replay_functions(_is_envelope_replay, _record_processed_envelope)
+_dispatch_router.set_replay_function(_claim_envelope_once)
 app.include_router(_credentials_router.router)
 app.include_router(_remediation_router.router)
 app.include_router(_providers_router.router)  # shared provider registry (issue #810)
@@ -700,8 +737,11 @@ app.include_router(_web_vitals_router.router)
 app.include_router(_events_router.router)  # issue #863 fleet event log
 app.include_router(_client_errors_router.router)  # issue #1292 client error beacon
 app.include_router(_usage_metrics_router.router)  # issue #1302 usage metrics and page tracking
+app.include_router(_escalation_router.router)
 app.include_router(_fleet_router.router)
 app.include_router(_fleet_run_token_router.router)
+app.include_router(_run_jwt_router.router)
+app.include_router(_github_app_token_router.router)
 app.include_router(_queue_router.router)
 app.include_router(_queue_diagnostics_router.router)
 app.include_router(_runners_router.router)
@@ -715,7 +755,6 @@ app.include_router(_code_requests_board_router.router)
 app.include_router(_code_requests_executor_router.router)
 app.include_router(_code_request_plans_router.router)
 app.include_router(_agent_profiles_router.router)
-app.include_router(_maxwell_router.router)
 app.include_router(_deployment_router.router)
 app.include_router(_reports_router.router)
 app.include_router(_heavy_tests_router.router)
@@ -733,10 +772,12 @@ app.include_router(_orchestrator_api.router)  # Conductor admission gate (issue 
 from routers import staff as _staff_router  # noqa: E402
 from routers import staff_barb as _staff_barb_router  # noqa: E402
 from routers import staff_concerns as _staff_concerns_router  # noqa: E402
+from routers import staff_dispatcher as _staff_dispatcher_router  # noqa: E402
 from routers import staff_exclusions as _staff_exclusions_router  # noqa: E402
 from routers import staff_export as _staff_export_router  # noqa: E402
 from routers import staff_followup as _staff_followup_router  # noqa: E402
 from routers import staff_groups as _staff_groups_router  # noqa: E402
+from routers import staff_host_settings as _staff_host_settings_router  # noqa: E402
 from routers import staff_inbox as _staff_inbox_router  # noqa: E402
 from routers import staff_local_runs as _staff_local_runs_router  # noqa: E402
 from routers import staff_outcomes as _staff_outcomes_router  # noqa: E402
@@ -746,12 +787,15 @@ from routers import staff_requests as _staff_requests_router  # noqa: E402
 from routers import staff_routing as _staff_routing_router  # noqa: E402
 from routers import staff_schedule as _staff_schedule_router  # noqa: E402
 from routers import staff_threads as _staff_threads_router  # noqa: E402
+from routers import staff_threads_stream as _staff_threads_stream_router  # noqa: E402
 from routers import staff_usage as _staff_usage_router  # noqa: E402
 from routers import staff_v1 as _staff_v1_router  # noqa: E402
 from routers import staff_work_items as _staff_work_items_router  # noqa: E402
 
 app.include_router(_staff_v1_router.router)  # Versioned public staff API (issue #1312)
+app.include_router(_staff_dispatcher_router.router, prefix="/api/v1/staff")
 app.include_router(_staff_threads_router.router, prefix="/api/v1/staff")  # Conversation & threads API (issue #1306)
+app.include_router(_staff_threads_stream_router.router, prefix="/api/v1/staff")  # SSE thread stream (#3705 follow-up)
 app.include_router(_staff_export_router.router, prefix="/api/v1/staff")  # Thread export & retention (issue #1490)
 app.include_router(_staff_groups_router.router, prefix="/api/v1/staff")  # Staff groups (issue #1339)
 app.include_router(_staff_barb_router.router, prefix="/api/v1/staff")  # Barb authority status (issue #1800)
@@ -769,10 +813,17 @@ app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
 app.include_router(_staff_exclusions_router.router, prefix="/api/staff")  # dispatch exclusions
 app.include_router(_staff_exclusions_router.router, prefix="/api/v1/staff")
+app.include_router(_staff_host_settings_router.router, prefix="/api/staff")  # host settings (#3101)
+app.include_router(_staff_host_settings_router.router, prefix="/api/v1/staff")
 app.include_router(_staff_usage_router.router)  # usage ledger (issue #1200)
 app.include_router(_staff_outcomes_router.router, prefix="/api/v1/staff")  # outcome scorecard (issue #1517)
 app.include_router(_staff_concerns_router.router, prefix="/api/v1/staff")  # concerns and escalation (#2237)
 app.include_router(_delivery_metrics_router.router)  # delivery metrics (#2121)
+from routers import staff_rd_barb as _staff_rd_barb_router  # noqa: E402
+from routers import staff_role_self_test as _staff_role_self_test_router  # noqa: E402
+
+app.include_router(_staff_rd_barb_router.router)  # rd-barb guidelines doc (#3065)
+app.include_router(_staff_role_self_test_router.router)  # desk role dry-run self-test (#3847)
 app.include_router(_library_router.router)  # Alexandria library (#2165)
 from routers import vault as _vault_router  # noqa: E402
 
@@ -789,13 +840,65 @@ from routers import fleet_friction as _fleet_friction_router  # noqa: E402
 
 app.include_router(_fleet_friction_router.router)  # friction ledger + owner questions
 
+from routers import path_leases as _path_leases_router  # noqa: E402
+
+app.include_router(_path_leases_router.router)  # TTL path/issue leases (#3931 S1)
+
+from routers import agent_inbox as _agent_inbox_router  # noqa: E402
+
+app.include_router(_agent_inbox_router.router)  # per-agent inbox + ack + overdue (#3931 S3)
+
+from routers import flow_metrics as _flow_metrics_router  # noqa: E402
+
+app.include_router(_flow_metrics_router.router)  # PD-4 flow metrics (#3818)
+
+from routers import staff_review_metrics as _staff_review_metrics_router  # noqa: E402
+
+app.include_router(_staff_review_metrics_router.router)  # review-flow metrics decision gate (#4250)
+
+from routers import fleet_brief as _fleet_brief_router  # noqa: E402
+from routers import kanban_github as _kanban_github_router  # noqa: E402
+
+app.include_router(_fleet_brief_router.router)  # cached fleet board (issue #3314)
+app.include_router(_kanban_github_router.router)  # kanban GitHub ingestion (#4319)
+
+from routers import kanban as _kanban_router  # noqa: E402
+
+app.include_router(_kanban_router.router)  # kanban board projection (#4317, #4321)
+
+from routers import fleet_state_audit_route as _fleet_state_audit_router  # noqa: E402
+
+app.include_router(_fleet_state_audit_router.router)  # Barb state audit (#3640)
+
+from routers import fleet_productivity_pull as _fleet_productivity_pull_router  # noqa: E402
+
+app.include_router(_fleet_productivity_pull_router.router)  # 5 PM productivity pull (issue #3641)
+
+from routers import staff_playbooks as _staff_playbooks_router  # noqa: E402
+
+app.include_router(_staff_playbooks_router.router)  # playbooks list/render/assign (issue #3488)
+
+from routers import staff_presentation_prefs as _staff_presentation_prefs_router  # noqa: E402
+
+app.include_router(_staff_presentation_prefs_router.router)  # personal presentation preferences (issue #3495)
+
+from routers import overload as _fleet_overload_router  # noqa: E402
+
+app.include_router(_fleet_overload_router.router)  # per-repo overload detection (issue #3293 slice 1)
+
+from routers import directives_drain as _directives_drain_router  # noqa: E402
+
+app.include_router(_directives_drain_router.router)  # operator drain-mode gate (#3915 slice 1)
+
 from routers import agent_bus as _agent_bus_router  # noqa: E402
 
 app.include_router(_agent_bus_router.router)
 
+from routers import activity as _activity_router  # noqa: E402
 from routers import memory_v1 as _memory_v1_router  # noqa: E402
 
 app.include_router(_memory_v1_router.router)
+app.include_router(_activity_router.router)
 
 # Projects tab (issue #1199): per-repo charter, status and steward runs.
 from routers import projects as _projects_router  # noqa: E402
@@ -864,9 +967,10 @@ app.add_middleware(
 )
 
 
-@app.middleware("http")
-async def _max_body_size(request, call_next):
-    return await max_body_size_check(request, call_next)
+# Issue #350 / #4274 F-07: the single request-body limit. Registered here so it
+# wraps auth, session and routing (inside CSRF and security headers): it rejects a
+# declared oversize before routing and counts the bytes actually streamed.
+app.add_middleware(MaxBodySizeMiddleware, default_limit=DEFAULT_MAX_BODY_SIZE)
 
 
 @app.middleware("http")
@@ -888,6 +992,23 @@ async def _add_security_headers(request, call_next):
 from staff.v1_envelope import StaffV1Middleware  # noqa: E402
 
 app.add_middleware(StaffV1Middleware)
+
+# Issue #2990: compress text responses (JS/CSS/HTML/JSON) for slow mobile links.
+# Starlette's GZipMiddleware passes text/event-stream through unbuffered.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+# Validate Host before auth and routing. Public hostnames come from the same
+# registry and explicit origin allowlist used by browser sign-in. The
+# registry is loaded once (disk I/O); env-derived origins are re-read on
+# every request so config set after this module's first import (tests
+# monkeypatching origin env vars) still takes effect.
+from trusted_hosts import IPv6AwareTrustedHostMiddleware, trusted_hosts_from_env  # noqa: E402
+
+_trusted_hosts_registry = load_machine_registry()
+app.add_middleware(
+    IPv6AwareTrustedHostMiddleware,
+    hosts_provider=lambda: trusted_hosts_from_env(registry=_trusted_hosts_registry),
+)
 
 
 # ─── Startup timestamp ───────────────────────────────────────────────────────
@@ -933,7 +1054,7 @@ def _deployment_info() -> dict:
 # entries for every *other* machine in the fleet.  The hub always includes
 # itself automatically — do not list it in FLEET_NODES.
 #
-# Example (in /etc/systemd/system/runner-dashboard.service on ControlTower):
+# Example (in /etc/systemd/system/runner-dashboard.service on node-a):
 #   Environment=MACHINE_ROLE=hub
 #   Environment=FLEET_NODES=envy:http://100.x.x.x:8321,thinkpad:http://100.x.x.x:8321
 MACHINE_ROLE = os.environ.get("MACHINE_ROLE", "node")
@@ -1017,6 +1138,19 @@ if _AUTODERIVE_FLEET and not FLEET_NODES:
 try:
     _topology_registry = load_machine_registry()
     from fleet_autoconfig import assert_fleet_identity_no_self_loop
+    from fleet_hub_env_guard import assert_hub_url_env_matches_registry
+
+    _hub_override_ok = os.environ.get("HUB_URL_REGISTRY_OVERRIDE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    assert_hub_url_env_matches_registry(
+        _topology_registry,
+        hub_url_env=os.environ.get("HUB_URL"),
+        allow_registry_override=_hub_override_ok,
+    )
 
     _fleet_identity = apply_fleet_identity_from_registry(
         _topology_registry,
@@ -1091,7 +1225,10 @@ async def run_cmd(
             stderr.decode("utf-8", errors="replace"),
         )
     except (TimeoutError, asyncio.TimeoutError):  # noqa: UP041
-        proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            proc.kill()
+        with contextlib.suppress(ProcessLookupError):
+            await proc.wait()
         return -1, "", "Command timed out"
 
 
@@ -1429,18 +1566,39 @@ def _validate_hhmm(value: object) -> str:
     return value
 
 
-def _validate_runner_schedule(config: dict) -> dict:
+def _sanitize_runner_schedule(
+    config: dict,
+    *,
+    hostname: str | None = None,
+    aliases: list[str] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
     if not isinstance(config, dict):
         raise ValueError("schedule config must be an object")
+    host = hostname if hostname is not None else HOSTNAME
+    host_aliases = aliases if aliases is not None else RUNNER_ALIASES
     days_allowed = {"mon", "tue", "wed", "thu", "fri", "sat", "sun"}
-    max_count = max(0, min(_runner_limit(), int(config.get("max_count", _runner_limit()))))
+    ceiling = runner_host_capacity.schedule_capacity_ceiling(host, host_aliases, _runner_limit())
+    requested_max = int(config.get("max_count", ceiling))
+    max_count = max(0, min(ceiling, requested_max))
+    clamp_notices: list[str] = []
+    if requested_max > ceiling:
+        clamp_notices.append(f"max_count clamped from {requested_max} to {ceiling} (host cap)")
+    requested_default = int(config.get("default_count", 1))
+    default_count = max(0, min(max_count, requested_default))
+    if requested_default > default_count:
+        clamp_notices.append(f"default_count clamped from {requested_default} to {default_count}")
     sanitized: dict[str, Any] = {
         "enabled": bool(config.get("enabled", True)),
         "timezone": str(config.get("timezone") or "America/Los_Angeles"),
-        "default_count": max(0, min(max_count, int(config.get("default_count", 1)))),
+        "default_count": default_count,
         "max_count": max_count,
         "schedules": [],
     }
+    if "resource_floor" in config:
+        runner_host_capacity.validate_resource_floor(config.get("resource_floor"))
+        floor = config.get("resource_floor")
+        if isinstance(floor, dict):
+            sanitized["resource_floor"] = json.loads(json.dumps(floor))
     schedules = config.get("schedules", [])
     if not isinstance(schedules, list):
         raise ValueError("schedules must be a list")
@@ -1453,7 +1611,11 @@ def _validate_runner_schedule(config: dict) -> dict:
         normalized_days = [str(day).lower() for day in days]
         if any(day not in days_allowed for day in normalized_days):
             raise ValueError("schedule days must be mon/tue/wed/thu/fri/sat/sun")
-        runners = max(0, min(max_count, int(entry.get("runners", 0))))
+        requested_runners = int(entry.get("runners", 0))
+        runners = max(0, min(max_count, requested_runners))
+        if requested_runners > runners:
+            name = str(entry.get("name") or "scheduled")
+            clamp_notices.append(f"schedule {name!r} runners clamped from {requested_runners} to {runners}")
         sanitized["schedules"].append(
             {
                 "name": str(entry.get("name") or "scheduled"),
@@ -1463,6 +1625,11 @@ def _validate_runner_schedule(config: dict) -> dict:
                 "runners": runners,
             }
         )
+    return sanitized, clamp_notices
+
+
+def _validate_runner_schedule(config: dict) -> dict:
+    sanitized, _ = _sanitize_runner_schedule(config)
     return sanitized
 
 
@@ -1490,6 +1657,9 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
     env["RUNNER_ROOT"] = str(RUNNER_BASE_DIR)
     env["RUNNER_SCHEDULE_CONFIG"] = str(RUNNER_SCHEDULE_CONFIG)
     env["RUNNER_SCHEDULER_STATE"] = str(RUNNER_SCHEDULER_STATE)
+    from runner_target_contract import TARGET_OVERRIDE_PATH  # noqa: PLC0415
+
+    env["RUNNER_TARGET_OVERRIDE"] = str(TARGET_OVERRIDE_PATH)
     try:
         result = subprocess.run(
             [sys.executable, RUNNER_SCHEDULER_BIN, "--dry-run", "--json"],
@@ -1516,6 +1686,11 @@ def _sync_runner_scheduler_state(config: dict) -> dict:
             "config": config,
         }
     state["available"] = True
+    from runner_target_contract import load_target_override  # noqa: PLC0415
+
+    override = load_target_override()
+    if override:
+        state["target_override"] = override
     return state
 
 
@@ -1550,6 +1725,7 @@ def _build_runner_capacity_snapshot() -> dict:
     timer_states: dict[str, str] = {}
     for unit in ("runner-scheduler.timer", "runner-cleanup.timer"):
         timer_states[unit] = "active" if _unit_active_sync(unit) else "inactive"
+    hard_cap = runner_host_capacity.host_runner_hard_cap(HOSTNAME, RUNNER_ALIASES)
     return {
         "machine": HOSTNAME,
         "aliases": RUNNER_ALIASES,
@@ -1558,6 +1734,14 @@ def _build_runner_capacity_snapshot() -> dict:
         "installed_runners": sum(1 for path in RUNNER_BASE_DIR.glob("runner-*") if path.is_dir()),
         "max_runners": config["max_count"],
         "host_runner_limit": _runner_limit(),
+        "host_runner_hard_cap": hard_cap,
+        "schedule_config_drift": runner_host_capacity.schedule_config_drift(
+            config,
+            hostname=HOSTNAME,
+            aliases=RUNNER_ALIASES,
+            live_path=RUNNER_SCHEDULE_CONFIG,
+            repo_root=REPO_ROOT,
+        ),
         "config_path": str(RUNNER_SCHEDULE_CONFIG),
         "state_path": str(RUNNER_SCHEDULER_STATE),
         "timers": timer_states,
@@ -1941,10 +2125,16 @@ async def _fleet_control_local(action: str) -> dict:
 
 
 async def _remote_fleet_control(name: str, url: str, action: str) -> dict:
-    """Ask a node dashboard to apply a runner action locally."""
+    """Ask a node dashboard to apply a runner action locally.
+
+    Sends the shared hub -> node headers (fleet bearer token when configured,
+    plus the CSRF sentinel); without them the node rejects the POST (#4274 F-05).
+    """
+    from staff.fleet import fleet_headers  # noqa: PLC0415
+
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            resp = await client.post(f"{url}/api/fleet/control/{action}?local=1")
+            resp = await client.post(f"{url}/api/fleet/control/{action}?local=1", headers=fleet_headers())
         if resp.status_code != 200:
             return {
                 "machine": name,
@@ -2154,6 +2344,11 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+# Issue #331 / #3034 — request_id correlation middleware added last so
+# Starlette inserts it at index 0 (outermost) of app.user_middleware.
+app.add_middleware(RequestIdMiddleware)
+
+
 # ─── Operator diagnostics ────────────────────────────────────────────────────
 #
 # /api/diagnostics surfaces the config-load and fleet-federation state that
@@ -2172,27 +2367,31 @@ async def log_requests(request: Request, call_next):
 
 def _diagnostics_payload() -> dict:
     """Build the /api/diagnostics body. Pure-ish — only safe local I/O."""
-    from machine_registry import load_machine_registry  # local import to avoid cycle
+    from machine_registry import load_machine_registry, resolve_registry_source  # local import to avoid cycle
 
     # Registry load status
     registry_status: dict[str, object]
     registry_err: str | None = None
     machines_count = 0
+    _registry_path, _registry_source = resolve_registry_source(None)
     try:
         _registry = load_machine_registry()
         machines_count = len(_registry.get("machines", []))
         registry_status = {
             "loaded": True,
             "machines": machines_count,
+            "empty": machines_count == 0,
             "version": _registry.get("version"),
-            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": str(_registry_path),
+            "source": _registry_source,
         }
     except Exception as exc:  # noqa: BLE001
         registry_err = str(exc)
         registry_status = {
             "loaded": False,
             "error": registry_err,
-            "path": os.environ.get("MACHINE_REGISTRY_PATH") or str(Path(__file__).with_name("machine_registry.yml")),
+            "path": str(_registry_path),
+            "source": _registry_source,
         }
 
     # Fleet federation status (config only — peer reachability is /api/fleet/nodes)
@@ -2284,6 +2483,15 @@ def _diagnostics_payload() -> dict:
 
     wsl_vhdx_status = _diagnostics_router.get_cached_wsl_vhdx_status() if _diagnostics_router else []
 
+    # Optional-integration availability for the standalone/no-fleet profile (#3180)
+    integrations_status: dict[str, Any]
+    try:
+        from integration_health import check_all_integration_availability
+
+        integrations_status = check_all_integration_availability()
+    except Exception as exc:  # noqa: BLE001
+        integrations_status = {"error": str(exc)}
+
     # Overall health summary so deploy-check.sh can grep one field
     fleet_node_count_raw = fleet_status.get("node_count", 0)
     fleet_node_count = fleet_node_count_raw if isinstance(fleet_node_count_raw, int) else 0
@@ -2304,6 +2512,7 @@ def _diagnostics_payload() -> dict:
         "cache": cache_status,
         "wsl_vhdx_status": wsl_vhdx_status,
         "storage_handle_incident": storage_handle_incident,
+        "integrations": integrations_status,
     }
 
 
@@ -2465,7 +2674,6 @@ DASHBOARD_FAQ: dict[str, str] = {
         "The Feature Requests tab (now Code Requests) dispatches AI agents to plan and execute code requests"
         " with standards injection (TDD, DbC, DRY, LoD)."
     ),
-    "maxwell": ("The Maxwell tab shows Maxwell-Daemon status and lets you start/stop the service with confirmation."),
     "queue": "The Queue tab shows live queued and in-progress workflows with auto-refresh every 15 seconds.",
     "history": "The History tab shows recent workflow runs across all repos, filterable by status.",
     "machines": "The Machines tab shows hardware telemetry for each fleet node.",
@@ -2612,6 +2820,7 @@ _orchestration_router.set_dependencies(
     get_fleet_nodes_impl=_get_fleet_nodes_impl,
     get_runner_capacity_snapshot=get_runner_capacity_snapshot,
     validate_runner_schedule=_validate_runner_schedule,
+    sanitize_runner_schedule=_sanitize_runner_schedule,
     write_runner_schedule_config=_write_runner_schedule_config,
     runner_scheduler_apply_command=_runner_scheduler_apply_command,
     run_cmd=run_cmd,
@@ -2674,27 +2883,112 @@ _assessments_router.set_run_cmd(run_cmd)
 
 _leader_lock_fd = None
 
+
+def _leader_lock_candidate_paths() -> list[str]:
+    """Ordered lock-file paths for single-leader election (#666, #3172)."""
+    raw = [
+        os.environ.get("DASHBOARD_LEADER_LOCK_PATH"),
+        "/var/run/runner-dashboard-leader.lock",
+        f"/run/user/{os.getuid()}/runner-dashboard-leader.lock",  # type: ignore[attr-defined]
+        os.path.expanduser("~/.cache/runner-dashboard-leader.lock"),
+        "/tmp/runner-dashboard-leader.lock",
+    ]
+    return [p for p in raw if p]
+
+
+def _acquire_leader_lock() -> bool:
+    """Try to acquire the dashboard leader file lock.
+
+    Returns True when this process holds the lock (leader). False when another
+    process holds a reachable lock path — do not try alternate paths (#3172).
+    """
+    import fcntl
+
+    global _leader_lock_fd
+    acquired = False
+    last_err: OSError | None = None
+    for candidate in _leader_lock_candidate_paths():
+        try:
+            os.makedirs(os.path.dirname(candidate), exist_ok=True)
+            _leader_lock_fd = open(candidate, "w")
+        except OSError as exc:
+            last_err = exc
+            log.info(
+                "Leader lock path %s unusable (%s); trying next candidate",
+                candidate,
+                exc,
+            )
+            if _leader_lock_fd is not None:
+                try:
+                    _leader_lock_fd.close()
+                except OSError:
+                    pass
+                _leader_lock_fd = None
+            continue
+
+        try:
+            fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]
+        except BlockingIOError:
+            try:
+                _leader_lock_fd.close()
+            except OSError:
+                pass
+            _leader_lock_fd = None
+            log.info(
+                "Leader lock %s is held by another instance; running as follower (not trying alternate lock paths)",
+                candidate,
+            )
+            return False
+        except OSError as exc:
+            last_err = exc
+            log.info(
+                "Leader lock path %s unusable during flock (%s); trying next candidate",
+                candidate,
+                exc,
+            )
+            try:
+                _leader_lock_fd.close()
+            except OSError:
+                pass
+            _leader_lock_fd = None
+            continue
+
+        log.info("Acquired leader lock at %s", candidate)
+        acquired = True
+        break
+
+    if not acquired:
+        log.info(
+            "Could not acquire leader lock on any candidate path; running as follower: %s",
+            last_err,
+        )
+    return acquired
+
+
 # Runner routing audit refresh route extracted to routers/diagnostics.py (issue #360).
 
 
 @app.on_event("startup")
 async def _startup() -> None:
     """Initialize HTTP clients and notify systemd on startup (issue #364)."""
-    # Issue #942: refuse to start when Maxwell's port collides with a peer
-    # dashboard port declared in machine_registry.yml — a silent mis-probe
-    # otherwise misreports a sibling dashboard as the Maxwell daemon.
-    from dashboard_config import MAXWELL_PORT
-    from fleet_autoconfig import (
-        assert_no_maxwell_port_collision,
-        assert_valid_active_registry,
-    )
+    if os.environ.get("RUNNER_DASHBOARD_DEMO") == "1":
+        log.info("Demo mode enabled; skipping external clients and background workers")
+        return
+    from oauth_config import OAuthConfig, validate_oauth_startup
+
+    validate_oauth_startup(OAuthConfig.from_env())
+    from dashboard_config import validate_loopback_auth_bind
+
+    validate_loopback_auth_bind()
+
+    from fleet_autoconfig import assert_valid_active_registry
+    from overlay_contract import assert_overlay_ready
+
+    # Issue #3079: refuse to start when a configured private overlay is
+    # missing or invalid. No overlay configured -> no-op (unchanged behaviour).
+    assert_overlay_ready()
 
     _startup_reg = load_machine_registry()
-    assert_no_maxwell_port_collision(
-        _startup_reg,
-        maxwell_port=MAXWELL_PORT,
-        local_port=PORT,
-    )
     # Issue #1169: Fail fast if an active machine or pool has invalid configuration
     assert_valid_active_registry(_startup_reg)
 
@@ -2741,9 +3035,6 @@ async def _startup() -> None:
     else:
         log.debug("systemd.daemon not available; omitting sd_notify")
 
-    # Start systemd watchdog heartbeat task (issue #707)
-    asyncio.create_task(_watchdog_heartbeat())
-
     # Start background lease reaper task (issue #708)
     asyncio.create_task(_lease_reaper_loop())
 
@@ -2766,6 +3057,10 @@ async def _startup() -> None:
     from library.ingest import start_library_ingest_loop  # noqa: PLC0415
 
     start_library_ingest_loop()
+
+    from activity_session_tailer_runtime import start_session_tailer_loop  # noqa: PLC0415
+
+    start_session_tailer_loop(node=HOSTNAME)
 
     # Replay-store purge runs on every node regardless of leader status.
     asyncio.create_task(_periodic_replay_purge())
@@ -2799,6 +3094,11 @@ async def _startup() -> None:
 
     asyncio.create_task(periodic_provider_auth_evening_loop(lambda: get_runner().machine))
 
+    if MACHINE_ROLE == "hub":  # agent token files live on the hub; nodes would duplicate warnings (#3895)
+        from agent_token_liveness import periodic_agent_token_loop  # noqa: PLC0415
+
+        asyncio.create_task(periodic_agent_token_loop())
+
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)
 
@@ -2809,6 +3109,13 @@ async def _startup() -> None:
 
     start_schedule_loop()
 
+    if dashboard_config.LIGHTWEIGHT_STARTUP:
+        log.info(
+            "DASHBOARD_LIGHTWEIGHT_STARTUP=1: skipping leader election and background hub tasks",
+        )
+        _runner_audit_router.set_org(ORG)
+        return
+
     if os.environ.get("DASHBOARD_LEADER") == "1":
         _runner_audit_router.start_audit_loop()
         _linear_sync_router.start_sync_loop()  # issue #236
@@ -2816,50 +3123,11 @@ async def _startup() -> None:
         return
 
     try:
-        import fcntl
-
-        global _leader_lock_fd
-        # Walk a candidate list and use the first writable path. Same
-        # regression #664's follow-up fixed in the autoscaler: hard-coded
-        # /var/run/ with a dir-existence check that always passed (because
-        # /run exists via symlink) — non-root deploys hit PermissionError
-        # and got demoted to follower forever. See #666.
-        candidates = [
-            os.environ.get("DASHBOARD_LEADER_LOCK_PATH"),
-            "/var/run/runner-dashboard-leader.lock",
-            f"/run/user/{os.getuid()}/runner-dashboard-leader.lock",  # type: ignore[attr-defined]
-            os.path.expanduser("~/.cache/runner-dashboard-leader.lock"),
-            "/tmp/runner-dashboard-leader.lock",
-        ]
-        acquired = False
-        last_err: OSError | None = None
-        for candidate in candidates:
-            if not candidate:
-                continue
-            try:
-                os.makedirs(os.path.dirname(candidate), exist_ok=True)
-                _leader_lock_fd = open(candidate, "w")
-                fcntl.flock(_leader_lock_fd.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)  # type: ignore[attr-defined]
-                log.info("Acquired leader lock at %s, starting background tasks", candidate)
-                _runner_audit_router.start_audit_loop()
-                _linear_sync_router.start_sync_loop()  # issue #236
-                _staff_schedule_router.start_scheduler()  # issue #1196
-                acquired = True
-                break
-            except OSError as exc:
-                last_err = exc
-                if _leader_lock_fd is not None:
-                    try:
-                        _leader_lock_fd.close()
-                    except OSError:
-                        pass
-                    _leader_lock_fd = None
-                continue
-        if not acquired:
-            log.info(
-                "Could not acquire leader lock on any candidate path; running as follower: %s",
-                last_err,
-            )
+        if _acquire_leader_lock():
+            log.info("Starting leader background tasks")
+            _runner_audit_router.start_audit_loop()
+            _linear_sync_router.start_sync_loop()  # issue #236
+            _staff_schedule_router.start_scheduler()  # issue #1196, #1293
     except ImportError:
         log.warning("fcntl not available on this platform, running without file lock")
         _runner_audit_router.start_audit_loop()
@@ -2870,6 +3138,7 @@ async def _startup() -> None:
 @app.on_event("shutdown")
 async def _shutdown() -> None:
     """Close pooled HTTP clients on shutdown (issue #364)."""
+    _usage_metrics_router.get_usage_tracker().flush()
     await shutdown_http_clients()
     _BROWSER_ACCESS_VALIDATOR.close()
     log.info("Closed pooled HTTP clients")
@@ -2881,29 +3150,36 @@ _drain_mode: bool = False
 
 
 @app.post("/_drain")
-async def drain_endpoint(request: Request) -> dict:
+async def drain_endpoint(
+    request: Request,
+    caller: Principal = Depends(require_scope("admin")),  # noqa: B008
+) -> dict:
     """Activate process-local draining and reject new mutations with HTTP 503.
 
     ``/readyz`` reports unready while draining. Requests already admitted are
     allowed to finish; this flag does not cancel or wait for in-flight work.
 
-    Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
+    Requires the ``admin`` scope and the CSRF ``X-Requested-With`` sentinel (#4274 F-04).
     Post-condition: _drain_mode is True after successful call.
     """
     global _drain_mode
     client_host = request.client.host if request.client else "unknown"
-    # Issue #939c: a bare `assert` is compiled out under `python -O`, which would
-    # let ANY network peer drain the server. Enforce the loopback restriction
-    # with an explicit check that raises regardless of optimization level.
-    if client_host not in ("127.0.0.1", "::1", "localhost"):
-        log.warning(
-            "/_drain refused for non-loopback client %s",
-            sanitize_log_value(client_host),
-        )
-        raise HTTPException(status_code=403, detail="drain only from loopback")
     _drain_mode = True
-    log.info("/_drain activated by %s", client_host)
+    log.info("/_drain activated by %s principal=%s", client_host, caller.id)
     return {"status": "draining"}
+
+
+@app.post("/_undrain")
+async def undrain_endpoint(
+    request: Request,
+    caller: Principal = Depends(require_scope("admin")),  # noqa: B008
+) -> dict:
+    """Clear process-local draining and resume normal mutation admission (#4274 F-04)."""
+    global _drain_mode
+    client_host = request.client.host if request.client else "unknown"
+    _drain_mode = False
+    log.info("/_undrain activated by %s principal=%s", client_host, caller.id)
+    return {"status": "admitting"}
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -2991,13 +3267,7 @@ if __name__ == "__main__":
 
     _uvicorn_cfg = _read_uvicorn_env_config()
 
-    # Issue #367: keep the documented single-worker default. Operators can set
-    # WORKERS > 1, but uvicorn then requires an import string (not the
-    # in-memory app object) because workers spawn via multiprocessing and each
-    # child re-imports the app. Codex P1 review on PR #482 flagged that passing
-    # `app` directly with `workers > 1` either silently runs a single worker or
-    # fails at startup. Use the import string when WORKERS > 1; keep the
-    # in-memory object for single-worker dev runs (faster, no re-import).
+    # Issue #367 / #3029: only one worker can own process-local state.
     # Issue #1755: run the app wrapped in TransportPeerMiddleware +
     # ProxyHeadersMiddleware ourselves (via asgi_app / "server:asgi_app") and
     # tell uvicorn not to install its own proxy-header handling
@@ -3005,11 +3275,11 @@ if __name__ == "__main__":
     # exactly once, by our wrapper, with the raw transport peer recorded
     # first. This keeps loopback-stays-loopback and XFF-from-127.0.0.1
     # behavior identical to before.
-    _uvicorn_target: object = "server:asgi_app" if _uvicorn_cfg["workers"] > 1 else asgi_app
     uvicorn.run(
-        _uvicorn_target,  # type: ignore[arg-type]
+        asgi_app,
         # Issue #921: honor the operator-resolved bind host (DASHBOARD_HOST) instead
-        # of a hardcoded 0.0.0.0. Defaults to 0.0.0.0 when DASHBOARD_HOST is unset,
+        # of a hardcoded 0.0.0.0. Defaults via dashboard_config.HOST (loopback when
+        # DASHBOARD_LOOPBACK_AUTH=1, else 0.0.0.0 when DASHBOARD_HOST is unset),
         # preserving historical behavior while letting operators bind loopback-only.
         host=dashboard_config.HOST,  # noqa: S104 — default resolves to 0.0.0.0; see dashboard_config._resolve_bind_host
         port=PORT,

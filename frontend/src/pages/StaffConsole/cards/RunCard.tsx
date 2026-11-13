@@ -194,6 +194,7 @@ export const RunCard: React.FC<RunCardProps> = ({
           <button
             type="button"
             onClick={() => setShowLogs((prev) => !prev)}
+            title={showLogs ? "Hide the tail of this run log" : "Show the tail of this run log"}
             style={{
               background: "none",
               border: "none",

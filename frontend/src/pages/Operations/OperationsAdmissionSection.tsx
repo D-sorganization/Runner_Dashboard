@@ -176,6 +176,7 @@ export function OperationsAdmissionSection({
             type="button"
             onClick={load}
             disabled={loading || busy}
+            title="Reload admission gate status and queue controls"
             style={{
               padding: "0.4rem 0.75rem",
               fontSize: "0.8125rem",

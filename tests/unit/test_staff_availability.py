@@ -181,7 +181,7 @@ async def test_execute_turn_falls_back_on_runtime_failure() -> None:
 
     call_count = 0
 
-    def mock_spawn_side_effect(cmd, cwd, env):
+    def mock_spawn_side_effect(cmd, cwd, env, stdin_text=None):
         nonlocal call_count
         call_count += 1
         proc = MagicMock()

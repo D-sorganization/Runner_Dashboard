@@ -7,6 +7,8 @@ Routes (under ``/api/staff``; the ``/api/staff/`` alt-auth prefix applies):
   POST /usage/export    Append today's per-provider totals to Repository_Management
                         ``data/credit_usage.json`` (subprocess to the RM script).
   GET  /quota           Live subscription windows per provider (#1587).
+  POST /usage/snapshot  Ingest a Usage-Tracker ``provider-availability.v1`` snapshot (#3042).
+  GET  /usage/snapshot  Fleet-wide provider usage: per-machine % used and staleness (#3042).
   GET  /report-cards    Zero-LLM-cost Agent Report Cards & Empirical Routing Leaderboard.
   GET  /leaderboard     Alias for /report-cards leaderboard view.
   GET  /bean-counter    Zero-LLM-cost Bean-Counter token economy & waste ledger.
@@ -21,14 +23,17 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, format_caller, require_scope
+from middleware import WEBHOOK_MAX_BODY_SIZE, limit_body_size
 from routers.staff_outcomes import compute_report_cards_payload
-from staff import quota, usage
+from staff import quota, usage, usage_snapshot
 from staff.adapters import ADAPTERS
 from staff.models import (
     StaffPricingResponse,
     StaffQuotaResponse,
     StaffUsageExportResponse,
     StaffUsageResponse,
+    StaffUsageSnapshotIngestResponse,
+    StaffUsageSnapshotResponse,
 )
 from staff.models_insights import StaffBeanCounterResponse, StaffReportCardsResponse
 from staff.pricing import price_table_rows
@@ -93,6 +98,38 @@ async def export_usage(
         "ok" if result["ok"] else "partial failure",
     )
     return result
+
+
+@router.post(
+    "/usage/snapshot",
+    response_model=StaffUsageSnapshotIngestResponse,
+    response_model_exclude_none=True,
+)
+@limit_body_size(WEBHOOK_MAX_BODY_SIZE)
+async def ingest_usage_snapshot(
+    payload: dict[str, Any],
+    caller: Principal = Depends(require_scope("staff.admin")),
+) -> dict[str, Any]:
+    """Ingest a Usage-Tracker ``provider-availability.v1`` snapshot (#3042)."""
+    try:
+        snapshot = usage_snapshot.validate_payload(payload, now=datetime.now(UTC))
+    except usage_snapshot.SnapshotRejected as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    kept = usage_snapshot.default_store().record(snapshot)
+    log.info("staff: usage snapshot ingest by %s (kept=%s)", format_caller(caller), kept)
+    return {"kept": kept}
+
+
+@router.get(
+    "/usage/snapshot",
+    response_model=StaffUsageSnapshotResponse,
+    response_model_exclude_none=True,
+)
+async def get_usage_snapshot(
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Fleet-wide provider usage: newest Usage-Tracker snapshot, per-machine staleness (#3042)."""
+    return usage_snapshot.view(datetime.now(UTC))
 
 
 @router.get("/report-cards", response_model=StaffReportCardsResponse)

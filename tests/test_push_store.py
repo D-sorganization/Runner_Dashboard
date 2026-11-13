@@ -300,3 +300,36 @@ def test_delete_subscription_round_trip(db_path: Path) -> None:
     assert _subscriptions_for_topic("agent.completed", db_path=db_path) == []
     # Deleting the same row again is a no-op.
     assert delete_subscription(sub.id, "user-1", db_path=db_path) is False
+
+
+def test_quiet_hours_persistence_and_preferences_update(db_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    sub = upsert_subscription(
+        user_id="user-1",
+        endpoint="https://push.example.com/qh-1",
+        keys=_keys(),
+        user_agent="pytest",
+        topics=["agent.completed"],
+        quiet_hours_start="22:00",
+        quiet_hours_end="07:00",
+        db_path=db_path,
+    )
+    assert sub.quiet_hours_start == "22:00" and sub.quiet_hours_end == "07:00"
+    assert [s.id for s in push_store.list_subscriptions("user-1", db_path=db_path)] == [sub.id]
+
+    updated = push_store.update_subscription_preferences(
+        sub.id,
+        "user-1",
+        topics=["agent.completed", "ci.failed"],
+        quiet_hours_start="01:00",
+        quiet_hours_end="06:00",
+        update_quiet_hours=True,
+        db_path=db_path,
+    )
+    assert updated is not None and updated.topics == ("agent.completed", "ci.failed")
+    assert push_store.is_in_quiet_hours("01:00", "06:00", now=datetime(2026, 10, 29, 3, 30, tzinfo=UTC))
+    assert not push_store.is_in_quiet_hours("01:00", "06:00", now=datetime(2026, 10, 29, 12, 0, tzinfo=UTC))
+    assert push_store.is_in_quiet_hours("22:00", "07:00", now=datetime(2026, 10, 29, 23, 15, tzinfo=UTC))
+    assert push_store.is_in_quiet_hours("22:00", "07:00", now=datetime(2026, 10, 29, 5, 45, tzinfo=UTC))
+    assert not push_store.is_in_quiet_hours("22:00", "07:00", now=datetime(2026, 10, 29, 14, 0, tzinfo=UTC))

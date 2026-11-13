@@ -111,6 +111,83 @@ def test_run_token_expires_after_ttl() -> None:
 
 
 @pytest.mark.unit
+def test_mint_run_token_without_library_read_mints_no_library_scope() -> None:
+    """#2623: default-off; no role gets ``library.read`` unless its spec sets it explicitly."""
+    run_id = "run-test-library-read-off"
+    raw_token = mint_run_token(role="maintenance", run_id=run_id, fleet_actions=[], ttl_seconds=300.0)
+
+    prin = identity_manager.verify_token(raw_token)
+    assert prin is not None
+    assert not principal_has_scope(prin, "library.read")
+
+
+@pytest.mark.unit
+def test_mint_run_token_with_library_read_true_mints_library_scope() -> None:
+    """#2623: an explicit ``True`` on the role spec mints exactly one extra scope."""
+    run_id = "run-test-library-read-on"
+    raw_token = mint_run_token(role="librarian", run_id=run_id, fleet_actions=[], ttl_seconds=300.0, library_read=True)
+
+    prin = identity_manager.verify_token(raw_token)
+    assert prin is not None
+    assert principal_has_scope(prin, "library.read")
+
+
+@pytest.mark.unit
+def test_mint_run_token_library_read_alone_grants_no_fleet_or_admin_scopes() -> None:
+    """RM#2393: library_read opt-in adds only ``library.read`` (plus staff.github_credential), not fleet/admin scopes."""
+    run_id = "run-test-library-read-narrow"
+    raw_token = mint_run_token(
+        role="research-scout",
+        run_id=run_id,
+        fleet_actions=[],
+        ttl_seconds=300.0,
+        library_read=True,
+    )
+    prin = identity_manager.verify_token(raw_token)
+    assert prin is not None
+    assert principal_has_scope(prin, "library.read")
+    assert principal_has_scope(prin, "staff.github_credential")
+    for forbidden in (
+        "fleet.maintain",
+        "fleet.control",
+        "runners.control",
+        "workflows.control",
+        "admin",
+        "owner",
+        "staff.approve",
+        "staff.dispatch",
+    ):
+        assert not principal_has_scope(prin, forbidden), forbidden
+
+
+@pytest.mark.unit
+def test_mint_run_token_fleet_actions_do_not_grant_scopes_without_library_read() -> None:
+    """Default-off library read: maintenance fleet_actions never imply library access."""
+    run_id = "run-test-maintenance-no-library"
+    raw_token = mint_run_token(
+        role="maintenance",
+        run_id=run_id,
+        fleet_actions=["runner.start", "fleet.node_up"],
+        ttl_seconds=300.0,
+        library_read=False,
+    )
+    prin = identity_manager.verify_token(raw_token)
+    assert prin is not None
+    assert principal_has_scope(prin, "fleet.maintain")
+    assert not principal_has_scope(prin, "library.read")
+
+
+@pytest.mark.unit
+def test_mint_run_token_never_logs_raw_bearer(caplog: pytest.LogCaptureFixture) -> None:
+    """Staff run tokens must not appear in logs (#2393 hygiene)."""
+    import logging
+
+    caplog.set_level(logging.DEBUG, logger="dashboard.staff.tokens")
+    raw_token = mint_run_token(role="maintenance", run_id="run-log-hygiene", fleet_actions=[], ttl_seconds=60.0)
+    assert raw_token not in caplog.text
+
+
+@pytest.mark.unit
 def test_mint_run_token_validation_errors() -> None:
     with pytest.raises(ValueError, match="role and run_id are required"):
         mint_run_token(role="", run_id="run-1", fleet_actions=[], ttl_seconds=10.0)

@@ -16,6 +16,7 @@ from staff.cli_oauth_session import (
     oauth_last_refresh_epoch_for_provider,
     provider_oauth_session_alive,
 )
+from staff.provider_spec import SUBSCRIPTION_OAUTH_PROVIDERS
 
 log = logging.getLogger("dashboard.staff.provider_auth_preflight")
 
@@ -24,7 +25,8 @@ _EVENING_HOUR = 20
 _EXPIRING_HOURS = 48.0
 _KEEPALIVE_INTERVAL_SECONDS = 4 * 3600
 _STALE_REFRESH_DAYS = float(os.environ.get("STAFF_PROVIDER_AUTH_STALE_DAYS", "7"))
-_PROBE_PROVIDERS = ("claude", "antigravity", "codex")
+
+_PROBE_PROVIDERS = tuple(sorted(SUBSCRIPTION_OAUTH_PROVIDERS))
 
 _cache: dict[str, Any] = {"checked_at": None, "providers": {}, "machine": ""}
 
@@ -91,10 +93,14 @@ def probe_local_provider_auth(machine: str = "") -> dict[str, Any]:
         refreshed = oauth_last_refresh_epoch_for_provider(pid)
         has_refresh = oauth_has_refresh_token_for_provider(pid)
         providers[pid] = _classify(pid, alive, detail, expires, refreshed, has_refresh_token=has_refresh)
+    from staff.credential_mirror_health import probe_credential_mirror_health  # noqa: PLC0415
+
+    mirror_health = probe_credential_mirror_health()
     return {
         "checked_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         "machine": machine,
         "providers": providers,
+        "credential_mirrors": mirror_health,
     }
 
 

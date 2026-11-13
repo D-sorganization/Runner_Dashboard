@@ -62,4 +62,15 @@ commits = [
   # #2656 (closed, superseded by #2659): tests/test_verify_merge_gates.py fixture
   # lines hold public SHA-1 digests from detect-secrets run 39994915171, not secrets.
   "593e755571cbc027b4d6d85e8deceb88b7444e5c",  # pragma: allowlist secret (commit SHA)
+  # #3254: tests/test_private_mode_emit.py initial test fixture used a synthetic 1..6 pattern
+  # replaced in follow-up commit with runtime concatenation.
+  "ad4eee827196a0d0629e06bf8bc8b2823f6d425e",  # pragma: allowlist secret (commit SHA)
+  # #3264: tests/test_private_mode_credentials.py:146 fake GitHub App installation token
+  # (StaffGithubToken fixture asserting it never leaks into the sandboxed env) — not a secret.
+  "be7f93f99c15b4f62a2556da2aa858a18cce2e2e",  # pragma: allowlist secret (commit SHA)
+  # #3081: .github/workflows/ci-secrets.yml's own self-test step ("Verify staged secret
+  # hook rejects a fake token") writes a fixture line explicitly commented
+  # "# clearly fake scanner self-test value" and asserts gitleaks protect rejects it —
+  # the detection is the intended, documented behavior, not a real credential.
+  "9f3f0980165637266fdf6fa7c2fcfe36d6a1c8bc",  # pragma: allowlist secret (commit SHA)
 ]

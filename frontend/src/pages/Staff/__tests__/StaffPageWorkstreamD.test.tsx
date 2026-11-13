@@ -13,14 +13,14 @@ import { queryClient } from "../../../hooks/usePollingQueries";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const ROSTER = {
-  machine: "DeskComputer",
+  machine: "hub-a",
   active_runs: 0,
   providers: {},
   roles: [{ name: "night-watch", title: "Night Watch", summary: "Sweeps red main.", providers: [] }],
 };
 
 const BOARD = {
-  machine: "DeskComputer",
+  machine: "hub-a",
   generated_at: "2026-09-27T12:00:00Z",
   running: [],
   queued: [],

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { SkeletonCard, SkeletonLine } from "../../primitives/Skeleton";
 import { PullToRefresh } from "../../primitives/PullToRefresh";
 import { useHaptic } from "../../hooks/useHaptic";
+import { useVisibilityInterval } from "../../hooks/useVisibilityInterval";
 import { machineTelemetry } from "../../lib/fleetTelemetry";
 import { KpiHeader } from "./KpiHeader";
 import { RunnerCard } from "./RunnerCard";
@@ -57,7 +58,9 @@ export function FleetMobile() {
     try {
       // /api/fleet/nodes is the per-machine contract (online flag plus
       // system telemetry); /api/fleet/status is raw telemetry with no status.
-      const resp = await fetch("/api/fleet/nodes");
+      // ?fields=compact drops the embedded /api/system + /api/health blocks
+      // this view never reads, cutting payload size for mobile polling (#3719).
+      const resp = await fetch("/api/fleet/nodes?fields=compact");
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const json = await resp.json();
       const byName: Record<string, FleetNode> = {};
@@ -76,9 +79,8 @@ export function FleetMobile() {
 
   useEffect(() => {
     fetchFleet();
-    const interval = setInterval(fetchFleet, 30000);
-    return () => clearInterval(interval);
   }, [fetchFleet]);
+  useVisibilityInterval(fetchFleet, 30000);
 
   const nodes = useMemo(() => Object.entries(data), [data]);
 
@@ -106,13 +108,13 @@ export function FleetMobile() {
     const ctPools: Array<[string, FleetNode]> = [];
     const others: Array<[string, FleetNode]> = [];
     for (const [name, node] of filtered) {
-      if (name.startsWith("ControlTower")) {
+      if (name.startsWith("node-a")) {
         ctPools.push([name, node]);
       } else {
         others.push([name, node]);
       }
     }
-    // One ControlTower entry is just a machine; the pool heading only helps with several.
+    // One node-a entry is just a machine; the pool heading only helps with several.
     if (ctPools.length < 2) return { controlTowerPools: [], otherNodes: [...ctPools, ...others] };
     return { controlTowerPools: ctPools, otherNodes: others };
   }, [filtered]);
@@ -184,7 +186,7 @@ export function FleetMobile() {
               {controlTowerPools.length > 0 && (
                 <div className="control-tower-pools-container" style={{ marginBottom: "16px" }}>
                   <h4 style={{ margin: "0 0 8px 4px", fontSize: "14px", fontWeight: 600, color: "var(--text-secondary)" }}>
-                    ControlTower Pools
+                    node-a Pools
                   </h4>
                   <div style={{ display: "flex", gap: "8px", flexDirection: "row", flexWrap: "wrap" }}>
                     {controlTowerPools.map(([name, node]) => {

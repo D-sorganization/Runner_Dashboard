@@ -51,6 +51,7 @@ def record_event(
     message: str,
     rolled_back_from: str | None = None,
     now: datetime | None = None,
+    attention: bool = False,
 ) -> AutoDeployEvent:
     when = now or datetime.now(timezone.utc)  # noqa: UP017 - dashboard hub supports Python 3.10
     event = AutoDeployEvent(
@@ -64,7 +65,7 @@ def record_event(
     state.last_result = result
     state.target_commit = commit
     state.message = message
-    state.attention = result in _ATTENTION_RESULTS
+    state.attention = attention or result in _ATTENTION_RESULTS
     state.events = [event.to_dict(), *state.events][:MAX_EVENTS]
     return event
 

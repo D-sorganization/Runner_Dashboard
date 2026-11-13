@@ -87,12 +87,27 @@ class FakeRM:
         return [tuple(json.loads(p.read_text(encoding="utf-8"))) for p in files]
 
 
+def patch_gh_list_fetch(monkeypatch: pytest.MonkeyPatch, fetch: Any) -> None:
+    """Route paginated GitHub list reads and legacy ``evidence_fetch`` through the same fake."""
+    from coordination import claims as claims_mod  # noqa: PLC0415
+    from coordination import gh_cli  # noqa: PLC0415
+
+    monkeypatch.setattr(claims_mod, "evidence_fetch", fetch)
+
+    def list_pages(path: str) -> list[Any]:
+        out = fetch(path)
+        return out if isinstance(out, list) else []
+
+    monkeypatch.setattr(gh_cli, "gh_api_json_all", list_pages)
+
+
 def install(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, principals: dict[str, identity.Principal], repos: str
 ) -> Iterator[FakeRM]:
     """Point the dashboard at a fresh ``FakeRM`` with ``principals`` keyed by bearer token; resets state around."""
     from coordination import board as board_mod  # noqa: PLC0415
     from coordination import claims as claims_mod  # noqa: PLC0415
+    from coordination import gh_cli  # noqa: PLC0415
     from coordination import roster as roster_mod  # noqa: PLC0415
     from staff import fleet as staff_fleet  # noqa: PLC0415
     from staff import runner as runner_mod  # noqa: PLC0415
@@ -100,9 +115,13 @@ def install(
     from staff import store as store_mod  # noqa: PLC0415
 
     fake = FakeRM(tmp_path / "rm")
+    _no_gh = lambda _path: []  # noqa: E731 — no live gh in a unit test (#3274)
+    monkeypatch.setattr(claims_mod, "evidence_fetch", _no_gh)
+    monkeypatch.setattr(gh_cli, "gh_api_json_all", _no_gh)
     monkeypatch.setenv("STAFF_RM_ROOT", str(fake.root))
     monkeypatch.setenv("STAFF_RM_PYTHON", sys.executable)
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
+    monkeypatch.setenv("CLAIM_STATE_DB", str(tmp_path / "claim_state.sqlite3"))
     monkeypatch.setenv("STAFF_ROLES_DIR", str(tmp_path / "no-roles"))
     monkeypatch.setenv("STAFF_HOLDS_FILE", str(tmp_path / "holds.json"))
     monkeypatch.setenv("COORDINATION_REPOS", repos)
@@ -114,10 +133,14 @@ def install(
         store_mod.reset_store, runner_mod.reset_runner, scheduler_mod.reset_scheduler,
         board_mod.reset_cache, roster_mod.reset_cache, claims_mod.reset_locks,
     )  # fmt: skip
+    from coordination import jobs as jobs_mod  # noqa: PLC0415
+
     for reset in resets:
         reset()
+    jobs_mod.reset_job_board_claim_state()
     yield fake
     board_mod.join_refreshes()  # no background refresh may outlive the test and touch the next one
+    jobs_mod.reset_job_board_claim_state()
     for reset in reversed(resets):
         reset()
 
@@ -180,3 +203,36 @@ def release_result(*, label: bool = True, comment: bool = True, errors: list[str
     """``release_agent_lease`` stdout (rc 1 when not ok): ``LeaseWriteResult`` + ``ok``."""
     out = lease_result(label=label, comment=comment, errors=errors)
     return {k: out[k] for k in ("label_updated", "comment_posted", "receipt", "errors", "ok")}
+
+
+def issue(
+    number: int,
+    *,
+    repo: str = "Tools",
+    labels: list[str] | None = None,
+    title: str = "do the thing",
+    created_at: str = "2026-10-01T00:00:00Z",
+) -> dict[str, Any]:
+    """A GitHub ``GET /repos/.../issues`` entry, for ``coordination.claims.evidence_fetch`` fakes (#2782)."""
+    return {
+        "number": number,
+        "title": title,
+        "html_url": f"https://github.com/D-sorganization/{repo}/issues/{number}",
+        "labels": [{"name": name} for name in (labels or [])],
+        "updated_at": created_at,
+        "created_at": created_at,
+    }
+
+
+def pr(
+    number: int, *, closes: int, repo: str = "Tools", state: str = "open", merged_at: str | None = None
+) -> dict[str, Any]:
+    """A GitHub ``GET /repos/.../pulls`` entry whose body closes ``closes`` (#2782)."""
+    return {
+        "number": number,
+        "title": "fix: thing",
+        "body": f"Closes #{closes}",
+        "state": state,
+        "merged_at": merged_at,
+        "html_url": f"https://github.com/D-sorganization/{repo}/pull/{number}",
+    }

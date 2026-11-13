@@ -26,10 +26,13 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any
 
+from fleet_barb_claim import BarbClaimMixin
 from fleet_barb_seat import BarbSeatMixin
+from fleet_checkin import CheckinClientMixin
 from fleet_exclusion_tools import ExclusionClientMixin
 from fleet_friction_tools import FrictionClientMixin
 from fleet_memory_brief import MemoryBriefMixin
+from fleet_panel_tools import PanelClientMixin
 from fleet_validators import (
     BROADCAST,
     LESSON_MAX_CHARS,
@@ -93,7 +96,15 @@ DEFAULT_TIMEOUT = 30.0
 USER_AGENT = "fleet-client/1.0 (+Runner_Dashboard clients/fleet)"
 
 
-class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, MemoryBriefMixin):
+class FleetClient(
+    BarbClaimMixin,
+    BarbSeatMixin,
+    CheckinClientMixin,
+    FrictionClientMixin,
+    ExclusionClientMixin,
+    MemoryBriefMixin,
+    PanelClientMixin,
+):
     """Thin, validated wrapper over the dashboard's ``/api/staff``, ``/api/coordination``,
     ``/api/priorities``, and ``/api/v1/staff`` endpoints."""
 
@@ -145,7 +156,7 @@ class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, Memo
             headers["Authorization"] = f"Bearer {self.token}"
         return headers
 
-    def request(
+    def request(  # type: ignore[override]
         self,
         method: str,
         path: str,
@@ -154,6 +165,7 @@ class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, Memo
         body: Any = None,
         headers: dict[str, str] | None = None,
         timeout: float | None = None,
+        retry_idempotent: bool = True,
     ) -> Any:
         """Send request and return decoded JSON. Network errors retried for idempotent calls only."""
         _check(path.startswith("/api/"), f"path must start with /api/: {path!r}")
@@ -166,21 +178,26 @@ class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, Memo
         )
         url = f"{self.base_url}{path}" + (f"?{query}" if query else "")
         data = None if body is None else json.dumps(body).encode("utf-8")
-        req_headers = self._headers(data is not None)
+        req_headers = {**self._headers(data is not None), **self._barb_claim_headers(method, path, body)}
         if headers:
             req_headers.update(headers)
 
         call_timeout = timeout if timeout is not None else self.timeout
         is_idempotent = method in ("GET", "HEAD", "PUT", "DELETE") or "Idempotency-Key" in req_headers
-        max_attempts = 2 if is_idempotent else 1
+        max_attempts = 2 if is_idempotent and retry_idempotent else 1
 
         for attempt in range(max_attempts):
             req = urllib.request.Request(url, data=data, method=method, headers=req_headers)
             try:
                 with urllib.request.urlopen(req, timeout=call_timeout) as resp:
-                    return _decode(resp.read())
+                    result = _decode(resp.read())
+                self._barb_observe(method, path, body, result)
+                return result
             except urllib.error.HTTPError as exc:
                 body_decoded = _decode(exc.read())
+                lost_seat = self._barb_translate(FleetAPIError(exc.code, body_decoded), req_headers)
+                if lost_seat is not None:
+                    raise lost_seat from None  # never retried: the hub refused this write
                 if is_idempotent and exc.code in (502, 503, 504) and attempt < max_attempts - 1:
                     time.sleep(0.2)
                     continue
@@ -250,9 +267,15 @@ class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, Memo
         machine: str = "auto",
         dry_run: bool = False,
         model: str | None = None,
+        idempotency_key: str | None = None,
+        api_version: int = 0,
+        validate_only: bool = False,
+        retry_idempotent: bool = True,
     ) -> Any:
         role = _match(PATTERNS.role, role, "role")
         _check(issue is not None or pr is not None or bool(prompt), "one of issue, pr or prompt is required")
+        _check(api_version in (0, 1), "api_version must be 0 or 1")
+        _check(idempotency_key is None or bool(idempotency_key.strip()), "idempotency_key must be non-empty")
         body = {
             "repo": _opt(PATTERNS.bare_repo, repo, "repo (bare name, no owner)"),
             "issue": None if issue is None else _positive_int(issue, "issue"),
@@ -263,7 +286,12 @@ class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, Memo
             "machine": _match(PATTERNS.ident, machine, "machine"),
             "dry_run": bool(dry_run),
         }
-        return self.request("POST", f"/api/staff/{role}/run", body=_compact(body))
+        path = f"/api/v{api_version}/staff/{role}/run" if api_version else f"/api/staff/{role}/run"
+        headers = {"Idempotency-Key": idempotency_key.strip()} if idempotency_key else None
+        compact_body = _compact(body)
+        if validate_only:
+            return {"path": path, "body": compact_body, "headers": headers}
+        return self.request("POST", path, body=compact_body, headers=headers, retry_idempotent=retry_idempotent)
 
     def cancel(self, run_id: str) -> Any:
         rid = _match(PATTERNS.ident, run_id, "run_id")
@@ -648,7 +676,87 @@ class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, Memo
 
     def briefing(self, repo: str | None = None, agent: str | None = None) -> Any:
         params = {"repo": _opt(PATTERNS.repo, repo, "repo"), "agent": self._agent(agent)}
-        return self.request("GET", "/api/coordination/briefing", params=params)
+        try:
+            return self.request("GET", "/api/coordination/briefing", params=params)
+        except FleetAPIError as exc:
+            if exc.status not in (0, 502, 503, 504):
+                raise
+            reason = exc.body.get("reason", "unreachable") if isinstance(exc.body, dict) else str(exc.body)
+            return {
+                "status": "unavailable",
+                "available": False,
+                "repo": params["repo"],
+                "agent": params["agent"],
+                "reason": str(reason),
+                "activity_context": {"status": "unavailable", "available": False, "reason": str(reason)},
+                "warnings": [f"hub unreachable: {reason}"],
+            }
+
+    def _activity_read_request(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        raw_scopes = os.environ.get("FLEET_SCOPES", "").strip()
+        if raw_scopes:
+            granted = {s.strip() for s in raw_scopes.split(",") if s.strip()}
+            if "activity.read" not in granted and "*" not in granted:
+                detail = f"missing scope activity.read: caller scopes {sorted(granted)} cannot GET {path}"
+                raise FleetAPIError(403, {"detail": detail})
+        try:
+            return self.request("GET", path, params=params)
+        except FleetAPIError as exc:
+            if exc.status != 403:
+                raise
+            hub = exc.body.get("detail") if isinstance(exc.body, dict) else None
+            detail = f"missing scope activity.read: this token cannot GET {path}" + (f" (hub: {hub})" if hub else "")
+            body = {**exc.body, "detail": detail} if isinstance(exc.body, dict) else {"detail": detail}
+            raise FleetAPIError(403, body) from None
+
+    def activity_context(self, repo: str | None = None, budget_tokens: int = 1500) -> Any:
+        _check(
+            isinstance(budget_tokens, int) and not isinstance(budget_tokens, bool) and 1 <= budget_tokens <= 4000,
+            "budget_tokens must be between 1 and 4000",
+        )
+        params = {"repo": _opt(PATTERNS.repo, repo, "repo"), "budget_tokens": budget_tokens}
+        return self._activity_read_request("/api/v1/activity/context", params=params)
+
+    def tail_session(self, session_id: str, after_seq: int = -1, limit: int = 100, budget_tokens: int = 1500) -> Any:
+        checked_session = _match(PATTERNS.session, session_id, "session_id")
+        _check(
+            isinstance(after_seq, int) and not isinstance(after_seq, bool) and after_seq >= -1,
+            "after_seq must be an integer >= -1",
+        )
+        _check(
+            isinstance(limit, int) and not isinstance(limit, bool) and 1 <= limit <= 500,
+            "limit must be between 1 and 500",
+        )
+        _check(
+            isinstance(budget_tokens, int) and not isinstance(budget_tokens, bool) and 1 <= budget_tokens <= 4000,
+            "budget_tokens must be between 1 and 4000",
+        )
+        path = f"/api/v1/activity/sessions/{urllib.parse.quote(checked_session, safe='')}/chunks"
+        res = self._activity_read_request(path, params={"after_seq": after_seq, "limit": limit})
+        if not isinstance(res, dict) or not isinstance(res.get("items"), list):
+            return res
+        kept: list[dict[str, Any]] = []
+        used = 0
+        truncated = False
+        for item in res["items"]:
+            if not isinstance(item, dict):
+                continue
+            txt = str(item.get("text") or item.get("data") or item.get("raw") or "")
+            tok = max(1, (len(txt) + 3) // 4) if txt else 1
+            if used + tok > budget_tokens:
+                truncated = True
+                break
+            kept.append(item)
+            used += tok
+        next_seq = kept[-1].get("seq") if truncated and kept else res.get("next_seq")
+        return {
+            **res,
+            "items": kept,
+            "budget_tokens": budget_tokens,
+            "estimated_tokens": used,
+            "truncated": truncated,
+            "next_seq": next_seq,
+        }
 
     # ------------------------------------------------------------------ agent bus (#2155)
 
@@ -738,6 +846,28 @@ class FleetClient(BarbSeatMixin, FrictionClientMixin, ExclusionClientMixin, Memo
     def library_work(self, work_id: int) -> Any:
         wid = _positive_int(work_id, "work_id")
         return self.request("GET", f"/api/v1/library/works/{wid}")
+
+    def fleet_set_runner_target(
+        self,
+        host: str,
+        runners: int,
+        *,
+        until: str | None = None,
+        reason: str | None = None,
+        apply: bool = True,
+    ) -> Any:
+        host_name = _text(host, "host", 128)
+        count = _non_negative_int(runners, "runners")
+        body: dict[str, Any] = {
+            "host": host_name,
+            "runners": count,
+            "apply": bool(apply),
+        }
+        if until is not None:
+            body["until"] = _text(until, "until", 64)
+        if reason is not None:
+            body["reason"] = _text(reason, "reason", 500, required=False)
+        return self.request("POST", "/api/fleet/target", body=body)
 
     def library_fetch_page(
         self,

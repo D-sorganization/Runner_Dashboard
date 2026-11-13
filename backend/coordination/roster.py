@@ -21,7 +21,7 @@ from staff.workspace import rm_root
 STATIC_ROSTER: tuple[str, ...] = (
     "user", "orchestrator", "maxwell-daemon", "claude", "codex", "antigravity", "conductor", "night-watch",
     "cartographer", "sanitation", "pr-remediator", "issue-remediator", "jules", "grok-pm", "local", "gaai",
-    "gemini", "cursor-agent",
+    "gemini", "cursor-agent", "grok", "qwen", "anthropic-api",
 )  # fmt: skip
 FALLBACK_SECONDS = 300.0
 _READ = "import json; from shared_scripts.agent_identity import AGENT_IDS; print(json.dumps(list(AGENT_IDS)))"

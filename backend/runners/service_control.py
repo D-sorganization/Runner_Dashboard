@@ -12,11 +12,12 @@ are read live from :mod:`dashboard_config` — the single source of truth (issue
 from __future__ import annotations
 
 import logging
-import platform
+import re
 from pathlib import Path
 
 import dashboard_config
 from pydantic import BaseModel
+from runner_control_health import record_runner_control_result
 from system_utils import run_cmd  # noqa: E402
 
 log = logging.getLogger("dashboard")
@@ -97,19 +98,24 @@ async def run_runner_svc(
     action: str,
     timeout: int = 30,
 ) -> tuple[int, str, str]:
-    """Run a generated GitHub runner svc.sh from its own runner directory.
+    """Control a runner's systemd unit through the scoped sudo policy.
 
-    Pre-condition: runner_num > 0; action is a non-empty string.
+    Pre-condition: runner_num is positive; action is an allowed lifecycle verb.
     """
     assert isinstance(runner_num, int) and runner_num > 0, f"runner_num must be a positive int, got {runner_num!r}"
-    assert isinstance(action, str) and action, "action must be a non-empty string"
+    assert action in {"start", "stop", "restart"}, f"unsupported runner service action: {action!r}"
 
-    svc_path = runner_svc_path(runner_num)
-    return await run_cmd(
-        ["sudo", str(svc_path), action],
-        timeout=timeout,
-        cwd=svc_path.parent,
+    service_name = get_runner_service_name(runner_num)
+    assert service_name and re.fullmatch(r"actions\.runner\.[A-Za-z0-9._-]+\.service", service_name), (
+        "runner service name must be a local runner systemd unit"
     )
+    result = await run_cmd(
+        ["sudo", "-n", "/usr/local/sbin/rd-runner-ctl"],
+        timeout=timeout,
+        input_text=f"{action}\n{service_name}\n",
+    )
+    record_runner_control_result(action, succeeded=result[0] == 0)
+    return result
 
 
 def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
@@ -123,11 +129,7 @@ def runner_num_from_id(runner_id: int, runners: list[dict]) -> int | None:
     assert isinstance(runner_id, int), f"runner_id must be int, got {type(runner_id)!r}"
     assert isinstance(runners, list), f"runners must be list, got {type(runners)!r}"
 
-    local_names = {
-        dashboard_config.HOSTNAME.lower(),
-        platform.node().lower(),
-        *(alias.lower() for alias in dashboard_config.RUNNER_ALIASES),
-    }
+    local_names = dashboard_config.local_runner_machine_names()
     for r in runners:
         name = r.get("name", "")
         parts = name.rsplit("-", 1)

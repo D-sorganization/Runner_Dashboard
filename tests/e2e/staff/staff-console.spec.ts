@@ -9,8 +9,8 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { Browser, Locator, Page } from "@playwright/test";
-import { conversation, expect, openThread, send, test } from "./fixtures";
+import type { Browser, Locator, Page, Response } from "@playwright/test";
+import { conversation, expect, openThread, postThreadMessageApi, send, test } from "./fixtures";
 import { operatorHeaders, requesterHeaders, viewerHeaders } from "./identity";
 
 const COMPOSER = "Staff conversation input";
@@ -29,17 +29,27 @@ function reply(text: string): string {
 const BARB = "Ask Barb (auto-route)";
 
 /** Ask Barb for a dispatch and return the ActionCard her reply proposes. */
-async function proposeDispatch(page: Page, scenario = "dispatch"): Promise<Locator> {
+async function proposeDispatch(
+  page: Page,
+  threadId: string,
+  scenario = "dispatch",
+  confirmActions?: string[],
+): Promise<Locator> {
   const cards = conversation(page).locator(".staff-action-card");
   const before = await cards.count();
-  await send(page, `dispatch ${nonce()} [[e2e:${scenario}]]`);
-  await expect(cards).toHaveCount(before + 1);
+  const text = `dispatch ${nonce()} [[e2e:${scenario}]]`;
+  if (confirmActions?.length) {
+    await postThreadMessageApi(page, threadId, text, { confirm_actions: confirmActions }, operatorHeaders);
+  } else {
+    await send(page, text);
+  }
+  await expect(cards).toHaveCount(before + 1, { timeout: 45_000 });
   return cards.nth(before);
 }
 
 /**
  * Have a caller who can chat but not approve ask Barb for a dispatch; return the proposal id.
- * An approver's own request would run at once (#1786), so cards to act on come from here.
+ * Without per-action confirm, proposals stay pending (#4274 E-18); cards to act on come from here.
  */
 async function proposeAsRequester(browser: Browser): Promise<string> {
   const context = await browser.newContext();
@@ -47,21 +57,44 @@ async function proposeAsRequester(browser: Browser): Promise<string> {
   await page.route("**/api/**", (route) =>
     route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
   );
-  await openThread(page, BARB);
-  const id = await (await proposeDispatch(page)).getAttribute("data-proposal-id");
+  const threadId = await openThread(page, BARB);
+  const id = await (await proposeDispatch(page, threadId)).getAttribute("data-proposal-id");
   await context.close();
   if (!id) throw new Error("proposal card has no id");
   return id;
 }
 
-/** The operator's own request for a dispatch runs at once; return the run card it starts (#1547, #1786). */
+/** Approve a proposed dispatch and return the run card it starts (#1547, #4274 E-18). */
 async function requestAndFollowRun(page: Page, scenario: string): Promise<Locator> {
-  await openThread(page, BARB);
+  const threadId = await openThread(page, BARB);
   const runCards = conversation(page).locator(".staff-run-card");
   const before = await runCards.count();
-  await proposeDispatch(page, scenario);
-  await expect(runCards).toHaveCount(before + 1);
+  const card = await proposeDispatch(page, threadId, scenario);
+  await card.getByRole("button", { name: "Approve" }).click();
+  await expect(runCards).toHaveCount(before + 1, { timeout: 45_000 });
   return runCards.nth(before);
+}
+
+/** The drawer's passive restore: GET /api/v1/staff/threads?role=barb (#3861). */
+function isBarbThreadList(response: Response): boolean {
+  const url = new URL(response.url());
+  return (
+    response.request().method() === "GET" &&
+    url.pathname === "/api/v1/staff/threads" &&
+    url.searchParams.get("role") === "barb"
+  );
+}
+
+/**
+ * Wait until the drawer's passive thread restore has rendered (#3861).
+ * A restored thread adds a "New chat" button ahead of Close, which changes the
+ * drawer's first focusable element; asserting the focus trap before it lands races.
+ */
+async function settleBarbRestore(drawer: Locator, listResponse: Promise<Response>): Promise<void> {
+  const body = (await (await listResponse).json()) as { threads?: unknown[] };
+  if (!body.threads?.length) return;
+  await expect(drawer.getByRole("button", { name: "New chat" })).toBeVisible();
+  await expect(drawer.getByRole("region", { name: /^Conversation thread with / })).toBeVisible();
 }
 
 /** Occurrences of `needle` in the conversation log's visible text. */
@@ -141,7 +174,7 @@ test.describe("chat", () => {
     expect(messagePosts).toBe(0);
   });
 
-  test("sending from the mobile chat-first home reveals Barb's conversation", async ({ page }) => {
+  test("sending from the mobile chat-first home opens rd-barb's direct conversation", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/staff");
     await expect(page.getByTestId("staff-mobile-home")).toBeVisible();
@@ -152,9 +185,18 @@ test.describe("chat", () => {
     await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
     await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
     await expect(page.getByRole("textbox", { name: COMPOSER })).toBeVisible();
-    await expect(page).toHaveURL(/\/staff[?]role=barb&thread=[^&]+/);
+    await expect(page).toHaveURL(/\/staff[?]role=rd-barb&thread=[^&]+/);
+    const conversationUrl = page.url();
+    const threadId = new URL(conversationUrl).searchParams.get("thread");
+    const detail = await page.request.get(`/api/v1/staff/threads/${threadId}`, { headers: operatorHeaders });
+    expect(detail.ok()).toBeTruthy();
+    const { thread } = await detail.json();
+    expect(thread.kind).toBe("direct");
+    expect(thread.participants).toContain("rd-barb");
+    expect(thread.participants).not.toContain("barb");
 
     await page.reload();
+    await expect(page).toHaveURL(conversationUrl);
     await expect(page.getByTestId("staff-mobile-thread")).toBeVisible();
     await expect(page.getByRole("log", { name: "Conversation messages" }).getByText(text, { exact: true })).toBeVisible();
   });
@@ -229,9 +271,10 @@ test.describe("provider failures", () => {
     const before = await alerts.count();
     await send(page, `auth ${nonce()} [[e2e:auth]]`);
 
-    await expect(alerts).toHaveCount(before + 1);
-    await expect(alerts.last()).toContainText("claude auth login");
-    await expect(alerts.last()).not.toContainText("systemctl");
+    const latest = alerts.nth(before);
+    await expect(latest).toBeVisible({ timeout: 30_000 });
+    await expect(latest).toContainText("claude auth login");
+    await expect(latest).not.toContainText("systemctl");
   });
 });
 
@@ -303,11 +346,13 @@ test.describe("Ask Barb drawer keyboard access", () => {
       await page.goto("/staff");
       const trigger = page.getByRole("button", { name: "Ask Barb" });
       await trigger.focus();
+      const restored = page.waitForResponse(isBarbThreadList);
       await page.keyboard.press("Enter");
 
       const drawer = page.getByTestId("barb-sidebar");
       const close = drawer.getByRole("button", { name: "Close Ask Barb" });
       await expect(drawer).toBeVisible();
+      await settleBarbRestore(drawer, restored);
       await expect.poll(() => drawer.evaluate((element) => element.contains(document.activeElement))).toBe(true);
 
       if (viewport.width === 390) {
@@ -334,8 +379,8 @@ test.describe("Ask Barb drawer keyboard access", () => {
 
 test.describe("proposals", () => {
   test("a proposed action appears as an action card, live and after reload", async ({ page }) => {
-    await openThread(page, BARB);
-    const card = await proposeDispatch(page);
+    const threadId = await openThread(page, BARB);
+    const card = await proposeDispatch(page, threadId);
     await expect(card).toContainText("staff.dispatch");
     await expect(card).toContainText("The analyst can look at the queue.");
     const id = await card.getAttribute("data-proposal-id");
@@ -344,10 +389,16 @@ test.describe("proposals", () => {
     await expect(page.locator(`[data-proposal-id="${id}"]`)).toContainText("staff.dispatch");
   });
 
-  test("the operator's own request runs at once, without an Approve tap (#1786)", async ({ page }) => {
-    await openThread(page, BARB);
-    const card = await proposeDispatch(page);
+  test("E-18: operator message without confirm leaves an Approve button (#4274)", async ({ page }) => {
+    const threadId = await openThread(page, BARB);
+    const card = await proposeDispatch(page, threadId);
+    await expect(card).toContainText("staff.dispatch");
+    await expect(card.getByRole("button", { name: /^Approve$/ })).toBeVisible();
+  });
 
+  test("confirm_actions auto-runs the operator dispatch without an Approve tap (#1786, E-18)", async ({ page }) => {
+    const threadId = await openThread(page, BARB);
+    const card = await proposeDispatch(page, threadId, "dispatch", ["staff.dispatch"]);
     await expect(card).toContainText(/Executed by .*e2e-operator/);
     await expect(card.getByRole("button", { name: /^Approve$/ })).toHaveCount(0);
   });
@@ -412,10 +463,19 @@ test.describe("runs", () => {
     const before = await runCards.count();
 
     await run.getByRole("textbox", { name: "Answer" }).fill("Runner_Dashboard");
+    const answerResponse = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/v1/staff/threads/") &&
+        response.url().includes("/runs/") &&
+        response.url().endsWith("/answer") &&
+        response.ok(),
+    );
     await run.getByRole("button", { name: "Send answer" }).click();
+    await answerResponse;
 
     await expect(run).toContainText(/Answered by .*e2e-operator/);
-    await expect(runCards).toHaveCount(before + 1);
+    await expect(runCards).toHaveCount(before + 1, { timeout: 30_000 });
     await expect(runCards.nth(before)).toContainText("fake run finished for Runner_Dashboard", { timeout: 30_000 });
   });
 
@@ -511,9 +571,11 @@ test.describe("approved dashboard navigation", () => {
       route.continue({ headers: { ...route.request().headers(), ...requesterHeaders } }),
     );
     await restoredPage.goto("/projects");
+    const restoredList = restoredPage.waitForResponse(isBarbThreadList);
     await restoredPage.getByRole("button", { name: "Ask Barb" }).click();
     const restoredDrawer = restoredPage.getByTestId("barb-sidebar");
     await expect(restoredDrawer).toBeVisible();
+    await settleBarbRestore(restoredDrawer, restoredList);
     await expect(restoredDrawer).toContainText("open Context");
     await expect(restoredDrawer).toContainText("Action Executed");
     await expect(restoredPage).toHaveURL(/\/projects(?:[?]|$)/);
@@ -543,7 +605,7 @@ test.describe("approved dashboard navigation", () => {
     await invalidCard.getByRole("button", { name: /^Approve$/ }).click();
     await expect(page).toHaveURL(routeBeforeInvalidAction);
     await expect(reopenedDrawer).toContainText("Action Failed", { timeout: 30_000 });
-    await expect(invalidCard).toContainText("Action failed. You can review the failure below and retry approval.");
+    await expect(invalidCard).toContainText("Action failed: tab_id must be a registered dashboard section. You can retry approval.");
     await expect(invalidCard.getByRole("button", { name: /^Approve$/ })).toBeEnabled();
     await expect(reopenedDrawer).toContainText("registered dashboard section");
     const retryResponse = page.waitForResponse(

@@ -8,17 +8,24 @@ or a later real VAPID implementation.
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
-import httpx
 import webpush_crypto
 from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import APIRouter, Depends, HTTPException, Request
+
+try:
+    import httpx
+except ModuleNotFoundError:  # pragma: no cover
+    httpx = None  # type: ignore[assignment]
 from identity import Principal, require_principal
 from push_store import (
     PUSH_TOPICS,
@@ -27,41 +34,121 @@ from push_store import (
     _delete_stale_subscription,
     _subscriptions_for_topic,
     delete_subscription,
+    is_in_quiet_hours,
+    list_subscriptions,
+    update_subscription_preferences,
     upsert_subscription,
+    validate_quiet_hour_time,
 )
 from pydantic import BaseModel, Field, field_validator
+from pydantic.json_schema import SkipJsonSchema
 
 log = logging.getLogger(__name__)
 
 MAX_PUSH_PAYLOAD_BYTES = 4096
 
+ALLOWED_PUSH_ENDPOINT_HOST_SUFFIXES: tuple[str, ...] = (
+    "fcm.googleapis.com",
+    "android.googleapis.com",
+    "push.googleapis.com",
+    "push.services.mozilla.com",
+    "updates.services.mozilla.com",
+    "push.apple.com",
+    "notify.windows.com",
+)
+
+
+def _require_push_csrf(request: Request) -> None:
+    """Require CSRF header/token on state-changing Web Push endpoints."""
+    if request.headers.get("x-requested-with") == "XMLHttpRequest" or request.headers.get("x-csrf-token"):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail="CSRF check failed: missing X-Requested-With header",
+    )
+
+
 router = APIRouter(prefix="/api/push", tags=["push"])
+
+
+def validate_push_endpoint(value: str) -> str:
+    """Validate that a Web Push endpoint uses HTTPS and targets an allowlisted push service host."""
+    parsed = urlsplit(value)
+    if parsed.scheme != "https":
+        raise ValueError("endpoint must use https")
+    if parsed.username or parsed.password:
+        raise ValueError("endpoint must not include credentials")
+    if parsed.port not in (None, 443):
+        raise ValueError("endpoint must use standard https port")
+    hostname = (parsed.hostname or "").rstrip(".").lower()
+    if not hostname or not parsed.path or parsed.path == "/":
+        raise ValueError("endpoint must include a valid host and subscription path")
+    if hostname in {"localhost", "ip6-localhost"} or hostname.endswith((".localhost", ".local", ".internal")):
+        raise ValueError("endpoint host must not be loopback or local")
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("endpoint host must be a known push-service domain, not an IP address")
+
+    extra_raw = os.environ.get("DASHBOARD_PUSH_ALLOWED_HOSTS", "")
+    extra_hosts = tuple(h.strip().rstrip(".").lower() for h in extra_raw.split(",") if h.strip())
+    allowed_suffixes = ALLOWED_PUSH_ENDPOINT_HOST_SUFFIXES + extra_hosts
+    if not any(hostname == suffix or hostname.endswith(f".{suffix}") for suffix in allowed_suffixes):
+        raise ValueError("endpoint host is not an allowlisted Web Push service")
+    return value
+
+
+def _normalize_topics(value: list[str]) -> list[str]:
+    seen: set[str] = set()
+    normalized: list[str] = []
+    for topic in value:
+        if topic not in PUSH_TOPICS:
+            raise ValueError(f"unsupported topic: {topic}")
+        if topic not in seen:
+            normalized.append(topic)
+            seen.add(topic)
+    return normalized
 
 
 class PushSubscriptionRequest(BaseModel):
     endpoint: str = Field(..., min_length=1, max_length=2048)
     keys: PushKeys
     topics: list[str] = Field(default_factory=list, max_length=20)
+    quiet_hours_start: SkipJsonSchema[str | None] = Field(default=None)
+    quiet_hours_end: SkipJsonSchema[str | None] = Field(default=None)
 
     @field_validator("endpoint")
     @classmethod
     def _validate_endpoint(cls, value: str) -> str:
-        if not value.startswith(("https://", "http://localhost", "http://127.0.0.1")):
-            raise ValueError("endpoint must be https or loopback http")
-        return value
+        return validate_push_endpoint(value)
 
     @field_validator("topics")
     @classmethod
     def _validate_topics(cls, value: list[str]) -> list[str]:
-        seen: set[str] = set()
-        normalized: list[str] = []
-        for topic in value:
-            if topic not in PUSH_TOPICS:
-                raise ValueError(f"unsupported topic: {topic}")
-            if topic not in seen:
-                normalized.append(topic)
-                seen.add(topic)
-        return normalized
+        return _normalize_topics(value)
+
+    @field_validator("quiet_hours_start", "quiet_hours_end")
+    @classmethod
+    def _validate_quiet_hours(cls, value: str | None) -> str | None:
+        return validate_quiet_hour_time(value)
+
+
+class PushPreferencesUpdateRequest(BaseModel):
+    topics: list[str] | None = Field(default=None, max_length=20)
+    quiet_hours_start: str | None = Field(default=None)
+    quiet_hours_end: str | None = Field(default=None)
+
+    @field_validator("topics")
+    @classmethod
+    def _validate_topics(cls, value: list[str] | None) -> list[str] | None:
+        return _normalize_topics(value) if value is not None else None
+
+    @field_validator("quiet_hours_start", "quiet_hours_end")
+    @classmethod
+    def _validate_quiet_hours(cls, value: str | None) -> str | None:
+        return validate_quiet_hour_time(value)
 
 
 class PushTestRequest(BaseModel):
@@ -115,6 +202,7 @@ class WebPushTransport:
         self.urgency = urgency
 
     async def send(self, subscription: PushSubscription, payload: dict[str, Any]) -> int:
+        validate_push_endpoint(subscription.endpoint)
         json_bytes = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         body_bytes, enc_headers = webpush_crypto.encrypt_webpush_payload(
             plaintext=json_bytes,
@@ -218,6 +306,7 @@ async def send_push(
     user_id: str | None = None,
     transport: PushTransport | None = None,
     db_path: Path | None = None,
+    now: datetime | None = None,
 ) -> dict[str, int]:
     if topic not in PUSH_TOPICS:
         raise ValueError(f"unsupported topic: {topic}")
@@ -227,6 +316,8 @@ async def send_push(
     failed = 0
     purged = 0
     for subscription in _subscriptions_for_topic(topic, user_id, db_path):
+        if is_in_quiet_hours(subscription.quiet_hours_start, subscription.quiet_hours_end, now=now):
+            continue
         try:
             status_code = await sender.send(subscription, payload)
         except Exception as e:
@@ -275,31 +366,72 @@ def notify(topic: str, title: str, body: str) -> None:
     task.add_done_callback(_log_notify_failure)
 
 
+def _serialize_subscription(sub: PushSubscription) -> dict[str, Any]:
+    return {
+        "id": sub.id,
+        "user_id": sub.user_id,
+        "endpoint": sub.endpoint,
+        "topics": list(sub.topics),
+        "quiet_hours_start": sub.quiet_hours_start,
+        "quiet_hours_end": sub.quiet_hours_end,
+    }
+
+
+@router.get("/subscriptions", include_in_schema=False)
+async def get_push_subscriptions(
+    principal: Principal = Depends(require_principal),  # noqa: B008
+) -> dict[str, Any]:
+    return {"subscriptions": [_serialize_subscription(sub) for sub in list_subscriptions(principal.id)]}
+
+
 @router.post("/subscribe")
 async def subscribe_push(
     request: Request,
     body: PushSubscriptionRequest,
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
+    _require_push_csrf(request)
     subscription = upsert_subscription(
         user_id=principal.id,
         endpoint=body.endpoint,
         keys=body.keys,
         user_agent=request.headers.get("user-agent", ""),
         topics=body.topics,
+        quiet_hours_start=body.quiet_hours_start,
+        quiet_hours_end=body.quiet_hours_end,
     )
-    return {
-        "id": subscription.id,
-        "user_id": subscription.user_id,
-        "topics": list(subscription.topics),
-    }
+    return _serialize_subscription(subscription)
+
+
+@router.patch("/subscribe/{subscription_id}", include_in_schema=False)
+async def update_push_subscription(
+    request: Request,
+    subscription_id: int,
+    body: PushPreferencesUpdateRequest,
+    principal: Principal = Depends(require_principal),  # noqa: B008
+) -> dict[str, Any]:
+    _require_push_csrf(request)
+    fields_set = body.model_fields_set
+    updated = update_subscription_preferences(
+        subscription_id,
+        principal.id,
+        topics=body.topics,
+        quiet_hours_start=body.quiet_hours_start,
+        quiet_hours_end=body.quiet_hours_end,
+        update_quiet_hours=("quiet_hours_start" in fields_set or "quiet_hours_end" in fields_set),
+    )
+    if updated is None:
+        raise HTTPException(status_code=404, detail="subscription not found")
+    return _serialize_subscription(updated)
 
 
 @router.delete("/subscribe/{subscription_id}")
 async def unsubscribe_push(
+    request: Request,
     subscription_id: int,
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
+    _require_push_csrf(request)
     deleted = delete_subscription(
         subscription_id,
         principal.id,
@@ -312,9 +444,11 @@ async def unsubscribe_push(
 
 @router.post("/test")
 async def test_push(
+    request: Request,
     body: PushTestRequest,
     principal: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
+    _require_push_csrf(request)
     payload = {
         "topic": body.topic,
         "title": "Runner Dashboard test notification",

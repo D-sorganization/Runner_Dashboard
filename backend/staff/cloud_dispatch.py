@@ -7,13 +7,16 @@ injecting raw API keys — cloud sessions must use provider subscription logins 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from agent_remediation.provider_registry import cloud_mutation_allowed as _cloud_mutation_allowed
 from dashboard_config import ORG
+from staff.launch_guard import check_launch_allowed
 
 ExecutionMode = Literal["local", "cloud"]
 
@@ -23,15 +26,21 @@ API_KEY_ENV_VARS: frozenset[str] = frozenset(
         "OPENAI_API_KEY",
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
+        "DEEPSEEK_API_KEY",
     }
 )
 
 _PROVIDER_ALIASES: dict[str, str] = {"cursor": "cursor-agent", "jules_api": "jules"}
 _CLOUD_CLI: frozenset[str] = frozenset({"claude", "codex"})
 _CLOUD_WORKFLOW: frozenset[str] = frozenset({"cursor-agent", "jules"})
+_GUARDED_LOCAL_PROVIDERS: frozenset[str] = frozenset({"antigravity", "gemini"})
 _URL_RE = re.compile(r"https://[^\s\"')]+")
 _CLAUDE_URL_RE = re.compile(r"https://claude\.ai/[^\s\"')]+")
 _GH_RUN_RE = re.compile(r"https://github\.com/[^\s\"')]+/actions/runs/\d+")
+
+
+class CloudMutationRefused(ValueError):
+    """Raised when the provider registry hard-gates a provider's cloud dispatch (#4081)."""
 
 
 @dataclass(frozen=True)
@@ -50,6 +59,8 @@ def normalize_provider(provider: str) -> str:
 def supports_cloud_execution(provider: str, *, installed: Mapping[str, bool] | None = None) -> bool:
     """Whether this host can launch ``provider`` in cloud mode."""
     pid = normalize_provider(provider)
+    if not _cloud_mutation_allowed(pid):
+        return False
     if pid in _CLOUD_CLI:
         if installed is not None:
             return bool(installed.get(pid))
@@ -76,6 +87,27 @@ def scrub_api_key_env(env: Mapping[str, str]) -> dict[str, str]:
 def _truncate(prompt: str, limit: int = 8000) -> str:
     text = prompt.strip()
     return text[:limit] if text else "Continue the assigned staff task."
+
+
+def _codex_cloud_environment() -> str:
+    """Codex Cloud ``exec`` requires ``--env`` (id or label); configured per staff node."""
+    env_id = os.environ.get("STAFF_CODEX_CLOUD_ENV", "").strip()
+    if not env_id:
+        raise ValueError("codex cloud execution requires STAFF_CODEX_CLOUD_ENV (Codex Cloud environment id or label)")
+    return env_id
+
+
+def targets_from_record(target_kind: str, target_ref: str) -> tuple[int | None, int | None]:
+    """Parse issue/pr numbers from a persisted run target."""
+    if target_kind == "issue" and target_ref.startswith("#"):
+        try:
+            return int(target_ref[1:]), None
+        except ValueError:
+            return None, None
+    if target_kind == "pr":
+        digits = "".join(ch for ch in target_ref if ch.isdigit())
+        return None, (int(digits) if digits else None)
+    return None, None
 
 
 def _workflow_dispatch(provider: str, prompt: str, *, repo: str, issue: int | None, pr: int | None) -> CloudDispatch:
@@ -116,14 +148,16 @@ def build_cloud_dispatch(
     pid = normalize_provider(provider)
     if pid not in _CLOUD_CLI | _CLOUD_WORKFLOW:
         raise ValueError(f"provider '{provider}' does not support cloud execution")
+    if not _cloud_mutation_allowed(pid):
+        raise CloudMutationRefused(
+            f"'{pid}' cloud dispatch is hard-gated non-mutating (ADR-0007 local-ingress; "
+            "see Runner_Dashboard#4081) until an approved identity-path change lifts the gate"
+        )
     text = _truncate(prompt)
     if pid == "claude":
         return CloudDispatch(argv=["claude", "--remote", text])
     if pid == "codex":
-        argv: list[str] = ["codex", "cloud", "--json"]
-        if model:
-            argv.extend(["--model", model])
-        argv.append(text)
+        argv = ["codex", "cloud", "exec", "--env", _codex_cloud_environment(), text]
         return CloudDispatch(argv=argv)
     return _workflow_dispatch(pid, prompt, repo=repo, issue=issue, pr=pr)
 
@@ -154,15 +188,23 @@ def resolve_plan_execution(
     """Return ``(execution_mode, argv, cloud_stdin, lease)`` for :meth:`StaffRunner.plan`."""
     execution_mode = (getattr(req, "execution_mode", "local") or "local").strip().lower()
     if execution_mode == "cloud":
+        if req.issue is not None:
+            verdict = check_launch_allowed(req.repo, req.issue)
+            if not verdict.allowed:
+                raise ValueError(f"launch guard refused {req.repo}#{req.issue}: {verdict.reason}")
         cloud = build_cloud_dispatch(
             provider,
-            req.prompt,
+            prompt,
             model=effective_model,
             repo=req.repo,
             issue=req.issue,
             pr=req.pr,
         )
         return execution_mode, cloud.argv, cloud.stdin or "", False
+    if normalize_provider(provider) in _GUARDED_LOCAL_PROVIDERS and req.issue is not None:
+        verdict = check_launch_allowed(req.repo, req.issue)
+        if not verdict.allowed:
+            raise ValueError(f"launch guard refused {req.repo}#{req.issue}: {verdict.reason}")
     argv = adapter.build_command(prompt, "<workdir>", effective_model, **read_only_kwargs)
     return execution_mode, argv, "", lease
 

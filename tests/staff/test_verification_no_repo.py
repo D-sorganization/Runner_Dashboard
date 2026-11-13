@@ -26,7 +26,7 @@ def _run(repo: str) -> RunRecord:
         role="ad-hoc",
         provider="claude",
         model="sonnet",
-        machine="DeskComputer",
+        machine="hub-a",
         repo=repo,
         target_kind="prompt",
         target_ref="",

@@ -1,11 +1,4 @@
-/**
- * Mobile.tsx — Mobile Staff Console (SC-D8, Issue #1331).
- *
- * Implements full-screen roster → thread navigation, safe-area aware bottom
- * composer, thumb-reachable approve/deny actions, push deep linking (?thread=, ?role=),
- * and role context inspection. Console state comes from `useStaffConsole`,
- * shared with the desktop layout (#1446).
- */
+/** Mobile Staff Console: roster, threads, composer (SC-D8). */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { StaffRoleItem } from "./types";
 import { ROSTER_GROUPS } from "./types";
@@ -18,16 +11,21 @@ import { GroupCostConfirm } from "./GroupCostConfirm";
 import { MobileContextDrawer } from "./MobileContextDrawer";
 import { ConsoleErrorBanner } from "./ConsoleErrorBanner";
 import { InboxPanel } from "../Staff/InboxPanel";
-import { threadKindForRole } from "./consoleThreads";
 import { isPanelThread } from "./panelTurn";
 import { useStaffConsole } from "./useStaffConsole";
 import { BotIcon } from "../../shell/navIcons";
 import { MobileRunsView } from "./MobileRuns";
 import { PROJECT_WORKFLOWS } from "./projectWorkflows";
-import { pushThreadUrl, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
+import { selectMobileThread, startNewMobileConversation, useMobileHomeSendNavigation } from "./useMobileHomeSendNavigation";
+import { usePendingThreadId, useMobileThreadUrlSync } from "./useMobileThreadUrlSync";
+import { PersonaGallery } from "./PersonaGallery";
 import "./mobile.css";
 
-export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs";
+export type MobileView = "home" | "roster" | "thread" | "inbox" | "runs" | "personas";
+
+// Primary phone flow: direct conversation with the persistent RD Barb seat,
+// resolved from the roster, never a silent fallback to auto-route "barb" (#3493).
+export const PRIMARY_CHAT_ROLE = "rd-barb";
 
 export interface StaffConsoleMobileProps {
   roles?: StaffRoleItem[];
@@ -36,22 +34,12 @@ export interface StaffConsoleMobileProps {
   initialThread?: ThreadInfo;
   initialMessages?: ThreadMessage[];
   onOpenThread?: (threadId: string) => void;
+  onThreadSelected?: (threadId: string, role: string) => void;
   onOpenRun?: (runId: string) => void;
   onSendMessage?: (payload: SendMessagePayload) => Promise<{ ok: boolean; [key: string]: unknown }>;
   onApproveProposal?: ProposalApproveHandler;
   onDenyProposal?: ProposalDenyHandler;
   className?: string;
-}
-
-function parseUrlParams(): { threadId: string | null; roleName: string | null; tab: string | null } {
-  if (typeof window === "undefined") return { threadId: null, roleName: null, tab: null };
-  const p = new URLSearchParams(window.location.search);
-  const tabParam = p.get("tab") || (p.get("inbox") ? "inbox" : p.get("runs") ? "runs" : null);
-  return {
-    threadId: p.get("thread"),
-    roleName: p.get("role"),
-    tab: tabParam,
-  };
 }
 
 export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
@@ -61,22 +49,32 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
   initialThread,
   initialMessages,
   onOpenThread,
+  onThreadSelected,
   onOpenRun,
   onSendMessage,
   onApproveProposal,
   onDenyProposal,
   className = "",
 }) => {
+  const [pendingThreadId, setPendingThreadId] = usePendingThreadId();
+  // initialThread only seeds useStaffConsole's very first render; once a
+  // pending id names a different thread, stop offering it so the fetch path
+  // takes over instead of being short-circuited by a stale seed.
   const sc = useStaffConsole({
     roles: initialRoles,
     initialRole,
-    initialThread,
+    initialThread: pendingThreadId && initialThread?.id !== pendingThreadId ? undefined : initialThread,
+    initialThreadId: pendingThreadId,
     initialMessages,
     onSendMessage,
     onApproveProposal,
     onDenyProposal,
+    defaultSendRole: PRIMARY_CHAT_ROLE,
   });
-  const { roles, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
+  const { roles, rosterLoading, selectedRole, activeThread, currentRole: currentRoleObj, sendMessage } = sc;
+  // Missing only once the roster has actually loaded (never mid-fetch).
+  const primaryRole = useMemo(() => roles.find((r) => r.name === PRIMARY_CHAT_ROLE) ?? null, [roles]);
+  const primaryRoleUnavailable = !rosterLoading && !primaryRole;
   const [view, setView] = useState<MobileView>(initialView);
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -104,48 +102,20 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     isHomeView: () => viewRef.current === "home",
     onOpenThread,
     setThreadView: () => setView("thread"),
+    role: primaryRole?.name ?? PRIMARY_CHAT_ROLE,
   });
 
-  // Deep Link Handling (?thread=, ?role=, ?tab=). A ?thread= id comes from a
-  // push link and is real; a ?role= link resolves to the role's backend thread.
-  const syncWithUrl = () => {
-    const { threadId, roleName, tab } = parseUrlParams();
-    if (threadId) {
-      const known = initialThread?.id === threadId ? initialThread : null;
-      sc.openThread(
-        known ?? {
-          id: threadId,
-          title: roleName ? `Conversation with ${roleName}` : "Conversation",
-          kind: roleName ? threadKindForRole(roleName) : "direct",
-          participants: roleName ? [roleName] : [],
-          status: "active",
-        },
-        roleName ?? undefined,
-      );
-      setView("thread");
-      return;
-    }
-    if (roleName) {
-      if (initialThread?.participants.includes(roleName)) {
-        sc.openThread(initialThread, roleName);
-        setView("thread");
-      } else {
-        void sc.openRole(roleName).then((thread) => thread && setView("thread"));
-      }
-      return;
-    }
-    if (tab === "inbox") setView("inbox");
-    else if (tab === "runs") setView("runs");
-  };
-  const syncWithUrlRef = useRef(syncWithUrl);
-  syncWithUrlRef.current = syncWithUrl;
-
-  useEffect(() => {
-    const onPopState = () => syncWithUrlRef.current();
-    onPopState();
-    window.addEventListener("popstate", onPopState);
-    return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  // Deep Link Handling (?thread=, ?role=, ?tab=): see useMobileThreadUrlSync
+  // for the fail-closed, fetch-and-authorize contract (#2663, from #2652).
+  const composerLocked = useMobileThreadUrlSync({
+    pendingThreadId,
+    setPendingThreadId,
+    activeThread,
+    initialThread,
+    openRole: sc.openRole,
+    openThread: sc.openThread,
+    setView,
+  });
 
   const displayMessages = sc.messages;
 
@@ -154,12 +124,16 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
     async (roleName: string, prefill = "") => {
       const thread = await sc.openRole(roleName);
       if (!thread) return;
+      // openRole already authorized this against the backend: clear any
+      // unrelated pending id instead of waiting on a URL round-trip back
+      // from the shell, so a local specialist pick is never locked out by a
+      // stale sidebar selection.
+      setPendingThreadId(null);
       applyComposerPrefill(prefill);
-      setView("thread"); onOpenThread?.(thread.id);
-
-      pushThreadUrl(roleName, thread.id);
+      setView("thread");
+      selectMobileThread(thread.id, roleName, onThreadSelected, onOpenThread);
     },
-    [sc, onOpenThread],
+    [sc, onOpenThread, onThreadSelected, setPendingThreadId],
   );
 
   // Return to roster view
@@ -239,7 +213,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 className="staff-mobile__details-btn"
                 data-testid="staff-mobile-new-conversation-btn"
                 aria-label="New conversation"
-                onClick={() => void sc.newConversation()}
+                onClick={() => {
+                  void startNewMobileConversation(sc.newConversation, currentRoleObj.name, onThreadSelected, onOpenThread)
+                    .then((thread) => thread && setPendingThreadId(null));
+                }}
               >
                 New conversation
               </button>
@@ -294,6 +271,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               selectedRole={selectedRole || undefined}
               onSendMessage={handleSendMessage}
               placeholder={`Message ${currentRoleObj.title || "staff"}…`} isPanel={isPanelThread(activeThread)} prefilledText={composerPrefill} prefillSeq={prefillSeq}
+              conversationOpening={composerLocked}
             />
           </div>
 
@@ -315,7 +293,16 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
             <button type="button" className="staff-mobile__details-btn" onClick={() => setView("roster")}>Choose staff</button>
           </header>
           <ConsoleErrorBanner error={sc.error} onDismiss={sc.dismissError} />
-          <main className="staff-mobile__main-content staff-mobile__home-content">
+          {/* A <div>, not <main>: the page already has one <main> landmark
+              (MobileShell's #main-content); a second here would duplicate it. */}
+          <div className="staff-mobile__main-content staff-mobile__home-content">
+            {/* Inside the scroll area, not fixed chrome: at narrow widths it
+                wraps tall enough to push the staff tabs under the shell nav (#3772). */}
+            {primaryRoleUnavailable && (
+              <div className="staff-mobile__primary-role-unavailable" role="alert" data-testid="staff-mobile-rd-barb-unavailable">
+                rd-barb is unavailable right now — the primary chat can&apos;t open.
+              </div>
+            )}
             <section className="staff-mobile__home-intro" aria-labelledby="staff-mobile-home-title">
               <span className="staff-mobile__home-eyebrow">Your fleet, one conversation away</span>
               <h2 id="staff-mobile-home-title">What would you like to work on?</h2>
@@ -328,13 +315,14 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                 </button>
               ))}
             </div>
-          </main>
+          </div>
           <div className="staff-mobile__composer-container" data-testid="staff-mobile-composer-container">
             <GroupCostConfirm guard={sc.costGuard} />
-            <Composer threadId="new" roles={roles} selectedRole="barb" onSendMessage={handleSendMessage} placeholder="Message Barb..." prefilledText={composerPrefill} prefillSeq={prefillSeq} />
+            <Composer threadId="new" roles={roles} selectedRole={primaryRole?.name ?? PRIMARY_CHAT_ROLE} onSendMessage={handleSendMessage} placeholder={`Message ${primaryRole?.title || "RD Barb"}...`} disabled={primaryRoleUnavailable} prefilledText={composerPrefill} prefillSeq={prefillSeq} />
           </div>
           <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
             <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Choose staff</button>
+            <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-personas" onClick={() => setView("personas")}>Personas</button>
             <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-inbox" onClick={() => setView("inbox")}>Inbox</button>
             <button type="button" role="tab" aria-selected={false} className="staff-mobile__tab" data-testid="staff-mobile-tab-runs" onClick={() => setView("runs")}>Runs</button>
           </nav>
@@ -362,6 +350,15 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
               </div>
             ) : view === "runs" ? (
               <MobileRunsView roles={roles} onOpenRun={onOpenRun} />
+            ) : view === "personas" ? (
+              <div className="staff-mobile__content" data-testid="staff-mobile-personas-view">
+                <PersonaGallery
+                  roles={roles}
+                  selectedRoleId={selectedRole ?? undefined}
+                  onSelectRole={(roleName) => handleSelectRole(roleName)}
+                  isLoading={rosterLoading}
+                />
+              </div>
             ) : (
               <div className="staff-mobile__content">
                 <div className="staff-mobile__search-container">
@@ -426,6 +423,7 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                               data-testid={`staff-mobile-role-${role.name}`}
                               role="button"
                               tabIndex={0}
+                              title={`Open a conversation with ${role.title}`}
                               onClick={() => handleSelectRole(role.name)}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
@@ -442,7 +440,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
                                 )}
                               </div>
                               {role.caller_unread_count ? (
-                                <span className="staff-mobile__unread-badge">
+                                <span
+                                  className="staff-mobile__unread-badge"
+                                  title={`${role.caller_unread_count} unread message${role.caller_unread_count === 1 ? "" : "s"}`}
+                                >
                                   {role.caller_unread_count}
                                 </span>
                               ) : null}
@@ -458,36 +459,10 @@ export const StaffConsoleMobile: React.FC<StaffConsoleMobileProps> = ({
           </div>
 
           <nav className="staff-mobile__tabs" role="tablist" aria-label="Staff views">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "roster"}
-              className={`staff-mobile__tab ${view === "roster" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-roster"
-              onClick={() => setView("roster")}
-            >
-              Console
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "inbox"}
-              className={`staff-mobile__tab ${view === "inbox" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-inbox"
-              onClick={() => setView("inbox")}
-            >
-              Inbox
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={view === "runs"}
-              className={`staff-mobile__tab ${view === "runs" ? "staff-mobile__tab--active" : ""}`}
-              data-testid="staff-mobile-tab-runs"
-              onClick={() => setView("runs")}
-            >
-              Runs
-            </button>
+            <button type="button" role="tab" aria-selected={view === "roster"} className={`staff-mobile__tab ${view === "roster" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-roster" onClick={() => setView("roster")}>Console</button>
+            <button type="button" role="tab" aria-selected={view === "personas"} className={`staff-mobile__tab ${view === "personas" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-personas" onClick={() => setView("personas")}>Personas</button>
+            <button type="button" role="tab" aria-selected={view === "inbox"} className={`staff-mobile__tab ${view === "inbox" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-inbox" onClick={() => setView("inbox")}>Inbox</button>
+            <button type="button" role="tab" aria-selected={view === "runs"} className={`staff-mobile__tab ${view === "runs" ? "staff-mobile__tab--active" : ""}`} data-testid="staff-mobile-tab-runs" onClick={() => setView("runs")}>Runs</button>
           </nav>
         </div>
       )}

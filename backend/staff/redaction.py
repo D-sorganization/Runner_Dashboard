@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from staff.private_surface_gate import gate_text
+
 # GitHub personal access tokens, OAuth tokens, and fine-grained tokens
 _GITHUB_TOKEN_RE = re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]{35,254}|github_pat_[A-Za-z0-9_]{22,254})\b")
 
@@ -44,7 +46,7 @@ _PRIVATE_IP_RE = re.compile(
     # 192.168.0.0/16
     rf"192\.168\.{_OCTET}\.{_OCTET}"
     r"|"
-    # 100.64.0.0/10 (CGNAT) -> 100.64.0.0 - 100.127.255.255
+    # 100.64.0.0/10 (CGNAT) -> 100.64.0.0 - 100.127.255.255  # pragma: allowlist private-topology
     rf"100\.(?:6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\.{_OCTET}\.{_OCTET}"
     r")\b"
 )
@@ -61,12 +63,22 @@ def redact_sensitive_content(text: str) -> str:
     - PEM private keys -> [REDACTED_PRIVATE_KEY]
     - Bearer tokens -> Bearer [REDACTED_TOKEN]
     - RFC 1918 & RFC 6598 private LAN IPv4 addresses -> [REDACTED_IP]
+
+    Also resolves any private-role classification span (#3095) before the
+    secret-pattern passes run, so every boundary that already calls this
+    function gets the deny-by-default gate for free (LoD/DRY): see
+    ``staff.private_surface_gate.gate_text``.
     """
     if not text:
         return text
 
+    # Deny-by-default classification gate runs first: a withheld span must
+    # never be handed to the secret-pattern passes below as if it were
+    # ordinary text.
+    s = gate_text(text)
+
     # Redact private keys first since they may span multiple lines
-    s = _PRIVATE_KEY_RE.sub("[REDACTED_PRIVATE_KEY]", text)
+    s = _PRIVATE_KEY_RE.sub("[REDACTED_PRIVATE_KEY]", s)
 
     # Redact AWS secrets before generic API keys
     def _sub_aws_secret(match: re.Match[str]) -> str:

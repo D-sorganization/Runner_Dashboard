@@ -1,0 +1,8 @@
+version: 1
+topology: documentation
+machines:
+  - name: node-c
+    runners:
+      min: 0
+      default: 0
+      max: 0

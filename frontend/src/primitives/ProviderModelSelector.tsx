@@ -173,7 +173,7 @@ export function ProviderModelSelector({
           style={selectStyle}
         >
           <option value="">Select a provider…</option>
-          {registry.providers.map((p) => (
+          {registry.selectableProviders.map((p) => (
             <option key={p.id} value={p.id}>
               {p.label}
               {p.experimental ? " (experimental)" : ""}

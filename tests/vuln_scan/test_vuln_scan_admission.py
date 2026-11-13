@@ -48,9 +48,9 @@ def test_default_facts_refuse_everything() -> None:
     ("change", "needle"),
     [
         ({"host": None}, "no scan host"),
-        ({"host": ScanHost("brick", "container", "ssh://x@brick", "vs-build")}, "'vm'"),
-        ({"host": ScanHost("ControlTower-vm", "vm", "ssh://x@ct", "vs-build")}, "ControlTower"),
-        ({"host": ScanHost("vm2", "vm", "ssh://x@controltower", "vs-build")}, "ControlTower"),
+        ({"host": ScanHost("node-c", "container", "ssh://x@node-c", "vs-build")}, "'vm'"),
+        ({"host": ScanHost("node-a-vm", "vm", "ssh://x@ct", "vs-build")}, "node-a"),
+        ({"host": ScanHost("vm2", "vm", "ssh://x@node-a", "vs-build")}, "node-a"),
         ({"host": ScanHost("vm2", "vm", None, "vs-build")}, "docker_host"),
         ({"host": ScanHost("vm2", "vm", "ssh://x@vm2", None)}, "build_network"),
         ({"contract_valid": False}, "contract"),

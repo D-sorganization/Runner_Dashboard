@@ -122,6 +122,7 @@ export function EventLog({ events, height = 360 }: EventLogProps) {
                 filter === f.id ? " event-log__filter--active" : ""
               }`}
               aria-pressed={filter === f.id}
+              title={`Filter events: ${f.label}`}
               onClick={() => setFilter(f.id)}
             >
               {f.label}

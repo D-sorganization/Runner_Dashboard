@@ -7,7 +7,7 @@ import json
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -391,6 +391,91 @@ def _active_unit(num: int, tmp_path: Path, busy: bool = False):
         active=True,
         busy=busy,
     )
+
+
+def _out_of_order_units(tmp_path: Path):
+    units = [_active_unit(n, tmp_path) for n in range(1, 6)]
+    for unit in units:
+        unit.active = unit.num in (1, 2, 5)
+    return units
+
+
+def test_apply_capacity_reduced_target_activates_lowest_slots(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    actions = runner_scheduler.apply_capacity(_out_of_order_units(tmp_path), desired=3, dry_run=True)
+    assert [(a["runner"], a["action"]) for a in actions] == [(3, "start"), (5, "stop")]
+
+
+def test_apply_capacity_reconcile_skips_busy_out_of_range_slot(monkeypatch, tmp_path: Path) -> None:
+    units = _out_of_order_units(tmp_path)
+    units[-1].busy = True
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    assert runner_scheduler.apply_capacity(units, desired=3, dry_run=True) == []
+    units[-1].busy = False
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: False)
+    assert runner_scheduler.apply_capacity(units, desired=3, dry_run=True) == []
+
+
+def test_apply_capacity_never_drops_below_target_during_reconcile(monkeypatch, tmp_path: Path) -> None:
+    units = _out_of_order_units(tmp_path)
+    active = {u.num for u in units if u.active}
+    calls = []
+
+    def start(cmd):
+        assert cmd == ["systemctl", "start", units[2].unit]
+        calls.append("start")
+        active.add(3)
+        return _process_result()
+
+    def stop(unit):
+        calls.append("stop")
+        active.remove(unit.num)
+        assert len(active) >= 3
+        return True
+
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", start)
+    monkeypatch.setattr(runner_scheduler, "stop_runner_safely", stop)
+    actions = runner_scheduler.apply_capacity(units, desired=3, dry_run=False)
+    assert calls == ["start", "stop"]
+    assert active == {1, 2, 3}
+    assert [a["action"] for a in actions] == calls
+
+
+def test_apply_capacity_failed_replacement_never_stops_existing_runner(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda cmd: _process_result(returncode=1))
+    monkeypatch.setattr(runner_scheduler, "stop_runner_safely", lambda unit: pytest.fail("stop after failed start"))
+    assert runner_scheduler.apply_capacity(_out_of_order_units(tmp_path), desired=3, dry_run=False) == []
+
+
+def test_apply_capacity_rejects_unsorted_units(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="sorted"):
+        runner_scheduler.apply_capacity(list(reversed(_out_of_order_units(tmp_path))), desired=3, dry_run=True)
+
+
+def test_apply_capacity_repeated_ticks_converge_one_swap_at_a_time(monkeypatch, tmp_path: Path) -> None:
+    units = [_active_unit(n, tmp_path) for n in range(1, 8)]
+    for unit in units:
+        unit.active = unit.num in (1, 2, 6, 7)
+
+    def start(cmd):
+        next(u for u in units if u.unit == cmd[-1]).active = True
+        return _process_result()
+
+    def stop(unit):
+        unit.active = False
+        assert sum(u.active for u in units) >= 4
+        return True
+
+    monkeypatch.setattr(runner_scheduler, "_confirmed_idle", lambda *_a, **_k: True)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", start)
+    monkeypatch.setattr(runner_scheduler, "stop_runner_safely", stop)
+    for _ in range(2):
+        actions = runner_scheduler.apply_capacity(units, desired=4, dry_run=False)
+        assert [a["action"] for a in actions] == ["start", "stop"]
+    assert [u.num for u in units if u.active] == [1, 2, 3, 4]
+    assert runner_scheduler.apply_capacity(units, desired=4, dry_run=False) == []
 
 
 def test_apply_capacity_rechecks_busy_immediately_before_stop(monkeypatch, tmp_path: Path) -> None:
@@ -992,10 +1077,42 @@ def _proc_with(tmp_path: Path, *, mem_available_kb: int = 16 * 1024 * 1024, mem_
     return proc
 
 
+def _write_floor_cache(
+    tmp_path: Path,
+    *,
+    disk_free_gb: float,
+    mem_available_kb: int,
+    mem_psi_avg60: float,
+) -> Path:
+    state_dir = tmp_path / "metrics-state"
+    state_dir.mkdir()
+    mem_gb = mem_available_kb / (1024 * 1024)
+    payload = {
+        "schema_version": 1,
+        "sampled_at": datetime.now(UTC).isoformat(),
+        "wsl": {
+            "mem_available_gb": round(mem_gb, 2),
+            "psi": {"memory_some_avg60": mem_psi_avg60},
+        },
+        "disk": {"by_path": {"/mnt/c": {"free_gb": disk_free_gb, "path": "/mnt/c"}}},
+    }
+    (state_dir / "host_metrics.json").write_text(json.dumps(payload), encoding="utf-8")
+    return state_dir
+
+
 def _floor_env(monkeypatch, tmp_path: Path, *, disk_free_gb: float = 500.0, **proc_kwargs) -> None:
+    mem_available_kb = int(proc_kwargs.get("mem_available_kb", 16 * 1024 * 1024))
+    mem_psi_avg60 = float(proc_kwargs.get("mem_psi_avg60", 0.0))
+    state_dir = _write_floor_cache(
+        tmp_path,
+        disk_free_gb=disk_free_gb,
+        mem_available_kb=mem_available_kb,
+        mem_psi_avg60=mem_psi_avg60,
+    )
+    monkeypatch.setenv("RUNNER_DASHBOARD_STATE_DIR", str(state_dir))
+    monkeypatch.setattr(runner_scheduler, "_HOST_METRICS_CACHE_PATH", state_dir / "host_metrics.json")
     monkeypatch.setattr(runner_scheduler, "PROC_ROOT", _proc_with(tmp_path, **proc_kwargs))
     monkeypatch.setattr(runner_scheduler, "MAINTENANCE_PATH", tmp_path / "maintenance.json")
-    monkeypatch.setattr(runner_scheduler, "disk_free_gb", lambda _path: disk_free_gb)
 
 
 FLOOR = {
@@ -1071,10 +1188,12 @@ def test_maintenance_hold_beats_resource_floor(monkeypatch, tmp_path: Path) -> N
     assert runner_scheduler.effective_capacity(_floor_config(), None) == (0, "maintenance-drain")
 
 
-def test_disk_free_gb_reads_real_path(tmp_path: Path) -> None:
-    free = runner_scheduler.disk_free_gb(str(tmp_path))
-    assert free is not None and free > 0
-    assert runner_scheduler.disk_free_gb(str(tmp_path / "does-not-exist")) is None
+def test_disk_free_gb_reads_from_metrics_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_floor_cache(tmp_path, disk_free_gb=123.4, mem_available_kb=16 * 1024 * 1024, mem_psi_avg60=0.0)
+    cache_path = tmp_path / "metrics-state" / "host_metrics.json"
+    monkeypatch.setattr(runner_scheduler, "_HOST_METRICS_CACHE_PATH", cache_path)
+    assert runner_scheduler.disk_free_gb("/mnt/c") == pytest.approx(123.4)
+    assert runner_scheduler.disk_free_gb("/other") is None
 
 
 def test_validate_config_rejects_bad_resource_floor() -> None:
@@ -1085,6 +1204,71 @@ def test_validate_config_rejects_bad_resource_floor() -> None:
             runner_scheduler.validate_config(_floor_config(bad))  # type: ignore[arg-type]
 
 
+READMIT_FLOOR = {**FLOOR, "readmit_disk_free_gb": 45}
+
+
+def _latch_env(monkeypatch, tmp_path: Path, free: list) -> Path:
+    """Disk probe returns successive values from ``free``; the latch lives in tmp_path."""
+    _floor_env(monkeypatch, tmp_path)
+    latch = tmp_path / "disk-floor.json"
+    monkeypatch.setattr(runner_scheduler, "DISK_FLOOR_LATCH_PATH", latch)
+    values = iter(free)
+    monkeypatch.setattr(runner_scheduler, "disk_free_gb", lambda _path: next(values))
+    return latch
+
+
+def test_disk_floor_latches_on_breach_and_holds_until_readmit(monkeypatch, tmp_path: Path) -> None:
+    latch = _latch_env(monkeypatch, tmp_path, [38.0, 42.0, 44.9, 45.0, 42.0])
+    config = _floor_config(READMIT_FLOOR)
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1  # 38 < 40: shed + latch
+    assert latch.exists()
+    desired, reason = runner_scheduler.effective_capacity(config, None)  # 42: between, still held
+    assert desired == 1 and "disk_free=42.0GB<45 (readmit)" in reason
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1  # 44.9: still held
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")  # 45: readmitted
+    assert not latch.exists()
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")  # 42 unlatched: fine
+
+
+def test_disk_floor_unreadable_probe_keeps_latch(monkeypatch, tmp_path: Path) -> None:
+    latch = _latch_env(monkeypatch, tmp_path, [30.0, None, 41.0])
+    config = _floor_config(READMIT_FLOOR)
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")  # unreadable: no breach
+    assert latch.exists()  # ...but the latch is neither set nor cleared by an unreadable probe
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1  # 41 < 45 while latched
+
+
+def test_disk_floor_without_readmit_key_never_latches(monkeypatch, tmp_path: Path) -> None:
+    latch = _latch_env(monkeypatch, tmp_path, [30.0, 41.0])
+    config = _floor_config()
+    assert runner_scheduler.effective_capacity(config, None)[0] == 1
+    assert runner_scheduler.effective_capacity(config, None) == (4, "default")  # legacy: first tick back
+    assert not latch.exists()
+
+
+def test_validate_config_rejects_readmit_below_min() -> None:
+    import pytest
+
+    for bad in ({**FLOOR, "readmit_disk_free_gb": 30}, {**FLOOR, "readmit_disk_free_gb": -1}):
+        with pytest.raises(ValueError):
+            runner_scheduler.validate_config(_floor_config(bad))
+    runner_scheduler.validate_config(_floor_config(READMIT_FLOOR))
+
+
+def test_resource_floor_lowers_capacity_only_through_busy_safe_drain() -> None:
+    """The floor returns a target count; jobs leave via drain_surplus, which skips busy runners."""
+    source = SCHEDULER_PATH.read_text(encoding="utf-8")
+    floor_body = source.split("def apply_resource_floor", 1)[1].split("\ndef ", 1)[0]
+    assert "systemctl" not in floor_body and "stop_unit" not in floor_body
+
+
+def test_oglaptop_schedule_readmits_above_its_floor() -> None:
+    config = json.loads((REPO_ROOT / "config" / "runner-schedule-oglaptop.json").read_text(encoding="utf-8"))
+    floor = config["resource_floor"]
+    assert floor["readmit_disk_free_gb"] >= floor["min_disk_free_gb"] + 5
+
+
 def test_oglaptop_schedule_carries_conservative_resource_floor() -> None:
     config = json.loads((REPO_ROOT / "config" / "runner-schedule-oglaptop.json").read_text(encoding="utf-8"))
     runner_scheduler.validate_config(config)
@@ -1093,3 +1277,132 @@ def test_oglaptop_schedule_carries_conservative_resource_floor() -> None:
     assert floor["min_disk_free_gb"] >= 40
     assert floor["min_mem_available_gb"] >= 6
     assert floor["runners"] <= 1
+
+
+# --- #2776: a "successful" stop must not leave frozen children in the cgroup ---
+
+
+def _leftover_env(monkeypatch, tmp_path: Path, unit, *, pids: list[int], die_on: str | None = "SIGTERM"):
+    """Mock systemctl plus a fake cgroup; ``die_on`` is the signal that empties it."""
+    cg_root = tmp_path / "cgroup"
+    procs = cg_root / "system.slice" / unit.unit / "cgroup.procs"
+    procs.parent.mkdir(parents=True)
+    procs.write_text("".join(f"{p}\n" for p in pids), encoding="utf-8")
+    commands: list[list[str]] = []
+    signals: list[tuple[int, str]] = []
+
+    def run(cmd, **_k):
+        commands.append(cmd)
+        if cmd[:2] == ["systemctl", "show"] and "ControlGroup" in cmd:
+            return _process_result(stdout=f"/system.slice/{unit.unit}\n")
+        return _process_result()
+
+    def signal_pid(pid: int, sig: str) -> None:
+        signals.append((pid, sig))
+        if sig == die_on:
+            procs.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(runner_scheduler, "CGROUP_ROOT", cg_root)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+    monkeypatch.setattr(runner_scheduler, "_signal_pid", signal_pid)
+    monkeypatch.setattr(runner_scheduler, "LEFTOVER_TERM_WAIT_SECONDS", 0.05)
+    monkeypatch.setattr(runner_scheduler.time_module, "sleep", lambda _s: None)
+    monkeypatch.setattr(runner_scheduler, "_worker_absent", lambda *_a, **_k: True)
+    return commands, signals
+
+
+def test_leftover_frozen_children_are_thawed_and_terminated_after_stop(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path)
+    commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101, 4102])
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+
+    assert [s for s in signals if s[1] == "SIGCONT"] == [(4101, "SIGCONT"), (4102, "SIGCONT")]
+    assert [s for s in signals if s[1] == "SIGTERM"] == [(4101, "SIGTERM"), (4102, "SIGTERM")]
+    assert not any(s[1] == "SIGKILL" for s in signals)
+    assert commands.index(["systemctl", "stop", unit.unit]) < commands.index(["systemctl", "reset-failed", unit.unit])
+
+
+def test_leftover_children_that_ignore_term_are_killed(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path)
+    _commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101], die_on="SIGKILL")
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+
+    order = [sig for _pid, sig in signals]
+    assert order.index("SIGTERM") < order.index("SIGKILL")
+
+
+def test_clean_cgroup_after_stop_signals_nothing(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path)
+    _commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[])
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+    assert signals == []
+
+
+def test_timeout_path_reaps_leftovers_instead_of_leaving_them_frozen(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path)
+    commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101])
+    inner = runner_scheduler.run_cmd
+
+    def run(cmd, **kwargs):
+        if cmd[:2] == ["systemctl", "stop"]:
+            commands.append(cmd)
+            raise runner_scheduler.subprocess.TimeoutExpired(cmd, 30)
+        if cmd[:2] == ["systemctl", "is-active"]:
+            return _process_result(returncode=3)
+        return inner(cmd, **kwargs)
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+
+    assert runner_scheduler.stop_runner_safely(unit) is True
+    assert (4101, "SIGCONT") in signals and (4101, "SIGTERM") in signals
+
+
+def test_busy_runner_is_never_reaped_or_stopped(monkeypatch, tmp_path: Path) -> None:
+    unit = _active_unit(2, tmp_path, busy=True)
+    commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101])
+    monkeypatch.setattr(runner_scheduler, "_worker_absent", lambda *_a, **_k: False)
+
+    assert runner_scheduler.stop_runner_safely(unit) is False
+
+    assert signals == []
+    assert _thaws(commands) == [unit.unit]
+    assert _stops(commands) == []
+
+
+def test_failed_stop_keeps_children_alive(monkeypatch, tmp_path: Path) -> None:
+    """When the unit stays up, its processes are healthy and must not be signalled."""
+    unit = _active_unit(2, tmp_path)
+    commands, signals = _leftover_env(monkeypatch, tmp_path, unit, pids=[4101])
+    inner = runner_scheduler.run_cmd
+
+    def run(cmd, **kwargs):
+        if cmd[:2] == ["systemctl", "stop"]:
+            return _process_result(returncode=1)
+        return inner(cmd, **kwargs)
+
+    monkeypatch.setattr(runner_scheduler, "run_cmd", run)
+
+    assert runner_scheduler.stop_runner_safely(unit) is False
+    assert signals == []
+    assert _thaws(commands) == [unit.unit]
+
+
+def test_stop_unit_cli_defers_when_worker_appears_after_freeze(monkeypatch, tmp_path: Path) -> None:
+    """#4046: --stop-unit exits non-zero when freeze/recheck sees a live job lock."""
+    unit_name = "actions.runner.test-org-pool-2.service"
+    workdir = tmp_path / "runner-2"
+    workdir.mkdir()
+    unit = runner_scheduler.RunnerUnit(num=2, unit=unit_name, workdir=workdir, active=True, busy=False)
+    monkeypatch.setattr(runner_scheduler, "lookup_unit", lambda _name, **_kw: unit)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
+    monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: True)
+    monkeypatch.setattr(
+        runner_scheduler.sys,
+        "argv",
+        ["runner-scheduler", "--apply", "--stop-unit", unit_name],
+    )
+
+    assert runner_scheduler.main() == 1

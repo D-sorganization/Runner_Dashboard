@@ -57,7 +57,7 @@ def attach_library_references(
     work_ids: list[int] = []
     for hit in hits:
         work_ids.append(hit.work_id)
-        lines.append(f"- {hit.citation} (work_id={hit.work_id})")
+        lines.append(f"- {hit.citation} {hit.cite_key} (work_id={hit.work_id})")
     q = quote(query[:200])
     lines.append(f"More: GET /api/v1/library/search?q={q}&repo={quote(repo)}&budget={budget_tokens}")
     return "\n".join(lines), tuple(dict.fromkeys(work_ids))

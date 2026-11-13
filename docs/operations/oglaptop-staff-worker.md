@@ -1,19 +1,19 @@
-# OGLaptop Staff Hub worker
+# node-b Staff Hub worker
 
-Last verified: **2026-09-23**, on OGLaptop itself. Governing epic: #1192;
+Last verified: **2026-09-23**, on node-b itself. Governing epic: #1192;
 node setup: #1223; deployed provider changes: PRs #1250, #1253 and #1256;
 reusable node standards: #1257 / #1258 (merged PRs #1261 / #1262).
 This is a verified snapshot, not a claim about other machines or future uptime.
 
 ## Current status
 
-OGLaptop is configured as a worker. **Keep `STAFF_SCHEDULER_ENABLED=0`.**
-This setup did not change DeskComputer or ControlTower or enable a second scheduler.
+node-b is configured as a worker. **Keep `STAFF_SCHEDULER_ENABLED=0`.**
+This setup did not change hub-a or node-a or enable a second scheduler.
 
 | Item                                | Verified value                                                           |
 | ----------------------------------- | ------------------------------------------------------------------------ |
-| Windows host / WSL distro           | `OGLaptop` / `Ubuntu`                                                    |
-| Linux user / home                   | `dieterolson` / `/home/dieterolson`                                      |
+| Windows host / WSL distro           | `node-b` / `Ubuntu`                                                    |
+| Linux user / home                   | `fleet-operator` / `/home/fleet-operator`                                      |
 | Dashboard service                   | `runner-dashboard`, active; loopback port `8321`                         |
 | Dashboard version / deployed commit | `4.10.0` / `31a91047463695d8506495dcca674a7ae58fdd6b`                    |
 | Required changes                    | Includes #1250, #1253, #1256, #1261 and #1262; built from merged main    |
@@ -36,17 +36,17 @@ paused during installation and resumed afterward; CI runner services continued.
 - SHA-256: `30bf613d96c8b137d645509292027b9aab77d3592f52e8e780899425f1b59b18`.
 - Full previous deployment: `~/actions-runners/dashboard.bak-2026-09-23-194302`.
 - Environment backup: `~/.config/runner-dashboard/env.bak-2026-09-23-194302`.
-- Requested acceptance: `bash -l /mnt/c/Users/diete/Repositories/_deploy/staff-node-acceptance.sh --role worker --run-ad-hoc --expect-sha 31a9104`.
+- Requested acceptance: `bash -l /mnt/c/Users/fleet-operator/Repositories/_deploy/staff-node-acceptance.sh --role worker --run-ad-hoc --expect-sha 31a9104`.
 - Result: **44 passed, 0 failed**, confirmed exit code **0**, including all six provider ad-hoc runs;
   live and configured Staff scheduler both `0`, worker holds empty, live RM source.
-- Receipt: `C:\Users\diete\Repositories\_deploy\staff-acceptance-31a9104-confirmed.log`.
+- Receipt: `C:\Users\fleet-operator\Repositories\_deploy\staff-acceptance-31a9104-confirmed.log`.
 
 The owner removed the pre-existing invalid portproxy `0.0.0.0:8321 -> R:8321`
 at 19:51 PT with `_deploy/remove-invalid-dashboard-portproxy.ps1`. A subsequent
 local `netsh` inspection confirms only the valid WSL Ollama forward remains:
 `192.168.208.1:11434 -> 127.0.0.1:11434`.
 
-The legacy `WSL-PortForward` task ran `C:\Users\diete\wsl-portforward.ps1`,
+The legacy `WSL-PortForward` task ran `C:\Users\fleet-operator\wsl-portforward.ps1`,
 which targets nonexistent distro `Ubuntu-22.04`, does not check WSL failure or
 validate the IP, and creates a dashboard forward on every interface. It could
 recreate an invalid entry. At 19:56 PT the owner ran
@@ -54,7 +54,7 @@ recreate an invalid entry. At 19:56 PT the owner ran
 **Disabled**. The task and script were preserved; the Ollama bridge task was
 not changed. Do not re-enable this legacy task.
 
-Cleanup backups under `C:\Users\diete\Repositories\_deploy`:
+Cleanup backups under `C:\Users\fleet-operator\Repositories\_deploy`:
 
 - `portproxy.bak-20260923-195102.txt`
 - `WSL-PortForward.bak-20260923-195102.xml`
@@ -62,26 +62,27 @@ Cleanup backups under `C:\Users\diete\Repositories\_deploy`:
 - `wsl-portforward.ps1.bak-20260923-195609`
 
 Owner identified the conflicting LAN device as Xbox and reported correcting
-eero reservations: Xbox MAC `90:6A:EB:81:45:30` to `192.168.4.202`, OGLaptop
+eero reservations: Xbox MAC `90:6A:EB:81:45:30` to `192.168.4.202`, node-b
 MAC `58:1C:F8:D7:3C:7D` to `192.168.4.203`. Xbox remains Automatic/DHCP.
-OGLaptop's live address is .203; router reservation contents are owner-reported.
+node-b's live address is .203; router reservation contents are owner-reported.
 
 ## Controlled restart maintenance (2026-09-23)
 
 The owner authorized a CI drain before restart validation. WSL GitHub login
 needed an owner-operated `gh auth refresh -h github.com -s admin:org` first.
-Runner IDs 217–224 belong to this node (GitHub spells its name `Oglaptop`,
-while local systemd units use `OGLaptop`). Their original group is ID 1.
+Runner IDs 217–224 belong to this node (GitHub spells its name with a
+different case than local systemd units, both now `node-b`). Their original
+group is ID 1.
 
 Do not assume the existing `Bandwidth-Draining` group denies jobs: group 5
 currently permits four repositories and contains another host's runners.
-This maintenance uses `OGLaptop-Maintenance-20260923` (ID 6), visibility
+This maintenance uses `node-b-Maintenance-20260923` (ID 6), visibility
 `selected`, zero selected repositories and no public repository access.
-Only OGLaptop's eight runners were moved there; active jobs were allowed to
+Only node-b's eight runners were moved there; active jobs were allowed to
 finish. Do not invoke the runner units' force-drain stop hook while busy.
 
 Maintenance records are under
-`C:\Users\diete\Repositories\_deploy\oglaptop-drain-20260923`:
+`C:\Users\fleet-operator\Repositories\_deploy\node-b-drain-20260923`:
 original runner IDs/group membership, enabled/active unit states, keepalive
 task XML backup, pre-restart boot ID, and completion evidence. The CI
 `runner-scheduler.timer` and runner auto-starts were temporarily disabled;
@@ -180,9 +181,9 @@ The separate Staff Hub scheduler is still off. Windows repository work may
 resume; coordinate any future runner restarts around active jobs.
 
 Full firewall/profile backups and probe logs:
-`C:\Users\diete\Repositories\_deploy\firewall-diagnosis-20260923-152654`
+`C:\Users\fleet-operator\Repositories\_deploy\firewall-diagnosis-20260923-152654`
 and `firewall-diagnosis-20260923-152938`. Drain and reboot records remain in
-`_deploy\oglaptop-drain-20260923`. External port isolation remains unverified.
+`_deploy\node-b-drain-20260923`. External port isolation remains unverified.
 
 ## External GPU recovery after Windows reboot
 
@@ -225,7 +226,7 @@ extracted from `@openai/codex@0.156.1-linux-x64`. Do not substitute the old
 Windows npm shim: it does not provide the required Linux executable.
 
 Antigravity's Windows target is
-`C:\Users\diete\AppData\Local\Microsoft\WinGet\Packages\Google.AntigravityCLI_Microsoft.Winget.Source_8wekyb3d8bbwe\agy.exe`.
+`C:\Users\fleet-operator\AppData\Local\Microsoft\WinGet\Packages\Google.AntigravityCLI_Microsoft.Winget.Source_8wekyb3d8bbwe\agy.exe`.
 Use `agy`, not the legacy Gemini CLI. Gemini is not configured by this setup.
 
 nvm initializes in `.bashrc` for interactive shells and `.profile` for login
@@ -240,7 +241,7 @@ Cursor lists these Grok model families:
 
 ## Configuration locations
 
-Paths beginning with `~` below refer to `/home/dieterolson` in **Ubuntu WSL**.
+Paths beginning with `~` below refer to `/home/fleet-operator` in **Ubuntu WSL**.
 
 | Setting / resource      | Location or value                                                                 |
 | ----------------------- | --------------------------------------------------------------------------------- |
@@ -252,9 +253,9 @@ Paths beginning with `~` below refer to `/home/dieterolson` in **Ubuntu WSL**.
 | Staff git config        | `GIT_CONFIG_GLOBAL=~/.config/runner-dashboard/staff.gitconfig`                    |
 | Linux repository root   | `STAFF_REPOS_ROOT=~/staff-repos`                                                  |
 | Staff worktree root     | `STAFF_WORKTREES_ROOT=~/staff-worktrees`                                          |
-| Live RM clone           | `STAFF_RM_ROOT=/home/dieterolson/staff-repos/Repository_Management`               |
-| Live role source        | `STAFF_ROLES_DIR=/home/dieterolson/staff-repos/Repository_Management/staff/roles` |
-| Windows setup artifacts | `C:\Users\diete\Repositories\_deploy`                                             |
+| Live RM clone           | `STAFF_RM_ROOT=/home/fleet-operator/staff-repos/Repository_Management`               |
+| Live role source        | `STAFF_ROLES_DIR=/home/fleet-operator/staff-repos/Repository_Management/staff/roles` |
+| Windows setup artifacts | `C:\Users\fleet-operator\Repositories\_deploy`                                             |
 
 The old `~/staff-bundle/rm` directory is retained for rollback only. The active
 user timer `runner-dashboard-rm-sync.timer` refreshes the Linux clone at most
@@ -283,7 +284,7 @@ worker holds remain empty.
 The owner runs this exact command in **PowerShell as Administrator**:
 
 ```powershell
-powershell.exe -NoProfile -File "C:\Users\diete\Repositories\_deploy\ollama-wsl-bridge-policy-fix.ps1" -Install
+powershell.exe -NoProfile -File "C:\Users\fleet-operator\Repositories\_deploy\ollama-wsl-bridge-policy-fix.ps1" -Install
 ```
 
 The correction selects `RemoteSigned` only for the SYSTEM task's PowerShell process;
@@ -339,7 +340,7 @@ AffineDrift, Gasification_Model, Repository_Management, Runner_Dashboard, Tools,
 Tools_Private, and UpstreamDrift.
 
 The service PATH starts with
-`/home/dieterolson/.nvm/versions/node/v24.21.0/bin:/home/dieterolson/.local/bin`.
+`/home/fleet-operator/.nvm/versions/node/v24.21.0/bin:/home/fleet-operator/.local/bin`.
 It also retains `/usr/lib/wsl/lib`, the user's Cargo bin, and standard Linux bin
 directories. Update the service PATH after changing the installed Node version;
 shell startup files do not configure systemd's PATH.
@@ -371,7 +372,7 @@ to the new address/subnet before rerunning health checks. Do not broaden the
 listener to all network interfaces as a troubleshooting shortcut.
 
 The local administrator setup script is
-`C:\Users\diete\Repositories\_deploy\configure-ollama-wsl-network.ps1`.
+`C:\Users\fleet-operator\Repositories\_deploy\configure-ollama-wsl-network.ps1`.
 It validates the inspected address and refuses to replace existing entries;
 it is not a general subnet migration script.
 
@@ -391,7 +392,7 @@ the repository artifact installer replaced files.
 - Environment backup: `~/.config/runner-dashboard/env.bak-2026-09-23-122051`.
 - Drop-in backup: `/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf.bak-2026-09-23-122051`.
 - Login-shell backup: `~/.profile.bak-2026-09-23`.
-- Windows forwarding backup: `C:\Users\diete\Repositories\_deploy\portproxy.bak-2026-09-23-123323.txt`.
+- Windows forwarding backup: `C:\Users\fleet-operator\Repositories\_deploy\portproxy.bak-2026-09-23-123323.txt`.
 
 Backup exception: nvm appended initialization to the pre-existing `.bashrc`
 before a pre-change backup was made. The later `.profile` and service changes
@@ -421,7 +422,7 @@ Antigravity initially failed in `run-8cb01018890e` with WSL
 harmless Windows command during diagnosis. Repeated failures need investigation;
 an available-provider flag alone does not prove Windows interop or authentication.
 
-Run checks locally on OGLaptop. Save WSL commands as a script and launch it from
+Run checks locally on node-b. Save WSL commands as a script and launch it from
 PowerShell with `wsl.exe -d Ubuntu -- bash --noprofile --norc <Linux-script-path>`.
 Do not run `wsl.exe` over SSH. These read-only checks expose no credential values:
 

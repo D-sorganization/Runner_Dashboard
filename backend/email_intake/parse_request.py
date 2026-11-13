@@ -18,11 +18,14 @@ class DispatchHints:
     prompt: str
 
 
-def parse_dispatch_hints(body: str, *, default_role: str) -> DispatchHints:
+def parse_dispatch_hints(body: str) -> DispatchHints | None:
+    """Parse dispatch hints; returns None when the message omits ``role:``."""
     role_match = _ROLE_RE.search(body)
+    if not role_match:
+        return None
     repo_match = _REPO_RE.search(body)
     issue_match = _ISSUE_RE.search(body)
-    role = role_match.group(1).strip() if role_match else default_role
+    role = role_match.group(1).strip().lower()
     repo = repo_match.group(1).strip() if repo_match else ""
     issue = int(issue_match.group(1)) if issue_match else None
     lines = []

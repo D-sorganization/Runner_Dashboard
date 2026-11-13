@@ -1,0 +1,10 @@
+{
+  "description": "Single source of truth for issue #3084 (epic #3077 slice 6). These CI jobs are 'heavy' and must stay self-hosted forever, even once the repository goes public, instead of following the generic hosted-when-public switch (vars.CI_RUNNER_MODE) that light jobs use. tests/test_public_repo_heavy_job_runner_split.py checks every entry against its workflow file; docs/runner-labels.md documents the owner step to scope the runner group named here to this repo and these workflows.",
+  "environment": "ci-self-hosted-heavy-public",
+  "group_label": "d-sorg-fleet-public-heavy",
+  "jobs": [
+    {"workflow": "frontend-tests.yml", "job_id": "playwright-e2e"},
+    {"workflow": "frontend-tests.yml", "job_id": "staff-console-e2e"},
+    {"workflow": "ci-auto-deploy-regression.yml", "job_id": "auto-deploy-regression"}
+  ]
+}

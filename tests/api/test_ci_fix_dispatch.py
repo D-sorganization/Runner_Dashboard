@@ -21,6 +21,7 @@ from identity import Principal, require_principal
 from backend.ci_fix_dispatch import (
     CIFixLockManager,
     build_ci_fix_prompt,
+    classify_failure_type,
     evaluate_ci_fix_trigger,
     extract_failing_test_names,
     record_ci_fix_audit,
@@ -226,8 +227,9 @@ def test_agy_gate_reads_the_staff_adapter() -> None:
 def test_route_ci_fix_escalation_after_cap() -> None:
     route = route_ci_fix(
         failure_type="test",
-        attempt_number=3,
-        max_attempts=3,
+        attempt_number=2,
+        max_attempts=2,
+        allow_strong_escalation=True,
     )
     assert route.escalated is True
     assert route.tier == "strong"
@@ -350,6 +352,12 @@ def test_remediation_ci_fix_dispatch_lifecycle(
     isolated = BareLockManager()
     monkeypatch.setattr(ci_fix_service, "GLOBAL_CI_FIX_LOCK_MGR", isolated)
     monkeypatch.setattr(remediation_ci_fix, "GLOBAL_CI_FIX_LOCK_MGR", isolated)
+    # The default attempt store is the host's ~/.local/share/runner-dashboard/ci_fix_locks.db: the two
+    # attempts recorded below would persist there and trip the per-head cap (429) on every later run.
+    from ci_fix_attempt_store import CIFixAttemptStore
+
+    attempt_store = CIFixAttemptStore(tmp_path / "ci_fix_attempts.db")
+    monkeypatch.setattr(ci_fix_service, "global_ci_fix_attempt_store", lambda: attempt_store)
     dispatch_payload = {
         "repo": "Runner_Dashboard",
         "pr_number": 202,
@@ -398,20 +406,24 @@ def test_remediation_ci_fix_dispatch_lifecycle(
     client.delete("/api/remediation/ci-fix/locks/Runner_Dashboard/202")
 
 
-def test_acceptance_criteria_escalation_after_three_attempts() -> None:
-    # Acceptance requirement: A seeded test failure escalates after 3 failed attempts
-    route_att1 = route_ci_fix(failure_type="test", attempt_number=1, max_attempts=3)
+def test_acceptance_criteria_escalation_requires_operator_approval() -> None:
+    route_att1 = route_ci_fix(failure_type="test", attempt_number=1, max_attempts=2)
     assert route_att1.escalated is False
     assert route_att1.tier == "cli"
 
-    route_att2 = route_ci_fix(failure_type="test", attempt_number=2, max_attempts=3)
+    route_att2 = route_ci_fix(failure_type="test", attempt_number=2, max_attempts=2)
     assert route_att2.escalated is False
     assert route_att2.tier == "cli"
 
-    route_att3 = route_ci_fix(failure_type="test", attempt_number=3, max_attempts=3)
-    assert route_att3.escalated is True
-    assert route_att3.tier == "strong"
-    assert route_att3.model == "claude-opus-5-5"
+    route_auto = route_ci_fix(failure_type="test", attempt_number=2, max_attempts=2, allow_strong_escalation=False)
+    assert route_auto.tier == "cli"
+
+    route_strong = route_ci_fix(
+        failure_type="test", attempt_number=2, max_attempts=2, allow_strong_escalation=True
+    )
+    assert route_strong.escalated is True
+    assert route_strong.tier == "strong"
+    assert route_strong.model == "claude-opus-5-5"
 
 
 QUEUE_REF = f"gh-readonly-queue/main/pr-77-{'a' * 40}"
@@ -484,3 +496,95 @@ def test_consecutive_attempts_count_only_the_same_failure_signature(tmp_path: Pa
     record(43, same)  # other PRs never count
     assert count_consecutive_attempts("Runner_Dashboard", 42, other, audit_file=audit_file) == 1
     assert count_consecutive_attempts("Runner_Dashboard", 42, same, audit_file=tmp_path / "missing.json") == 0
+
+
+# ─── #2766: superseded cancels, sweep, author-lane routing, infra classification ────────────
+
+
+def test_superseded_cancel_is_ineligible() -> None:
+    """A concurrency-group cancel superseded by a newer run of the same workflow is not a failure."""
+    decision = evaluate_ci_fix_trigger(
+        {
+            "conclusion": "cancelled",
+            "workflow_name": "CI Standard",
+            "repository": "Runner_Dashboard",
+            "run_id": 100,
+            "head_sha": "abc123",
+            "superseded_by_newer_run": True,
+            "pull_requests": [{"number": 42, "is_draft": False, "auto_merge_armed": True}],
+        }
+    )
+    assert decision.eligible is False
+    assert "superseded" in decision.reason.lower()
+
+
+def test_latest_cancel_is_eligible() -> None:
+    """A cancel that is the latest (not superseded) run for its head SHA is a real failure."""
+    decision = evaluate_ci_fix_trigger(
+        {
+            "conclusion": "cancelled",
+            "workflow_name": "CI Standard",
+            "repository": "Runner_Dashboard",
+            "run_id": 100,
+            "head_sha": "abc123",
+            "superseded_by_newer_run": False,
+            "pull_requests": [{"number": 42, "is_draft": False, "auto_merge_armed": True}],
+        }
+    )
+    assert decision.eligible is True
+    assert decision.pr_number == 42
+
+
+def test_cancel_without_head_sha_is_ineligible() -> None:
+    """DbC pre: a cancelled event missing repo/run id/head SHA cannot be judged, so it refuses."""
+    decision = evaluate_ci_fix_trigger(
+        {
+            "conclusion": "cancelled",
+            "workflow_name": "CI Standard",
+            "repository": "Runner_Dashboard",
+            "run_id": 100,
+            "pull_requests": [{"number": 42, "is_draft": False, "auto_merge_armed": True}],
+        }
+    )
+    assert decision.eligible is False
+    assert "head sha" in decision.reason.lower()
+
+
+def test_classify_failure_type_infra_libpython() -> None:
+    log = "ImportError: libpython3.11.so.1.0: cannot open shared object file: No such file or directory"
+    assert classify_failure_type("CI Standard", log) == "infra"
+
+
+def test_classify_failure_type_infra_403() -> None:
+    log = "requests.exceptions.HTTPError: 403 Forbidden for url https://api.github.com/..."
+    assert classify_failure_type("CI Standard", log) == "infra"
+
+
+def test_classify_failure_type_infra_buildx() -> None:
+    assert classify_failure_type("docker-build-scan", "") == "infra"
+    assert classify_failure_type("CI", "failed to solve: process did not complete") == "infra"
+
+
+def test_classify_failure_type_still_defaults_to_test() -> None:
+    assert classify_failure_type("CI Standard", "AssertionError: expected 200 got 500") == "test"
+
+
+def test_route_ci_fix_routes_cursor_branch_to_cloud_followup() -> None:
+    """#2766 item 3: cursor/* branches are handed to a Cursor cloud follow-up, not a local CLI."""
+    route = route_ci_fix(failure_type="test", attempt_number=1, max_attempts=3, branch="cursor/fix-ci-red")
+    assert route.provider == "cursor_cloud"
+    assert route.tier == "cloud"
+    assert "cursor" in route.reason.lower()
+    assert "cloud" in route.reason.lower()
+
+
+def test_route_ci_fix_non_cursor_branch_uses_current_routing() -> None:
+    route = route_ci_fix(failure_type="lint", attempt_number=1, max_attempts=3, branch="feat/my-feature")
+    assert route.provider == "codex_cli"
+
+
+def test_route_ci_fix_infra_routes_to_night_watch() -> None:
+    route = route_ci_fix(failure_type="infra", attempt_number=1, max_attempts=3)
+    assert route.provider == "night_watch"
+    assert route.tier == "infra"
+    assert "night watch" in route.reason.lower()

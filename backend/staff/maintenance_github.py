@@ -129,3 +129,109 @@ def verify_rerun(repo: str, run_id: int, previous_attempt: int) -> tuple[bool, s
         if time.monotonic() >= deadline:
             return False, f"Run {run_id} still on attempt {attempt}; rerun not visible"
         time.sleep(POLL_INTERVAL_SECONDS)
+
+
+def parse_runner_num(target: str) -> int:
+    """Resolve a positive local runner index from a target name or numeric string."""
+    raw = str(target or "").strip()
+    if raw.isdigit() and int(raw) > 0:
+        return int(raw)
+    _, sep, suffix = raw.rpartition("-")
+    if sep and suffix.isdigit() and int(suffix) > 0:
+        return int(suffix)
+    raise MaintenancePreconditionError(f"Cannot resolve runner number from '{target}'")
+
+
+def get_runner_state(runner_name_or_id: str) -> dict[str, Any]:
+    """Retrieve current state of a runner from the GitHub organization runner inventory."""
+    data = call_github(gh_client.get, f"/orgs/{ORG}/actions/runners")
+    runners = (data or {}).get("runners") if isinstance(data, dict) else []
+    needle = str(runner_name_or_id or "").strip()
+    for runner in runners or []:
+        if not isinstance(runner, dict):
+            continue
+        if str(runner.get("name") or "") == needle or str(runner.get("id") or "") == needle:
+            return {
+                "id": runner.get("id"),
+                "name": runner.get("name") or needle,
+                "status": str(runner.get("status") or "offline"),
+                "busy": bool(runner.get("busy", False)),
+            }
+    return {"id": None, "name": needle, "status": "stopped", "busy": False}
+
+
+def get_group_runners(group_label: str) -> list[dict[str, Any]]:
+    """Retrieve runners belonging to a group label."""
+    data = call_github(gh_client.get, f"/orgs/{ORG}/actions/runners")
+    runners = (data or {}).get("runners") if isinstance(data, dict) else []
+    wanted = str(group_label or "").strip().lower()
+    matched: list[dict[str, Any]] = []
+    for runner in runners or []:
+        if not isinstance(runner, dict):
+            continue
+        labels = {
+            str(lbl.get("name") if isinstance(lbl, dict) else lbl).strip().lower()
+            for lbl in (runner.get("labels") or [])
+        }
+        if wanted in labels or wanted in str(runner.get("name") or "").lower():
+            matched.append(runner)
+    return matched
+
+
+def remove_runner(target: str, resolved_id: int) -> dict[str, Any]:
+    """Remove an offline or ghost runner registration from GitHub."""
+    if resolved_id <= 0:
+        raise MaintenancePreconditionError(f"Runner '{target}' not found in organization")
+    call_github(gh_client._request, "DELETE", f"/orgs/{ORG}/actions/runners/{resolved_id}")
+    return {"removed": True, "runner_id": resolved_id, "runner_name": target}
+
+
+def purge_stale_queue(repo: str | None, min_age_minutes: int, max_count: int) -> dict[str, Any]:
+    """Purge stale queued runs via queue_cleanup.purge_stale_runs (safe_only=True)."""
+    import functools
+
+    import queue_cleanup
+
+    clean_repo = repo_full(repo).split("/", 1)[-1] if repo else None
+    return dict(
+        call_github(
+            functools.partial(
+                queue_cleanup.purge_stale_runs,
+                ORG,
+                min_age_minutes=min_age_minutes,
+                repo=clean_repo,
+                safe_only=True,
+                max_count=max_count,
+            )
+        )
+    )
+
+
+def run_service_command(target: str, cmd: str) -> tuple[int, str, str]:
+    """Execute service lifecycle command on target runner."""
+    from runners import service_control
+
+    runner_num = parse_runner_num(target)
+    res = call_github(service_control.run_runner_svc, runner_num, cmd)
+    if isinstance(res, tuple) and len(res) == 3:
+        return int(res[0]), str(res[1]), str(res[2])
+    return 1, "", "Invalid service response"
+
+
+def fleet_control(action: str, host: str = "local") -> dict[str, Any]:
+    """Scale or control runners on the target host."""
+    from routers import fleet as fleet_router
+
+    act = str(action or "up").strip().lower()
+    action_map = {
+        "start": "all-up",
+        "up": "up",
+        "all-up": "all-up",
+        "stop": "all-down",
+        "down": "down",
+        "all-down": "all-down",
+        "restart": "all-up",
+    }
+    mapped = action_map.get(act, act)
+    out = call_github(fleet_router._fleet_control_local, mapped)
+    return {"fleet_action": mapped, "host": host, **(out if isinstance(out, dict) else {})}

@@ -3,7 +3,7 @@
 Validates `.github/workflows/release.yml` and `.github/workflows/verify-tag.yml`:
 
   1. Both workflow files exist.
-  2. Both workflows route to a `d-sorg-fleet*` self-hosted runner label (not ubuntu-latest).
+  2. release.yml and verify-tag.yml runner placement (#3303 go-public prep).
   3. Every `uses:` reference is pinned to a 40-char SHA.
   4. release.yml exposes both `workflow_dispatch` and `push` triggers.
   5. release.yml defines the `dry_run` input.
@@ -98,18 +98,14 @@ def _assert_d_sorg_fleet_runner(path: Path, runs_on: str) -> None:
     )
 
 
-def test_release_workflow_uses_d_sorg_fleet() -> None:
+def test_release_workflow_uses_hosted_runner_for_go_public_prep() -> None:
     values = _runs_on_values(RELEASE_WORKFLOW)
-    assert values, "release.yml has no jobs"
-    for v in values:
-        _assert_d_sorg_fleet_runner(RELEASE_WORKFLOW, v)
+    assert values == ["ubuntu-latest"], values
 
 
-def test_verify_tag_workflow_uses_d_sorg_fleet() -> None:
+def test_verify_tag_workflow_uses_hosted_runner_for_go_public_prep() -> None:
     values = _runs_on_values(VERIFY_TAG_WORKFLOW)
-    assert values, "verify-tag.yml has no jobs"
-    for v in values:
-        _assert_d_sorg_fleet_runner(VERIFY_TAG_WORKFLOW, v)
+    assert values == ["ubuntu-latest"], values
 
 
 # ---------------------------------------------------------------------------

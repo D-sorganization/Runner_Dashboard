@@ -19,7 +19,9 @@ permissions:
 
 jobs:
   integration:
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 30
     env:
       PIP_CACHE_DIR: ${{ github.workspace }}/.cache/pip
@@ -48,17 +50,14 @@ jobs:
           PYTHONPATH: backend
         # -n auto: pytest-xdist parallel workers.
         # -m integration: run only tests marked @pytest.mark.integration.
+        # Fails (issue #3776) when tests/ is missing, nothing is selected
+        # (pytest exit 5) or every selected case skips; records executed IDs.
         run: |
-          if [ -d tests/ ]; then
-            pytest tests/ --tb=short -n auto -m integration || {
-              status=$?
-              if [ $status -eq 5 ]; then
-                echo "No integration tests collected (exit code 5); continuing successfully."
-                exit 0
-              fi
-              exit $status
-            }
-          else
-            echo "No tests directory found - skipping"
-            exit 0
+          if [ ! -d tests/ ]; then
+            echo "::error::tests/ directory not found; nightly integration cannot run."
+            exit 1
           fi
+          pytest tests/ --tb=short -n auto -m integration --junitxml=nightly-junit.xml
+      - name: Verify integration cases executed
+        if: ${{ !cancelled() }}
+        run: python scripts/ci/check_junit_executed.py nightly-junit.xml

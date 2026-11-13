@@ -20,11 +20,12 @@ _LOCK = _ROOT / "requirements.lock.txt"
 _UV_LOCK = _ROOT / "uv.lock"
 _PYPROJECT = _ROOT / "pyproject.toml"
 
-_PYTHON_313_SLIM_DIGEST = "7e3a6aca9d74f93cca21a91d86a8dad8c34749afd5b4a98ee481c9c47b9f5ed4"  # pragma: allowlist secret
+_PYTHON_313_SLIM_DIGEST = "09a17cad02668ae61ece136b4fd36ac3849e14f670ebedb637ea3e15580525bc"  # pragma: allowlist secret
 _OPENSSL_DEBIAN_SECURITY_VERSION = "3.5.7-1~deb13u3"
 _PCRE2_DEBIAN_SECURITY_VERSION = "10.46-1~deb13u3"
 _CURL_DEBIAN_SECURITY_VERSION = "8.14.1-2+deb13u7"
 _EXPAT_DEBIAN_SECURITY_VERSION = "2.9.0-1~deb13u1"
+_ZLIB_DEBIAN_SECURITY_VERSION = "1:1.3.dfsg+really1.3.1-1+deb13u1"
 
 # ── Issue #391: new hardening directives ─────────────────────────────────────
 # These must appear in both the .service template files AND in the setup.sh
@@ -70,6 +71,19 @@ def test_update_deployed_builds_and_syncs_frontend_dist() -> None:
 def test_refresh_token_requires_more_than_prefix() -> None:
     content = _read(_DEPLOY / "refresh-token.sh")
     assert "[A-Za-z0-9_]{30,}" in content
+
+
+def test_node_self_heal_probes_unauthenticated_health_endpoint() -> None:
+    content = _read(_DEPLOY / "node-self-heal.sh")
+    assert "/health" in content
+    assert "/api/version" not in content
+
+
+def test_node_self_heal_checks_env_file_before_restart() -> None:
+    content = _read(_DEPLOY / "node-self-heal.sh")
+    assert "runner_dashboard_env_check.py" in content
+    assert "alert:env_file_corrupt" in content
+    assert 'env_file_ok}" -eq 1' in content
 
 
 def test_setup_prefers_python_311_for_runtime_service() -> None:
@@ -166,6 +180,13 @@ def test_dockerfile_pins_expat_security_version() -> None:
     assert "libexpat1='2.8.3-1'" not in content
 
 
+def test_dockerfile_pins_zlib_security_version() -> None:
+    """Image must install Debian's fixed zlib1g (closes CVE-2026-76844, CVE-2026-85091)."""
+    content = _read(_DOCKERFILE)
+    assert f"zlib1g='{_ZLIB_DEBIAN_SECURITY_VERSION}'" in content
+    assert "zlib1g='1:1.3.dfsg+really1.3.1-1+b1'" not in content
+
+
 def test_uv_lock_urllib3_meets_security_baseline() -> None:
     """uv.lock must resolve urllib3 >= 2.8.0 to satisfy Trivy vulnerability gates."""
     assert _UV_LOCK.exists(), "uv.lock must exist"
@@ -179,6 +200,25 @@ def test_uv_lock_urllib3_meets_security_baseline() -> None:
         version_tuple = tuple(parts)
         assert version_tuple >= (2, 8, 0), (
             f"urllib3 version {version_str!r} in uv.lock is below required security baseline 2.8.0"
+        )
+
+
+def test_uv_lock_msgpack_avoids_cve_2026_114613() -> None:
+    """uv.lock must not pin msgpack 1.2.1 — pip-audit fails on ci-standard lint (#3115)."""
+    assert _UV_LOCK.exists(), "uv.lock must exist"
+    lock_data = tomllib.loads(_read(_UV_LOCK))
+    packages = lock_data.get("package", [])
+    msgpack_entries = [pkg for pkg in packages if pkg.get("name") == "msgpack"]
+    assert msgpack_entries, "msgpack must be present in uv.lock (CacheControl transitive)"
+    for entry in msgpack_entries:
+        version_str = str(entry.get("version", ""))
+        parts = [int(part) for part in version_str.split(".")]
+        version_tuple = tuple(parts)
+        assert version_tuple != (1, 2, 1), (
+            f"msgpack {version_str!r} in uv.lock is vulnerable (CVE-2026-114613); use >= 1.2.2"
+        )
+        assert version_tuple >= (1, 2, 2), (
+            f"msgpack version {version_str!r} in uv.lock is below required security baseline 1.2.2"
         )
 
 
@@ -217,6 +257,25 @@ def test_dockerfile_runs_as_non_root_user() -> None:
     assert re.search(r"^USER\s+(?!0\b|root\b)\S+", content, re.MULTILINE), (
         "Dockerfile must include a USER directive set to a non-root user"
     )
+
+
+def test_dockerfile_appuser_has_writable_config_home() -> None:
+    """appuser must own ~/.config/runner-dashboard so import-time secret persistence works."""
+    content = _read(_DOCKERFILE)
+    assert "--no-create-home" not in content, (
+        "Dockerfile must not use --no-create-home; SESSION_SECRET persistence writes under ~/"
+    )
+    assert "/home/appuser/.config/runner-dashboard" in content, (
+        "Dockerfile must pre-create appuser config dir for container smoke tests"
+    )
+
+
+def test_dockerfile_includes_built_frontend_dist() -> None:
+    """Smoke test expects the SPA shell at /; the image must ship dist/index.html."""
+    content = _read(_DOCKERFILE)
+    assert "frontend-build" in content
+    assert "COPY --from=frontend-build" in content
+    assert "./dist/" in content
 
 
 def test_requirements_lock_file_exists() -> None:
@@ -350,6 +409,7 @@ def test_dashboard_service_type_is_simple() -> None:
 def test_dashboard_service_ignores_tailscale_restore_failures() -> None:
     content = _read(_DEPLOY / "runner-dashboard.service")
     assert "ExecStartPost=-/home/YOUR_USER/actions-runners/dashboard/wsl-mirrored-port-helper.sh restore" in content
+    assert "hub_tailnet_serve.py ensure" in content
 
 
 def test_dashboard_service_collects_crash_diagnostics() -> None:

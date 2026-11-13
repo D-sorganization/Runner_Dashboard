@@ -17,8 +17,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
-from cache_utils import cache_delete, cache_get, cache_set
 from security import safe_subprocess_env
+from staff import probe_swr
 
 log = logging.getLogger("dashboard.staff.cli_oauth_session")
 
@@ -58,6 +58,12 @@ def resolve_claude_config_dir() -> Path:
 def resolve_antigravity_home() -> Path:
     configured = os.environ.get("ANTIGRAVITY_HOME", "").strip()
     return Path(configured).expanduser() if configured else Path.home() / ".gemini"
+
+
+def resolve_grok_home() -> Path:
+    """Config dir for the Grok CLI seat (``grok login`` writes ``auth.json`` here)."""
+    configured = os.environ.get("GROK_HOME", "").strip()
+    return Path(configured).expanduser() if configured else Path.home() / ".grok"
 
 
 def _expiry_epoch_from_value(raw: Any) -> float | None:
@@ -221,22 +227,37 @@ def _run_probe(cmd: list[str], env: Mapping[str, str] | None = None, timeout: fl
 
 
 def _cached_probe(cache_key: str, factory: Callable[[], tuple[bool, str]]) -> tuple[bool, str]:
-    cached = cache_get(cache_key, _PROBE_CACHE_TTL_S)
-    if cached is not None and isinstance(cached, tuple) and len(cached) == 2:
-        return bool(cached[0]), str(cached[1])
-    result = factory()
-    cache_set(cache_key, result)
-    return result
+    alive, detail = probe_swr.swr_probe(cache_key, _PROBE_CACHE_TTL_S, factory)
+    return bool(alive), str(detail)
 
 
 def invalidate_oauth_probe_cache() -> None:
-    cache_delete("cli_oauth:claude")
-    cache_delete("cli_oauth:antigravity")
+    probe_swr.forget("cli_oauth:claude")
+    probe_swr.forget("cli_oauth:antigravity")
 
 
 def _claude_setup_token_configured() -> bool:
     """True when ``claude setup-token`` material is present via env (subscription seat)."""
     return bool(os.environ.get("CLAUDE_CODE_OAUTH_TOKEN", "").strip())
+
+
+def _refresh_claude_seat(exe: str, cfg_dir: Path) -> None:
+    """Let the Claude CLI refresh a near-expiry token, then mirror the credentials."""
+    try:
+        proc_env = {**safe_subprocess_env(), **os.environ, "CLAUDE_CONFIG_DIR": str(cfg_dir)}
+        subprocess.run(  # noqa: S603 — trusted CLI refresh probe
+            [exe, "-p", "ok", "--max-turns", "1"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=_CLAUDE_REFRESH_TIMEOUT_S,
+            check=False,
+            env=proc_env,
+        )
+    except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
+        log.debug("claude oauth local refresh probe failed: %s", type(exc).__name__)
+    _sync_local_claude_credentials()
+    probe_swr.expire("cli_oauth:claude")
 
 
 def claude_oauth_session_alive(binary: str | None = None) -> tuple[bool, str]:
@@ -250,21 +271,12 @@ def claude_oauth_session_alive(binary: str | None = None) -> tuple[bool, str]:
         return False, "no Claude login file"
     exe = binary or "claude"
     if oauth_expired_in_file(cred, skew_seconds=_CLAUDE_REFRESH_SKEW_S) and _has_refresh_token(cred):
-        try:
-            proc_env = {**safe_subprocess_env(), **os.environ, "CLAUDE_CONFIG_DIR": str(cfg_dir)}
-            subprocess.run(  # noqa: S603 — trusted CLI refresh probe
-                [exe, "-p", "ok", "--max-turns", "1"],
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
-                timeout=_CLAUDE_REFRESH_TIMEOUT_S,
-                check=False,
-                env=proc_env,
-            )
-        except (OSError, subprocess.SubprocessError, TimeoutError) as exc:
-            log.debug("claude oauth local refresh probe failed: %s", type(exc).__name__)
-        _sync_local_claude_credentials()
-        invalidate_oauth_probe_cache()
+        if probe_swr.on_event_loop_thread():
+            # The refresh can take 25 s; never run it on the event loop.
+            probe_swr.run_in_background("cli_oauth:claude:refresh", lambda: _refresh_claude_seat(exe, cfg_dir))
+        else:
+            _refresh_claude_seat(exe, cfg_dir)
+            invalidate_oauth_probe_cache()
     if oauth_expired_in_file(cred):
         return False, "Claude OAuth token expired (credentials file)"
 
@@ -322,6 +334,9 @@ def _credential_json_paths(provider_or_credential_id: str) -> list[Path]:
     if provider_or_credential_id == "codex":
         home = Path(os.environ.get("CODEX_HOME") or "~/.codex").expanduser()
         auth = home / "auth.json"
+        return [auth] if auth.is_file() else []
+    if provider_or_credential_id == "grok":
+        auth = resolve_grok_home() / "auth.json"
         return [auth] if auth.is_file() else []
     return []
 
@@ -386,6 +401,14 @@ def oauth_expiry_epoch_for_provider(provider_or_credential_id: str) -> float | N
             except (OSError, json.JSONDecodeError):
                 return None
             return _find_expiry_epoch(data)
+    if provider_or_credential_id == "grok":
+        auth = resolve_grok_home() / "auth.json"
+        if auth.is_file():
+            try:
+                data = json.loads(auth.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+            return _find_expiry_epoch(data)
     return None
 
 
@@ -401,5 +424,13 @@ def provider_oauth_session_alive(provider_or_credential_id: str) -> tuple[bool, 
                 return False, "no Codex auth.json"
             if oauth_expired_in_file(home / "auth.json"):
                 return False, "Codex OAuth token expired (auth.json)"
+        elif provider_or_credential_id == "grok":
+            if os.environ.get("STAFF_E2E_HERMETIC", "").strip() == "1":
+                return True, ""
+            auth = resolve_grok_home() / "auth.json"
+            if not auth.is_file():
+                return False, "no Grok auth.json"
+            if oauth_expired_in_file(auth) and not _has_refresh_token(auth):
+                return False, "Grok OAuth token expired (auth.json)"
         return True, ""
     return checker()

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from typing import Any
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -140,6 +141,20 @@ def _roles() -> dict[str, roles_mod.RoleSpec]:
     }
 
 
+def _issue_remediator_role(repos: list[str]) -> roles_mod.RoleSpec:
+    return roles_mod.parse_role(
+        {
+            "name": "issue-remediator",
+            "providers": ["fake"],
+            "schedule": "0 22 * * *",
+            "window": {"start": "22:00", "end": "06:00"},
+            "repos": repos,
+            "permissions": {"open_pr": True},
+            "budget": {"usd_per_run": 3, "usd_per_day": 15},
+        }
+    )
+
+
 @pytest.mark.unit
 def test_holds_seed_from_roles_persist_and_replace(tmp_path: Path) -> None:
     path = tmp_path / "cfg" / "staff_holds.json"
@@ -160,7 +175,8 @@ def test_holds_seed_from_roles_persist_and_replace(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         holds.replace([{"id": "x", "text": "a"}, {"id": "x", "text": "b"}])
     path.write_text("{not json", encoding="utf-8")
-    assert holds.load() == []
+    corrupt_loaded = holds.load()
+    assert len(corrupt_loaded) == 1 and corrupt_loaded[0].id == holds_mod.FAIL_CLOSED_HOLD_ID
 
 
 @pytest.mark.unit
@@ -444,6 +460,70 @@ def test_scheduler_fires_once_per_slot_and_persists_state(
 
 
 @pytest.mark.unit
+def test_scheduler_issue_remediator_picks_next_repo_with_eligible_issue(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    s, runner, clock = sched
+    runner._roles = {"issue-remediator": _issue_remediator_role(["AffineDrift", "Runner_Dashboard"])}
+
+    def _fetch(repo: str) -> tuple[list[dict[str, object]], str | None]:
+        if repo == "AffineDrift":
+            return ([{"number": 11, "labels": [{"name": "do-not-automate"}]}], None)
+        if repo == "Runner_Dashboard":
+            return ([{"number": 42, "labels": [{"name": "high"}]}], None)
+        return ([], None)
+
+    monkeypatch.setattr(scheduler_mod, "fetch_open_issues", _fetch)
+    monkeypatch.setattr(
+        scheduler_mod,
+        "fetch_issue_claim_status",
+        lambda repo, issue: {"available": True, "held": False, "reason": "", "agent": "", "session": ""},
+    )
+    monkeypatch.setattr(scheduler_mod.claim_guard, "scheduler_blocker", lambda *args, **kwargs: "")
+
+    s.tick()  # anchor cursor before due slot
+    clock["now"] = _la(2026, 9, 22, 22, 0, 10)
+    decisions = s.tick()
+    assert decisions == [
+        {"role": "issue-remediator", "slot": _la(2026, 9, 22, 22, 0).isoformat(), "fired": True, "run_id": "run-1"}
+    ]
+    assert len(runner.submitted) == 1
+    req = runner.submitted[0]
+    assert req.repo == "Runner_Dashboard"
+    assert req.issue == 42
+
+
+@pytest.mark.unit
+def test_scheduler_issue_remediator_records_skip_when_no_repo_has_eligible_issue(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    s, runner, clock = sched
+    runner._roles = {"issue-remediator": _issue_remediator_role(["AffineDrift", "Runner_Dashboard"])}
+
+    monkeypatch.setattr(
+        scheduler_mod,
+        "fetch_open_issues",
+        lambda repo: ([{"number": 7, "labels": [{"name": "do-not-automate"}]}], None),
+    )
+    monkeypatch.setattr(
+        scheduler_mod,
+        "fetch_issue_claim_status",
+        lambda repo, issue: {"available": True, "held": True, "reason": "open branch", "agent": "", "session": ""},
+    )
+    monkeypatch.setattr(scheduler_mod.claim_guard, "scheduler_blocker", lambda *args, **kwargs: "")
+
+    s.tick()  # anchor cursor before due slot
+    clock["now"] = _la(2026, 9, 22, 22, 0, 10)
+    [decision] = s.tick()
+    assert decision["fired"] is False
+    assert decision["reason"].startswith("no eligible issues")
+    assert runner.submitted == []
+    assert "no eligible issues" in s._load_state()["issue-remediator"]["last_reason"]  # noqa: SLF001
+
+
+@pytest.mark.unit
 def test_scheduler_stale_cursor_reseeds_to_now_and_fires_at_most_once(
     sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
 ) -> None:
@@ -530,14 +610,16 @@ def test_scheduler_thread_start_stop_and_tolerates_tick_errors(
 def client(
     sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]], monkeypatch: pytest.MonkeyPatch
 ) -> Iterator[TestClient]:
-    from identity import require_fleet_peer, require_orchestrator_peer  # noqa: PLC0415
+    from identity import Principal, require_fleet_peer, require_orchestrator_peer, require_scope  # noqa: PLC0415
     from routers import staff_schedule as schedule_router  # noqa: PLC0415
 
+    admin = Principal(id="test-admin", type="bot", name="Test Admin", roles=["admin"])
     monkeypatch.setattr(scheduler_mod, "_scheduler", sched[0])
     app = FastAPI()
     app.include_router(schedule_router.router)
     app.dependency_overrides[require_fleet_peer] = lambda: "test-peer"
     app.dependency_overrides[require_orchestrator_peer] = lambda: "test-orchestrator"
+    app.dependency_overrides[require_scope("staff.admin")] = lambda: admin
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
@@ -565,27 +647,244 @@ def test_schedule_route_reports_roles(client: TestClient, monkeypatch: pytest.Mo
     data = client.get("/api/staff/schedule").json()
     assert data["machine"] == "TestNode" and data["enabled"] is False and data["running"] is False
     roles = {r["role"]: r for r in data["roles"]}
-    assert roles["night-watch"]["schedule"] == "0 22 * * *" and roles["night-watch"]["next_fire"]
-    assert roles["ad-hoc"]["next_fire"] is None
+    assert roles["night-watch"]["schedule"] == "0 22 * * *"
+    assert roles["night-watch"]["enabled"] is False
+    assert roles["night-watch"]["next_fire"] is None
+    assert "inactive on this node" in roles["night-watch"]["hold"]
+    assert roles["ad-hoc"]["next_fire"] is None and roles["ad-hoc"]["enabled"] is False
 
 
 @pytest.mark.unit
 def test_start_scheduler_respects_env_gate(monkeypatch: pytest.MonkeyPatch) -> None:
     from routers import staff_schedule as schedule_router  # noqa: PLC0415
+    from staff import reconcile as reconcile_mod  # noqa: PLC0415
 
     started: list[bool] = []
+    reconcile_kwargs: list[dict[str, Any]] = []
 
     class _S:
         def start(self) -> None:
             started.append(True)
 
+    def _record_reconcile(*_a: Any, **k: Any) -> list[str]:
+        reconcile_kwargs.append(k)
+        return []
+
+    monkeypatch.setattr(reconcile_mod, "reconcile_orphaned_runs", _record_reconcile)
     monkeypatch.setattr(schedule_router, "get_scheduler", lambda: _S())
     monkeypatch.setenv("STAFF_SCHEDULER_ENABLED", "false")
     schedule_router.start_scheduler()
+    if schedule_router._bootstrap_thread is not None:
+        schedule_router._bootstrap_thread.join(timeout=2)
     assert started == []
     monkeypatch.setenv("STAFF_SCHEDULER_ENABLED", "1")
     schedule_router.start_scheduler()
+    if schedule_router._bootstrap_thread is not None:
+        schedule_router._bootstrap_thread.join(timeout=2)
     assert started == [True]
+    assert reconcile_kwargs and reconcile_kwargs[0].get("requeue_queued") is True
+
+
+@pytest.mark.unit
+def test_leader_lease_prefers_primary_and_expires_to_failover(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    s, _, clock = sched
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "hub-a,node-b")
+    t0 = _la(2026, 9, 22, 22, 0, 0)
+    desk = s.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30)
+    assert desk["granted"] is True and desk["holder"] == "hub-a"
+    blocked = s.acquire_leader_lease("node-b", now=t0 + timedelta(seconds=1), ttl_seconds=30)
+    assert blocked["granted"] is False and blocked["holder"] == "hub-a"
+    takeover = s.acquire_leader_lease("node-b", now=t0 + timedelta(seconds=31), ttl_seconds=30)
+    assert takeover["granted"] is True and takeover["holder"] == "node-b"
+    preempt = s.acquire_leader_lease("hub-a", now=t0 + timedelta(seconds=32), ttl_seconds=30)
+    assert preempt["granted"] is True and preempt["holder"] == "hub-a"
+
+
+@pytest.mark.unit
+def test_leader_lease_denies_portable_machine_even_in_chain(
+    sched: tuple[scheduler_mod.StaffScheduler, _FakeRunner, dict[str, datetime]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A node flagged ``portable`` (#3323) never wins the leader lease, even if an
+    operator's env var mistakenly lists it in the chain, so no scheduled or
+    required role ever fires there."""
+    from staff import scheduler_leader_lease as lease_mod  # noqa: PLC0415
+
+    s, _, _ = sched
+    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "node-c")
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "node-c,hub-a")
+    t0 = _la(2026, 9, 22, 22, 0, 0)
+    denied = s.acquire_leader_lease("node-c", now=t0, ttl_seconds=30)
+    assert denied["granted"] is False and denied["holder"] == ""
+    granted = s.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30)
+    assert granted["granted"] is True and granted["holder"] == "hub-a"
+
+
+@pytest.mark.unit
+def test_scheduler_tick_never_fires_on_portable_machine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """No role is scheduled or required on a portable node, even with lease fencing
+    disabled entirely (no ``STAFF_SCHEDULER_LEADER_CHAIN``)."""
+    from staff import scheduler_leader_lease as lease_mod  # noqa: PLC0415
+
+    monkeypatch.setattr(lease_mod, "is_portable_machine", lambda machine: machine == "node-c")
+    store = store_mod.RunStore(tmp_path / "runs.sqlite3")
+    roles = {
+        "maintenance": roles_mod.parse_role(
+            {
+                "name": "maintenance",
+                "providers": ["fake"],
+                "schedule": "* * * * *",
+                "repos": ["UpstreamDrift"],
+                "budget": {"usd_per_run": 3, "usd_per_day": 15},
+            }
+        )
+    }
+    runner = _FakeRunner(store, roles)
+    runner.machine = "node-c"
+    clock = {"now": _la(2026, 9, 22, 22, 0, 0)}
+    holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
+    holds.replace([])
+    guard = budget_mod.BudgetGuard(store, alert_sink=lambda *_: None, clock=lambda: clock["now"])
+    state_file = tmp_path / "shared-state.json"
+    s = scheduler_mod.StaffScheduler(runner, holds, guard, clock=lambda: clock["now"], state_file=state_file)  # type: ignore[arg-type]
+    assert s.tick() == []
+    clock["now"] = _la(2026, 9, 22, 22, 1, 0)
+    assert s.tick() == []
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
+def test_scheduler_tick_skips_when_non_leader_lease_active(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = store_mod.RunStore(tmp_path / "runs.sqlite3")
+    roles = {
+        "night-watch": roles_mod.parse_role(
+            {
+                "name": "night-watch",
+                "providers": ["fake"],
+                "schedule": "* * * * *",
+                "repos": ["UpstreamDrift"],
+                "budget": {"usd_per_run": 3, "usd_per_day": 15},
+            }
+        )
+    }
+    runner = _FakeRunner(store, roles)
+    runner.machine = "node-b"
+    clock = {"now": _la(2026, 9, 22, 21, 59, 50)}
+    holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
+    holds.replace([])
+    guard = budget_mod.BudgetGuard(store, alert_sink=lambda *_: None, clock=lambda: clock["now"])
+    state_file = tmp_path / "shared-state.json"
+    s = scheduler_mod.StaffScheduler(runner, holds, guard, clock=lambda: clock["now"], state_file=state_file)  # type: ignore[arg-type]
+    assert s.tick() == []  # anchor cursor before the due slot while lease logic is disabled
+    monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", "hub-a,node-b")
+    s.acquire_leader_lease("hub-a", now=_la(2026, 9, 22, 22, 0, 0), ttl_seconds=20)
+    clock["now"] = _la(2026, 9, 22, 22, 0, 5)
+    assert s.tick() == []
+    assert runner.submitted == []
+    clock["now"] = _la(2026, 9, 22, 22, 0, 25)
+    assert [d["fired"] for d in s.tick()] == [True]
+
+
+@pytest.mark.unit
+def test_scheduler_tick_skips_when_schedule_home_is_elsewhere(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    placements_file = tmp_path / "placements.json"
+    placements_file.write_text(json.dumps({"night-watch": "hub-a"}), encoding="utf-8")
+    monkeypatch.setenv("STAFF_SCHEDULE_PLACEMENTS_FILE", str(placements_file))
+    store = store_mod.RunStore(tmp_path / "runs.sqlite3")
+    roles = {
+        "night-watch": roles_mod.parse_role(
+            {
+                "name": "night-watch",
+                "providers": ["fake"],
+                "schedule": "* * * * *",
+                "repos": ["UpstreamDrift"],
+                "budget": {"usd_per_run": 3, "usd_per_day": 15},
+            }
+        )
+    }
+    runner = _FakeRunner(store, roles)
+    runner.machine = "node-b"
+    clock = {"now": _la(2026, 9, 22, 21, 59, 50)}
+    holds = holds_mod.HoldsList(tmp_path / "holds.json", roles_loader=dict)
+    holds.replace([])
+    guard = budget_mod.BudgetGuard(store, alert_sink=lambda *_: None, clock=lambda: clock["now"])
+    s = scheduler_mod.StaffScheduler(
+        runner,
+        holds,
+        guard,
+        clock=lambda: clock["now"],
+        state_file=tmp_path / "state.json",  # type: ignore[arg-type]
+    )
+    assert s.tick() == []
+    clock["now"] = _la(2026, 9, 22, 22, 0, 5)
+    decision = s.tick()[0]
+    assert decision["fired"] is False and "hub-a" in decision["reason"]
+    assert runner.submitted == []
+
+
+@pytest.mark.unit
+def test_schedule_route_includes_inventory_host_and_placement_guard(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    placements_file = tmp_path / "placements.json"
+    monkeypatch.setenv("STAFF_SCHEDULE_PLACEMENTS_FILE", str(placements_file))
+    body = client.get("/api/staff/schedule").json()
+    assert body["inventory"]
+    nw = next(row for row in body["roles"] if row["role"] == "night-watch")
+    assert nw["host"]
+    reg = {
+        "version": 1,
+        "machines": [{"name": "hub-a", "staff": {"roles_enabled": ["maintenance"]}}],
+    }
+    monkeypatch.setattr("machine_registry.load_machine_registry", lambda: reg)
+    denied = client.put(
+        "/api/staff/schedule/placements/night-watch",
+        json={"host": "hub-a"},
+        headers=_XHR,
+    )
+    assert denied.status_code == 422
+
+
+@pytest.mark.unit
+def test_migrate_off_host_rejects_blank_targets(client: TestClient) -> None:
+    resp = client.post(
+        "/api/staff/schedule/migrate-off-host",
+        json={"source_host": "node-c", "targets": ["  "]},
+        headers=_XHR,
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.unit
+def test_migrate_off_host_dry_run_keeps_scheduler_running(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    placements_file = tmp_path / "placements.json"
+    placements_file.write_text(json.dumps({"night-watch": "node-c"}), encoding="utf-8")
+    monkeypatch.setenv("STAFF_SCHEDULE_PLACEMENTS_FILE", str(placements_file))
+    reg = {
+        "version": 1,
+        "machines": [
+            {"name": "node-c", "portable": True},
+            {"name": "hub-a", "staff": {"roles_enabled": ["*"]}},
+        ],
+    }
+    monkeypatch.setattr("machine_registry.load_machine_registry", lambda: reg)
+    sched = scheduler_mod.get_scheduler()
+    sched.start()
+    assert sched.running
+    resp = client.post(
+        "/api/staff/schedule/migrate-off-host",
+        json={"source_host": "node-c", "targets": ["hub-a"], "dry_run": True},
+        headers=_XHR,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["dry_run"] is True
+    assert sched.running
 
 
 def test_scheduled_repo_rotates_one_repo_per_day() -> None:

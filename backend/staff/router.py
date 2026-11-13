@@ -19,6 +19,7 @@ import uuid
 
 from staff.audit import record_audit
 from staff.conversations import ConversationStore, get_conversation_store
+from staff.loop_guard import HandoffHopCapExceededError, enforce_handoff_hop_cap_or_raise
 from staff.roles import RoleSpec
 from staff.router_models import (
     BARB_DIRECT_KEYWORDS,
@@ -40,6 +41,7 @@ log = logging.getLogger("dashboard.staff.router")
 __all__ = [
     "DEFAULT_CONFIDENCE_THRESHOLD",
     "BarbRouter",
+    "HandoffHopCapExceededError",
     "HandoffResult",
     "RoutingDecision",
     "RoutingFeedbackRecord",
@@ -238,6 +240,7 @@ class BarbRouter:
         s = store or get_conversation_store()
         w_store = work_item_store or WorkItemStore(s.path)
         target_role = decision.chosen_role or "barb"
+        next_hop = enforce_handoff_hop_cap_or_raise(source_thread_id, s)
 
         # 1. Resolve or create target role thread
         target_thread_id = ""
@@ -286,6 +289,7 @@ class BarbRouter:
                     "is_code_change": decision.is_code_change,
                     "work_item_id": wi.id,
                     "target_thread_id": target_thread_id,
+                    "handoff_hops": next_hop,
                 },
                 delivery="complete",
             )
@@ -306,6 +310,7 @@ class BarbRouter:
             body_md=brief_body,
             meta={
                 "handoff": True,
+                "handoff_hops": next_hop,
                 "work_item_id": wi.id,
                 "source_thread_id": source_thread_id or "",
                 "code_request_pipeline": decision.is_code_change,

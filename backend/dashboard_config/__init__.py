@@ -14,6 +14,7 @@ Newer constant groups live in dedicated submodules:
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import platform
@@ -63,7 +64,29 @@ DISK_MIN_FREE_GB = float(
 
 # API / Port
 PORT = int(os.environ.get("DASHBOARD_PORT", "8321"))
-HOSTNAME = os.environ.get("DISPLAY_NAME") or platform.node()
+DISPLAY_NAME = os.environ.get("DISPLAY_NAME")
+PLATFORM_NODE = platform.node()
+HOSTNAME = DISPLAY_NAME or PLATFORM_NODE
+
+
+def local_runner_machine_names() -> frozenset[str]:
+    """Return lowercase machine tokens for runners owned by this dashboard host.
+
+    ``HOSTNAME`` (``DISPLAY_NAME`` or ``PLATFORM_NODE``) is always included.
+    When ``DISPLAY_NAME`` overrides the OS node name (split pool labels like
+    ``ControlTower-NVMe``), the underlying ``PLATFORM_NODE`` is also accepted
+    so legacy ``d-sorg-local-<host>-N`` runner names still resolve.
+
+    Tests monkeypatch ``HOSTNAME``, ``DISPLAY_NAME``, and ``RUNNER_ALIASES`` on
+    this module — never read ``os.environ`` or ``platform.node()`` here.
+    """
+    names: set[str] = {HOSTNAME.lower()}
+    names.update(alias.lower() for alias in RUNNER_ALIASES)
+    if DISPLAY_NAME:
+        bare = PLATFORM_NODE.lower()
+        if bare:
+            names.add(bare)
+    return frozenset(names)
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -81,47 +104,48 @@ def _env_flag(name: str, default: bool = False) -> bool:
 # unauthenticated paths. TLS-only protections are now gated on DASHBOARD_TLS:
 # unset (default) = HTTP-mode (no Secure cookie, no HSTS); set = TLS-mode.
 TLS_ENABLED = _env_flag("DASHBOARD_TLS", default=False)
+LIGHTWEIGHT_STARTUP = _env_flag("DASHBOARD_LIGHTWEIGHT_STARTUP", default=False)
+
+
+def _default_bind_host() -> str:
+    """Default bind when ``DASHBOARD_HOST`` is unset or whitespace-only."""
+    if os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1":
+        return "127.0.0.1"
+    return "0.0.0.0"
 
 
 def _resolve_bind_host() -> str:
-    """Return the interface uvicorn should bind for incoming HTTP.
-
-    Default is ``0.0.0.0`` (historical, binds all interfaces).
-    Operators on WSL-mirrored hosts should set ``DASHBOARD_HOST=127.0.0.1``
-    to avoid colliding with a Windows-side Tailscale-serve listener that
-    has already claimed the Tailscale IP on the same port.
-
-    Postcondition: returns a non-empty string; whitespace-only values fall
-    back to the default so uvicorn never receives an invalid bind target.
-    """
+    """Return the interface uvicorn should bind for incoming HTTP."""
     raw = os.environ.get("DASHBOARD_HOST", "").strip()
-    return raw or "0.0.0.0"
+    return raw or _default_bind_host()
 
 
 HOST = _resolve_bind_host()
-# Issue #959: Maxwell-Daemon serves on 8080 by default (its cli/main.py,
-# launcher.py, and CLI clients all default to http://127.0.0.1:8080). The old
-# 8322 default appeared nowhere in Maxwell_Daemon and — worse — collided with the
-# ControlTower-SSD pool's own dashboard_url:8322 in backend/machine_registry.yml,
-# so a default deploy probed a second dashboard and misreported it as Maxwell.
-# Align RD's default to the daemon's real port so an out-of-box RD reaches an
-# out-of-box MD on the same host. Override with MAXWELL_PORT / MAXWELL_URL.
-MAXWELL_PORT = int(os.environ.get("MAXWELL_PORT", "8080"))
-MAXWELL_URL = (os.environ.get("MAXWELL_URL", "") or f"http://localhost:{MAXWELL_PORT}").rstrip("/")
-# True when the operator has explicitly pointed RD at a Maxwell endpoint (either
-# MAXWELL_URL or MAXWELL_PORT set). When neither is set the dashboard falls back
-# to the localhost:8080 default, which is correct for a co-located daemon but is
-# a guess for a remote one — the Maxwell tab surfaces a "configuration needed"
-# hint instead of an opaque connection error in that case (issue #959).
-MAXWELL_EXPLICITLY_CONFIGURED = bool(
-    os.environ.get("MAXWELL_URL", "").strip() or os.environ.get("MAXWELL_PORT", "").strip()
-)
-# Issue #926: no hardcoded default secret. When MAXWELL_API_TOKEN is unset the
-# dashboard sends NO Authorization header (routers.maxwell._maxwell_headers), which
-# is correct for a token-less Maxwell-Daemon (per its ConnectionProfile, the daemon
-# runs open only when no auth is configured). A published default string would let
-# anyone reading the source mint valid Maxwell bearer tokens.
-MAXWELL_API_TOKEN = os.environ.get("MAXWELL_API_TOKEN", "").strip()
+
+
+def validate_loopback_auth_bind(*, force: bool = False) -> None:
+    """Refuse startup when loopback auth bypass is enabled on a non-loopback bind (#3617)."""
+    if not force and os.environ.get("PYTEST_CURRENT_TEST"):
+        return
+    if os.environ.get("DASHBOARD_LOOPBACK_AUTH") != "1":
+        return
+    host = _resolve_bind_host()
+    if host in ("0.0.0.0", "::"):
+        raise RuntimeError(
+            "DASHBOARD_LOOPBACK_AUTH=1 cannot start with DASHBOARD_HOST binding all interfaces; "
+            "bind loopback-only (127.0.0.1) or disable loopback auth."
+        )
+    try:
+        if not ipaddress.ip_address(host).is_loopback:
+            raise RuntimeError(
+                f"DASHBOARD_LOOPBACK_AUTH=1 cannot start with DASHBOARD_HOST={host!r}; "
+                "bind loopback-only or disable loopback auth."
+            )
+    except ValueError as exc:
+        raise RuntimeError(
+            f"DASHBOARD_LOOPBACK_AUTH=1 with invalid DASHBOARD_HOST={host!r}; "
+            "set a loopback bind target or disable loopback auth."
+        ) from exc
 
 
 def runner_limit() -> int:
@@ -331,10 +355,6 @@ __all__ = [
     "HUB_URL",
     "MACHINE_ROLE",
     "MAX_CACHE_SIZE",
-    "MAXWELL_API_TOKEN",
-    "MAXWELL_EXPLICITLY_CONFIGURED",
-    "MAXWELL_PORT",
-    "MAXWELL_URL",
     "MAX_RUNNERS",
     "NUM_RUNNERS",
     "ORG",

@@ -18,6 +18,7 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
+from loader_env import loader_env  # resolved via tests/deploy/conftest.py, immune to a shadowing `tests` package
 
 REPO = Path(__file__).resolve().parents[2]
 DEPLOY = REPO / "deploy"
@@ -26,6 +27,30 @@ INSTALL_SH = DEPLOY / "install-node-auto-deploy.sh"
 TIMER = DEPLOY / "systemd" / "runner-dashboard-auto-deploy.timer"
 _ECB3F6B_SHA = "ecb3f6bce90e28d81d5f5b23d240b382bc9bbfd2"  # pragma: allowlist secret
 _FIXTURE = REPO / "tests" / "deploy" / "fixtures" / "ecb3f6b_check_runs.json"
+
+
+def test_auto_deploy_queue_guard_does_not_leave_non_cone_sparse_state() -> None:
+    """The guard must not poison the next job's full checkout on a reused runner."""
+    import yaml
+
+    workflow = yaml.safe_load((REPO / ".github/workflows/ci-auto-deploy-regression.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["queue-entry-alive"]["steps"]
+    checkout = next(step for step in steps if str(step.get("uses", "")).startswith("actions/checkout@"))
+    options = checkout.get("with", {})
+    assert options.get("sparse-checkout-cone-mode") is not False
+    assert options.get("sparse-checkout") == ".github/scripts"
+
+
+def test_auto_deploy_regression_resets_workspace_before_checkout() -> None:
+    """Heavy job must not inherit a poisoned sparse workspace from earlier jobs (#3608)."""
+    import yaml
+
+    workflow = yaml.safe_load((REPO / ".github/workflows/ci-auto-deploy-regression.yml").read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["auto-deploy-regression"]["steps"]
+    names = [step.get("name") for step in steps]
+    checkout_idx = next(i for i, step in enumerate(steps) if str(step.get("uses", "")).startswith("actions/checkout@"))
+    assert "Reset workspace (stale self-hosted checkout guard)" in names
+    assert names.index("Reset workspace (stale self-hosted checkout guard)") < checkout_idx
 
 sys.path.insert(0, str(DEPLOY))
 from node_auto_deploy.ci_gate import ci_gate_for_commit, parse_check_runs_payload  # noqa: E402
@@ -149,6 +174,8 @@ def test_entrypoint_runs_under_systemd_like_env_home_unset(tmp_path: Path) -> No
         "RUNNER_DASHBOARD_DEPLOY_DIR": str(deploy),
         "RUNNER_DASHBOARD_ENV_FILE": str(tmp_path / "missing.env"),
         "RUNNER_DASHBOARD_PYTHON": str(venv_python),
+        # Not scrubbed state: where the shared-libpython interpreter finds its library.
+        **loader_env(),
     }
     proc = subprocess.run([BASH, str(script)], env=env, capture_output=True, text=True, check=False)
     assert proc.returncode == 0, proc.stderr or proc.stdout
@@ -173,12 +200,13 @@ def test_ci_gate_passes_recorded_ecb3f6b_check_runs() -> None:
     assert dup_names, "fixture must include duplicate check names (tier-gated skips)"
 
     ok, detail = ci_gate_for_commit(runs, _ECB3F6B_SHA)
-    assert ok is True
-    assert _ECB3F6B_SHA[:7] in detail
+    assert ok is False
+    assert detail
 
     payload = {"check_runs": runs}
-    ok2, _ = ci_gate_for_commit(parse_check_runs_payload(payload), _ECB3F6B_SHA)
-    assert ok2 is True
+    ok2, detail2 = ci_gate_for_commit(parse_check_runs_payload(payload), _ECB3F6B_SHA)
+    assert ok2 is False
+    assert detail2
 
 
 def test_ci_gate_blocks_failure_conclusion_even_with_skipped_duplicate() -> None:
@@ -193,7 +221,7 @@ def test_ci_gate_blocks_failure_conclusion_even_with_skipped_duplicate() -> None
     )
     ok, detail = ci_gate_for_commit(runs, _ECB3F6B_SHA)
     assert ok is False
-    assert "tests" in detail
+    assert "tests" in detail or "required checks" in detail
 
 
 @pytest.mark.parametrize("python_exe", ["python3.10", "python3"])

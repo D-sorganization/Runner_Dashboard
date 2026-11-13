@@ -47,6 +47,10 @@ vi.mock("../../LocalApps", () => ({
   LocalAppsPage: () => <div data-testid="local-apps-page">Local apps</div>,
 }));
 
+vi.mock("../HostSettingsPanel", () => ({
+  HostSettingsPanel: () => <div data-testid="host-settings-panel">Host settings</div>,
+}));
+
 import { SettingsPage } from "../SettingsPage";
 
 afterEach(() => {
@@ -82,6 +86,7 @@ describe("SettingsPage (#1338)", () => {
       "theme",
       "local-tools",
       "vault",
+      "host-settings",
     ]);
     const content: Record<string, string> = {
       credentials: "credentials-page",
@@ -118,11 +123,11 @@ describe("SettingsPage (#1338)", () => {
     render(<SettingsPage />);
 
     const nav = screen.getByRole("navigation", { name: /settings sections/i });
-    expect(within(nav).getByRole("link", { name: "Theme" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Jump to Theme settings/i })).toHaveAttribute(
       "href",
       "#theme",
     );
-    expect(within(nav).getByRole("link", { name: "Local Tools" })).toHaveAttribute(
+    expect(within(nav).getByRole("link", { name: /Jump to Local Tools settings/i })).toHaveAttribute(
       "href",
       "#local-tools",
     );

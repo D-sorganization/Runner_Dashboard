@@ -13,7 +13,7 @@ is untouched, so the failure mode is quiet and confusing:
 from the server, please re-configure.` (journal / `_diag/Runner_*.log`);
 - units flip to `inactive`/`failed` ("no retry needed") and stay down.
 
-This hit the whole DeskComputer pool (8 runners) and ControlTower's
+This hit the whole hub-a pool (8 runners) and node-a's
 `matlab-1` on 2026-07-30, after their hosts/distros had been down since
 mid-July. The fleet ran on ~8 saturated CT-SSD runners and CI queued for
 hours. `deploy/fleet-health-monitor.ps1` now alarms on the purge signature
@@ -63,17 +63,17 @@ per-host scripts; the canonical per-pool label sets are in
 3. **Same names + `--replace`**: re-registering under the original names
    keeps unit files, hooks, and dashboards consistent. Never copy `.runner`
    identity files between machines or pools.
-4. **ControlTower**: never run `wsl.exe` over SSH (hangs the network-logon
+4. **node-a**: never run `wsl.exe` over SSH (hangs the network-logon
    session). Drive WSL via an interactive scheduled task (wrap it in
    `run-hidden.vbs` so it stays windowless) that writes output to a file.
-5. **OGLaptop**: the console may be logged off, so `/IT` tasks won't run —
+5. **node-b**: the console may be logged off, so `/IT` tasks won't run —
    use an S4U task (the resident keepalive proves S4U → WSL works there).
 6. **Quarantine / retirement**: check runner labels before re-registering. A
    pool labelled `d-sorg-quarantine` is out of service **on purpose** — never
-   re-register its runners to "fix" the count. ControlTower-NVMe carried that
+   re-register its runners to "fix" the count. node-a-NVMe carried that
    label from 2026-07-30 and was **retired** on 2026-07-31 (issue #1071);
    `machine_registry.yml` marks it `retired: true`, so its absence from the
-   fleet is expected, not decay. Any `d-sorg-local-ControlTower-nvme-*`
+   fleet is expected, not decay. Any `d-sorg-local-node-a-nvme-*`
    registrations still listed are orphans of that retirement.
 
 ## Verify
@@ -91,8 +91,8 @@ the fleet-health-monitor log shows pool counts at/above floors.
 A WSL2 distro whose host volume reaches zero free space **corrupts itself**
 mid-write: files that are allocated but never flushed come back as null
 bytes, taking out binaries and the dpkg database. That is the probable
-origin of the ControlTower-NVMe corruption (issue #1071), and on 2026-07-31
-it came within minutes of repeating on the _live_ ControlTower-SSD pool
+origin of the node-a-NVMe corruption (issue #1071), and on 2026-07-31
+it came within minutes of repeating on the _live_ node-a-SSD pool
 (F: at 2.05 GB free and falling ~130 MB/min under 8 busy runners).
 
 Rules that follow from it:
@@ -118,8 +118,8 @@ Rules that follow from it:
 
 ## Prevention
 
-- `deploy/fleet-health-monitor.ps1` (DeskComputer, every 5 min): per-pool
+- `deploy/fleet-health-monitor.ps1` (hub-a, every 5 min): per-pool
   floors, Desktop in-place unit self-heal, purge alarm.
 - Keepalives hold distros resident: `RunnerDashboard-WSL-Resident-KeepAlive`
-  (S4U) per host / `ControlTower-SSD-KeepAlive`. A distro with runners but
+  (S4U) per host / `node-a-SSD-KeepAlive`. A distro with runners but
   no keepalive is how the 14-day clock starts.

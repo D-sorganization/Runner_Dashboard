@@ -158,7 +158,7 @@ async def record_chat_failure_if_pending(
     entry left the reply pending forever. Post: the placeholder is not pending.
     """
     placeholder = conv_store.get_message(placeholder_id)
-    if placeholder is None or placeholder.delivery != "pending":
+    if placeholder is None or placeholder.delivery not in ("pending", "streaming"):
         return
     await record_chat_failure(
         conv_store,

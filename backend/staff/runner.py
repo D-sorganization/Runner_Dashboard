@@ -2,22 +2,19 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import platform
-import re
-import shutil
 import sqlite3
 import subprocess
 import threading
-import uuid
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from staff import consolidation, review, verification, workspace
-from staff import focus as focus_mod
+from coordination.cursor_dispatch_lease import cursor_finalize_on_publish, cursor_pre_launch_or_block
+from staff import claim_guard, consolidation, lifecycle_fence, review, runner_planning, verification, workspace
 from staff import lease as lease_ritual
 from staff import retry as retry_mod
 from staff import runner_ops as ops
@@ -29,7 +26,8 @@ from staff.lessons import file_proposed_lessons, select_repo_lessons
 from staff.plan import RunPlan, RunRequest
 from staff.roles import RoleSpec, load_roles
 from staff.run_link import handle_run_status_change, result_summary
-from staff.standards_registry import estimate_tokens
+from staff.runner_ops import StaffRunPreparationError
+from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
@@ -40,7 +38,10 @@ MAX_CONCURRENT_RUNS = int(os.environ.get("STAFF_MAX_CONCURRENT_RUNS", "3"))
 NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line"
 RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
 IDLE_TIMEOUT_SECONDS = int(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", str(20 * 60)))
-_SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
+
+from staff.runner_registry import get_runner, reset_runner  # noqa: E402
+
+__all__ = ["RunPlan", "RunRequest", "StaffRunner", "get_runner", "reset_runner"]
 
 
 class StaffRunner:
@@ -64,6 +65,7 @@ class StaffRunner:
         self._lock = threading.Lock()
         self._sema = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
         self._provider_semas: dict[str, threading.BoundedSemaphore] = {}
+        self._threads: list[threading.Thread] = []
 
     def _get_provider_sema(self, provider: str) -> threading.BoundedSemaphore:
         with self._lock:
@@ -81,101 +83,26 @@ class StaffRunner:
         spec = self.roles().get(role)
         return spec is not None and spec.opens_pr
 
+    def _opens_pr_or_false(self, role: str) -> bool:
+        """:meth:`opens_pr`, but a failing roles resolver never crashes a finished run (#1542, #3622)."""
+        try:
+            return self.opens_pr(role)
+        except Exception:  # noqa: BLE001
+            log.exception("staff opens_pr resolver failed for role %s; classifying as no-PR", role)
+            return False
+
     def roles(self) -> dict[str, RoleSpec]:
         return self._roles_loader()
 
     # ── planning ─────────────────────────────────────────────────────────
     def plan(self, req: RunRequest) -> RunPlan:
         """Resolve role + provider + prompt without side effects (raises ValueError on bad input)."""
-        from library.dispatch_hook import library_references_for_plan
-        from staff.cloud_dispatch import resolve_plan_execution
-        from staff.dispatch_bundle import DispatchContractError, resolve_dispatch_bundle
-        from staff.failover_dispatch import resolve_provider_and_model
-        from staff.failover_model import resolve_launch_model, role_base_tier
-        from staff.provider_failover_config import resolve_failover_chain
-        from staff.role_dispatch import resolve_dispatch_role
-
-        role = resolve_dispatch_role(self.roles(), req)
-
-        provider, _chain_model, model_tier, auth_skipped = resolve_provider_and_model(
-            self._adapters, self.machine, req, role
-        )
-        if req.repo and not _SAFE_REF.match(req.repo):
-            raise ValueError("repo must be a bare repository name")
-        if role.repos and req.repo and req.repo not in role.repos:
-            raise ValueError(f"role '{req.role}' is scoped to {', '.join(role.repos)}")
-        if not (req.issue or req.pr or req.prompt.strip()):
-            raise ValueError("one of issue, pr or prompt is required")
-        branch = f"staff/{role.name}-{req.issue or req.pr or 'task'}-{uuid.uuid4().hex[:6]}"
-        lease = bool(role.permissions.get("lease", True)) and bool(req.issue) and bool(req.repo)
-        paragraph = consolidation.prompt_paragraph(req.consolidation) if req.consolidation else ""
-        focus = focus_mod.focus_paragraph(req.repo, focus_mod.load_items(self._focus_loader)) if req.repo else ""
-        try:
-            bundle = resolve_dispatch_bundle(
-                role=role.name,
-                repo=req.repo,
-                task_type=req.task_type,
-                standards_extra=req.standards_extra,
-                requested_skill=req.requested_skill,
-            )
-        except DispatchContractError as exc:
-            raise ValueError(str(exc)) from exc
-        repo_lessons = select_repo_lessons(req.repo)
-        references_block, library_work_ids = library_references_for_plan(role, req)
-        prompt = workspace.compose_prompt(
-            role,
-            repo=req.repo,
-            target_ref=req.target_ref,
-            operator_prompt=req.prompt,
-            branch=branch,
-            consolidation=paragraph,
-            focus=focus,
-            dispatch_bundle=bundle,
-            library_references=references_block,
-            repo_lessons_result=repo_lessons,
-        )
-        adapter = self._adapters[provider]
-        chain = resolve_failover_chain(role, requested_provider=provider if req.provider else None)
-        step = next((s for s in chain if s.provider == provider), None)
-        effective_model, resolved_tier = resolve_launch_model(
-            req=req,
-            role=role,
-            provider=provider,
-            adapter=adapter,
-            step=step,
-            active_tier=role_base_tier(role),
-        )
-        execution_mode, argv, cloud_stdin, lease = resolve_plan_execution(
-            req, role, provider, adapter, prompt, effective_model, lease, ops.read_only_kwargs(role)
-        )
-        return RunPlan(
-            role=role.name,
-            provider=provider,
-            model=effective_model,
-            model_tier=resolved_tier or model_tier,
-            repo=req.repo,
-            target_kind=req.target_kind,
-            target_ref=req.target_ref,
-            operator_prompt=req.prompt,
-            prompt=prompt,
-            argv=argv,
-            branch=branch,
-            lease_ritual=lease,
-            consolidation=dict(req.consolidation) if req.consolidation else None,
-            focus=focus,
-            pr_lifecycle=req.pr_lifecycle,
-            head_ref=req.head_ref,
-            skill_pin=bundle.skill_pin,
-            standards_version=bundle.standards_version,
-            standards_tokens=bundle.standards_tokens or estimate_tokens(bundle.standards_block),
-            context_stamp=json.dumps(bundle.context_stamp(prompt=prompt, lessons_tokens=repo_lessons.tokens)),
-            library_work_ids=library_work_ids,
-            injected_lesson_ids=repo_lessons.injected_ids,
-            skipped_lesson_ids=repo_lessons.skipped_ids,
-            lessons_tokens=repo_lessons.tokens,
-            provider_auth_skipped=tuple(auth_skipped),
-            execution_mode=execution_mode,
-            cloud_stdin=cloud_stdin,
+        return runner_planning.build_run_plan(
+            req,
+            roles=self.roles(),
+            adapters=self._adapters,
+            machine=self.machine,
+            focus_loader=self._focus_loader,
         )
 
     def _first_available(self, providers: tuple[str, ...], ceiling: float | None = None) -> str:
@@ -210,7 +137,24 @@ class StaffRunner:
 
     def launch(self, rec: RunRecord, plan: RunPlan) -> None:
         """Start the worker thread for a run :meth:`admit` created."""
-        threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True).start()
+        thread = threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True)
+        with self._lock:
+            self._threads = [t for t in self._threads if t.is_alive()]
+            self._threads.append(thread)
+        thread.start()
+
+    def join_all(self, timeout: float = 10.0) -> list[str]:
+        """Wait for launch()'s daemon threads to finish; return names still alive after timeout (#3778)."""
+        with self._lock:
+            threads = list(self._threads)
+            self._threads = []
+        deadline = time.monotonic() + timeout
+        still_alive = []
+        for thread in threads:
+            thread.join(max(0.0, deadline - time.monotonic()))
+            if thread.is_alive():
+                still_alive.append(thread.name)
+        return still_alive
 
     def cancel(self, run_id: str) -> bool:
         with self._lock:
@@ -241,6 +185,7 @@ class StaffRunner:
         with provider_sema, self._sema:
             if rec.id in self._cancel_flags:
                 return
+            crashed = False
             try:
                 store.update_run(rec.id, status="preparing", started_at=_now())
                 handle_run_status_change(rec, "preparing")
@@ -251,6 +196,12 @@ class StaffRunner:
                     ops.prepare_cloud_workdir(store, rec) if cloud_run else ops.prepare_run_workdir(store, rec, plan)
                 )
                 lease_note = ""
+                pre_pr_entrypoint = ""
+                if not cloud_run:
+                    preflight = ops.ensure_worktree_bootstrap_ready(store, rec, plan, workdir)
+                    if preflight is None:
+                        return
+                    pre_pr_entrypoint = preflight.pre_pr_entrypoint
                 agent = self._adapters[plan.provider].lease_agent
                 if plan.lease_ritual:
                     note = lease_ritual.acquire(
@@ -264,10 +215,14 @@ class StaffRunner:
                     if note is None:
                         return  # blocked; status already recorded
                     lease_note = note
-                self._execute(rec, plan, workdir, lease_note)
+                self._execute(rec, plan, workdir, lease_note, pre_pr_entrypoint=pre_pr_entrypoint)
+            except StaffRunPreparationError:
+                return  # status and failure_class already recorded (e.g. disk floor)
             except Exception as exc:  # noqa: BLE001
+                crashed = True
                 log.exception("staff run %s crashed", rec.id)
                 store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
+                claim_guard.release_claim(rec.id, "failed")
                 store.append_event(rec.id, "error", str(exc)[:1000])
             finally:
                 if plan.lease_ritual:
@@ -277,32 +232,47 @@ class StaffRunner:
                         repo=plan.repo,
                         issue=plan.issue_number,
                         agent=self._adapters[plan.provider].lease_agent,
+                        reason=lease_ritual.release_reason(store.get_run(rec.id), crashed=crashed),
                     )
         retry_mod.handle_post_execution_retry(self, rec, plan)
 
     def _prepare_workdir(self, rec: RunRecord, plan: RunPlan) -> Path:
         return ops.prepare_run_workdir(self.store, rec, plan)
 
-    def _execute(self, rec: RunRecord, plan: RunPlan, workdir: Path, lease_note: str) -> None:
+    def _execute(
+        self,
+        rec: RunRecord,
+        plan: RunPlan,
+        workdir: Path,
+        lease_note: str,
+        *,
+        pre_pr_entrypoint: str = "",
+    ) -> None:
         store = self.store
         adapter = self._adapters[plan.provider]
         role = self.roles()[plan.role]
-        prompt = workspace.compose_prompt(
+        prompt = lifecycle_fence.compose_fenced(  # re-derive + assert the RM#2712 fence (#4156)
+            plan,
             role,
-            repo=plan.repo,
-            target_ref=plan.target_ref,
             operator_prompt=plan.operator_prompt,
-            branch=plan.branch,
             lease_note=lease_note,
             consolidation=plan.consolidation_paragraph,
             focus=plan.focus,
+            dispatch_bundle=plan.dispatch_bundle,
+            library_references=plan.library_references,
             repo_lessons_result=select_repo_lessons(plan.repo),
+            prompt_token_cap=TOTAL_CONTEXT_TOKEN_CAP if plan.provider == "codex" else None,
         )
+        if pre_pr_entrypoint:
+            prompt = (
+                f"{prompt}\n\nRepository pre-PR check entry point for this checkout: `{pre_pr_entrypoint}`. "
+                "Use this command instead of a generic scripts.pre_pr assumption."
+            )
         launch_paths = self._launch_paths(adapter, workdir)
         if plan.provider == "antigravity":
             gitdir = Path(launch_paths.get("gitdir", str(workdir)))
             antigravity_permissions(read_only=role.code_read_only, workdir=workdir, gitdir=gitdir)
-        from staff.cloud_dispatch import record_cloud_session_from_transcript, resolve_execute_launch, scrub_api_key_env
+        from staff.cloud_dispatch import record_cloud_session_from_transcript, resolve_execute_launch
 
         launch_argv, launch_label, stdin_payload = resolve_execute_launch(
             plan, adapter, prompt, workdir, ops.read_only_kwargs(role), launch_paths
@@ -311,25 +281,20 @@ class StaffRunner:
         transcript.parent.mkdir(parents=True, exist_ok=True)
         wall_clock_timeout = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", role.budget_max_minutes * 60.0))
         idle_timeout = float(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", role.idle_minutes * 60.0))
-        real_gh = shutil.which("gh") or "gh"
+        real_gh = os.environ.get("STAFF_REAL_GH", "").strip() or "/usr/bin/gh"
 
         env = ops.apply_staff_run_github_child_env(
-            store,
-            rec,
-            os.environ,
-            role,
-            plan.repo or "",
-            run_id=rec.id,
-            real_gh_path=real_gh,
+            store, rec, os.environ, role, plan.repo or "", run_id=rec.id, real_gh_path=real_gh
         )
         if env is None:
             return
-        if plan.execution_mode == "cloud":
-            env = scrub_api_key_env(env)
+        env = ops.sanitize_launch_env(env, execution_mode=plan.execution_mode, provider=plan.provider)
         env = ops.apply_staff_run_fleet_token(
             store, rec, plan, role, env, adapter, wall_clock_timeout=wall_clock_timeout
         )
         if env is None:
+            return
+        if not cursor_pre_launch_or_block(store, plan, rec, wall_clock_timeout):
             return
         try:
             proc = subprocess.Popen(  # noqa: S603
@@ -382,6 +347,7 @@ class StaffRunner:
                 self._procs.pop(rec.id, None)
             cancelled = rec.id in self._cancel_flags
             if plan.execution_mode == "cloud":
+                cursor_finalize_on_publish(store, rec.id)
                 record_cloud_session_from_transcript(store, rec.id, plan.provider, transcript)
             question = ops.extract_transcript_question(transcript)
 
@@ -420,18 +386,15 @@ class StaffRunner:
                 watchdog_error=watchdog.error_message or "",
                 machine=self.machine,
                 has_thread=bool(rec.thread_id),
+                run=rec,
+                opens_pr=self._opens_pr_or_false(rec.role),
+                probe=verification.GhCliPrProbe(),
             )
 
             same_provider = review.is_same_provider_review(rec.prompt)
-            if rec.role == "code-reviewer" and rc == 0:
-                review_verdict = review.parse_review_verdict(result_line, same_provider=same_provider)
-                if review_verdict.status == "needs_input":
-                    status = failure_class = "needs_input"
-                    remediation = "Review completed without emitting a STAFF_RESULT verdict line."
-                elif review_verdict.status == "failed":
-                    status, failure_class = "failed", "invalid_output"
-                    error = review_verdict.error or "Malformed review verdict line"
-                    remediation = "Review completed with a malformed STAFF_RESULT line."
+            status, failure_class, retryable, error, remediation = ops.apply_code_reviewer_post_classification(
+                store, rec, plan, rc, status, failure_class, retryable, error, remediation, result_line, transcript
+            )
 
             workspace.persist_run_transcript(store, rec.id, workdir)
             # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
@@ -479,21 +442,3 @@ class StaffRunner:
         self, rec: RunRecord, adapter: ProviderAdapter, proc: Any, transcript: Path, watchdog: Any = None
     ) -> Any:
         return ops.pump_output(rec, adapter, proc, transcript, self.store, watchdog)
-
-
-_runner: StaffRunner | None = None
-_runner_lock = threading.Lock()
-
-
-def get_runner() -> StaffRunner:
-    global _runner  # noqa: PLW0603
-    with _runner_lock:
-        if _runner is None:
-            _runner = StaffRunner()
-        return _runner
-
-
-def reset_runner() -> None:
-    global _runner  # noqa: PLW0603
-    with _runner_lock:
-        _runner = None

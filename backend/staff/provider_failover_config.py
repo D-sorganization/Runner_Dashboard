@@ -48,7 +48,8 @@ def failover_cooldown_seconds() -> dict[str, float]:
         try:
             out[str(key)] = float(val)
         except (TypeError, ValueError):
-            continue
+            log.warning("unparseable cooldown_seconds[%s]=%r; using fail-closed maximum", key, val)
+            out[str(key)] = max(out.get(str(key), 0.0), 3600.0)
     return out
 
 
@@ -56,6 +57,7 @@ def _builtin_chain() -> tuple[FailoverStep, ...]:
     return (
         FailoverStep("codex", "gpt-6-luna"),
         FailoverStep("claude", None),
+        FailoverStep("anthropic-api", None),
         FailoverStep("antigravity", "gemini-3.8-flash-high"),
         FailoverStep("cursor-agent", None),
     )
@@ -145,7 +147,8 @@ def resolve_failover_chain(
     default_chain = default_failover_chain()
 
     if override:
-        filtered = [step for step in override if step.provider in allowed]
+        raw_allowed = frozenset(raw_providers)
+        filtered = [step for step in override if step.provider in raw_allowed]
     else:
         filtered = [step for step in default_chain if step.provider in allowed]
         included = {step.provider for step in filtered}
@@ -163,6 +166,17 @@ def resolve_failover_chain(
                 return tuple(filtered[i:])
         if req in allowed:
             return (FailoverStep(req, role_model),) + tuple(s for s in filtered if s.provider != req)
+    else:
+        role_name = str(getattr(role, "name", "") or "").strip().lower()
+        if role_name:
+            from staff.rd_barb_provider_state import read_active_provider  # noqa: PLC0415
+
+            snap = read_active_provider(role_name, allowed_providers=allowed)
+            if snap is not None:
+                matched = next((s for s in filtered if s.provider == snap.provider), None)
+                active_model = snap.model if snap.model is not None else (matched.model if matched else None)
+                head = FailoverStep(snap.provider, active_model)
+                return (head, *(s for s in filtered if s.provider != snap.provider))
     return tuple(filtered)
 
 

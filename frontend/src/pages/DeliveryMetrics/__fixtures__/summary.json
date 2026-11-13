@@ -11,6 +11,11 @@
     "top_failing_checks": [],
     "escapes_weighted": []
   },
+  "groupings": {
+    "by_role": [{ "key": "barb", "prs": 1, "merged": 1, "median_ci_rounds": 1.0 }],
+    "by_agent": [{ "key": "claude", "prs": 1, "merged": 1, "median_ci_rounds": 1.0 }],
+    "by_model": [{ "key": "sonnet", "prs": 1, "merged": 1, "median_ci_rounds": 1.0 }]
+  },
   "weekly_trends": [
     {
       "week_start": "2026-10-19",
@@ -31,6 +36,10 @@
       "ci_rounds_to_green": 1,
       "lead_time_seconds": 1904.0,
       "ci_wait_seconds": 1191.0,
+      "rework_seconds": 0.0,
+      "role": "barb",
+      "agent": "claude",
+      "model": "sonnet",
       "dieter_wait_seconds": null,
       "churn_flags": []
     }

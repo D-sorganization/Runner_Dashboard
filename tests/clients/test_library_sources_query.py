@@ -15,8 +15,8 @@ def test_sources_preserves_local_and_pooled_availability(monkeypatch: pytest.Mon
     calls: list[tuple[str, str, dict[str, Any]]] = []
     catalog = {
         "sources": [{"id": "private-local", "shared": False}],
-        "pooled_sources": [{"id": "shared-peer", "node": "Brick", "online": False, "last_seen": "earlier"}],
-        "current_node": "DeskComputer",
+        "pooled_sources": [{"id": "shared-peer", "node": "node-c", "online": False, "last_seen": "earlier"}],
+        "current_node": "hub-a",
         "is_hub": False,
     }
 

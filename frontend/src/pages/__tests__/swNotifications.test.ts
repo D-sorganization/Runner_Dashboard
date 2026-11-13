@@ -10,7 +10,7 @@ describe("Service Worker Push & Notification Click", () => {
     let pushHandler: ((e: unknown) => void) | null = null;
 
     const fakeSelf = {
-      location: { origin: "https://hub.tailscale.ts.net", href: "https://hub.tailscale.ts.net/sw.js" },
+      location: { origin: "https://hub.fleet-example.ts.net", href: "https://hub.fleet-example.ts.net/sw.js" },
       registration: { showNotification },
       addEventListener: (type: string, handler: (e: unknown) => void) => {
         if (type === "push") pushHandler = handler;
@@ -83,10 +83,10 @@ describe("Service Worker Push & Notification Click", () => {
     const openWindow = vi.fn().mockResolvedValue(undefined);
 
     const fakeSelf = {
-      location: { origin: "https://hub.tailscale.ts.net" },
+      location: { origin: "https://hub.fleet-example.ts.net" },
       clients: {
         matchAll: vi.fn().mockResolvedValue([
-          { url: "https://hub.tailscale.ts.net/staff?thread=thread-123", focus: focusClient },
+          { url: "https://hub.fleet-example.ts.net/staff?thread=thread-123", focus: focusClient },
         ]),
         openWindow,
       },

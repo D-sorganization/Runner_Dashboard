@@ -32,6 +32,8 @@ _ALLOWLISTED_BODY_DUP_NAMES = frozenset(
         "_psutil_dep",
         "_required_string",
         "_run_gh",
+        # quota.py / usage_snapshot.py module-singleton accessors (#3244)
+        "default_store",
         "detect_sharing_violations",
         "get_gpu_info",
         "get_runner_routing_audit",

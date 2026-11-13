@@ -65,6 +65,7 @@ export const HandoffCard: React.FC<HandoffCardProps> = ({
             <button
               type="button"
               onClick={() => setShowOverride((prev) => !prev)}
+              title={showOverride ? "Cancel choosing another staff role" : "Route this handoff to a different staff role"}
               className="staff-action-card__btn staff-action-card__btn--deny"
               style={{ padding: "4px 10px", fontSize: 11, color: "var(--text-secondary)" }}
             >
@@ -78,6 +79,7 @@ export const HandoffCard: React.FC<HandoffCardProps> = ({
                     key={alt.name}
                     type="button"
                     onClick={() => onReroute(alt.name)}
+                    title={`Re-route this handoff to ${alt.name}`}
                     className="staff-action-card__btn"
                     style={{
                       background: "var(--badge-info-bg)",

@@ -15,6 +15,7 @@ from staff.cli_oauth_session import (
     claude_oauth_session_alive,
     invalidate_oauth_probe_cache,
     oauth_expired_in_file,
+    oauth_expiry_epoch_for_provider,
     oauth_has_refresh_token_for_provider,
     oauth_last_refresh_epoch_for_provider,
     provider_oauth_session_alive,
@@ -142,10 +143,52 @@ def test_provider_oauth_session_alive_unknown_provider_is_ok() -> None:
     assert provider_oauth_session_alive("ollama") == (True, "")
 
 
+def test_grok_oauth_session_alive_no_auth_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GROK_HOME", str(tmp_path / "no-login"))
+    monkeypatch.delenv("STAFF_E2E_HERMETIC", raising=False)
+    alive, detail = provider_oauth_session_alive("grok")
+    assert alive is False
+    assert detail == "no Grok auth.json"
+
+
+def test_grok_oauth_session_alive_with_auth_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    grok_home = tmp_path / ".grok"
+    grok_home.mkdir()
+    (grok_home / "auth.json").write_text(json.dumps({"expiresAt": int((time.time() + 3600) * 1000)}), encoding="utf-8")
+    monkeypatch.setenv("GROK_HOME", str(grok_home))
+    monkeypatch.delenv("STAFF_E2E_HERMETIC", raising=False)
+    alive, _detail = provider_oauth_session_alive("grok")
+    assert alive is True
+
+
+def test_grok_oauth_session_alive_expired_without_refresh_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    grok_home = tmp_path / ".grok"
+    grok_home.mkdir()
+    (grok_home / "auth.json").write_text(json.dumps({"expiresAt": int((time.time() - 3600) * 1000)}), encoding="utf-8")
+    monkeypatch.setenv("GROK_HOME", str(grok_home))
+    monkeypatch.delenv("STAFF_E2E_HERMETIC", raising=False)
+    alive, detail = provider_oauth_session_alive("grok")
+    assert alive is False
+    assert detail == "Grok OAuth token expired (auth.json)"
+
+
+def test_grok_oauth_expiry_epoch_reads_auth_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    grok_home = tmp_path / ".grok"
+    grok_home.mkdir()
+    expiry = int((time.time() + 7200) * 1000)
+    (grok_home / "auth.json").write_text(json.dumps({"expiresAt": expiry}), encoding="utf-8")
+    monkeypatch.setenv("GROK_HOME", str(grok_home))
+    epoch = oauth_expiry_epoch_for_provider("grok")
+    assert epoch is not None
+    assert abs(epoch - expiry / 1000.0) < 1.0
+
+
 def test_claude_setup_token_env_counts_as_alive_without_credentials_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """DeskComputer durable seat: CLAUDE_CODE_OAUTH_TOKEN only (no .credentials.json)."""
+    """hub-a durable seat: CLAUDE_CODE_OAUTH_TOKEN only (no .credentials.json)."""
     cfg = tmp_path / "empty-claude-seat"
     cfg.mkdir()
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(cfg))
@@ -232,3 +275,43 @@ def test_antigravity_jetski_state_overrides_stale_oauth_creds(tmp_path: Path, mo
     assert alive is True
     refreshed = oauth_last_refresh_epoch_for_provider("antigravity")
     assert refreshed is not None and (time.time() - refreshed) < 60
+
+
+async def test_claude_near_expiry_refresh_runs_off_the_event_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 25 s ``claude -p`` refresh must not freeze every request on the loop."""
+    import threading
+
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN", raising=False)
+    seat = tmp_path / ".config" / "runner-dashboard" / "claude"
+    seat.mkdir(parents=True)
+    near_expiry_ms = int((time.time() + 600) * 1000)  # inside the 30 min refresh skew, not yet expired
+    (seat / ".credentials.json").write_text(
+        json.dumps({"claudeAiOauth": {"expiresAt": near_expiry_ms, "refreshToken": "rt-valid"}}),
+        encoding="utf-8",
+    )
+    refresh_threads: list[str] = []
+    refreshed = threading.Event()
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> CompletedProcess[str]:
+        if cmd[1:] == ["-p", "ok", "--max-turns", "1"]:
+            refresh_threads.append(threading.current_thread().name)
+            time.sleep(0.5)
+            refreshed.set()
+            return CompletedProcess(cmd, 0, "ok", "")
+        return CompletedProcess(cmd, 0, "authenticated", "")
+
+    invalidate_oauth_probe_cache()
+    with (
+        patch("staff.cli_oauth_session.Path.home", return_value=tmp_path),
+        patch("staff.cli_oauth_session.subprocess.run", fake_run),
+    ):
+        started = time.perf_counter()
+        alive, _detail = claude_oauth_session_alive("/usr/bin/claude")
+        elapsed = time.perf_counter() - started
+        assert refreshed.wait(2.0)
+    assert alive is True
+    assert elapsed < 0.25, f"refresh blocked the event loop for {elapsed:.3f}s"
+    assert refresh_threads and refresh_threads[0] != threading.current_thread().name

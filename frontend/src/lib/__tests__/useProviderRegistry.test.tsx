@@ -105,6 +105,27 @@ describe("parseRegistry", () => {
     expect(reg.modelsFor("claude-cli")).toEqual([]);
     expect(reg.modelsFor("ollama-local")).toEqual(["llama3.2", "mistral"]);
   });
+
+  it("selectableProviders omits registry rows with enabled=false", () => {
+    const withRetired = {
+      ...CONTRACT,
+      providers: [
+        ...CONTRACT.providers,
+        {
+          id: "jules-api",
+          dashboard_id: "jules_api",
+          label: "Jules API",
+          auth_mode: "api_key",
+          resource: "runner",
+          enabled: false,
+        },
+      ],
+    };
+    const reg = parseRegistry(withRetired);
+    expect(reg.providers).toHaveLength(3);
+    expect(reg.selectableProviders).toHaveLength(2);
+    expect(reg.selectableProviders.map((p) => p.id)).not.toContain("jules-api");
+  });
 });
 
 describe("useProviderRegistry", () => {

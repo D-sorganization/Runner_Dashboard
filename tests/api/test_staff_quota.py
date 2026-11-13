@@ -1,6 +1,6 @@
 """Live subscription quota for staff providers (issue #1587).
 
-Payload shapes below were captured on OGLaptop on 2026-09-26: a Claude Code
+Payload shapes below were captured on node-b on 2026-09-26: a Claude Code
 2.1.280 ``rate_limit_event`` from ``claude -p --output-format stream-json``, a
 Claude status-line ``rate_limits`` block, and a Codex 0.156.1 session-log
 ``token_count`` event.
@@ -245,10 +245,14 @@ def test_store_tolerates_a_corrupt_file(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_provider_billing_and_quota_accounts() -> None:
     assert quota.billing("claude") == "subscription" and quota.billing("codex") == "subscription"
+    assert quota.billing("grok") == "subscription"
+    assert quota.billing("grok_cli") == "subscription"
+    assert quota.billing("grok-cli") == "subscription"
     assert quota.billing("ollama") == "local" and quota.billing("claude-ollama") == "local"
     assert quota.billing("unknown-cli") == "unknown"
     assert quota.QUOTA_ACCOUNT["claude"] == "claude" and quota.QUOTA_ACCOUNT["codex"] == "codex"
     assert "ollama" not in quota.QUOTA_ACCOUNT  # codex --oss runs on local models, not the ChatGPT plan
+    assert "grok" not in quota.QUOTA_ACCOUNT  # grok quota is unknown locally; reported via usage-tracker only
 
 
 @pytest.mark.unit
@@ -281,13 +285,18 @@ def test_report_lists_every_provider_with_billing_and_windows(tmp_path: Path) ->
     snap = quota.from_claude_event(CLAUDE_EVENT, observed_at=NOW)
     assert snap is not None
     store.record(snap)
-    body = quota.report(["claude", "codex", "ollama"], NOW, store=store, codex_dirs=[])
+    body = quota.report(["claude", "codex", "ollama", "grok"], NOW, store=store, codex_dirs=[])
     rows = {row["provider"]: row for row in body["providers"]}
     assert rows["claude"]["billing"] == "subscription" and rows["claude"]["readable"] is True
     assert rows["claude"]["quota"]["peak_percent"] == pytest.approx(23.0)
     assert rows["claude"]["quota"]["windows"][0]["resets_at"].endswith("Z")
     assert rows["codex"]["readable"] is True and rows["codex"]["quota"] is None  # no data yet
     assert rows["ollama"]["readable"] is False and rows["ollama"]["billing"] == "local"
+    assert rows["grok"]["readable"] is False and rows["grok"]["billing"] == "subscription"
+    assert rows["grok"]["quota"] is None
+    assert rows["grok"]["quota_status"] == "unknown"
+    assert rows["claude"]["quota_status"] == "known"
+    assert rows["codex"]["quota_status"] == "unknown"
     assert body["generated_at"] == "2026-09-26T18:00:00Z"
 
 

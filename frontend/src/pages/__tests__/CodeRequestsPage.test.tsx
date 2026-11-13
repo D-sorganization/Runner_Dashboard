@@ -170,8 +170,8 @@ describe("CodeRequestsPage", () => {
       screen.getByPlaceholderText("Describe the code request to plan and execute…"),
       { target: { value: "Refactor architecture" } },
     );
-    fireEvent.click(screen.getByRole("button", { name: "TDD" }));
-    fireEvent.click(screen.getByRole("button", { name: "DBC" }));
+    fireEvent.click(screen.getByRole("button", { name: /Toggle TDD coding standard/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Toggle DBC coding standard/i }));
     fireEvent.click(screen.getByRole("button", { name: /Dispatch/i }));
 
     await waitFor(() => expect(capturedBody).toBeDefined());

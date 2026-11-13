@@ -35,6 +35,8 @@ from hashlib import sha256
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
+import gh_etag_cache
+import github_rate_governor as _gov
 import httpx
 
 log = logging.getLogger("dashboard.gh_client")
@@ -309,6 +311,14 @@ async def _auth_headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {await _get_token_async()}"}
 
 
+def _conditional_lookup(method: str, path: str) -> tuple[str | None, gh_etag_cache.CachedResponse | None]:
+    """Return the ETag cache key and stored response for a GET (#3671); (None, None) otherwise."""
+    if method != "GET":
+        return None, None
+    key = gh_etag_cache.cache_key(get_auth_fingerprint(), path)
+    return key, gh_etag_cache.lookup(key)
+
+
 def _parse_retry_after(resp: httpx.Response) -> int:
     ra = resp.headers.get("Retry-After", "")
     if ra.isdigit():
@@ -331,30 +341,66 @@ def _is_rate_limited_response(resp: httpx.Response) -> bool:
     )
 
 
-async def _request(method: str, path: str, *, json: Any = None) -> httpx.Response:
+def _is_idempotent(method: str) -> bool:
+    """Return True if the method is idempotent (safe to retry)."""
+    return method in {"GET", "HEAD", "OPTIONS", "PUT", "DELETE"}
+
+
+async def _request(method: str, path: str, *, json: Any = None, idempotent: bool = False) -> httpx.Response:
     """Execute authenticated GitHub API request with retry on transient errors.
 
     Pre-condition: path starts with '/' or is a full URL.
     Post-condition: returns httpx.Response or raises a GhClientError subclass.
 
-    Retries on: TimeoutException, ConnectError, 5xx, 429.
-    Does NOT retry on: 4xx client errors (except 429).
+    Retries for idempotent methods on: TimeoutException, ConnectError, 5xx, 429.
+    Retries for non-idempotent methods (POST/PATCH) only if idempotent=True,
+    and only on ConnectError (where the request provably was not sent).
+    Does NOT retry on: 4xx client errors (except 429 for idempotent methods).
+
+    Args:
+        method: HTTP method (GET, POST, PATCH, etc.)
+        path: API path
+        json: Optional JSON body
+        idempotent: If True, retry non-idempotent methods (POST/PATCH) on
+            ConnectError. Only use if the endpoint is truly idempotent.
 
     Raises:
         GhAuthError: token missing.
-        GhRateLimited: 429 after all retries exhausted.
+        GhRateLimited: 429 after all retries exhausted (idempotent only).
         GhNotFound: 404.
         GhServerError: non-retryable client error or auth error.
         GhClientError: timeout/connect error after all retries exhausted.
     """
     client = _get_client()
     headers = await _auth_headers()
+    etag_key, cached = _conditional_lookup(method, path)
+    if cached is not None:
+        headers["If-None-Match"] = cached.etag
     last_exc: Exception | None = None
+    is_method_idempotent = _is_idempotent(method) or idempotent
 
+    identity = get_auth_fingerprint()
     for attempt in range(_MAX_RETRIES):
+        try:
+            await _gov.acquire_before_github_call_async(identity=identity)
+        except _gov.GitHubGovernorExhausted as exc:
+            _set_status(
+                "rate_limited",
+                "GitHub rate governor exhausted before request",
+                endpoint=path,
+                retry_after_seconds=int(exc.retry_after_seconds),
+            )
+            raise GhRateLimited(retry_after_seconds=int(exc.retry_after_seconds), endpoint=path) from exc
         try:
             resp = await client.request(method, path, headers=headers, json=json)
         except (httpx.TimeoutException, httpx.ConnectError) as exc:
+            should_retry = is_method_idempotent or (isinstance(exc, httpx.ConnectError) and idempotent)
+            if not should_retry:
+                raise GhClientError(
+                    f"GitHub API connection failed: {path}",
+                    kind="connection",
+                    attempts=1,
+                ) from exc
             backoff = min(2**attempt + random.uniform(0, 1), 32)
             log.warning(
                 "gh_client: retry attempt=%d reason=%s path=%s backoff=%.1fs",
@@ -371,8 +417,16 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
         # Issue #938(a): accept any 2xx as success. GitHub returns 202 Accepted
         # for async-processed actions (e.g. cancel_run); treating it as an error
         # reported a successful cancel as a GhServerError.
-        if 200 <= resp.status_code < 300:
+        if resp.status_code == 304 and cached is not None:
+            _gov.observe_github_response(resp.headers, identity=identity)
+            # Unchanged since our last GET; GitHub did not charge the rate limit.
             _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
+            return gh_etag_cache.replay(cached, resp)
+        if 200 <= resp.status_code < 300:
+            _gov.observe_github_response(resp.headers, identity=identity)
+            _set_status("ok", "GitHub API requests are succeeding.", endpoint=path)
+            if etag_key is not None:
+                gh_etag_cache.remember(etag_key, resp)
             return resp
         if resp.status_code in (401, 403) and not _is_rate_limited_response(resp):
             _set_status("auth_error", f"GitHub API returned {resp.status_code}", endpoint=path)
@@ -381,6 +435,12 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
             _set_status("not_found", f"GitHub API returned 404 for {path}", endpoint=path)
             raise GhNotFound(path)
         if _is_rate_limited_response(resp):
+            _gov.record_github_rate_limit_from_response(
+                status_code=resp.status_code,
+                headers=resp.headers,
+                body=resp.text,
+                identity=identity,
+            )
             retry_after = _parse_retry_after(resp)
             _set_status(
                 "rate_limited",
@@ -401,6 +461,8 @@ async def _request(method: str, path: str, *, json: Any = None) -> httpx.Respons
             # multiplies pressure on the same exhausted token.
             raise last_exc
         if resp.status_code >= 500:
+            if not is_method_idempotent:
+                raise GhServerError(resp.status_code, path, resp.text)
             backoff = min(2**attempt + random.uniform(0, 1), 32)
             log.warning(
                 "gh_client: server error %d on %s (attempt=%d) backoff=%.1fs",
@@ -692,34 +754,38 @@ async def download_actions_artifact(repo_full: str, artifact_id: int, *, max_byt
     return result
 
 
-async def post(path: str, *, json: Any = None) -> Any:
+async def post(path: str, *, json: Any = None, idempotent: bool = False) -> Any:
     """POST to a GitHub API path.
 
     Args:
         path: Relative API path.
         json: Optional JSON body.
+        idempotent: If True, retry on ConnectError. Only use if the endpoint
+            is truly idempotent (e.g., a webhook registration that deduplicates).
 
     Returns:
         Parsed JSON body (including the created resource for 201), or an
         empty dict for 204 No Content.
     """
-    resp = await _request("POST", path, json=json)
+    resp = await _request("POST", path, json=json, idempotent=idempotent)
     if resp.status_code == 204:
         return {}
     return resp.json()
 
 
-async def patch(path: str, *, json: Any = None) -> Any:
+async def patch(path: str, *, json: Any = None, idempotent: bool = False) -> Any:
     """PATCH a GitHub API path (e.g. edit an issue comment, #1865).
 
     Args:
         path: Relative API path.
         json: Optional JSON body.
+        idempotent: If True, retry on ConnectError. Only use if the endpoint
+            is truly idempotent (e.g., updating a label set that replaces).
 
     Returns:
         Parsed JSON body, or empty dict for 204.
     """
-    resp = await _request("PATCH", path, json=json)
+    resp = await _request("PATCH", path, json=json, idempotent=idempotent)
     if resp.status_code == 204:
         return {}
     return resp.json()
@@ -756,29 +822,21 @@ async def paginate(path: str, *, per_page: int = 100) -> AsyncIterator[dict]:
             resp = await _request("GET", url)
         except GhNotFound:
             return
+        from github_pagination import items_from_page, parse_next_link
+
         body = resp.json()
-        items: list[dict] = body if isinstance(body, list) else []
-        for key in ("workflow_runs", "jobs", "runners", "items", "repositories"):
-            if isinstance(body, dict) and key in body:
-                items = body[key]
-                break
-        for item in items:
-            yield item
+        for item in items_from_page(body):
+            if isinstance(item, dict):
+                yield item
         link = resp.headers.get("link", "")
-        url = _parse_next_link(link)
+        url = parse_next_link(link)
 
 
 def _parse_next_link(link_header: str) -> str | None:
-    """Extract the ``rel="next"`` URL from a GitHub Link header."""
-    if not link_header:
-        return None
-    for part in link_header.split(","):
-        url_part, *params = part.strip().split(";")
-        url = url_part.strip().strip("<>")
-        for param in params:
-            if param.strip() == 'rel="next"':
-                return url
-    return None
+    """Backward-compatible alias for tests and older imports."""
+    from github_pagination import parse_next_link
+
+    return parse_next_link(link_header)
 
 
 # ── High-level typed wrappers ────────────────────────────────────────────────

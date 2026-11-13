@@ -194,13 +194,12 @@ def test_packager_rebinds_final_metadata_to_prebuild_checkout_sha():
     assert '--static-assets-dir "${STAGE_DIR}/dist"' in content
 
 
-def test_package_script_ships_statusline_quota_script():
+def test_package_script_ships_runtime_scripts_package():
     content = PACKAGE_SCRIPT.read_text(encoding="utf-8")
-    assert 'mkdir -p "${STAGE_DIR}/scripts"' in content
-    assert (
-        'cp "${SCRIPT_DIR}/scripts/claude_statusline_quota.py" "${STAGE_DIR}/scripts/claude_statusline_quota.py"'
-        in content
-    )
+    section = content.split("# 5b.")[1].split("# 6.")[0]
+    assert 'mkdir -p "${STAGE_DIR}/scripts"' in section
+    assert '"${SCRIPT_DIR}/scripts/" "${STAGE_DIR}/scripts/"' in section
+    assert "artifact_backend_import_smoke.py" in content
 
 
 def test_statusline_quota_script_exists_and_resolves_backend():

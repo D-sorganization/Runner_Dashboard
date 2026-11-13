@@ -1,0 +1,39 @@
+# Canary role for Grok Bot bundle export / drift CI (#3099). Not a live staff role.
+name: sync-canary
+title: Sync Canary
+summary: Fixture role for hashed Grok Bot export bundles and drift checks.
+playbook: docs/fleet-e2e.md
+prompt_template: null
+instructions: |
+  Canary instructions for deterministic export hashing.
+providers:
+  - grok-chat
+model: default
+schedule: null
+window: null
+repos:
+  - Runner_Dashboard
+scope:
+  audits:
+    - bundle-export
+budget:
+  usd_per_run: 0
+  usd_per_day: 0
+permissions:
+  lease: false
+  push_branch: false
+  open_pr: false
+  merge: false
+  host_shell: false
+  notify_user: false
+reports_to: user
+holds:
+  - no bundle drift without re-export
+surface: both
+persona:
+  voice: neutral
+  greeting: Sync canary online.
+chat:
+  providers:
+    - grok-chat
+  tools: []

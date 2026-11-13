@@ -67,7 +67,7 @@ _RESULT_CONTRACT = (
 )
 
 _BUILTIN = FleetStandards(
-    version="1.0.0",
+    version="1.1.0",
     name="fleet-standards",
     body=(
         "Mandatory fleet coding standards (cannot be omitted; extend only with dispatch-specific notes):\n"
@@ -75,8 +75,10 @@ _BUILTIN = FleetStandards(
         "one source of truth.\n"
         "- work only inside this worktree; commit with Conventional Commits; push once.\n"
         "- open ready PRs only (never drafts); arm auto-merge via automerge_guard and end session "
-        "(pr_lifecycle: arm_and_exit); no human-approval gates; never request human reviewers.\n"
-        "- PRs stay under 500 lines (deletion-only PRs may exceed 500); no stacked PRs.\n"
+        "(pr_lifecycle: arm_and_exit) unless the dispatch carries an explicit pr_restrictions override "
+        "(draft_only/no_arm/no_merge -> draft_no_arm), in which case the operator PR boundary below "
+        "governs; no human-approval gates; never request human reviewers.\n"
+        "- Prefer small, cohesive PRs; do not split a cohesive fix only to hit a line count; no stacked PRs.\n"
         "- never merge, never force-push, never touch other worktrees or host configuration.\n"
         "- never take an issue or PR labelled claim:local or under another agent's live lease; "
         "skip if an open pull request already references it.\n"
@@ -84,6 +86,8 @@ _BUILTIN = FleetStandards(
         "- on Windows, gh is the fleet App wrapper (d-sorggeneralagent[bot]); gh-personal only for owner-run actions.\n"
         "- subscriptions only; never use pay-per-use API keys.\n"
         "- ship change fragments; include the PR URL, if you opened one, in your STAFF_RESULT summary.\n"
+        "- Take unassigned fleet work only through GET /api/coordination/jobs and claim it with "
+        "POST /api/coordination/claims before editing.\n"
         f"- {_RESULT_CONTRACT}"
     ),
     content_hash=hashlib.sha256(b"fleet-standards-v1-builtin").hexdigest(),

@@ -22,17 +22,36 @@ concurrency:
 
 jobs:
   reconcile:
-    runs-on: d-sorg-fleet
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # ubuntu-latest images may not ship python3.12/3.11 (ubuntu-26.04 does not), so
+      # pin the interpreter instead of relying on the runner image (#3891).
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.12"
       - name: Reconcile armed inventory
         env:
           GH_TOKEN: ${{ github.token }}
           PYTHONPATH: backend
         run: |
           set -euo pipefail
-          args=(python3 scripts/arm_cap_reconcile.py --repo "${{ github.repository }}")
+          PYTHON_BIN=""
+          for py in python3.12 python3.11; do
+            if command -v "$py" >/dev/null 2>&1; then
+              PYTHON_BIN="$py"
+              break
+            fi
+          done
+          if [ -z "$PYTHON_BIN" ]; then
+            echo "::error::Armed PR cap reconcile requires Python 3.11+ (datetime.UTC)."
+            exit 1
+          fi
+          args=("$PYTHON_BIN" scripts/arm_cap_reconcile.py --repo "${{ github.repository }}")
           if [ "${{ inputs.trigger_disarm || 'false' }}" = "true" ]; then
             args+=(--trigger-disarm)
           fi

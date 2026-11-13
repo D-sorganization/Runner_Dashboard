@@ -25,7 +25,7 @@ function mockAllOperationsFetch() {
         jsonResponse({
           expected_version: "4.10.0",
           rollout_state: { status: "steady", machines_attention: 0 },
-          machines: [{ name: "ct", display_name: "ControlTower", deployed_version: "4.10.0" }],
+          machines: [{ name: "ct", display_name: "node-a", deployed_version: "4.10.0" }],
         }),
       );
     }

@@ -6,12 +6,12 @@
  * security, docs) and global prompt notes.
  */
 import React, { useEffect, useState } from "react";
+import { useSubmit } from "../hooks/useSubmit";
 import { IssueGlyph, AlertGlyph } from "./decompIcons";
 import {
   ALL_STANDARDS,
   buildCodeRequest,
   type CodeRequestsProps,
-  type DispatchStatus,
   type PromptTemplate,
   type SaveStatus,
   repoName,
@@ -19,7 +19,8 @@ import {
 import { CodeRequestsHistory } from "./CodeRequestsHistory";
 import { useProviderRegistry } from "../lib/useProviderRegistry";
 import { PromptNotesEditor } from "./CodeRequestsPromptNotes";
-import { errorMessage, submitStaffRequest } from "./Staff/staffApi";
+import { submitStaffRequest } from "./Staff/staffApi";
+import "./CodeRequests.css";
 
 export type * from "./codeRequestsTypes";
 
@@ -52,8 +53,7 @@ export function CodeRequestsTab({
   const [promptText, setPromptText] = useState("");
   const [selStds, setSelStds] = useState<Record<string, boolean>>({});
   const [templateName, setTemplateName] = useState("");
-  const [dispatchStatus, setDispatchStatus] = useState<DispatchStatus>(null);
-  const [dispatchError, setDispatchError] = useState("");
+  const codeRequestDispatch = useSubmit<void>();
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(null);
 
   useEffect(() => {
@@ -68,8 +68,10 @@ export function CodeRequestsTab({
   }, []);
 
   useEffect(() => {
-    if (!selProvider && registry && registry.providers.length > 0) {
-      const preferred = registry.providers.find((p) => p.loginStatus === "authenticated") || registry.providers[0];
+    if (!selProvider && registry && registry.selectableProviders.length > 0) {
+      const preferred =
+        registry.selectableProviders.find((p) => p.loginStatus === "authenticated") ||
+        registry.selectableProviders[0];
       if (preferred) {
         setSelProvider(preferred.dashboardId);
       }
@@ -89,28 +91,27 @@ export function CodeRequestsTab({
   }
 
   function doDispatch(): void {
-    if (!selRepo || !promptText.trim()) return;
-    setDispatchStatus("dispatching");
+    if (!selRepo || !promptText.trim() || codeRequestDispatch.isSubmitting) return;
     const activeProvider = selProvider || (registry?.providers[0]?.dashboardId || "codex");
-    const dispatchFn = onDispatch ?? ((p) => submitStaffRequest(buildCodeRequest(p)));
-    dispatchFn({
+    const payload = {
       repository: selRepo,
       branch: selBranch,
       provider: activeProvider,
-      // Prompt notes and standards are applied server-side (#1501).
       prompt: promptText,
       standards: Object.keys(selStds).filter((k) => selStds[k]),
       profile_id: selProfileId || undefined,
-    })
-      .then(() => {
-        setDispatchStatus("ok");
+    };
+    codeRequestDispatch.submit(async ({ idempotencyKey }) => {
+      try {
+        if (onDispatch) {
+          await onDispatch(payload, { idempotencyKey });
+        } else {
+          await submitStaffRequest(buildCodeRequest(payload), idempotencyKey);
+        }
+      } finally {
         onRefresh();
-      })
-      .catch((err: unknown) => {
-        setDispatchError(errorMessage(err));
-        setDispatchStatus("error");
-        onRefresh();
-      });
+      }
+    });
   }
 
   function doSaveTemplate(): void {
@@ -130,7 +131,7 @@ export function CodeRequestsTab({
   }
 
   return (
-    <div style={{ padding: 20 }}>
+    <div className="code-requests-page" style={{ padding: 20 }}>
       <div className="section-header">
         <IssueGlyph size={14} />
         Code Requests
@@ -157,7 +158,7 @@ export function CodeRequestsTab({
           <div style={{ display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
             <div>
               <label
-                style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
               >
                 Repository
               </label>
@@ -188,11 +189,12 @@ export function CodeRequestsTab({
             </div>
             <div>
               <label
-                style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
               >
                 Branch
               </label>
               <input
+                aria-label="Target branch"
                 value={selBranch}
                 onChange={(e) => {
                   setSelBranch(e.target.value);
@@ -209,7 +211,7 @@ export function CodeRequestsTab({
             </div>
             <div>
               <label
-                style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
               >
                 Profile
               </label>
@@ -250,7 +252,7 @@ export function CodeRequestsTab({
             </div>
             <div>
               <label
-                style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+                style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
               >
                 Provider
               </label>
@@ -269,8 +271,8 @@ export function CodeRequestsTab({
                   minWidth: 140,
                 }}
               >
-                {registry && registry.providers.length > 0 ? (
-                  registry.providers.map((p) => (
+                {registry && registry.selectableProviders.length > 0 ? (
+                  registry.selectableProviders.map((p) => (
                     <option key={p.dashboardId} value={p.dashboardId}>
                       {p.label}
                       {p.loginStatus === "authenticated" ? " ✓" : ""}
@@ -314,7 +316,7 @@ export function CodeRequestsTab({
           })()}
           <div style={{ marginBottom: 10 }}>
             <label
-              style={{ display: "block", fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}
+              style={{ display: "block", fontSize: 12, color: "var(--text-muted)", marginBottom: 4 }}
             >
               Standards to inject
             </label>
@@ -324,13 +326,15 @@ export function CodeRequestsTab({
                 return (
                   <button
                     key={s}
+                    title={active ? `Remove ${s} from injected standards` : `Include ${s} in injected standards`}
+                    aria-label={`Toggle ${s} coding standard`}
                     onClick={() => {
                       toggleStd(s);
                     }}
                     style={{
                       padding: "3px 10px",
                       borderRadius: 12,
-                      fontSize: 11,
+                      fontSize: 12,
                       cursor: "pointer",
                       border: "1px solid " + (active ? "var(--accent-purple)" : "var(--border)"),
                       background: active ? "rgba(160,130,220,0.15)" : "var(--bg-secondary)",
@@ -344,6 +348,7 @@ export function CodeRequestsTab({
             </div>
           </div>
           <textarea
+            aria-label="Code request prompt"
             value={promptText}
             onChange={(e) => {
               setPromptText(e.target.value);
@@ -365,13 +370,20 @@ export function CodeRequestsTab({
           <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
             <button
               className="action-btn"
-              disabled={targetUnavailable || !selRepo || !promptText.trim()}
+              disabled={
+                targetUnavailable ||
+                !selRepo ||
+                !promptText.trim() ||
+                codeRequestDispatch.isSubmitting
+              }
               onClick={doDispatch}
             >
-              <IssueGlyph size={14} /> Dispatch
+              <IssueGlyph size={14} />{" "}
+              {codeRequestDispatch.isSubmitting ? "Dispatching…" : "Dispatch"}
             </button>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <input
+                aria-label="Prompt template name"
                 value={templateName}
                 onChange={(e) => {
                   setTemplateName(e.target.value);
@@ -396,14 +408,14 @@ export function CodeRequestsTab({
               </button>
             </div>
           </div>
-          {dispatchStatus === "ok" ? (
-            <div style={{ color: "var(--accent-green)", fontSize: 13, marginTop: 8 }}>
+          {codeRequestDispatch.state.status === "succeeded" ? (
+            <div role="status" style={{ color: "var(--accent-green)", fontSize: 13, marginTop: 8 }}>
               Code request dispatched.
             </div>
           ) : null}
-          {dispatchStatus === "error" ? (
+          {codeRequestDispatch.failureText ? (
             <div role="alert" style={{ color: "var(--accent-red)", fontSize: 13, marginTop: 8 }}>
-              {dispatchError ? "Dispatch failed: " + dispatchError : "Dispatch failed."}
+              {"Dispatch failed: " + codeRequestDispatch.failureText}
             </div>
           ) : null}
           {saveStatus === "ok" ? (
@@ -436,7 +448,7 @@ export function CodeRequestsTab({
                   <div style={{ fontWeight: 600, fontSize: 12, color: "var(--text-primary)" }}>
                     {t.name}
                   </div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
                     {(t.prompt || "").slice(0, 60) + "…"}
                   </div>
                 </div>

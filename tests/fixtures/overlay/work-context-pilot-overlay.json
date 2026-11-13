@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "hosts": [
+    { "name": "mock-hub", "address": "mock-hub.example.invalid" },
+    { "name": "dieter-workstation", "address": "dieter-workstation.example.invalid" }
+  ],
+  "agent_token_paths": {
+    "mock-agent": "~/.config/mock-overlay/mock-agent.token-path"
+  },
+  "roles_dir": "roles",
+  "policy_dir": "policy",
+  "private_docs_dir": "docs-private",
+  "private_roles": [
+    {
+      "role_id": "work-context-pilot",
+      "allowed_templates": ["work-context-daily-brief"],
+      "providers": { "dieter-workstation": ["claude-subscription-cli"] },
+      "context_store_dir": "/tmp/work-context-pilot-store-do-not-use",
+      "store_schema_version": 1
+    }
+  ]
+}

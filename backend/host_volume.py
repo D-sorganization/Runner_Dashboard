@@ -3,7 +3,7 @@
 WSL2 and guest distros cannot see the host disk volume into which their backing
 VHDX expands. When a host volume runs out of free space mid-write, the distro's
 filesystem and package databases are corrupted (near-miss 2026-09-05 on
-ControlTower F:; prior total pool losses on NVMe and SSD).
+node-a F:; prior total pool losses on NVMe and SSD).
 
 This module:
 1. Identifies the host backing volume (`runner_backing_drive`) per host/pool from
@@ -312,19 +312,19 @@ def probe_host_volume(
         return {
             "drive": resolved_drive,
             "path": measure_path,
-            "total_bytes": 0,
-            "used_bytes": 0,
-            "free_bytes": 0,
-            "total_gb": 0.0,
-            "used_gb": 0.0,
-            "free_gb": 0.0,
-            "percent": 0.0,
-            "free_percent": 0.0,
+            "total_bytes": None,
+            "used_bytes": None,
+            "free_bytes": None,
+            "total_gb": None,
+            "used_gb": None,
+            "free_gb": None,
+            "percent": None,
+            "free_percent": None,
             "min_free_gb_floor": min_free_gb or DEFAULT_HOST_VOLUME_MIN_FREE_GB,
             "min_free_percent_floor": min_free_percent or DEFAULT_HOST_VOLUME_MIN_FREE_PERCENT,
-            "status": "critical",
-            "scheduling_inhibited": True,
-            "hard_floor_hit": True,
+            "status": "unknown",
+            "scheduling_inhibited": False,
+            "hard_floor_hit": False,
             "reasons": [f"Host volume {resolved_drive} inaccessible: {exc}"],
             "measured_at": datetime.now(UTC).isoformat(),
         }

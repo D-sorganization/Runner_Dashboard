@@ -95,6 +95,7 @@ def fake_api() -> Iterator[FakeFleetAPI]:
 
 
 @pytest.fixture(autouse=True)
-def _clean_fleet_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clean_fleet_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
     for name in ("FLEET_API_URL", "FLEET_API_TOKEN", "FLEET_API_TIMEOUT", "FLEET_AGENT", "FLEET_SESSION"):
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("FLEET_BARB_SEAT_FILE", str(tmp_path / "barb_seat.json"))  # never touch ~/.fleet

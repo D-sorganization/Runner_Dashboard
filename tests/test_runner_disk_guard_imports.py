@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.loader_env import loader_env
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BACKEND = REPO_ROOT / "backend"
 MODULES = (
@@ -20,6 +22,7 @@ MODULES = (
 
 def _isolated_env(home: Path) -> dict[str, str]:
     env = {name: os.environ[name] for name in ("PATH", "SystemRoot", "WINDIR", "TEMP", "TMP") if name in os.environ}
+    env.update(loader_env())  # where the shared-libpython interpreter finds its library
     env["QT_QPA_PLATFORM"] = "offscreen"
     env["HOME"] = str(home)
     env["USERPROFILE"] = str(home)

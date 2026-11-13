@@ -68,6 +68,16 @@ export function LockScreen({ lockState, lockError, onUnlock }: LockScreenProps) 
       <button
         className="touch-button touch-button-primary"
         disabled={lockState === "unlocking"}
+        aria-label={
+          lockState === "unlocking"
+            ? "Authenticating with biometrics"
+            : "Unlock credentials with biometrics"
+        }
+        title={
+          lockState === "unlocking"
+            ? "Authenticating with biometrics"
+            : "Unlock credentials with biometrics"
+        }
         onClick={onUnlock}
         style={{
           borderRadius: "12px",

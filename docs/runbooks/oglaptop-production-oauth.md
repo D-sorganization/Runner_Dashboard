@@ -6,8 +6,8 @@ and rotating refresh tokens (~6 months), with refresh tokens stored encrypted on
 the hub. This is **not** a separate GitHub OAuth App and **not** the
 installation-token credential used by staff runs and agents.
 
-**Fleet hub:** **DeskComputer** (`role: hub` in `backend/machine_registry.yml`).
-OGLaptop is a worker node; it does not own fleet scheduling or hub-only GitHub
+**Fleet hub:** **hub-a** (`role: hub` in `backend/machine_registry.yml`).
+node-b is a worker node; it does not own fleet scheduling or hub-only GitHub
 App private-key minting.
 
 ## MagicDNS HTTPS origins and callbacks
@@ -18,8 +18,8 @@ port**.
 
 | Host | Role | Registry `dashboard_url` (HTTP, direct) | HTTPS origin (Serve) | OAuth callback (register on GitHub App) |
 | ---- | ---- | --------------------------------------- | -------------------- | --------------------------------------- |
-| **DeskComputer** | Fleet hub (production operator UI) | `http://deskcomputer.tail2bbcc7.ts.net:8321` | `https://deskcomputer.tail2bbcc7.ts.net` | `https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback` |
-| **OGLaptop** | Worker (not a hub origin by default) | `http://oglaptop.tail2bbcc7.ts.net:8321` | `https://oglaptop.tail2bbcc7.ts.net` | `https://oglaptop.tail2bbcc7.ts.net/api/auth/callback` |
+| **hub-a** | Fleet hub (production operator UI) | `http://hub-a.fleet-example.ts.net:8321` | `https://hub-a.fleet-example.ts.net` | `https://hub-a.fleet-example.ts.net/api/auth/callback` |
+| **node-b** | Worker (not a hub origin by default) | `http://node-b.fleet-example.ts.net:8321` | `https://node-b.fleet-example.ts.net` | `https://node-b.fleet-example.ts.net/api/auth/callback` |
 
 GitHub Apps permit multiple user authorization callback URLs. Register the
 callback for each HTTPS origin that is deliberately served and configured; do
@@ -35,7 +35,7 @@ the active hub or explicit HTTPS allowlist and the callback must equal
 `{DASHBOARD_PUBLIC_ORIGIN}/api/auth/callback`. An explicit
 `DASHBOARD_OAUTH_ALLOWED_ORIGINS` entry is for a planned legacy migration only
 and must be a bare HTTPS origin (no credentials, path, query, or fragment). A
-worker origin such as OGLaptop is not allowed unless deliberately allowlisted.
+worker origin such as node-b is not allowed unless deliberately allowlisted.
 
 ## GitHub App settings (one-time)
 
@@ -45,8 +45,8 @@ In **GitHub → Organization → GitHub Apps → [fleet Runner Dashboard app]**:
    [GitHub docs](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/refreshing-user-access-tokens)).
 2. **User authorization callback URL(s)** — inspect the existing registration
    first and confirm it contains the callback for the active registry hub HTTPS
-   origin (currently DeskComputer):
-   `https://deskcomputer.tail2bbcc7.ts.net/api/auth/callback`. If it is absent,
+   origin (currently hub-a):
+   `https://hub-a.fleet-example.ts.net/api/auth/callback`. If it is absent,
    stop before attempting login and have an authorized GitHub App owner decide
    whether to add it. Add a worker callback only for an approved, deliberately
    served and allowlisted migration; do not request broader OAuth scopes.
@@ -59,10 +59,11 @@ In **GitHub → Organization → GitHub Apps → [fleet Runner Dashboard app]**:
 5. **Installation private key** — hub only (`GITHUB_APP_PRIVATE_KEY_FILE`); never
    on spoke nodes. See [github-app-auth.md](github-app-auth.md).
 
-Authorization uses scope `read:user` in the dashboard authorize URL; org membership
-(`D-sorganization`) and `config/principals.yml` admission are unchanged.
+Authorization uses scope `read:user` in the dashboard authorize URL; membership
+in the `GITHUB_ORG` configured for this deployment and `config/principals.yml`
+admission are both required.
 
-## Hub environment (DeskComputer)
+## Hub environment (hub-a)
 
 Paths and modes only — never commit values.
 
@@ -78,7 +79,7 @@ Required keys for browser OAuth (names only):
 ```dotenv
 GITHUB_CLIENT_ID=<fleet-github-app-client-id>
 GITHUB_CLIENT_SECRET=<fleet-github-app-client-secret>
-GITHUB_ORG=D-sorganization
+GITHUB_ORG=your-github-organization
 DASHBOARD_TLS=1
 SESSION_SECRET=<at-least-32-chars>
 ```
@@ -109,8 +110,8 @@ on spoke nodes.
 
 ## Current Hub Snapshot (Checked 2026-10-23)
 
-The active DeskComputer deployment reports a healthy dashboard and the current
-Tailscale Serve route is `https://deskcomputer.tail2bbcc7.ts.net` proxying to the
+The active hub-a deployment reports a healthy dashboard and the current
+Tailscale Serve route is `https://hub-a.fleet-example.ts.net` proxying to the
 local dashboard on port 8321. OAuth is separately blocked: `/api/health` reports
 `github_client_id_invalid`, `github_client_secret_invalid`,
 `session_secret_invalid`, `tls_required`, and
@@ -118,7 +119,7 @@ local dashboard on port 8321. OAuth is separately blocked: `/api/health` reports
 secret, session secret, or `DASHBOARD_TLS` setting; it does have
 `DASHBOARD_LOOPBACK_AUTH` and `DASHBOARD_LOOPBACK_OPERATOR_WRITES`. Values are
 not recorded here. The origin and callback overrides are unset, so the runtime
-uses the registry-derived DeskComputer origin and callback. Recheck this snapshot
+uses the registry-derived hub-a origin and callback. Recheck this snapshot
 with `/api/health` and `tailscale serve status` before any setup; a healthy route
 does not mean OAuth credentials are ready. The existing App callback registration
 has not been verified.
@@ -145,7 +146,8 @@ redacted `operator_sessions`. Reason codes (no secret values):
 | ------ | ----------------- |
 | `github_client_id_invalid` | Set fleet App Client ID on hub. |
 | `github_client_secret_invalid` | Set or rotate App client secret on hub. |
-| `github_org_mismatch` | `GITHUB_ORG=D-sorganization`. |
+| `github_org_missing` | Set `GITHUB_ORG` to the organization whose members may sign in. |
+| `github_org_invalid` | Use a valid GitHub organization name in `GITHUB_ORG`. |
 | `public_origin_mismatch` | Use an active registry hub HTTPS origin or add a planned HTTPS origin to the explicit allowlist. |
 | `callback_url_mismatch` | Set the callback to `{origin}/api/auth/callback` and register it in GitHub App settings. |
 | `session_secret_invalid` | Explicit `SESSION_SECRET` ≥32 chars. |

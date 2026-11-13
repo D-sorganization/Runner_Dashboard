@@ -1,0 +1,15 @@
+{
+  "owner": "D-sorganization",
+  "repo": "Runner_Dashboard",
+  "issue": {
+    "number": 203,
+    "state": "open",
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/203"
+  },
+  "claim": { "held": false },
+  "owner_wait": {
+    "waiting": true,
+    "reasons": ["pending staff.approve"],
+    "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/203#issuecomment-approve"
+  }
+}

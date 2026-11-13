@@ -19,7 +19,7 @@ from code_requests.model import (
 )
 from dashboard_config import ORG
 from proposals.service import _secretary_logins
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 class BoardRoutingCriteria(BaseModel):
@@ -28,9 +28,13 @@ class BoardRoutingCriteria(BaseModel):
     new_surface: bool = False  # New page, tab, public section, or app/tool
     new_service_or_repo: bool = False  # New repo, service, or long-running daemon
     new_dependency_or_egress: bool = False  # New external dep, 3rd party API, data egress
-    inentec_data_egress: bool = False  # Confidential InEnTec/ICR data egress (needs user signoff)
+    confidential_data_egress: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("confidential_data_egress", "inentec_data_egress"),
+        description="Confidential partner data egress; requires user sign-off before Board routing.",
+    )
     cross_repo_contract: bool = False  # Dispatch envelope, fleet-managed, shared modules
-    public_site_structure: bool = False  # Structural change to public site (e.g. AffineDrift IA)
+    public_site_structure: bool = False  # Structural change to public site information architecture
     estimated_child_issues: int = 0  # > 8 child issues triggers post-planning gate
     target_repos_count: int = 1  # > 1 repo triggers gate
     tagged_board: bool = False  # Explicitly tagged `board`
@@ -71,7 +75,7 @@ class RuleBasedBoardClassifier:
     ]
 
     EGRESS_KEYWORDS: list[re.Pattern[str]] = [
-        re.compile(r"\b(inentec|icr)\b", re.I),
+        re.compile(r"\b(?:confidential\s+partner\s+data|partner\s+data\s+egress)\b", re.I),
         re.compile(r"\b(?:confidential\s+data\s+egress|external\s+data\s+egress)\b", re.I),
     ]
 
@@ -102,8 +106,8 @@ class RuleBasedBoardClassifier:
 
         for pattern in self.EGRESS_KEYWORDS:
             if pattern.search(text):
-                matched.append("inentec_data_egress")
-                reasons.append("Confidential InEnTec/ICR data egress (mandatory user sign-off)")
+                matched.append("confidential_data_egress")
+                reasons.append("Confidential partner data egress (mandatory user sign-off)")
                 user_signoff = True
                 break
 
@@ -123,19 +127,19 @@ def evaluate_board_routing(
     """Pure evaluation of whether a Code Request must route to the Board.
 
     Follows the priority:
-    1. If inentec_data_egress is present: ALWAYS routes to Board with requires_user_signoff=True.
+    1. If confidential_data_egress is present: ALWAYS routes to Board with requires_user_signoff=True.
     2. If operator specified FORCE_BOARD: routes to Board.
     3. If operator specified SKIP_BOARD: skips Board.
     4. Evaluates explicit criteria and classifier.
     """
     crit = criteria or BoardRoutingCriteria()
 
-    # Rule 0 (Critical Security/Confidentiality): InEnTec/ICR data egress ALWAYS requires Board + User signoff
-    if crit.inentec_data_egress:
+    # Rule 0 (Critical Security/Confidentiality): partner data egress ALWAYS requires Board + User signoff
+    if crit.confidential_data_egress:
         return BoardRoutingDecision(
             routes_to_board=True,
-            reasons=["Confidential InEnTec/ICR data egress requires Board review and user sign-off."],
-            criteria_matched=["inentec_data_egress"],
+            reasons=["Confidential partner data egress requires Board review and user sign-off."],
+            criteria_matched=["confidential_data_egress"],
             requires_user_signoff=True,
         )
 

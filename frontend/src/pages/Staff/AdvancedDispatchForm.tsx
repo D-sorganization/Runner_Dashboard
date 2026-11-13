@@ -9,6 +9,7 @@
  * user's input is never cleared.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSubmit } from "../../hooks/useSubmit";
 import { Badge } from "../../primitives/Badge";
 import { EmptyState } from "../../primitives/EmptyState";
 import { TouchButton } from "../../primitives/TouchButton";
@@ -58,7 +59,8 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
   const [preview, setPreview] = useState<StaffDispatchResult | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"preview" | "dispatch" | null>(null);
+  const [previewBusy, setPreviewBusy] = useState(false);
+  const dispatchSubmit = useSubmit<void>();
 
   useEffect(() => {
     if (initialRole) setRole(initialRole);
@@ -116,7 +118,7 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
 
   const hasTarget = prompt.trim().length > 0 || kind.fields.some((f) => parseNumber(numbers[f]) !== null);
   const roleOk = !needsRole || Boolean(spec?.dispatchable);
-  const canSubmit = roleOk && hasTarget && busy === null;
+  const canSubmit = roleOk && hasTarget && !previewBusy && !dispatchSubmit.isSubmitting;
 
   const buildRequest = useCallback(
     (dryRun: boolean): WorkRequest => {
@@ -137,29 +139,39 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
     [kind, needsRole, role, provider, model, machine, executionMode, repo, numbers, prompt],
   );
 
-  const submit = useCallback(
-    (dryRun: boolean) => {
-      setBusy(dryRun ? "preview" : "dispatch");
-      setError(null);
-      setNotice(null);
-      submitStaffRequest(buildRequest(dryRun))
-        .then((resp) => {
-          setPreview(dryRun ? (resp.plan ?? null) : null);
-          if (resp.state === "approval_required") {
-            setNotice(`Awaiting approval: ${resp.approval ?? "the request needs an approver"}`);
-          } else if (!dryRun && resp.run_id) {
-            if (resp.thread_id) {
-              onDispatched(resp.run_id, resp.thread_id);
-            } else {
-              onDispatched(resp.run_id);
-            }
-          }
-        })
-        .catch((e: unknown) => setError(errorMessage(e)))
-        .finally(() => setBusy(null));
-    },
-    [buildRequest, onDispatched],
-  );
+  const previewRequest = useCallback(() => {
+    setPreviewBusy(true);
+    setError(null);
+    setNotice(null);
+    submitStaffRequest(buildRequest(true))
+      .then((resp) => {
+        setPreview(resp.plan ?? null);
+        if (resp.state === "approval_required") {
+          setNotice(`Awaiting approval: ${resp.approval ?? "the request needs an approver"}`);
+        }
+      })
+      .catch((e: unknown) => setError(errorMessage(e)))
+      .finally(() => setPreviewBusy(false));
+  }, [buildRequest]);
+
+  const dispatchRequest = useCallback(() => {
+    if (dispatchSubmit.isSubmitting) return;
+    setPreview(null);
+    setError(null);
+    setNotice(null);
+    dispatchSubmit.submit(async ({ idempotencyKey }) => {
+      const resp = await submitStaffRequest(buildRequest(false), idempotencyKey);
+      if (resp.state === "approval_required") {
+        setNotice(`Awaiting approval: ${resp.approval ?? "the request needs an approver"}`);
+      } else if (resp.run_id) {
+        if (resp.thread_id) {
+          onDispatched(resp.run_id, resp.thread_id);
+        } else {
+          onDispatched(resp.run_id);
+        }
+      }
+    });
+  }, [buildRequest, dispatchSubmit, onDispatched]);
 
   if (!roster) {
     return (
@@ -191,7 +203,7 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
         className="staff-assign__form"
         onSubmit={(e) => {
           e.preventDefault();
-          submit(true);
+          previewRequest();
         }}
       >
         <div className="form-row">
@@ -313,7 +325,10 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
             className="form-input"
             value={repo}
             placeholder="bare repository name"
-            onChange={(e) => setRepo(e.target.value)}
+            onChange={(e) => {
+              setRepo(e.target.value);
+              clearPreview();
+            }}
           />
         </div>
         <div className="form-row">
@@ -326,8 +341,13 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
                 id={`staff-dispatch-${f}`}
                 className="form-input staff-assign__number"
                 inputMode="numeric"
+                aria-label={FIELD_LABELS[f]}
+                title={`Numeric value for ${FIELD_LABELS[f]}`}
                 value={numbers[f]}
-                onChange={(e) => setNumbers((prev) => ({ ...prev, [f]: e.target.value }))}
+                onChange={(e) => {
+                  setNumbers((prev) => ({ ...prev, [f]: e.target.value }));
+                  clearPreview();
+                }}
               />
             </span>
           ))}
@@ -342,21 +362,34 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
             rows={4}
             value={prompt}
             placeholder="Free-text task"
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              clearPreview();
+            }}
           />
         </div>
         <div className="staff-assign__actions">
-          <TouchButton type="submit" disabled={!canSubmit}>
-            {busy === "preview" ? "Previewing…" : "Preview"}
+          <TouchButton
+            type="submit"
+            disabled={!canSubmit}
+            title="Dry-run this request and show the execution plan without starting a run"
+          >
+            {previewBusy ? "Previewing…" : "Preview"}
           </TouchButton>
-          <TouchButton type="button" variant="primary" disabled={!canSubmit} onClick={() => submit(false)}>
-            {busy === "dispatch" ? "Dispatching…" : "Dispatch"}
+          <TouchButton
+            type="button"
+            variant="primary"
+            disabled={!canSubmit}
+            title="Submit this request and start a staff run for real"
+            onClick={dispatchRequest}
+          >
+            {dispatchSubmit.isSubmitting ? "Dispatching…" : "Dispatch"}
           </TouchButton>
         </div>
       </form>
-      {error ? (
+      {error || dispatchSubmit.failureText ? (
         <p className="staff-error" data-testid="dispatch-error" role="alert">
-          {error}
+          {error || dispatchSubmit.failureText}
         </p>
       ) : null}
       {notice ? (
@@ -365,7 +398,7 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
         </p>
       ) : null}
       {!hasTarget ? <p className="staff-muted">Give an issue, a PR or a prompt.</p> : null}
-      {preview?.plan ? (
+      {preview?.plan && !dispatchSubmit.isSubmitting ? (
         <DispatchPlan plan={preview.plan} machine={preview.machine} forwardedTo={preview.forwarded_to} />
       ) : null}
     </div>

@@ -1,4 +1,4 @@
-"""Pooled HTTP clients for GitHub API, Maxwell, and fleet operations.
+"""Pooled HTTP clients for GitHub API and fleet operations.
 
 This module provides connection-pooled httpx.AsyncClient instances that are
 constructed at application startup and torn down at shutdown. Using pooled
@@ -31,12 +31,6 @@ class HttpClients:
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
         )
 
-        # Maxwell daemon client - short timeout for local daemon health checks
-        self.maxwell_client = httpx.AsyncClient(
-            timeout=HttpTimeout.MAXWELL_PROXY_S,
-            limits=httpx.Limits(max_keepalive_connections=20, max_connections=100),
-        )
-
         # Fleet client - for cross-node system probes
         self.fleet_client = httpx.AsyncClient(
             timeout=HttpTimeout.PROXY_NODE_SYSTEM_S,
@@ -49,7 +43,6 @@ class HttpClients:
         Should be called during application shutdown to release resources.
         """
         await self.gh_client.aclose()
-        await self.maxwell_client.aclose()
         await self.fleet_client.aclose()
 
 

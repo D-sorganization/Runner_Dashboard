@@ -121,4 +121,15 @@ describe("MobileShell — Ask FAB and Composer (#1499)", () => {
       expect(screen.queryByRole("dialog", { name: /ask/i })).not.toBeInTheDocument();
     });
   });
+
+  it("does not render the Ask FAB on the Staff tab, leaving the header Ask Barb button as the only Barb entry point (#2987)", () => {
+    render(
+      <MobileShell currentTab="staff" onTabChange={vi.fn()}>
+        <div>Staff page</div>
+      </MobileShell>,
+    );
+
+    expect(screen.queryByTestId("ask-fab")).not.toBeInTheDocument();
+    expect(screen.getByTestId("mobile-ask-barb")).toBeInTheDocument();
+  });
 });

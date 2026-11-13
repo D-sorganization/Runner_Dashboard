@@ -15,8 +15,10 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy"))
+sys.path.insert(0, str(ROOT / "tests" / "deploy"))
 from main_auto_release.publish_cli import _load_compare  # noqa: E402
 from main_auto_release.publish_cli import main as publish_cli_main  # noqa: E402
+from required_context_helper import success_runs_for_required_contexts  # noqa: E402
 
 SHA = "a474ee662a55f9437677116a4d269f74946a8d10"  # pragma: allowlist secret
 SCRIPT = ROOT / "deploy" / "publish-main-ci-release.sh"
@@ -40,6 +42,24 @@ def _record(status: str, conclusion: str | None) -> dict[str, object]:
         "check_suite": {"id": 1},
         "app": {"id": 1, "slug": "github-actions"},
     }
+
+
+def _payload_from_runs(runs: list[dict[str, object]]) -> dict[str, object]:
+    return {"total_count": len(runs), "check_runs": runs}
+
+
+def _green_runs(extra: list[dict[str, object]] | None = None) -> dict[str, object]:
+    return _payload_from_runs(success_runs_for_required_contexts(SHA, extra=extra))
+
+
+def _runs_with_quality_gate(status: str, conclusion: str | None) -> dict[str, object]:
+    runs = success_runs_for_required_contexts(SHA)
+    for run in runs:
+        if run["name"] == "quality-gate":
+            run["status"] = status
+            run["conclusion"] = conclusion
+            run["started_at"] = "2026-10-22T00:00:00Z"
+    return _payload_from_runs(runs)
 
 
 def _posix_path(path: Path) -> str:
@@ -127,8 +147,8 @@ def _run_publisher(
         "        raise SystemExit(2)\n"
         "    print(json.dumps(rows[min(index, len(rows) - 1)]))\n"
         "elif '/check-runs?' in endpoint:\n"
-        "    if '--paginate' not in args or '--slurp' not in args:\n"
-        "        print('check-runs request must paginate and slurp', file=sys.stderr)\n"
+        "    if '--paginate' not in args or '--slurp' in args:\n"
+        "        print('check-runs request must paginate without gh slurp', file=sys.stderr)\n"
         "        raise SystemExit(2)\n"
         "    if 'filter=all' not in endpoint:\n"
         "        print('check-runs request must include filter=all', file=sys.stderr)\n"
@@ -140,7 +160,7 @@ def _run_publisher(
         "    index = int(count_path.read_text())\n"
         "    count_path.write_text(str(index + 1))\n"
         "    rows = json.loads(Path(os.environ['FAKE_CHECK_SEQUENCE']).read_text())\n"
-        "    print(json.dumps([rows[min(index, len(rows) - 1)]]))\n"
+        "    print(json.dumps(rows[min(index, len(rows) - 1)]))\n"
         "elif endpoint.endswith('/releases?per_page=100'):\n"
         "    count_path = Path(os.environ['FAKE_RELEASE_FETCH_COUNT'])\n"
         "    index = int(count_path.read_text())\n"
@@ -247,7 +267,7 @@ def _compare_payload(*, base: str, head: str, merge_base: str, status: str = "ah
 def test_terminal_failure_stops_without_sleeping_or_releasing(tmp_path: Path) -> None:
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "failure"))],
+        [_runs_with_quality_gate("completed", "failure")],
     )
 
     assert result.returncode == 0, result.stderr
@@ -259,9 +279,9 @@ def test_terminal_failure_stops_without_sleeping_or_releasing(tmp_path: Path) ->
 
 def test_verify_cli_distinguishes_terminal_failure_from_pending(tmp_path: Path) -> None:
     terminal_path = tmp_path / "terminal.json"
-    terminal_path.write_text(json.dumps(_runs(_record("completed", "failure"))), encoding="utf-8")
+    terminal_path.write_text(json.dumps(_runs_with_quality_gate("completed", "failure")), encoding="utf-8")
     pending_path = tmp_path / "pending.json"
-    pending_path.write_text(json.dumps(_runs(_record("in_progress", None))), encoding="utf-8")
+    pending_path.write_text(json.dumps(_runs_with_quality_gate("in_progress", None)), encoding="utf-8")
 
     assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(terminal_path)]) == 2
     assert publish_cli_main(["verify-gate", "--publisher", "--sha", SHA, "--check-runs-json", str(pending_path)]) == 1
@@ -562,25 +582,13 @@ def test_verify_cli_rejects_duplicate_or_malformed_check_run_identity(tmp_path: 
 
 def test_verify_cli_flattens_complete_paginated_payload(tmp_path: Path) -> None:
     complete_path = tmp_path / "complete.json"
+    all_runs = success_runs_for_required_contexts(SHA)
+    midpoint = len(all_runs) // 2
     complete_path.write_text(
         json.dumps(
             [
-                {"total_count": 2, "check_runs": [{"id": 1001, **_record("completed", "success")}]},
-                {
-                    "total_count": 2,
-                    "check_runs": [
-                        {
-                            "id": 1002,
-                            "head_sha": SHA,
-                            "name": "frontend-tests",
-                            "status": "completed",
-                            "conclusion": "success",
-                            "started_at": "2026-10-22T00:00:00Z",
-                            "check_suite": {"id": 2},
-                            "app": {"id": 1, "slug": "github-actions"},
-                        }
-                    ],
-                },
+                {"total_count": len(all_runs), "check_runs": all_runs[:midpoint]},
+                {"total_count": len(all_runs), "check_runs": all_runs[midpoint:]},
             ]
         ),
         encoding="utf-8",
@@ -590,9 +598,10 @@ def test_verify_cli_flattens_complete_paginated_payload(tmp_path: Path) -> None:
 
 
 def test_publisher_normalizes_latest_check_attempt_like_node(tmp_path: Path) -> None:
+    other_runs = [run for run in success_runs_for_required_contexts(SHA) if run["name"] != "quality-gate"]
     payload = [
         {
-            "total_count": 2,
+            "total_count": len(other_runs) + 2,
             "check_runs": [
                 {"id": 1001, **_record("completed", "failure")},
                 {
@@ -602,6 +611,7 @@ def test_publisher_normalizes_latest_check_attempt_like_node(tmp_path: Path) -> 
                         "started_at": "2026-10-21T23:59:00Z",
                     },
                 },
+                *other_runs,
             ],
         }
     ]
@@ -650,7 +660,7 @@ def test_publisher_rejects_bad_older_attempt_before_normalizing(tmp_path: Path, 
 def test_github_api_error_is_a_failed_publisher_job(tmp_path: Path) -> None:
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         fail_check_api=True,
     )
 
@@ -663,8 +673,8 @@ def test_pending_gate_waits_then_passes_current_main_dry_run(tmp_path: Path) -> 
     result = _run_publisher(
         tmp_path,
         [
-            _runs(_record("in_progress", None)),
-            _runs(_record("completed", "success")),
+            _runs_with_quality_gate("in_progress", None),
+            _green_runs(),
         ],
     )
 
@@ -677,7 +687,7 @@ def test_pending_gate_waits_then_passes_current_main_dry_run(tmp_path: Path) -> 
 def test_pending_gate_exhausts_bound_without_release(tmp_path: Path) -> None:
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("in_progress", None))],
+        [_runs_with_quality_gate("in_progress", None)],
     )
 
     assert result.returncode == 0, result.stderr
@@ -690,7 +700,7 @@ def test_pending_gate_exhausts_bound_without_release(tmp_path: Path) -> None:
 def test_superseded_automatic_commit_skips_before_polling(tmp_path: Path) -> None:
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         main_sha="b" * 40,
     )
 
@@ -703,7 +713,7 @@ def test_superseded_automatic_commit_skips_before_polling(tmp_path: Path) -> Non
 def test_superseded_automatic_commit_skips_before_publication(tmp_path: Path) -> None:
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         main_shas=[SHA, "b" * 40],
     )
 
@@ -717,7 +727,7 @@ def test_automatic_release_accepts_green_candidate_that_is_ancestor_of_current_m
     current_main = "b" * 40
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         require_main_ancestor=True,
         compare_payloads=[
             _compare_payload(base=SHA, head=current_main, merge_base=SHA),
@@ -735,7 +745,7 @@ def test_automatic_release_skips_candidate_not_in_current_main_history(tmp_path:
     unrelated_merge_base = "c" * 40
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         require_main_ancestor=True,
         compare_payloads=[
             _compare_payload(base=SHA, head=current_main, merge_base=unrelated_merge_base, status="diverged"),
@@ -753,7 +763,7 @@ def test_automatic_release_does_not_publish_behind_latest_auto_release(tmp_path:
     newest_release = "d" * 40
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         require_main_ancestor=True,
         compare_payloads=[
             _compare_payload(base=SHA, head=current_main, merge_base=SHA),
@@ -779,7 +789,7 @@ def test_automatic_release_does_not_publish_behind_latest_auto_release(tmp_path:
 def test_automatic_release_rechecks_ancestry_before_dry_run_publication(tmp_path: Path) -> None:
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         require_main_ancestor=True,
         compare_payloads=[
             _compare_payload(base=SHA, head="b" * 40, merge_base=SHA),
@@ -803,7 +813,7 @@ def test_automatic_release_rechecks_newer_release_before_publication(tmp_path: P
     }
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         require_main_ancestor=True,
         compare_payloads=[
             _compare_payload(base=SHA, head="b" * 40, merge_base=SHA),
@@ -827,7 +837,7 @@ def _gate_output(tmp_path: Path) -> str:
 def test_gate_only_reports_ok_true_without_publishing(tmp_path: Path) -> None:
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("in_progress", None)), _runs(_record("completed", "success"))],
+        [_runs_with_quality_gate("in_progress", None), _green_runs()],
         require_main_ancestor=True,
         compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
         extra_args=("--gate-only",),
@@ -842,7 +852,7 @@ def test_gate_only_reports_ok_true_without_publishing(tmp_path: Path) -> None:
 def test_gate_only_reports_ok_false_on_exhausted_wait_and_terminal_failure(tmp_path: Path) -> None:
     pending = _run_publisher(
         tmp_path,
-        [_runs(_record("in_progress", None))],
+        [_runs_with_quality_gate("in_progress", None)],
         require_main_ancestor=True,
         compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
         extra_args=("--gate-only",),
@@ -855,7 +865,7 @@ def test_gate_only_reports_ok_false_on_exhausted_wait_and_terminal_failure(tmp_p
     failed_dir.mkdir()
     failed = _run_publisher(
         failed_dir,
-        [_runs(_record("completed", "failure"))],
+        [_runs_with_quality_gate("completed", "failure")],
         require_main_ancestor=True,
         compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
         extra_args=("--gate-only",),
@@ -869,7 +879,7 @@ def test_gate_wait_exits_early_when_newer_commit_is_released_mid_wait(tmp_path: 
     latest = {"draft": False, "tag_name": "v2026.10.23-ddddddd", "target_commitish": newer_release}
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("in_progress", None))],
+        [_runs_with_quality_gate("in_progress", None)],
         require_main_ancestor=True,
         compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
         release_payloads=[[], [latest]],
@@ -888,7 +898,7 @@ def test_gate_wait_exits_early_when_newer_commit_is_released_mid_wait(tmp_path: 
 def test_publish_only_takes_one_gate_look_and_rechecks_order(tmp_path: Path) -> None:
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("in_progress", None))],
+        [_runs_with_quality_gate("in_progress", None)],
         require_main_ancestor=True,
         compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
         extra_args=("--publish-only",),
@@ -905,7 +915,7 @@ def test_publish_only_refuses_when_newer_release_landed_after_gate(tmp_path: Pat
     latest = {"draft": False, "tag_name": "v2026.10.23-ddddddd", "target_commitish": newer_release}
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         require_main_ancestor=True,
         compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
         release_payloads=[[latest]],
@@ -921,7 +931,7 @@ def test_publish_only_refuses_when_newer_release_landed_after_gate(tmp_path: Pat
 def test_gate_only_and_publish_only_are_mutually_exclusive(tmp_path: Path) -> None:
     result = _run_publisher(
         tmp_path,
-        [_runs(_record("completed", "success"))],
+        [_green_runs()],
         extra_args=("--gate-only", "--publish-only"),
     )
     assert result.returncode == 1

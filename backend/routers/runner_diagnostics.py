@@ -16,6 +16,7 @@ from gh_utils import gh_api_admin
 from identity import Principal, require_fleet_peer, require_scope
 from proxy_utils import proxy_to_hub, should_proxy_fleet_to_hub
 from runner_inventory import fetch_org_runners
+from slot_health import analyze_jobs, publish_slot_health_flags
 
 from .runner_helpers import (
     UTC,
@@ -44,10 +45,10 @@ async def get_runners_diagnostics_summary(request: Request) -> dict[str, Any]:
     Returns:
         Dict with runner counts by status, health issues, and recommendations.
     """
+    # Outside the try: a hub error keeps its own status instead of "GitHub API error" (#4417).
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
     try:
-        if should_proxy_fleet_to_hub(request):
-            return await proxy_to_hub(request)
-
         from dashboard_config import ORG
 
         # Keep the historical runners-router monkeypatch surface working for
@@ -186,10 +187,10 @@ async def get_fleet_capacity(request: Request) -> dict[str, Any]:
     Returns:
         Dict with capacity metrics and scheduling recommendations.
     """
+    # Outside the try: a hub error keeps its own status instead of "GitHub API error" (#4417).
+    if should_proxy_fleet_to_hub(request):
+        return await proxy_to_hub(request)
     try:
-        if should_proxy_fleet_to_hub(request):
-            return await proxy_to_hub(request)
-
         from dashboard_config import HOSTNAME, ORG
 
         data = await fetch_org_runners(gh_api_admin, ORG)
@@ -313,6 +314,19 @@ async def schedule_fleet_scale(
     except Exception as exc:
         log.error("schedule_fleet_scale: error: %s", exc)
         raise HTTPException(status_code=502, detail=f"Error: {exc}") from exc
+
+
+@router.post("/api/runners/slot-health/evaluate", dependencies=[Depends(require_fleet_peer)])
+async def evaluate_slot_health(payload: dict[str, Any]) -> dict[str, Any]:
+    """Read-only slot-health analysis; optional publish to hub events and Barb lane."""
+    jobs = payload.get("jobs")
+    if not isinstance(jobs, list):
+        raise HTTPException(status_code=400, detail="jobs must be a list")
+    window_hours = int(payload.get("window_hours") or 24)
+    report = analyze_jobs(jobs, window_hours=window_hours)
+    if payload.get("publish"):
+        publish_slot_health_flags(report["flags"])
+    return report
 
 
 @router.post("/api/runners/{runner_id}/troubleshoot")

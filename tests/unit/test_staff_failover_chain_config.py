@@ -13,7 +13,13 @@ pytestmark = pytest.mark.unit
 
 def test_default_chain_order_matches_repo_config() -> None:
     chain = default_failover_chain()
-    assert [s.provider for s in chain][:4] == ["codex", "claude", "antigravity", "cursor-agent"]
+    assert [s.provider for s in chain][:5] == [
+        "codex",
+        "claude",
+        "anthropic-api",
+        "antigravity",
+        "cursor-agent",
+    ]
 
 
 def test_resolve_chain_filters_to_role_providers() -> None:

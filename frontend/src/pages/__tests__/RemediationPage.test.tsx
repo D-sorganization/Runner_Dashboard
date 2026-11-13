@@ -37,6 +37,33 @@ const FAILED_RUN = {
   html_url: "https://github.com/D-sorganization/alpha/actions/runs/4242",
 };
 
+function registryPayload(): unknown {
+  return {
+    schema_version: "1.0.0",
+    providers: [
+      {
+        id: "codex-cli",
+        dashboard_id: "codex_cli",
+        label: "Codex CLI",
+        auth_mode: "github_app",
+        resource: "runner",
+        enabled: true,
+      },
+      {
+        id: "jules-api",
+        dashboard_id: "jules_api",
+        label: "Jules API",
+        auth_mode: "api_key",
+        resource: "runner",
+        enabled: false,
+      },
+    ],
+    auth_kinds: [],
+    task_classes: [],
+    capabilities: [],
+  };
+}
+
 function endpointPayload(url: string): unknown {
   switch (url) {
     case "/api/agent-remediation/config":
@@ -70,6 +97,9 @@ function endpointPayload(url: string): unknown {
 function mockRemediationFetch() {
   return vi.spyOn(globalThis, "fetch").mockImplementation((input, init) => {
     const url = String(input);
+    if (url.includes("/api/providers/registry")) {
+      return Promise.resolve(jsonResponse(registryPayload()));
+    }
     if (url === "/api/agent-remediation/config" && init?.method === "PUT") {
       expect(JSON.parse(String(init.body))).toMatchObject({
         policy: { max_same_failure_attempts: 7 },
@@ -89,13 +119,13 @@ function mockRemediationFetch() {
         workflow_name: "CI Standard",
         branch: "fix/thing",
         run_id: 4242,
-        provider_override: "jules_api",
+        provider_override: "codex_cli",
       });
       return Promise.resolve(
         jsonResponse({
           decision: {
             accepted: true,
-            provider_id: "jules_api",
+            provider_id: "codex_cli",
             prompt_preview: "fix alpha",
           },
         }),
@@ -106,10 +136,10 @@ function mockRemediationFetch() {
       expect(JSON.parse(String(init.body))).toMatchObject({
         repository: "alpha",
         run_id: 4242,
-        provider: "jules_api",
+        provider: "codex_cli",
       });
       return Promise.resolve(
-        jsonResponse({ provider: "jules_api", workflow: "remediation.yml" }),
+        jsonResponse({ provider: "codex_cli", workflow: "remediation.yml" }),
       );
     }
     return Promise.resolve(jsonResponse(endpointPayload(url)));

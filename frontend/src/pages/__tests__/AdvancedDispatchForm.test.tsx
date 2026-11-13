@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 const ROSTER: RosterResponse = {
-  machine: "DeskComputer",
+  machine: "hub-a",
   active_runs: 1,
   providers: { claude: true, codex: false },
   roles: [
@@ -200,7 +200,7 @@ describe("AdvancedDispatchForm", () => {
               action: "staff.dispatch",
               plan: {
                 dry_run: true,
-                machine: "DeskComputer",
+                machine: "hub-a",
                 forwarded_to: null,
                 plan: PLAN,
               },
@@ -216,7 +216,7 @@ describe("AdvancedDispatchForm", () => {
       fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
 
       await waitFor(() => expect(screen.getByTestId("assign-plan")).toBeInTheDocument());
-      expect(screen.getByTestId("plan-machine")).toHaveTextContent("DeskComputer");
+      expect(screen.getByTestId("plan-machine")).toHaveTextContent("hub-a");
       expect(screen.getByTestId("plan-branch")).toHaveTextContent("staff/night-watch-10622-preview");
       expect(screen.getByTestId("plan-consolidation")).toHaveTextContent("serial — open PRs 3 < 6");
       expect(screen.getByTestId("plan-argv")).toHaveTextContent("claude -p --output-format stream-json");
@@ -258,7 +258,7 @@ describe("AdvancedDispatchForm", () => {
               action: "ci.remediate",
               plan: {
                 dry_run: true,
-                machine: "DeskComputer",
+                machine: "hub-a",
                 forwarded_to: null,
                 plan: { action: "remediation.dispatch" },
               },

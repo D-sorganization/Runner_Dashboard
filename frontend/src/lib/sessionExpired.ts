@@ -30,18 +30,31 @@ export function shouldIgnoreUnauthorizedResponse(input: RequestInfo | URL): bool
   return path === "/api/auth/me" || path === "/api/health" || path === "/api/auth/refresh";
 }
 
+const REFRESH_FAILURE_COOLDOWN_MS = 3_000;
+
 let refreshInFlight: Promise<boolean> | null = null;
+let refreshFailedAt: number | null = null;
 
 export async function tryRefreshSession(fetchFn: typeof window.fetch = window.fetch): Promise<boolean> {
   if (!refreshInFlight) {
+    if (refreshFailedAt !== null && Date.now() - refreshFailedAt < REFRESH_FAILURE_COOLDOWN_MS) {
+      return false;
+    }
+
     refreshInFlight = fetchFn("/api/auth/refresh", {
       method: "POST",
       credentials: "include",
       cache: "no-store",
       headers: { "X-Requested-With": "XMLHttpRequest" },
     })
-      .then((response) => response.ok)
-      .catch(() => false)
+      .then((response) => {
+        refreshFailedAt = response.ok ? null : Date.now();
+        return response.ok;
+      })
+      .catch(() => {
+        refreshFailedAt = Date.now();
+        return false;
+      })
       .finally(() => {
         refreshInFlight = null;
       });

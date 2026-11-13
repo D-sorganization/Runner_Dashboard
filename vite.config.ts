@@ -17,9 +17,17 @@ const buildId = resolveBuildId({ explicit: process.env.VITE_BUILD_ID, gitSha: gi
 const backendProxyTarget =
   process.env.VITE_BACKEND_URL ?? `http://127.0.0.1:${process.env.DASHBOARD_PORT ?? '5001'}`
 
+const offlineDemoPlugin = {
+  name: 'offline-demo-html',
+  transformIndexHtml(html: string) {
+    if (process.env.VITE_RUNNER_DASHBOARD_DEMO !== '1') return html
+    return html.replace(/\s*<link rel="preconnect" href="https:\/\/fonts\.[^"]+"[^>]*\/?>(?:\s*)/g, '\n')
+  },
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), offlineDemoPlugin],
   define: {
     'import.meta.env.VITE_BUILD_ID': JSON.stringify(buildId),
   },
@@ -55,26 +63,6 @@ export default defineConfig({
         }
         if (normalizedId.includes('/frontend/src/pages/FleetOrchestration')) {
           return 'fleet-orchestration'
-        }
-        if (
-          normalizedId.includes('/frontend/src/pages/OverviewPage') ||
-          normalizedId.includes('/frontend/src/pages/FleetTab') ||
-          normalizedId.includes('/frontend/src/pages/OverviewLeases') ||
-          normalizedId.includes('/frontend/src/lib/fleetAlerts') ||
-          normalizedId.includes('/frontend/src/lib/fleetTelemetry') ||
-          normalizedId.includes('/frontend/src/lib/fleetMachines')
-        ) {
-          return 'fleet-overview'
-        }
-        if (
-          normalizedId.includes('/frontend/src/pages/RemediationPage') ||
-          normalizedId.includes('/frontend/src/pages/RemediationTab') ||
-          normalizedId.includes('/frontend/src/pages/RemediationPRs') ||
-          normalizedId.includes('/frontend/src/pages/RemediationIssues') ||
-          normalizedId.includes('/frontend/src/pages/remediationDispatch') ||
-          normalizedId.includes('/frontend/src/lib/providerModels')
-        ) {
-          return 'remediation'
         }
       },
       },

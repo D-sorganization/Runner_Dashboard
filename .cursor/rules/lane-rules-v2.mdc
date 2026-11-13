@@ -1,0 +1,5 @@
+---
+description: Lane rules v2 for Cursor cloud and all agent lanes
+alwaysApply: true
+---
+Follow docs/agents/lane-rules-v2.md. Before coding: abort if the repo is drained/held, the issue has an open PR from any agent, or another lane claimed it in the last 4h; otherwise post a claim comment. One issue per PR; prefer small cohesive diffs (generated files and lockfiles count in advisory tooling) — do not split a cohesive fix only to hit a line count; TDD. Do not arm auto-merge, force-push, or use --no-verify. Max 2 CI fix attempts, then comment the blocker and stop. Max 5 open PRs per lane per repo. On usage-limit errors stop until reset. Branch prefix = lane id.

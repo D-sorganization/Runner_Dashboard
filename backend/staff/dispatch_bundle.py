@@ -6,8 +6,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from staff.skills.contract import SkillDetail, semver_sort_key
-from staff.skills.registry import get_skill, list_skills, repo_matches_skill
+from staff.skills.contract import SkillDetail, SkillSummary, semver_sort_key
+from staff.skills.registry import get_skill, list_skills, repo_matches_skill, role_match_rank, role_matches_skill
 from staff.standards_registry import (
     ESTIMATOR_VERSION,
     FleetStandards,
@@ -39,10 +39,18 @@ class DispatchBundle:
     fallback_status: str = "ok"
     standards: FleetStandards | None = None
 
-    def context_stamp(self, *, prompt: str = "", lessons_tokens: int = 0) -> dict[str, Any]:
+    def context_stamp(
+        self,
+        *,
+        prompt: str = "",
+        lessons_tokens: int = 0,
+        skills_tokens: int | None = None,
+        context_degraded: bool = False,
+        context_trimmed: tuple[str, ...] | list[str] | None = None,
+    ) -> dict[str, Any]:
         t0 = self.standards_tokens or estimate_tokens(self.standards_block)
-        t1_skills = estimate_tokens(self.skill_block)
-        return {
+        t1_skills = skills_tokens if skills_tokens is not None else estimate_tokens(self.skill_block)
+        stamp = {
             "pack_version": self.standards_version,
             "content_digest": self.content_digest,
             "source_revision": self.source_revision,
@@ -63,6 +71,10 @@ class DispatchBundle:
             "context_accounting_version": 2,
             "estimator_version": ESTIMATOR_VERSION,
         }
+        if context_degraded:
+            stamp["context_degraded"] = True
+            stamp["context_trimmed"] = list(context_trimmed or ())
+        return stamp
 
 
 def _task_matches(skill_tasks: tuple[str, ...], task_type: str) -> bool:
@@ -76,8 +88,21 @@ def match_skills_for_dispatch(role: str, repo: str, task_type: str = "") -> list
     return [
         s
         for s in rows
-        if role in s.roles and repo_matches_skill(s.repos, repo) and _task_matches(s.task_types, task_type)
+        if role_matches_skill(s.roles, role)
+        and repo_matches_skill(s.repos, repo)
+        and _task_matches(s.task_types, task_type)
     ]
+
+
+def _best_skill_for_role(matches: list[SkillSummary], role: str) -> SkillSummary:
+    """Pick one skill: best role match, then highest semver within the same name."""
+    by_name: dict[str, SkillSummary] = {}
+    for summary in matches:
+        prev = by_name.get(summary.name)
+        if prev is None or semver_sort_key(summary.version) > semver_sort_key(prev.version):
+            by_name[summary.name] = summary
+    candidates = list(by_name.values())
+    return min(candidates, key=lambda s: (-role_match_rank(s.roles, role), s.name))
 
 
 def _standards_block(standards: FleetStandards, standards_extra: str) -> str:
@@ -162,7 +187,7 @@ def resolve_dispatch_bundle(
 
     matches = match_skills_for_dispatch(role_key, repo_key, task_key)
     if matches:
-        best = max(matches, key=lambda s: semver_sort_key(s.version))
+        best = _best_skill_for_role(matches, role_key)
         detail = get_skill(best.name, version=best.version)
         if detail is None:
             raise DispatchContractError(f"skill {best.name}@{best.version} is indexed but unreadable")

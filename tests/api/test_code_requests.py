@@ -20,7 +20,7 @@ from server import app  # noqa: E402
 _NOT_FOUND = (
     1,
     "",
-    "gh: Not Found (HTTP 404)\nworkflow Jules-Feature-Request.yml not found on the default branch",
+    "gh: Not Found (HTTP 404)\nworkflow Agent-Quick-Dispatch.yml not found on the default branch",
 )
 _BODY = {
     "repository": "Runner_Dashboard",
@@ -105,6 +105,27 @@ def test_storage_migration_idempotent(cr_env: tuple[Path, Path, Path]) -> None:
     # Subsequent migration must be an idempotent no-op
     code_requests._migrate_storage_if_needed()
     assert json.loads(code_path.read_text(encoding="utf-8")) == newer_data
+
+
+def test_dispatch_target_probes_agent_quick_dispatch_workflow(
+    client: TestClient, cr_env: tuple[Path, Path, Path]
+) -> None:
+    """dispatchTarget availability must track Agent-Quick-Dispatch.yml (ADR-0002), not Jules-Feature-Request.yml."""
+    code_path, _, _ = cr_env
+    code_path.write_text("[]", encoding="utf-8")
+    probe = AsyncMock(return_value=(0, "", ""))
+    with patch("routers.code_requests.run_cmd", new=probe):
+        resp = client.get("/api/code-requests")
+    assert resp.status_code == 200
+    target = resp.json()["dispatchTarget"]
+    assert target["workflow"] == "Agent-Quick-Dispatch.yml"
+    assert target["available"] is True
+    assert probe.await_count == 1
+    cmd = probe.await_args.args[0]
+    assert cmd[0] == "gh"
+    assert cmd[1] == "api"
+    assert "Agent-Quick-Dispatch.yml" in cmd[2]
+    assert "Jules-Feature-Request.yml" not in cmd[2]
 
 
 def test_code_requests_endpoints(client: TestClient, cr_env: tuple[Path, Path, Path]) -> None:

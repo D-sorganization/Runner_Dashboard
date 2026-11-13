@@ -2,7 +2,7 @@
 
 Defaults recorded for the owner (RM#1853 ruling 2026-10-11; pending owner confirmation):
 
-* the authority is the machine-registry ``hub`` (ControlTower), configurable via
+* the authority is the machine-registry ``hub`` (node-a), configurable via
   ``BARB_AUTHORITY_NODE`` / ``BARB_AUTHORITY_URL`` / ``BARB_AUTHORITY_EPOCH`` or a
   ``barb_authority`` key in the fleet manifest (:func:`registry_hub`);
 * RPO = 0 means "an acknowledged write is durably committed at the authority"
@@ -150,6 +150,21 @@ class AuthorityClient:
         url = self._config.url + route.format(thread_id=urllib.parse.quote(thread_id, safe=""))
         body = {**payload, "run_id": run_id, "version": version, "epoch": self._config.epoch}
         headers = {**self._headers, "Idempotency-Key": f"{kind}:{thread_id}:{run_id}:{version}"}
+        if kind == "run_card":
+            from staff.tokens import authorization_headers_for_relay_delivery  # noqa: PLC0415
+
+            try:
+                headers = {
+                    **headers,
+                    **authorization_headers_for_relay_delivery(
+                        run_id,
+                        role_hint=str(payload.get("role") or ""),
+                    ),
+                }
+            except ValueError as exc:
+                raise AuthorityRejected(str(exc)) from exc
+            except Exception as exc:
+                raise AuthorityRejected(f"cannot mint relay auth for {run_id}: {exc}") from exc
         try:
             status, data = self._transport(url, body, headers)
         except OSError as exc:

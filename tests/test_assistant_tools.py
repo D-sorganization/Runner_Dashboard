@@ -44,7 +44,6 @@ class TestToolAllowlist(unittest.TestCase):
             "refresh_dashboard_data",
             "dispatch_agent_to_pr",
             "dispatch_agent_to_issue",
-            "quick_dispatch_agent",
             "dispatch_remediation",
         }
         self.assertTrue(expected.issubset(set(TOOL_ALLOWLIST.keys())))
@@ -67,7 +66,6 @@ class TestToolAllowlist(unittest.TestCase):
         state_changing = {
             "dispatch_agent_to_pr",
             "dispatch_agent_to_issue",
-            "quick_dispatch_agent",
             "dispatch_remediation",
         }
         for name in state_changing:

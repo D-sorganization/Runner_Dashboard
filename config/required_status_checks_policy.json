@@ -37,6 +37,18 @@
       "source_workflow": "CI Secrets",
       "job_id": "detect-secrets",
       "reason": "Baseline diff secret scan. Must run on fork PRs (ubuntu-latest) and on merge_group so required protection never waits for a missing context. Applied on main via config/repository_rulesets/required-status-checks-supplement.json."
+    },
+    {
+      "context": "api-contract-regeneration",
+      "source_workflow": "API Contract Regeneration",
+      "job_id": "api-contract-regeneration",
+      "reason": "Fails when frontend/src/lib/openapi.json or api-types.ts drift from a fresh OpenAPI export. Complements Frontend Tests typecheck; applies on merge_group so backend-only PRs cannot merge with a stale contract."
+    },
+    {
+      "context": "Adversarial redaction gate fixtures",
+      "source_workflow": "Private roles redaction gate",
+      "job_id": "redaction-gate",
+      "reason": "Issue #3095 (epic #3093, private-roles slice 2): deny-by-default redaction of private-role content on shared surfaces (board/thread, panel, transcripts, run history, turnover, inventory) is a standing gate, not a one-time check, so a later change to any redaction, private-role, or shared-writer path cannot silently regress it. Applying this entry to live branch protection is a deferred admin step (AGENTS.md GOV-1); listed here so the policy file states intent even before that apply step runs."
     }
   ],
   "require_branches_up_to_date": false,

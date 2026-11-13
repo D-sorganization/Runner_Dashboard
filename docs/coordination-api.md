@@ -181,6 +181,44 @@ Body `{repo, issue, agent?, session, reason}` → RM `release_agent_lease` →
 → 200 with `warnings`; nothing posted (e.g. RM "Release requires the current lease's exact agent and session")
 → 502 with RM's errors.
 
+
+### `GET /api/coordination/jobs?repo=&limit=&include_excluded=`
+
+Fleet Job Board S1+S2 (epic #2781, issues #2782/#2783), read-only: open issues (`repo` optional,
+`limit` 1–200, default 50) with no `claim:*`/hold label, no PR already closing them (#2765), an
+available, unheld `claims.check` (unknown is never free), no active schedule-kind hold
+(`staff.holds.HoldsList`/`matches`, #1726) matching the repo via a `hold:<id>` label, and no
+`code-request:board_review` label (Assessment Board gate, CR-6). Returns `{available, complete,
+jobs, excluded?, warnings, generated_at}`; `excluded` needs `include_excluded=true`. `available`
+is `false`, with `jobs: []`, when a repo's holds list cannot be read (fails closed — never an
+unfiltered list). Sort: priority label, then `priorities.service.top_priorities` position, then
+oldest. To **claim**, call `POST /api/coordination/jobs/claim` after picking a row (or use the Fleet
+Command **Job board** panel beside Claims); release with `POST /api/coordination/jobs/release` and
+renew TTL with `POST /api/coordination/jobs/heartbeat`.
+
+### `POST /api/coordination/jobs/claim`
+
+Fleet Job Board S3 (#2784): atomic claim with monotonic **fence**. Body: `{session, repo, issue, agent?, intent, ttl_hours?}`.
+Re-runs list eligibility and launch gate; 409 when ineligible or held; 502 when claim check fails open.
+
+### `POST /api/coordination/jobs/release`
+
+Fleet Job Board S3 (#2784): release requires current **fence**. Body: `{session, repo, issue, agent?, fence, reason}`.
+
+### `POST /api/coordination/jobs/heartbeat`
+
+Fleet Job Board S4 (#2785): renew in-process TTL. Body: `{session, repo, issue, fence, ttl_hours?}`.
+
+### `GET /api/coordination/jobs/releases?since=&limit=`
+
+Fleet Job Board release log (#3856, a slice of #2785), read-only. It projects the `job_board`
+activity envelopes that claim transitions already emit, with no second store. Returns `{releases,
+complete, generated_at}`; each row is `{repo, issue, agent, session, reason, released_at, kind}`,
+`kind` one of `release`, `expiry`, `conflict`, newest first. `since` is an optional ISO-8601
+timestamp (naive means UTC); a malformed value → 422. `limit` is 1–500, default 100. At most the
+5000 newest activity envelopes are scanned, so `complete` is `false` when the page filled up or the
+scan cap was reached.
+
 ### Status codes for writes
 
 | Code | When                                                                                                         |
@@ -212,8 +250,12 @@ every repository):
   "board_available": true,
   "staff_runs": [],
   "claims_hint": "Before editing: GET /api/coordination/claims …",
+  "jobs_hint": "Find work on GET /api/coordination/jobs; claim with POST /api/coordination/jobs/claim …",
   "rules": ["Fleet rules: …"],
-  "endpoints": { "claims": "GET|POST /api/coordination/claims" },
+  "endpoints": {
+    "claims": "GET|POST /api/coordination/claims",
+    "jobs": "GET /api/coordination/jobs?repo=&limit=&include_excluded="
+  },
   "warnings": [],
   "generated_at": "…"
 }
@@ -222,7 +264,16 @@ every repository):
 - `priorities` comes from `priorities.service.top_priorities(5)` when the Priorities module is installed on
   this node, else `[]`; a failure there adds a warning and never fails the briefing.
 - `holds` are the active Staff Hub holds (`/api/staff/holds`).
+- `jobs_hint` points agents at the fleet job board feed and claim/release ritual.
 - `rules` carries `staff.workspace.FLEET_RULES`, the guardrails every staff prompt ends with.
+
+### `GET /api/coordination/postman/reports?limit=`
+
+Read-only. The newest postman dry-run reports (`limit` 1 to 50, default 10), written by
+`scripts/postman_dry_run.py`. Each report lists what the postman would do on the board (`presence`,
+`message`, `alert`, `rejection`, `rollover`, `warning`), or an `error` when the board could not be read.
+The postman runs in dry run only, so the response's `live` is always `false` and nothing is delivered
+(proposal: `docs/agents/messenger-agents.md`).
 
 ## Configuration
 
@@ -232,3 +283,4 @@ every repository):
 | `STAFF_RM_PYTHON`         | Interpreter for the RM scripts (default `python3`).                           |
 | `COORDINATION_REPOS`      | Comma-separated repos for the per-repo fallback read.                         |
 | `DASHBOARD_LOOPBACK_AUTH` | `1` lets the node's own loopback Conductor write without a token.             |
+| `POSTMAN_DATA_DIR`        | Where postman dry-run reports are kept (default `backend/data`).              |

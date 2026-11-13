@@ -56,15 +56,32 @@ const INITIAL_MESSAGES: ThreadMessage[] = [
   },
 ];
 
+let animationFrames: FrameRequestCallback[] = [];
+
+async function flushAnimationFrame() {
+  const queued = animationFrames;
+  animationFrames = [];
+  await act(async () => {
+    queued.forEach((callback) => callback(0));
+  });
+}
+
 describe("useThreadStream", () => {
   beforeEach(() => {
     MockEventSource.instances = [];
+    animationFrames = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
     // @ts-expect-error Mocking global EventSource
     globalThis.EventSource = MockEventSource;
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("initializes with provided initialMessages and connects to stream", () => {
@@ -185,7 +202,7 @@ describe("useThreadStream", () => {
     expect(result.current.messages[1].delivery).toBe("complete");
   });
 
-  it("aggregates token deltas and allows stopping streaming", () => {
+  it("aggregates token deltas per animation frame and allows stopping streaming", async () => {
     const { result } = renderHook(() =>
       useThreadStream({ threadId: "thread-abc", initialMessages: INITIAL_MESSAGES })
     );
@@ -195,19 +212,17 @@ describe("useThreadStream", () => {
     // Emit token event
     act(() => {
       es.emit("token", { message_id: "msg-stream-3", delta: "Processing" });
-    });
-
-    expect(result.current.activeStreamingId).toBe("msg-stream-3");
-    expect(result.current.messages).toHaveLength(2);
-    expect(result.current.messages[1].body_md).toBe("Processing");
-    expect(result.current.messages[1].streaming).toBe(true);
-
-    // Emit second token event delta
-    act(() => {
       es.emit("token", { message_id: "msg-stream-3", delta: " request..." });
     });
 
+    expect(result.current.activeStreamingId).toBe("msg-stream-3");
+    expect(animationFrames).toHaveLength(1);
+    expect(result.current.messages).toHaveLength(1);
+
+    await flushAnimationFrame();
+    expect(result.current.messages).toHaveLength(2);
     expect(result.current.messages[1].body_md).toBe("Processing request...");
+    expect(result.current.messages[1].streaming).toBe(true);
 
     // Stop streaming
     act(() => {
@@ -354,7 +369,7 @@ describe("useThreadStream", () => {
     expect(MockEventSource.instances[1].url).toContain("/thread-other/stream?since_seq=0&follow=true");
   });
 
-  it("preserves live token progress until authoritative completed history arrives", () => {
+  it("preserves live token progress until authoritative completed history arrives", async () => {
     const { result, rerender } = renderHook(
       ({ history }) => useThreadStream({ threadId: "thread-abc", initialMessages: history }),
       { initialProps: { history: INITIAL_MESSAGES } },
@@ -362,6 +377,7 @@ describe("useThreadStream", () => {
     const placeholder = { ...REPLY, body_md: "", delivery: "pending" as const };
     act(() => MockEventSource.instances[0].emit("message", { message: placeholder }, "2"));
     act(() => MockEventSource.instances[0].emit("token", { message_id: "msg-2", delta: "Fake" }));
+    await flushAnimationFrame();
     rerender({ history: [INITIAL_MESSAGES[0], placeholder] });
     expect(result.current.messages[1]).toMatchObject({ body_md: "Fake", streaming: true });
     expect(result.current.activeStreamingId).toBe("msg-2");

@@ -111,13 +111,42 @@ def test_reaper_selection_drops_merge_queue_runs() -> None:
     assert [r["run_id"] for r in reaper.select_cancellable(runs)] == [2]
 
 
-def test_staff_queue_purge_stale_cannot_cancel_merge_queue_runs() -> None:
+def test_staff_queue_purge_stale_cannot_cancel_merge_queue_runs(monkeypatch) -> None:
+    import anyio
     from staff import maintenance
 
-    # The staff action is not wired to a canceller; if it is ever wired it must go
-    # through queue_cleanup.find_stale_runs, which never returns merge-queue runs.
-    with pytest.raises(maintenance.MaintenanceNotWiredError):
-        maintenance._purge_stale_queue(None, 60, 10)
+    runs = [
+        {
+            "id": 7,
+            "name": "CI",
+            "head_branch": QUEUE_BRANCH,
+            "status": "queued",
+            "created_at": _iso_ago(600),
+            "event": "merge_group",
+        }
+    ]
+    cancelled: list[int] = []
+
+    async def fake_gh_json(*args, **_kwargs):
+        path = args[1] if len(args) > 1 else ""
+        if "status=queued" in path:
+            return {"workflow_runs": runs}
+        return {"workflow_runs": []}
+
+    async def fake_cancel_one(_org: str, run: qc.StaleRun) -> bool:
+        cancelled.append(run.run_id)
+        return True
+
+    async def fake_online_labels(_org: str) -> list[frozenset[str]]:
+        return []
+
+    monkeypatch.setattr(qc, "_gh_json", fake_gh_json)
+    monkeypatch.setattr(qc, "_cancel_one", fake_cancel_one)
+    monkeypatch.setattr(qc, "fetch_online_runner_label_sets", fake_online_labels)
+
+    res = anyio.run(anyio.to_thread.run_sync, maintenance._purge_stale_queue, "Runner_Dashboard", 60, 10)
+    assert res["cancelled_count"] == 0
+    assert cancelled == []
 
 
 def test_reaper_aborts_before_purge_when_candidates_include_merge_queue(monkeypatch) -> None:

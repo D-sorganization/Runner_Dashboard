@@ -35,7 +35,7 @@ class DecideIntakeProposalRequest(BaseModel):
     reason: str = ""
     owner_approval_ref: str = Field(
         default="",
-        description="Required when agent-grok approves; names Dieter's explicit approval.",
+        description="Optional audit reference when approving (e.g. owner thread id).",
     )
     execute_dispatch: bool = Field(
         default=False,
@@ -121,8 +121,6 @@ async def decide_intake_proposal(
 ) -> dict[str, Any]:
     if body.decision not in {"approved", "rejected"}:
         raise HTTPException(status_code=422, detail="invalid decision")
-    if body.decision == "approved" and caller.id == "agent-grok" and not body.owner_approval_ref.strip():
-        raise HTTPException(status_code=422, detail="owner_approval_ref required for agent-grok approval")
     prop = store.decide(
         proposal_id,
         decision=body.decision,

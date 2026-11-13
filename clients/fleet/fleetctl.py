@@ -16,8 +16,11 @@ Examples::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -153,6 +156,13 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_parser = sub.add_parser(command.cli, help=command.description, description=command.description)
         for name, schema in command.properties.items():
             _add_argument(cmd_parser, name, schema, positional=name in command.positional)
+        if command.cli == "dispatch":
+            for action in cmd_parser._actions:
+                if action.dest == "role":
+                    action.nargs = "?"
+            cmd_parser.add_argument("--role", dest="dispatch_role", help="Role name (alternative to positional role).")
+            cmd_parser.add_argument("--prompt-file", type=Path, help="UTF-8 prompt file for failover dispatch.")
+            cmd_parser.add_argument("--ledger", type=Path, help="Append one JSON result line to this file.")
     _add_barb_seat(sub)
     _add_exclusions(sub)
     _add_memory_group(sub)
@@ -190,8 +200,120 @@ def _emit(payload: Any) -> None:
     sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n")
 
 
+def _dispatch_urls(explicit_url: str | None) -> list[str]:
+    if explicit_url:
+        return [explicit_url]
+    configured = os.environ.get("FLEET_API_URLS", "")
+    urls = [part.strip() for part in configured.split(",") if part.strip()]
+    if urls:
+        return urls
+    return [os.environ.get("FLEET_API_URL") or FleetClient(None).base_url]
+
+
+def _dispatch_with_failover(namespace: argparse.Namespace) -> int:
+    role = namespace.dispatch_role or namespace.role
+    if not role:
+        _emit({"error": "invalid_arguments", "message": "dispatch requires --role"})
+        return 2
+    try:
+        if not namespace.repo:
+            raise FleetArgumentError("--repo is required for failover dispatch")
+        prompt = namespace.prompt
+        if namespace.prompt_file is not None:
+            with namespace.prompt_file.open(encoding="utf-8") as source:
+                prompt = source.read(20_001)
+            if len(prompt) > 20_000:
+                raise FleetArgumentError("prompt file exceeds 20000 characters")
+        if namespace.pr is not None:
+            raise FleetArgumentError("failover dispatch accepts --issue, not --pr")
+        if namespace.issue is None and not prompt:
+            raise FleetArgumentError("one of --issue, --prompt or --prompt-file is required")
+        # Reuse the client boundary checks before probing or dispatching.
+        validator = FleetClient(namespace.url, timeout=namespace.timeout)
+        validator.dispatch(
+            role,
+            namespace.repo,
+            namespace.issue,
+            namespace.pr,
+            prompt,
+            provider=namespace.provider,
+            machine=namespace.machine or "auto",
+            dry_run=bool(namespace.dry_run),
+            model=namespace.model,
+            validate_only=True,
+        )
+    except (FleetArgumentError, OSError, UnicodeError) as exc:
+        _emit({"error": "invalid_arguments", "message": str(exc)})
+        return 2
+
+    prompt_digest = hashlib.sha256((prompt or "").encode("utf-8")).hexdigest()
+    date = datetime.now(timezone.utc).date().isoformat()  # noqa: UP017 - py3.10 stdlib clients
+    key_material = "\0".join((role, namespace.repo or "", str(namespace.issue or ""), prompt_digest, date))
+    idempotency_key = hashlib.sha256(key_material.encode("utf-8")).hexdigest()
+    last_failure = "hub_unreachable"
+    for hub in _dispatch_urls(namespace.url):
+        try:
+            client = FleetClient(hub, timeout=namespace.timeout)
+            client.request("GET", "/api/v1/staff/summary", timeout=3.0, retry_idempotent=False)
+        except FleetAPIError as exc:
+            if exc.status == 0 or exc.status >= 500:
+                last_failure = "hub_unreachable"
+                continue
+            result = {"result": "rejected", "reason": f"http_{exc.status}"}
+            return _finish_dispatch(namespace, result, 4)
+        try:
+            response = client.dispatch(
+                role,
+                namespace.repo,
+                namespace.issue,
+                namespace.pr,
+                prompt,
+                provider=namespace.provider,
+                machine=namespace.machine or "auto",
+                dry_run=bool(namespace.dry_run),
+                model=namespace.model,
+                idempotency_key=idempotency_key,
+                api_version=1,
+                retry_idempotent=False,
+            )
+        except FleetAPIError as exc:
+            if exc.status in (409, 423):
+                result = {"result": "held" if exc.status == 423 else "rejected", "reason": f"http_{exc.status}"}
+                return _finish_dispatch(namespace, result, 5 if exc.status == 423 else 4)
+            if exc.status == 0 or exc.status >= 500:
+                last_failure = f"http_{exc.status}" if exc.status else "hub_unreachable"
+                continue
+            result = {"result": "rejected", "reason": f"http_{exc.status}"}
+            return _finish_dispatch(namespace, result, 4)
+        result = {"result": "dispatched", "hub": hub}
+        if isinstance(response, dict):
+            run = response.get("run")
+            run_id = response.get("run_id") or (run.get("id") if isinstance(run, dict) else None)
+            if run_id:
+                result["run_id"] = run_id
+            thread_id = response.get("thread_id")
+            if thread_id:
+                result["thread_id"] = thread_id
+        return _finish_dispatch(namespace, result, 0)
+    return _finish_dispatch(namespace, {"result": "hub_unreachable", "reason": last_failure}, 3)
+
+
+def _finish_dispatch(namespace: argparse.Namespace, result: dict[str, Any], exit_code: int) -> int:
+    if namespace.ledger is not None:
+        try:
+            with namespace.ledger.open("a", encoding="utf-8") as ledger:
+                ledger.write(json.dumps(result, sort_keys=True) + "\n")
+        except OSError:
+            _emit({"error": "invalid_arguments", "message": "ledger file could not be written"})
+            return 2
+    _emit(result)
+    return exit_code
+
+
 def main(argv: list[str] | None = None) -> int:
     namespace = build_parser().parse_args(argv)
+    if namespace.command == "dispatch" and (namespace.dispatch_role or namespace.prompt_file is not None):
+        return _dispatch_with_failover(namespace)
     if namespace.command == "doctor":
         try:
             client = FleetClient(namespace.url, timeout=namespace.timeout)

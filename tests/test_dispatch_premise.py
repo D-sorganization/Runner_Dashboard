@@ -34,30 +34,21 @@ from dispatch_premise import (
 
 @pytest.mark.asyncio
 async def test_extract_failing_check_premise():
-    """Verify check names, commands, and patterns are extracted from prompts."""
-    # Audited prompt 1: LoD baseline
-    p1 = extract_failing_check_premise("Fix Law of Demeter violations: check_law_of_demeter")
+    """Verify only structured ``failing-check:`` markers yield premise info (#4260)."""
+    p1 = extract_failing_check_premise("failing-check: check_law_of_demeter\nFix Law of Demeter violations")
     assert p1 is not None
-    assert "demeter" in p1["check_name"].lower()
+    assert p1["check_name"] == "check_law_of_demeter"
 
-    # Audited prompt 2: Stray conflict marker
-    p2 = extract_failing_check_premise("Remove stray conflict marker <<<<<<< from docs/HANDOFF.md")
+    p2 = extract_failing_check_premise("failing-check: check_conflict_markers\nRemove stray marker")
     assert p2 is not None
-    assert p2["check_type"] == "conflict_marker"
+    assert p2["check_name"] == "check_conflict_markers"
 
-    # Audited prompt 3: local-only-runner-guard
-    p3 = extract_failing_check_premise("Fix failing workflow local-only-runner-guard.yml on AffineDrift")
+    p3 = extract_failing_check_premise("failing-check: local-only-runner-guard.yml\nAffineDrift workflow")
     assert p3 is not None
-    assert "local-only-runner-guard" in p3["check_name"]
+    assert p3["check_name"] == "local-only-runner-guard"
 
-    # Command prompt
-    p4 = extract_failing_check_premise("pytest tests/unit/test_metrics.py failed with exit code 1")
-    assert p4 is not None
-    assert "pytest" in p4["command"]
-
-    # Generic prompt with no failing check
-    p_none = extract_failing_check_premise("Add new button to user profile page")
-    assert p_none is None
+    assert extract_failing_check_premise("pytest tests/unit/test_metrics.py failed with exit code 1") is None
+    assert extract_failing_check_premise("Add new button to user profile page") is None
 
 
 @pytest.mark.asyncio
@@ -90,6 +81,55 @@ async def test_open_pr_skips_dispatch():
     assert res.allowed is False
     assert res.reason == "open_pr_exists"
     assert "1901" in res.detail
+
+
+@pytest.mark.asyncio
+async def test_open_pr_requires_closing_reference_or_issue_branch():
+    """Incidental issue mentions do not make an open PR own the issue."""
+    fixture_pr = {
+        "number": 2981,
+        "title": "dispatch maintenance",
+        "body": "Closes #2980 while remaining blocked by #2976.",
+        "head": {"ref": "feature/dispatch-maintenance"},
+    }
+
+    async def mock_gh_get(endpoint: str) -> list[dict]:
+        if "pulls" in endpoint:
+            return [
+                fixture_pr,
+            ]
+        return []
+
+    has_blocked_pr, blocked_pr_info = await check_issue_has_open_pr(
+        "D-sorganization/Runner_Dashboard", 2976, gh_get_fn=mock_gh_get
+    )
+    assert has_blocked_pr is False
+    assert blocked_pr_info is None
+
+    has_pr, pr_info = await check_issue_has_open_pr("D-sorganization/Runner_Dashboard", 2980, gh_get_fn=mock_gh_get)
+    assert has_pr is True
+    assert pr_info is not None and pr_info["number"] == 2981
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", ["Mentions #2980 for context.", "Blocked by #2980."])
+async def test_open_pr_ignores_bare_issue_mentions(body: str):
+    async def mock_gh_get(endpoint: str) -> list[dict]:
+        return [{"number": 2983, "title": "Unrelated", "body": body, "head": {"ref": "feature/other"}}]
+
+    has_pr, pr_info = await check_issue_has_open_pr("D-sorganization/Runner_Dashboard", 2980, gh_get_fn=mock_gh_get)
+    assert has_pr is False
+    assert pr_info is None
+
+
+@pytest.mark.asyncio
+async def test_open_pr_head_branch_naming_issue_counts():
+    async def mock_gh_get(endpoint: str) -> list[dict]:
+        return [{"number": 2984, "title": "Maintenance", "body": "", "head": {"ref": "claude/2976-foo"}}]
+
+    has_pr, pr_info = await check_issue_has_open_pr("D-sorganization/Runner_Dashboard", 2976, gh_get_fn=mock_gh_get)
+    assert has_pr is True
+    assert pr_info is not None and pr_info["number"] == 2984
 
 
 @pytest.mark.asyncio
@@ -145,13 +185,13 @@ async def test_check_passes_on_main_skips_and_comments():
     res = await evaluate_dispatch_premise(
         repository="D-sorganization/AffineDrift",
         issue_number=100,
-        prompt="Fix local-only-runner-guard failure in D-sorganization/AffineDrift",
+        prompt="failing-check: local-only-runner-guard",
         gh_get_fn=mock_gh_get,
     )
     assert res.allowed is False
     assert res.reason == "already_resolved_on_main"
     assert "already resolved on main at" in res.comment
-    assert res.should_close is True
+    assert res.should_close is False
 
 
 @pytest.mark.asyncio
@@ -180,7 +220,7 @@ async def test_check_fails_on_main_allows_dispatch():
     res = await evaluate_dispatch_premise(
         repository="D-sorganization/AffineDrift",
         issue_number=100,
-        prompt="Fix local-only-runner-guard failure in D-sorganization/AffineDrift",
+        prompt="failing-check: local-only-runner-guard",
         gh_get_fn=mock_gh_get,
     )
     assert res.allowed is True
@@ -217,7 +257,6 @@ async def test_audited_three_no_op_prompts_replayed_skip_all():
         return {}
 
     async def mock_run_cmd(cmd: list[str], **kwargs) -> tuple[int, str, str]:
-        # Local command checks return 0 (passing on main)
         return 0, "", ""
 
     # Replay Prompt 1: LoD baseline already fixed on branch/main
@@ -270,7 +309,7 @@ async def test_dispatch_audit_logging_on_skip():
         reason="already_resolved_on_main",
         detail="check passed on main",
         comment="already resolved on main at d354634",
-        should_close=True,
+        should_close=False,
         head_sha="d354634",
     )
     await log_dispatch_skip(res, "D-sorganization/Runner_Dashboard", 1847, audit_fn=mock_audit)
@@ -284,7 +323,7 @@ async def test_dispatch_audit_logging_on_skip():
 
 @pytest.mark.asyncio
 async def test_close_item_as_resolved_on_main():
-    """Verify issue comment and close invocation."""
+    """Verify issue comment only (no auto-close, #4260)."""
     run_calls: list[list[str]] = []
 
     async def mock_run_cmd(cmd: list[str], **kwargs) -> tuple[int, str, str]:
@@ -298,8 +337,5 @@ async def test_close_item_as_resolved_on_main():
         run_cmd_fn=mock_run_cmd,
     )
     assert ok is True
-    assert len(run_calls) == 2
-    # First call: comment
-    assert "comment" in run_calls[0] or "comments" in "".join(run_calls[0])
-    # Second call: close issue
-    assert "close" in run_calls[1] or "closed" in "".join(run_calls[1])
+    assert len(run_calls) == 1
+    assert run_calls[0][:3] == ["gh", "issue", "comment"]

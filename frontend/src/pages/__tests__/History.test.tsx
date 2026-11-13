@@ -31,7 +31,7 @@ const RUNS = [
     status: "completed",
     repository: { name: "alpha" },
     head_branch: "main",
-    machine_name: "ControlTower",
+    machine_name: "node-a",
     run_started_at: new Date(now - 60000).toISOString(),
     updated_at: new Date(now).toISOString(),
     created_at: new Date(now - 120000).toISOString(),
@@ -44,7 +44,7 @@ const RUNS = [
     status: "completed",
     repository: { name: "beta" },
     head_branch: "dev",
-    machine_name: "DeskComputer",
+    machine_name: "hub-a",
     run_started_at: new Date(now - 30000).toISOString(),
     updated_at: new Date(now).toISOString(),
     created_at: new Date(now - 30000).toISOString(),
@@ -56,7 +56,7 @@ const RUNS = [
     status: "in_progress",
     repository: { name: "gamma" },
     head_branch: "feature",
-    machine_name: "ControlTower",
+    machine_name: "node-a",
     created_at: new Date(now - 10000).toISOString(),
   },
 ];
@@ -68,7 +68,7 @@ describe("HistoryTab", () => {
     expect(screen.getByText("deploy")).toBeInTheDocument();
     expect(screen.getByText("alpha")).toBeInTheDocument();
     expect(screen.getByText("main")).toBeInTheDocument();
-    expect(screen.getAllByText("ControlTower").length).toBe(2);
+    expect(screen.getAllByText("node-a").length).toBe(2);
   });
 
   it("shows filter buttons with live counts and narrows on click", () => {

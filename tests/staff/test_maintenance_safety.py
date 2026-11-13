@@ -86,18 +86,8 @@ PINNED_POLICY: dict[str, tuple[str, str, bool, str | None, int | None]] = {
     "maintenance.vhdx_compaction_request": ("owner-only", "fleet.maintain", True, "host", None),
 }
 
-# Operations with no real backend yet. They must fail as `not_wired`, never report success.
-# Wired to a real backend: vacuum (#1344) and the GitHub run operations (#1448,
-# covered in tests/staff/test_maintenance_github.py).
-WIRED_ACTIONS = frozenset(
-    {
-        "maintenance.vacuum_sqlite",
-        "maintenance.run_cancel",
-        "maintenance.run_rerun",
-        "maintenance.cancel_and_rerun",
-        "maintenance.vhdx_compaction_request",
-    }
-)
+# All 16 policy-table actions are wired to real backends (#1344, #1448, #3555).
+WIRED_ACTIONS = frozenset(PINNED_POLICY)
 UNWIRED_ACTIONS = frozenset(PINNED_POLICY) - WIRED_ACTIONS
 
 # One safe, fully targeted parameter set per action.
@@ -267,9 +257,13 @@ def test_group_larger_than_its_max_count_is_refused_before_touching_any_runner()
 
 def test_cooldown_blocks_an_immediate_repeat_of_a_wired_action() -> None:
     params = VALID_PARAMS["maintenance.vacuum_sqlite"]
-    assert execute_maintenance("maintenance.vacuum_sqlite", params, CTX).success
-    with pytest.raises(MaintenanceCooldownError):
-        execute_maintenance("maintenance.vacuum_sqlite", params, CTX)
+    vacuum_result = {"database": params["database"], "freed_bytes": 0, "status": "vacuumed"}
+    # Real VACUUM can take tens of seconds on fleet runners; under xdist another test's
+    # autouse fixture may reset the process-wide cooldown tracker before the repeat call.
+    with patch("staff.maintenance._vacuum_db", return_value=vacuum_result):
+        assert execute_maintenance("maintenance.vacuum_sqlite", params, CTX).success
+        with pytest.raises(MaintenanceCooldownError):
+            execute_maintenance("maintenance.vacuum_sqlite", params, CTX)
 
 
 @pytest.mark.parametrize("name", OWNER_GATED)
@@ -350,9 +344,13 @@ def test_detector_auto_executes_by_the_registered_risk_not_the_detection_label()
 # ─── 4. Fault injection ──────────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("name", sorted(UNWIRED_ACTIONS))
-def test_unwired_operations_fail_visibly_instead_of_reporting_success(name: str) -> None:
-    res = execute_maintenance(name, VALID_PARAMS[name], CTX)
+def test_unwired_operations_fail_visibly_instead_of_reporting_success() -> None:
+    assert UNWIRED_ACTIONS == frozenset()
+    with patch(
+        "staff.maintenance._diagnose",
+        side_effect=maintenance._not_wired("Diagnostic backend"),
+    ):
+        res = execute_maintenance("maintenance.diagnose", VALID_PARAMS["maintenance.diagnose"], CTX)
     assert res.success is False
     assert res.failure_class == "not_wired"
     assert "not wired" in (res.error or "")

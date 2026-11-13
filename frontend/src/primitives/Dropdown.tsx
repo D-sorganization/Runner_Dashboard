@@ -259,6 +259,7 @@ export function Dropdown(props: DropdownProps): ReactElement {
                 type="button"
                 role="menuitem"
                 tabIndex={idx === activeIndex ? 0 : -1}
+                title={item.label}
                 onClick={() => activate(item)}
                 onMouseEnter={() => setActiveIndex(idx)}
                 aria-current={item.active ? "page" : undefined}

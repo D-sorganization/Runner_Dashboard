@@ -8,6 +8,7 @@ import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import psutil
@@ -16,6 +17,7 @@ from fleet_events import get_event_store
 from staff import adapters as adapters_mod
 from staff import roles as roles_mod
 from staff import runner as runner_mod
+from staff import runner_registry
 from staff import store as store_mod
 from staff.watchdog import StaffWatchdog, terminate_process_group
 
@@ -122,7 +124,7 @@ def staff_runner(
         adapters=adapters,
         machine="TestNode",
     )
-    monkeypatch.setattr(runner_mod, "_runner", r)
+    monkeypatch.setattr(runner_registry, "_runner", r)
     yield r
     store_mod.reset_store()
     runner_mod.reset_runner()
@@ -263,6 +265,10 @@ def test_watchdog_kills_grandchild_process(
     assert not psutil.pid_exists(grandchild_pid)
 
 
+def _heartbeats(store: store_mod.RunStore, run_id: str) -> list[dict[str, Any]]:
+    return [e for e in store.events_after(run_id, 0) if e["kind"] == "heartbeat"]
+
+
 @pytest.mark.unit
 def test_watchdog_emits_heartbeat_periodically(tmp_path: Path) -> None:
     store = store_mod.RunStore(tmp_path / "heartbeat.sqlite3")
@@ -280,26 +286,28 @@ def test_watchdog_emits_heartbeat_periodically(tmp_path: Path) -> None:
     )
     store.create_run(rec)
 
-    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.6)"])
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
     try:
         watchdog = StaffWatchdog(
             run_id=rec.id,
             proc=proc,
             store=store,
-            max_seconds=5.0,
-            idle_seconds=5.0,
+            max_seconds=30.0,
+            idle_seconds=30.0,
             heartbeat_interval=0.1,  # Fast heartbeats for testing
             check_interval=0.05,
         )
         watchdog.start()
-        time.sleep(0.35)
+        # Wait for the heartbeats rather than a fixed sleep, so a loaded runner still sees two.
+        deadline = time.monotonic() + 10.0
+        while len(_heartbeats(store, rec.id)) < 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
         watchdog.stop()
     finally:
         proc.kill()
         proc.wait()
 
-    events = store.events_after(rec.id, 0)
-    heartbeats = [e for e in events if e["kind"] == "heartbeat"]
+    heartbeats = _heartbeats(store, rec.id)
     assert len(heartbeats) >= 2
     for hb in heartbeats:
         data = json.loads(hb["text"])

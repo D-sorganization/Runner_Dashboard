@@ -16,9 +16,9 @@ const baseState: FleetState = {
   machineCount: 3,
   machineOnline: 3,
   machineNodes: [
-    { name: "ControlTower", online: true },
-    { name: "DeskComputer", online: true },
-    { name: "OGLaptop", online: true },
+    { name: "node-a", online: true },
+    { name: "hub-a", online: true },
+    { name: "node-b", online: true },
   ],
   watchdog: { status: "healthy" },
   stats: { success_rate: 95, runs_success: 95 },
@@ -51,9 +51,9 @@ describe("computeFleetAlerts — Rule 1: machines offline", () => {
       ...baseState,
       machineOnline: 2,
       machineNodes: [
-        { name: "ControlTower", online: true },
-        { name: "DeskComputer", online: true },
-        { name: "OGLaptop", online: false },
+        { name: "node-a", online: true },
+        { name: "hub-a", online: true },
+        { name: "node-b", online: false },
       ],
     });
     expect(result.level).toBe("critical");
@@ -61,7 +61,7 @@ describe("computeFleetAlerts — Rule 1: machines offline", () => {
     expect(result.alerts[0]).toMatchObject({
       level: "critical",
       title: "1 machine(s) offline",
-      detail: "OGLaptop",
+      detail: "node-b",
     });
   });
 
@@ -70,13 +70,13 @@ describe("computeFleetAlerts — Rule 1: machines offline", () => {
       ...baseState,
       machineOnline: 1,
       machineNodes: [
-        { name: "ControlTower", online: true },
-        { name: "DeskComputer", online: false },
-        { name: "OGLaptop", online: false },
+        { name: "node-a", online: true },
+        { name: "hub-a", online: false },
+        { name: "node-b", online: false },
       ],
     });
     expect(result.alerts[0].title).toBe("2 machine(s) offline");
-    expect(result.alerts[0].detail).toBe("DeskComputer, OGLaptop");
+    expect(result.alerts[0].detail).toBe("hub-a, node-b");
   });
 
   it("falls back to a generic detail when no machine names are available", () => {
@@ -202,9 +202,9 @@ describe("computeFleetAlerts — severity rollup", () => {
       ...baseState,
       machineOnline: 2, // critical
       machineNodes: [
-        { name: "ControlTower", online: true },
-        { name: "DeskComputer", online: true },
-        { name: "OGLaptop", online: false },
+        { name: "node-a", online: true },
+        { name: "hub-a", online: true },
+        { name: "node-b", online: false },
       ],
       runnerAudit: { violations: [{}] }, // warning
     });
@@ -245,9 +245,9 @@ describe("computeFleetAlerts — durable alert identity", () => {
     ...baseState,
     machineOnline: 2,
     machineNodes: [
-      { name: "ControlTower", online: true },
-      { name: "DeskComputer", online: true },
-      { name: "OGLaptop", online: false },
+      { name: "node-a", online: true },
+      { name: "hub-a", online: true },
+      { name: "node-b", online: false },
     ],
   };
 
@@ -272,9 +272,9 @@ describe("computeFleetAlerts — durable alert identity", () => {
       ...offlineState,
       machineOnline: 1,
       machineNodes: [
-        { name: "ControlTower", online: true },
-        { name: "DeskComputer", online: false },
-        { name: "OGLaptop", online: false },
+        { name: "node-a", online: true },
+        { name: "hub-a", online: false },
+        { name: "node-b", online: false },
       ],
     }).alerts[0];
     expect(a.id).toBe(b.id);
@@ -309,7 +309,7 @@ describe("alertContentHash", () => {
       id: "machines-offline" as const,
       level: "critical" as const,
       title: "1 machine(s) offline",
-      detail: "OGLaptop",
+      detail: "node-b",
     };
     expect(alertContentHash(parts)).toBe(alertContentHash(parts));
   });
@@ -319,10 +319,10 @@ describe("alertContentHash", () => {
       id: "machines-offline" as const,
       level: "critical" as const,
       title: "1 machine(s) offline",
-      detail: "OGLaptop",
+      detail: "node-b",
     };
     expect(alertContentHash(base)).not.toBe(
-      alertContentHash({ ...base, detail: "DeskComputer" }),
+      alertContentHash({ ...base, detail: "hub-a" }),
     );
     expect(alertContentHash(base)).not.toBe(
       alertContentHash({ ...base, level: "warning" }),

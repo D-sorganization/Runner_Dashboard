@@ -29,7 +29,11 @@ def run_git_credential_helper(
             fields[key] = value
     if fields.get("protocol") != "https" or fields.get("host") != "github.com":
         return
-    token = fetch_github_token_for_run()
+    try:
+        token = fetch_github_token_for_run()
+    except Exception as exc:  # noqa: BLE001
+        log.warning("staff github credential helper failed: %s", exc)
+        raise
     out.write("username=x-access-token\n")
     out.write(f"password={token}\n")
 

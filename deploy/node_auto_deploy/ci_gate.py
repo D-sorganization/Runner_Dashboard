@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from node_auto_deploy.check_runs import (
@@ -11,6 +12,10 @@ from node_auto_deploy.check_runs import (
     normalize_commit_sha,
     run_is_pending,
     validate_check_run_record,
+)
+from node_auto_deploy.required_contexts import (
+    RequiredContextsPolicyError,
+    load_required_deploy_contexts,
 )
 
 DEFAULT_MAIN_HISTORY_LIMIT = 20
@@ -36,6 +41,8 @@ NON_BLOCKING_DEPLOY_CHECK_NAMES = frozenset(
         "route",  # Taxonomy rollout (issues: labeled)
         "preview",  # Taxonomy rollout dry-run
         "apply",  # Taxonomy rollout apply
+        "slo",  # CI Queue SLO Check (schedule); queue health, not code quality
+        "shepherd",  # Merge shepherd pass (schedule); bot maintenance, not code quality
     }
 )
 
@@ -44,9 +51,18 @@ def filter_non_blocking_check_runs(check_runs: list[dict[str, Any]]) -> list[dic
     return [r for r in check_runs if str(r.get("name") or "") not in NON_BLOCKING_DEPLOY_CHECK_NAMES]
 
 
-def ci_gate_for_deploy_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
+def ci_gate_for_deploy_commit(
+    check_runs: list[dict[str, Any]],
+    expected_sha: str,
+    *,
+    required_contexts: tuple[str, ...] | None = None,
+) -> tuple[bool, str]:
     """Deploy/release gate: required CI checks only (excludes publisher and fleet hygiene jobs)."""
-    return ci_gate_for_commit(filter_non_blocking_check_runs(check_runs), expected_sha)
+    return ci_gate_for_commit(
+        filter_non_blocking_check_runs(check_runs),
+        expected_sha,
+        required_contexts=required_contexts,
+    )
 
 
 def parse_check_runs_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -56,12 +72,18 @@ def parse_check_runs_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [r for r in runs if isinstance(r, dict)]
 
 
-def ci_gate_for_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
+def ci_gate_for_commit(
+    check_runs: list[dict[str, Any]],
+    expected_sha: str,
+    *,
+    required_contexts: tuple[str, ...] | None = None,
+) -> tuple[bool, str]:
     """Return (passed, detail).
 
     Pre: ``check_runs`` is a list of GitHub check-run dicts; ``expected_sha`` is a git commit id.
-    Post: when passed, every check *name* for that sha has no failing runs and at least one
-    success or skipped run; pending runs fail closed.
+    Post: when passed, every observed check name for that sha is successful (skipped/cancelled fail
+    closed except the documented skip allowlist), duplicate names cannot satisfy a context, every
+    required branch-protection context is present with success, and no checks are still pending.
     """
     if not isinstance(check_runs, list):
         return False, "check_runs must be a list"
@@ -89,6 +111,19 @@ def ci_gate_for_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> t
     by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for run in relevant:
         by_name[run["name"]].append(run)
+
+    if required_contexts is not None:
+        required = required_contexts
+    else:
+        try:
+            required = load_required_deploy_contexts()
+        except RequiredContextsPolicyError as exc:
+            return False, f"required checks policy error: {exc}"
+    blocking_required = [name for name in required if name not in NON_BLOCKING_DEPLOY_CHECK_NAMES]
+    missing_required = sorted(name for name in blocking_required if name not in by_name)
+    if missing_required:
+        names = ", ".join(missing_required[:5])
+        return False, f"required checks missing: {names}"
 
     failing_names = sorted(name for name, runs in by_name.items() if not check_name_passes(runs))
     if failing_names:
@@ -124,28 +159,71 @@ def select_deployable_main_commit(
     return None, (f"no green commit in last {len(commits_newest_first)} main commits: {last_detail}")
 
 
+@dataclass(frozen=True)
+class MainWindowScan:
+    """Newest-first view of the main window: what is deployable and what is merely green.
+
+    ``newest_state`` describes the newest commit with a usable verdict (not the oldest), so a
+    red ancestor cannot make a green HEAD look broken.
+    """
+
+    deployable_sha: str | None
+    deployable_detail: str
+    newest_sha: str | None
+    newest_state: str  # "green_released" | "green_unreleased" | "not_green" | "empty"
+    newest_detail: str
+    green_unreleased: tuple[str, ...]
+    window: int
+
+    @property
+    def newest_green_unreleased(self) -> str | None:
+        return self.green_unreleased[0] if self.green_unreleased else None
+
+    @property
+    def detail(self) -> str:
+        if self.deployable_sha is not None:
+            return self.deployable_detail
+        if self.newest_sha is None:
+            return "no commits in main history window"
+        short = self.newest_sha[:7]
+        if self.newest_state == "green_unreleased":
+            return f"main {short} is green but has no published release (none of last {self.window} commits released)"
+        return f"main {short} is not green: {self.newest_detail} (no green released commit in last {self.window})"
+
+
+def scan_main_window(
+    commits_newest_first: list[str],
+    fetch_check_runs: Callable[[str], list[dict[str, Any]]],
+    has_release: Callable[[str], bool],
+) -> MainWindowScan:
+    """Walk newest-first until the first green *released* commit, recording green-unreleased ones."""
+    window = len(commits_newest_first)
+    newest_sha: str | None = None
+    newest_state = "empty"
+    newest_detail = ""
+    unreleased: list[str] = []
+    for raw_sha in commits_newest_first:
+        sha = normalize_commit_sha(str(raw_sha))
+        if sha is None:
+            continue
+        ok, detail = ci_gate_for_deploy_commit(fetch_check_runs(sha), sha)
+        released = ok and has_release(sha)
+        if newest_sha is None:
+            newest_sha = sha
+            newest_detail = detail
+            newest_state = "green_released" if released else ("green_unreleased" if ok else "not_green")
+        if released:
+            return MainWindowScan(sha, detail, newest_sha, newest_state, newest_detail, tuple(unreleased), window)
+        if ok:
+            unreleased.append(sha)
+    return MainWindowScan(None, "", newest_sha, newest_state, newest_detail, tuple(unreleased), window)
+
+
 def select_deployable_main_commit_with_release(
     commits_newest_first: list[str],
     fetch_check_runs: Callable[[str], list[dict[str, Any]]],
     has_release: Callable[[str], bool],
 ) -> tuple[str | None, str]:
     """Newest commit that passes ``ci_gate_for_deploy_commit`` and ``has_release(sha)``."""
-    if not commits_newest_first:
-        return None, "no commits in main history window"
-
-    last_detail = "no qualifying commit"
-    for raw_sha in commits_newest_first:
-        sha = normalize_commit_sha(str(raw_sha))
-        if sha is None:
-            continue
-        runs = fetch_check_runs(sha)
-        ok, detail = ci_gate_for_deploy_commit(runs, sha)
-        if not ok:
-            last_detail = detail
-            continue
-        if not has_release(sha):
-            last_detail = f"CI green at {sha[:7]} but no published release"
-            continue
-        return sha, detail
-
-    return None, (f"no green released commit in last {len(commits_newest_first)} main commits: {last_detail}")
+    scan = scan_main_window(commits_newest_first, fetch_check_runs, has_release)
+    return scan.deployable_sha, scan.detail

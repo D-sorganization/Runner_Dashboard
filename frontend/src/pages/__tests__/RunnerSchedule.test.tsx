@@ -65,7 +65,7 @@ const DATA: RunnerScheduleData = {
     available: true,
     timestamp: 123,
   },
-  machine: "DeskComputer",
+  machine: "hub-a",
   max_runners: 8,
   config_path: "/etc/runner-schedule.json",
   timers: {
@@ -217,7 +217,7 @@ describe("RunnerScheduleTab", () => {
         data={{
           schedule: { schedules: [] },
           state: { available: false, error: "scheduler not installed" },
-          machine: "OGLaptop",
+          machine: "node-b",
         }}
         loading={false}
         onSave={() => {}}

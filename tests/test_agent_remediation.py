@@ -404,6 +404,7 @@ def test_shipped_config_excludes_retired_jules_providers() -> None:
     assert "cursor_agent" in config["enabled_providers"]
     assert "jules_cli" not in DEFAULT_PROVIDER_ORDER
     assert "jules_api" not in DEFAULT_PROVIDER_ORDER
+    assert "maxwell" not in DEFAULT_PROVIDER_ORDER
 
 
 def test_disabled_provider_is_never_selected_even_if_policy_lists_it() -> None:

@@ -40,7 +40,14 @@ class Price:
 # wins), so ``claude-opus-5``, ``opus-5`` and ``claude-opus-5-20260401`` all hit
 # the same row. Order inside a provider does not matter.
 PRICE_TABLE: dict[str, dict[str, Price]] = {
+    # Peak, cache-miss rates from https://api-docs.deepseek.com/quick_start/pricing/ (2026-11-09).
+    "deepseek-api": {
+        "deepseek-flash": Price(0.30, 1.20, estimate=True),
+        "deepseek-v4-pro": Price(1.32, 3.96, estimate=True),
+    },
     "claude": {
+        "fable-5.2": Price(8.0, 40.0),
+        "fable-5-2": Price(8.0, 40.0),
         "fable-5.1": Price(10.0, 50.0),
         "fable-5-1": Price(10.0, 50.0),
         "fable-5": Price(10.0, 50.0),
@@ -82,7 +89,16 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
     # Local inference: any model, always free.
     "ollama": {},
     "claude-ollama": {},
+    "cursor-agent": {},
+    "grok": {},
+    "qwen": {},
 }
+
+# The anthropic-api provider (issue #3123) bills the same Anthropic Messages
+# API at the same list prices as the Claude Code CLI seat above, so it shares
+# that row instead of carrying a second copy of the numbers (DRY). Rows are
+# matched by model substring, same as every other provider.
+PRICE_TABLE["anthropic-api"] = PRICE_TABLE["claude"]
 
 # Default model per provider when the run recorded none (mirrors the CLIs' own
 # defaults on 2026-09-22; ``estimate`` rows above still apply).
@@ -91,6 +107,10 @@ DEFAULT_MODEL: dict[str, str] = {
     "codex": "gpt-5",
     "gemini": "gemini-2.5-pro",
     "antigravity": "gemini-3.8-flash-high",
+    "anthropic-api": "opus-5",
+    "cursor-agent": "composer-2.5",
+    "grok": "grok-4.7-high",
+    "qwen": "qwen3.8-flash",
 }
 
 # Providers that never carry per-token cost regardless of model.
@@ -101,8 +121,12 @@ FREE_PROVIDERS: frozenset[str] = frozenset({"ollama", "claude-ollama"})
 WALL_TIME_USD_PER_MINUTE: dict[str, float] = {
     "antigravity": 0.0,
     "cursor-agent": 0.0,
+    "grok": 0.0,
+    "qwen": 0.0,
     "ollama": 0.0,
     "claude-ollama": 0.0,
+    "gemini": 0.0,
+    "anthropic-api": 0.0,
 }
 
 METHODS = ("reported", "token_table", "wall_time", "none")

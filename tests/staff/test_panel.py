@@ -157,11 +157,16 @@ def test_a_slow_turn_times_out_as_a_missed_turn() -> None:
 
 
 @pytest.mark.unit
-def test_a_failed_moderator_marks_the_panel_failed() -> None:
+def test_a_failed_moderator_still_completes_when_experts_spoke() -> None:
+    """Issue #2899: expert turns are preserved; a moderator failure is surfaced on the synthesis message."""
     runner = ScriptedRunner(fail={"Moderator"})
     thread_id = _run(_request(rounds=1), runner)
     result = panel_result(get_conversation_store(), thread_id)
-    assert result is not None and result["status"] == "failed" and result["synthesis"] is None
+    assert result is not None
+    assert result["status"] == "complete"
+    assert result["synthesis"] and "Moderator missed" in result["synthesis"]
+    thread = get_conversation_store().get_thread(thread_id)
+    assert thread is not None and thread.meta["panel"].get("synthesis_ok") is False
 
 
 # ── stance parsing ──────────────────────────────────────────────────────────
@@ -274,6 +279,88 @@ async def test_default_turn_runner_message_id_none_publishes_no_tokens(
     assert passed_bus is real_bus
     # The silent path spawns exactly the same CLI argv as the streaming panel path.
     assert len(spawned) == 2 and spawned[0] == spawned[1]
+
+
+@pytest.mark.asyncio
+async def test_default_turn_runner_uses_git_panel_scratch_and_panel_turn_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Issue #2899: panel seats run in git-initialised scratch dirs with STAFF_PANEL_TURN=1."""
+    mock_adapter = MagicMock()
+    mock_adapter.chat_argv.return_value = ["dummy", "cmd"]
+    mock_adapter.runtime_env.return_value = {}
+
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = 0
+    captured: list[tuple[str, dict[str, str]]] = []
+
+    def fake_spawn(**kw: Any) -> Any:
+        captured.append((kw["cwd"], dict(kw["env"])))
+        assert (Path(kw["cwd"]) / ".git").exists()
+        return mock_proc
+
+    async def fake_stream_turn_output(*_args: Any, **_kwargs: Any) -> TurnStreamOutput:
+        return TurnStreamOutput(stdout_lines=["ok\nSTANCE: agree\nPOSITION: fine\n"], returncode=0, json_lines=False)
+
+    monkeypatch.setattr("staff.panel.get_adapter", lambda _prov: mock_adapter)
+    monkeypatch.setattr("staff.panel.spawn_cli_process", fake_spawn)
+    monkeypatch.setattr("staff.panel.stream_turn_output", fake_stream_turn_output)
+
+    speaker = PanelSpeaker(name="Ada", perspective="numerical methods", provider="claude", model="opus-5")
+    outcome = await default_turn_runner(speaker, "prompt", "thread-1", None)
+    assert outcome.ok is True
+    assert captured
+    cwd, env = captured[0]
+    assert "staff_panel_" in cwd
+    assert env.get("STAFF_PANEL_TURN") == "1"
+
+
+@pytest.mark.asyncio
+async def test_default_turn_runner_treats_hook_error_text_as_seat_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Issue #2899: a stop-hook failure must never be stored as the seat's answer."""
+    mock_adapter = MagicMock()
+    mock_adapter.chat_argv.return_value = ["dummy", "cmd"]
+    mock_adapter.runtime_env.return_value = {}
+
+    mock_proc = MagicMock()
+    mock_proc.poll.return_value = 0
+
+    hook_text = "trusted_agent_hook.py: can't discover a git worktree for this session"
+
+    async def fake_stream_turn_output(*_args: Any, **_kwargs: Any) -> TurnStreamOutput:
+        return TurnStreamOutput(stdout_lines=[hook_text], returncode=0, json_lines=False)
+
+    monkeypatch.setattr("staff.panel.get_adapter", lambda _prov: mock_adapter)
+    monkeypatch.setattr("staff.panel.spawn_cli_process", lambda **_kw: mock_proc)
+    monkeypatch.setattr("staff.panel.stream_turn_output", fake_stream_turn_output)
+
+    speaker = PanelSpeaker(name="Ada", perspective="numerical methods", provider="claude", model="opus-5")
+    outcome = await default_turn_runner(speaker, "prompt", "thread-1", None)
+    assert outcome.ok is False
+    assert outcome.text == ""
+    assert outcome.error and "stop-hook" in outcome.error.lower()
+
+
+@pytest.mark.unit
+def test_panel_moderator_synthesis_after_hook_error_seat() -> None:
+    """Issue #2899: one hook-broken seat is a missed turn; the Moderator still synthesises."""
+
+    class HookFailRunner(ScriptedRunner):
+        async def __call__(
+            self, speaker: PanelSpeaker, prompt: str, thread_id: str, message_id: str
+        ) -> TurnOutcome:
+            if speaker.name == "Brook":
+                return TurnOutcome(ok=False, error="provider stop-hook error: can't discover a git worktree")
+            return await super().__call__(speaker, prompt, thread_id, message_id)
+
+    thread_id = _run(_request(rounds=1), HookFailRunner())
+    res = panel_result(get_conversation_store(), thread_id)
+    assert res is not None
+    assert res["status"] == "complete"
+    assert res["synthesis"]
+    brook = next(t for t in res["turns"] if t["expert"] == "Brook")
+    assert brook["status"] == "error"
+    assert "stop-hook" in (brook["error"] or "").lower()
 
 
 @pytest.mark.asyncio

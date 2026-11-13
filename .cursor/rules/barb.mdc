@@ -1,0 +1,11 @@
+---
+description: Handle @barb mentions the same way /barb does
+alwaysApply: false
+---
+
+When the user's message contains `@barb`, treat it exactly like the `/barb` command
+(see `.cursor/commands/barb.md`): relay the text after `@barb` to rd-barb via
+`python scripts/barb_cli.py send '{"to": "barb", "kind": "update", "summary": "<text>"}'`,
+print the JSON result (it includes a `correlation_id`), and stop. Never wait for a reply
+in this turn -- replies arrive in rd-barb's RD staff thread and are surfaced by the
+`beforeSubmitPrompt` hook (`scripts/wrappers/cursor_barb_hook.py`) on a later prompt.

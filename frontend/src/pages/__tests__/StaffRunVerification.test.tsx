@@ -13,7 +13,7 @@ const RUN = {
   role: "night-watch",
   provider: "claude",
   model: null,
-  machine: "DeskComputer",
+  machine: "hub-a",
   repo: "UpstreamDrift",
   target_kind: "issue",
   target_ref: "10622",

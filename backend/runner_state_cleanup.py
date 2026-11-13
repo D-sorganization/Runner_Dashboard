@@ -8,8 +8,8 @@ with ``error: could not lock config file ...: File exists`` and the job dies
 with exit code 255 *before* it can produce any diagnostic.
 
 All runner processes on a single physical machine share the same ``$HOME``
-(seen in the wild: ``/home/dieterolson/`` shared across ``runner-1`` through
-``runner-8`` on the ControlTower Oglaptop), so a single orphaned lock file
+(seen in the wild: ``/home/fleet-operator/`` shared across ``runner-1`` through
+``runner-8`` on the node-a NodeB), so a single orphaned lock file
 silently breaks the whole fleet on that host.
 
 This module is the recovery half of the contract: after every autoscaler stop

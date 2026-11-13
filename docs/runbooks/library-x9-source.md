@@ -1,4 +1,4 @@
-# DeskComputer Crucial X9 Library Source
+# hub-a Crucial X9 Library Source
 
 The X9 source helper defaults to inspection only. It reads Windows volume, partition, and disk metadata through PowerShell, then requires a single Crucial X9-family volume with matching product label and model, USB bus identity, a serial number, a volume ID, and a real WSL mount at `/mnt/<drive-letter>`. It refuses ambiguous or incomplete matches. It never formats a disk, creates a library folder, or starts ingestion.
 

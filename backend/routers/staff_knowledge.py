@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
 from knowledge_pack import KnowledgePack
 from knowledge_pack.cartographer import format_codebase_reference
+from knowledge_pack.search import search_repo
 from staff.codebase_freshness import snapshot_is_stale
 from staff.knowledge_refresh import get_knowledge_dir, pack_is_stale
 from staff.models_insights import (
@@ -46,10 +47,17 @@ def _codebase_state(pack: KnowledgePack) -> tuple[dict[str, Path], bool]:
     return roots, stale
 
 
-def _search_codebase(pack: KnowledgePack, query: str, k: int, include_superseded: bool) -> dict[str, Any]:
+def _search_codebase(
+    pack: KnowledgePack, query: str, k: int, include_superseded: bool, repo: str | None = None
+) -> dict[str, Any]:
     roots, stale = _codebase_state(pack)
     passages = []
-    for hit in pack.search(query, k=k, include_superseded=include_superseded):
+    hits = (
+        search_repo(pack, query, repo, k=k, include_superseded=include_superseded)
+        if repo is not None
+        else pack.search(query, k=k, include_superseded=include_superseded)
+    )
+    for hit in hits:
         root = roots.get(hit.repo)
         citation = format_codebase_reference(hit, root) if root is not None else None
         if citation is not None:
@@ -155,11 +163,14 @@ async def search_knowledge_v1(
     k: int = Query(default=8, ge=1, le=100, description="Max passages to return"),
     include_superseded: bool = Query(default=False, description="Include superseded passages"),
     run_id: str | None = Query(default=None, min_length=1, max_length=120),
+    repo: str | None = Query(default=None, min_length=1, max_length=100),
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     """Search knowledge packs; optional run_id records emitted Cartographer citations for that run owner."""
     if run_id is not None and pack_id != "cartographer":
         raise HTTPException(status_code=422, detail="run_id is supported only for Cartographer search")
+    if repo is not None and pack_id != "cartographer":
+        raise HTTPException(status_code=422, detail="repo is supported only for Cartographer search")
     if run_id is not None:
         try:
             from library.retrieval_ledger import authorize_run_owner
@@ -174,7 +185,7 @@ async def search_knowledge_v1(
             raise HTTPException(status_code=403, detail=str(exc)) from exc
     pack = _open_pack(pack_id)
     if pack_id == "cartographer":
-        result = await asyncio.to_thread(_search_codebase, pack, q, k, include_superseded)
+        result = await asyncio.to_thread(_search_codebase, pack, q, k, include_superseded, repo)
         if run_id is not None:
             try:
                 await asyncio.to_thread(_record_codebase_references, run_id, result["passages"])

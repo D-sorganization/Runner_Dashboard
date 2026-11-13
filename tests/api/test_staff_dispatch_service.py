@@ -77,11 +77,11 @@ async def test_approved_dispatch_to_a_peer_is_forwarded(
         return 200, {"dry_run": False, "run": {"id": "run_peer", "role": "ad-hoc", "status": "queued"}}
 
     monkeypatch.setattr(fleet_mod, "post_json", fake_post)
-    res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "oglaptop"})
+    res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "node-b"})
 
     assert res.success, res.error
     assert res.run_id == "run_peer"
-    assert res.result["forwarded_to"] == "OGLaptop"
+    assert res.result["forwarded_to"] == "node-b"
     assert seen["url"] == "http://og:8321/api/staff/ad-hoc/run"
     assert seen["body"]["machine"] == "local"
     assert seen["body"]["provider"] == "codex"
@@ -115,7 +115,7 @@ async def test_auto_dispatch_routes_to_peer_before_local_provider_plan(
                 "running": [],
                 "queued": [],
             },
-            "OGLaptop": {
+            "node-b": {
                 "status": "online",
                 "providers": {"codex": True, "claude": True, "antigravity": True},
                 "running": [],
@@ -129,7 +129,7 @@ async def test_auto_dispatch_routes_to_peer_before_local_provider_plan(
     res = await _execute({"role": "ad-hoc", "provider": "codex", "prompt": "hi", "machine": "auto"})
 
     assert res.success, res.error
-    assert res.result["forwarded_to"] == "OGLaptop"
+    assert res.result["forwarded_to"] == "node-b"
     assert seen["body"]["provider"] == "codex"
     assert seen["body"]["machine"] == "local"
     assert staff.store.list_runs(limit=5) == []
@@ -171,7 +171,7 @@ async def test_remote_dispatch_refuses_internal_tier_until_peer_contract_support
         provider="codex",
         model_tier="routine",
         prompt="hi",
-        machine="OGLaptop",
+        machine="node-b",
     )
     with pytest.raises(HTTPException, match="internal model_tier") as exc_info:
         await dispatch_service.dispatch_staff_run(cmd, APPROVER)
@@ -205,12 +205,9 @@ async def test_ci_fix_uses_generic_chain_when_routed_primary_is_not_installed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
-    """CI-fix keeps its route tier while the shared dispatcher selects an installed alternate."""
-    import json
-
+    """#4273: CI-fix fails closed when the routed provider is not installed on this node."""
     from ci_fix_service import CIFixDispatchRequest
     from staff import failover_dispatch
-    from staff.model_tiers import model_for_provider_tier
     from staff.provider_failover_config import resolve_failover_chain
 
     fake_codex = ProviderAdapter(
@@ -245,27 +242,23 @@ async def test_ci_fix_uses_generic_chain_when_routed_primary_is_not_installed(
     audit_path = tmp_path / "ci-fix-audit.json"
     monkeypatch.setattr(ci_fix_dispatch, "DEFAULT_AUDIT_PATH", audit_path)
 
-    result = await ci_fix_service.dispatch_ci_fix(
-        CIFixDispatchRequest(
-            repo="Runner_Dashboard",
-            pr_number=912,
-            branch="feat/ci-fallback",
-            workflow_name="Lint",
-            log_tail="ruff failed",
-        ),
-        APPROVER,
-        launcher=dispatch_service.dispatch_staff_run,
-    )
+    from ci_fix_service import CIFixLaunchUnavailableError
 
-    run = staff.store.get_run(result["staff_run_id"])
-    assert run is not None
-    assert run.provider == "claude"
-    assert run.model == model_for_provider_tier("claude", "routine")
-    assert result["launched_provider"] == run.provider
-    assert result["launched_model"] == run.model
-    audit = json.loads(audit_path.read_text(encoding="utf-8"))[0]
-    assert audit["provider"] == run.provider
-    assert audit["model"] == run.model
+    with pytest.raises(CIFixLaunchUnavailableError, match="codex"):
+        await ci_fix_service.dispatch_ci_fix(
+            CIFixDispatchRequest(
+                repo="Runner_Dashboard",
+                pr_number=912,
+                branch="feat/ci-fallback",
+                workflow_name="Lint",
+                log_tail="ruff failed",
+            ),
+            APPROVER,
+            launcher=dispatch_service.dispatch_staff_run,
+        )
+
+    assert staff.store.list_runs(limit=5) == []
+    assert audit_path.exists() is False
 
 
 @pytest.mark.unit
@@ -333,10 +326,10 @@ async def test_unreachable_peer_fails_visibly(
         raise ConnectionError("down")
 
     monkeypatch.setattr(fleet_mod, "post_json", dead_post)
-    res = await _execute({"role": "ad-hoc", "prompt": "hi", "machine": "OGLaptop"})
+    res = await _execute({"role": "ad-hoc", "prompt": "hi", "machine": "node-b"})
 
     assert not res.success and res.failure_class == "peer_unreachable"
-    assert "OGLaptop" in (res.error or "")
+    assert "node-b" in (res.error or "")
 
 
 @pytest.mark.unit
@@ -357,7 +350,7 @@ def test_command_contract_rejects_an_empty_role() -> None:
 @pytest.mark.parametrize(
     ("result", "run_id", "ok"),
     [
-        ({"forwarded_to": "OGLaptop", "dry_run": False}, "run_peer", True),
+        ({"forwarded_to": "node-b", "dry_run": False}, "run_peer", True),
         ({"forwarded_to": None, "dry_run": True}, None, True),
         ({"forwarded_to": None, "dry_run": False}, None, False),
         ({"forwarded_to": None, "dry_run": False}, "run_missing", False),

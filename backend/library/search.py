@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from knowledge_pack.pack import _TEXT_WEIGHT, _TITLE_WEIGHT, sanitize_fts_query
+from knowledge_pack.pack import _TEXT_WEIGHT, _TITLE_WEIGHT
 from library.collections import CollectionsConfig, load_collections
 from library.db import LibraryStore
+
+_MAX_FTS_QUERY_TOKENS = 32
 
 DEFAULT_BUDGET = 1500
 MAX_BUDGET = 6000
@@ -80,6 +83,16 @@ def estimate_tokens(text: str) -> int:
     return max(1, len(words) if words else (len(text) + 3) // 4)
 
 
+def sanitize_fts_query(query: str) -> str | None:
+    """Reduce ``query`` to an FTS5 MATCH expression; ``None`` when no tokens remain."""
+    if not isinstance(query, str):
+        raise TypeError("query must be a string")
+    tokens = _WORD_RE.findall(query)[:_MAX_FTS_QUERY_TOKENS]
+    if not tokens:
+        return None
+    return " OR ".join('"' + t.replace('"', "") + '"' for t in tokens)
+
+
 def library_stats(db_path: Path) -> dict[str, Any]:
     with closing(LibraryStore(db_path).connect()) as conn:
         out: dict[str, Any] = {
@@ -135,11 +148,13 @@ def search_passages(
 ) -> list[SearchHit]:
     if k < 1 or budget_tokens < 1 or budget_tokens > MAX_BUDGET:
         raise ValueError("invalid k or budget_tokens")
-    from library.hybrid_search import hybrid_enabled, hybrid_search_passages
-
     # Vector expansion currently has no source visibility filter. Shared searches
     # use the filtered lexical path until vector candidates enforce that boundary.
-    if hybrid_enabled() and not (options and options.shared_only):
+    if os.environ.get("LIBRARY_HYBRID_SEARCH", "").strip().lower() in {"1", "true", "yes", "on"} and not (
+        options and options.shared_only
+    ):
+        from library.hybrid_search import hybrid_search_passages
+
         return hybrid_search_passages(db_path, query, k=k, budget_tokens=budget_tokens, options=options)
     ranked = bm25_ranked_passages(db_path, query, k=k, options=options, collections=collections)
     return _pack_hits(ranked, budget_tokens=budget_tokens)
@@ -211,7 +226,11 @@ def fetch_passage(
     )
     params: list[Any] = [source_id, work_id, passage_id, page_start, page_end, f"{sha_prefix}%"]
     if shared_only:
-        sql += " AND s.shared=1"
+        sql += (
+            " AND s.shared=1 AND NOT EXISTS (SELECT 1 FROM library_sources s2"
+            " WHERE s2.drive_folder_id!='' AND s2.drive_folder_id=s.drive_folder_id"
+            " AND s2.status='active' AND s2.shared=0)"
+        )
     sql += " ORDER BY f.id"
     with closing(LibraryStore(db_path).connect()) as conn:
         rows = conn.execute(sql, params).fetchall()
@@ -242,6 +261,28 @@ def fetch_passage(
     )
 
 
+def _source_scope_filter(db_path: Path, opts: SearchOptions) -> tuple[set[str], set[str]]:
+    known_repos: set[str] = set()
+    disallowed: set[str] = set()
+    if not db_path.exists():
+        return known_repos, disallowed
+    with closing(LibraryStore(db_path).connect()) as conn:
+        rows = conn.execute("SELECT id, shared, status, drive_folder_id, repos FROM library_sources").fetchall()
+    unshared_fids = {str(r[3]) for r in rows if r[3] and not bool(r[1]) and str(r[2]) == "active"}
+    for sid, shared, status, fid, raw_repos in rows:
+        repos_list = [str(x).strip() for x in json.loads(raw_repos or "[]") if str(x).strip()]
+        if str(status) == "active":
+            known_repos.update(repos_list)
+        eff_shared = bool(shared) and (not fid or str(fid) not in unshared_fids)
+        if (
+            str(status) != "active"
+            or (opts.shared_only and not eff_shared)
+            or (opts.repo and repos_list and opts.repo.lower() not in {r.lower() for r in repos_list})
+        ):
+            disallowed.add(str(sid))
+    return known_repos, disallowed
+
+
 def bm25_ranked_passages(
     db_path: Path,
     query: str,
@@ -254,7 +295,8 @@ def bm25_ranked_passages(
     cfg = collections or load_collections()
     if opts.topic:
         cfg.validate_topic(opts.topic)
-    if opts.repo:
+    known_repos, disallowed_sources = _source_scope_filter(db_path, opts)
+    if opts.repo and opts.repo not in cfg.repos and opts.repo not in known_repos:
         cfg.validate_repo(opts.repo)
     match = sanitize_fts_query(query)
     if match is None:
@@ -307,16 +349,19 @@ def bm25_ranked_passages(
     with closing(LibraryStore(db_path).connect()) as conn:
         rows = conn.execute(sql, params).fetchall()
     ranked: list[SearchHit] = []
+    repo_topics = cfg.repos.get(opts.repo, frozenset()) if opts.repo else frozenset()
     for row in rows:
+        if (row[12] or "default") in disallowed_sources:
+            continue
         topics = json.loads(row[9] or "[]")
         if opts.topic and opts.topic not in topics:
             continue
         score = -float(row[11])
         if opts.repo and opts.topic is None:
-            if set(topics) & set(cfg.repo_topics(opts.repo)):
+            if set(topics) & set(repo_topics):
                 score *= _REPO_BOOST
         elif opts.repo:
-            if opts.topic in cfg.repo_topics(opts.repo):
+            if opts.topic in repo_topics:
                 score *= _REPO_BOOST
         ranked.append(
             SearchHit(

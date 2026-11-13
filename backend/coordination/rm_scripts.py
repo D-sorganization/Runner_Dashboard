@@ -62,9 +62,58 @@ def python_for_rm() -> str:
     return os.environ.get("STAFF_RM_PYTHON") or shutil.which("python3") or shutil.which("python") or "python"
 
 
+def _find_fleet_gh_wrapper_dir(env: dict[str, str] | None = None) -> Path | None:
+    e = env if env is not None else os.environ
+    if "FLEET_GH_BIN" in e:
+        candidate = Path(e["FLEET_GH_BIN"]).expanduser()
+        if candidate.is_file():
+            return candidate.parent
+    if "FLEET_GH_WRAPPER_DIR" in e:
+        candidate_dir = Path(e["FLEET_GH_WRAPPER_DIR"]).expanduser()
+        if (candidate_dir / "gh").is_file():
+            return candidate_dir
+        return None
+    for candidate_dir in (
+        Path.home() / ".local" / "bin",
+        Path.home() / ".claude" / "fleet-gh" / "bin",
+    ):
+        if (candidate_dir / "gh").is_file():
+            return candidate_dir
+    return None
+
+
+def _rm_env() -> dict[str, str]:
+    """Build subprocess env for RM scripts (Design by Contract).
+
+    Post: returned mapping is a copy of ``os.environ`` except ``GH_TOKEN`` and
+    ``GITHUB_TOKEN`` are removed when their values are not GitHub App installation
+    tokens (prefix ``ghs_``). When ``FLEET_GH_WRAPPER_DIR``, ``FLEET_GH_BIN``,
+    or a default fleet gh wrapper exists, that directory is prepended to
+    ``PATH`` and ``FLEET_GH_APP`` defaults to ``general`` if unset.
+    Token values are never logged or exposed elsewhere.
+    """
+    env = dict(os.environ)
+    for key in ("GH_TOKEN", "GITHUB_TOKEN"):
+        value = env.get(key)
+        if value is not None and not value.startswith("ghs_"):
+            del env[key]
+    wrapper_dir = _find_fleet_gh_wrapper_dir(env)
+    if wrapper_dir is not None:
+        env["PATH"] = str(wrapper_dir) + os.pathsep + env.get("PATH", "")
+        env.setdefault("FLEET_GH_APP", "general")
+    return env
+
+
 def run_argv(argv: list[str], cwd: Path, timeout: int = DEFAULT_TIMEOUT) -> ScriptResult:
     try:
-        r = subprocess.run(argv, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)  # noqa: S603
+        r = subprocess.run(
+            argv,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            env=_rm_env(),
+        )  # noqa: S603
         return ScriptResult(r.returncode, r.stdout or "", r.stderr or "")
     except (OSError, subprocess.TimeoutExpired) as exc:
         return ScriptResult(130, "", str(exc))

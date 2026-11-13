@@ -181,8 +181,16 @@ def test_ci_uses_reversible_zero_polling_runner_selector() -> None:
     assert "d-sorg-fleet" in text
     assert "gh api" not in str(picker)
     assert "gh repo list" not in str(picker)
-    for job_name in ("ci-health-check", "quality-gate", "security-scan", "tests", "tests-required"):
-        assert "needs.pick-runner.outputs.runner" in str(workflow["jobs"][job_name]["runs-on"])
+    from scripts import ci_runner_selector as selector
+
+    fast_checks_expr = selector.pick_runner_fast_checks_runs_on_expression().strip()
+    for job_name in ("quality-gate", "tests", "tests-required"):
+        assert str(workflow["jobs"][job_name]["runs-on"]).strip() == fast_checks_expr, job_name
+    go_public_pinned = ("ci-health-check", "security-scan", "changes", "lint")
+    for job_name in go_public_pinned:
+        assert workflow["jobs"][job_name]["runs-on"] == "ubuntu-latest", job_name
+    assert picker["runs-on"] == "ubuntu-latest"
+    assert "fast_checks_runner" in str(picker["outputs"])
 
 
 def test_job_level_environment_uses_pre_runner_contexts_only() -> None:
@@ -228,11 +236,15 @@ def test_docker_build_routes_public_repo_to_hosted_with_self_hosted_fallback() -
     assert "prune" not in str(job)
 
 
-def test_docker_workflow_runs_in_merge_queue() -> None:
-    """Merge-queue events must always exercise the Docker image build."""
+def test_docker_workflow_runs_on_merge_group_jobs() -> None:
+    """Merge-queue runs must execute Docker build & scan (issue #3450, tracking #2891 reversal)."""
     workflow = _workflow_yaml(DOCKER_WORKFLOW)
     triggers = workflow.get("on") or workflow.get(True) or {}
-    assert "merge_group" in triggers, "docker-build.yml must list merge_group so queue runs can build the image"
+    assert "merge_group" in triggers, "docker-build.yml keeps merge_group"
+    assert "workflow_call" in triggers, "docker-build.yml supports workflow_call"
+    for job_id in ("decide-docker-scope", "docker-image", "docker-build-scan"):
+        condition = str(workflow["jobs"][job_id].get("if", ""))
+        assert "github.event_name != 'merge_group'" not in condition, f"docker job {job_id} must not skip merge_group"
 
 
 def test_docker_pull_request_has_no_workflow_path_filter() -> None:
@@ -262,7 +274,7 @@ def test_local_only_guard_uses_reversible_public_fast_lane() -> None:
     assert "ubuntu-latest" in text
     assert "CI_RUNNER_MODE" in text
     assert "d-sorg-fleet" in text
-    assert '"anti-phantom-merge.yml"' in text
+    assert "scripts.local_only_runner_guard" in text
 
 
 def test_main_line_cap_exempts_current_legacy_frontend_baseline() -> None:
@@ -729,30 +741,10 @@ def _docker_scope_steps() -> list[dict]:
     return _workflow_yaml(DOCKER_WORKFLOW)["jobs"]["decide-docker-scope"]["steps"]
 
 
-def _docker_scope_detector_source() -> str:
-    run = next(step for step in _docker_scope_steps() if step.get("id") == "scope")["run"]
-    lines = run.splitlines()
-    start = next(i for i, line in enumerate(lines) if "<<'EOF'" in line)
-    end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == "EOF")
-    return "\n".join(lines[start + 1 : end])
-
-
-def _docker_detector_literal(name: str) -> object:
-    tree = ast.parse(_docker_scope_detector_source())
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == name for t in node.targets):
-            return ast.literal_eval(node.value)
-    raise AssertionError(f"docker scope detector does not assign {name!r}")
-
-
 def _docker_detector_selects(files: list[str]) -> bool:
-    prefixes = _docker_detector_literal("prefixes")
-    exact = _docker_detector_literal("exact")
-    assert isinstance(prefixes, tuple)
-    return any(
-        path.startswith(prefixes) or path in exact or (path.startswith("Dockerfile") and path != "Dockerfile.sample")
-        for path in files
-    )
+    from scripts.ci.docker_pr_scope import run_docker_for_paths
+
+    return run_docker_for_paths(files)
 
 
 def test_docker_scope_detector_covers_backend_changes() -> None:
@@ -770,24 +762,29 @@ def test_docker_scope_detector_skips_docs_only_pr() -> None:
 def test_docker_build_scan_gate_is_fail_closed() -> None:
     gate = _workflow_yaml(DOCKER_WORKFLOW)["jobs"]["docker-build-scan"]
     assert "always()" in str(gate.get("if", ""))
-    assert set(gate.get("needs", [])) == {"decide-docker-scope", "docker-image"}
+    assert set(gate.get("needs", [])) == {"decide-docker-scope", "docker-image", "pr-guard"}
+    run = next(step for step in gate["steps"] if step.get("name") == "Confirm Docker image gate")["run"]
+    assert "GUARD_SKIP" in run
+    assert 'if [ "$DECIDE" = "skipped" ]' in run
 
 
 def test_docker_skip_message_and_detector_agree() -> None:
+    from scripts.ci.docker_pr_scope import DOCKER_SCOPE_PREFIXES
+
     message = next(step for step in _docker_scope_steps() if step.get("name") == "Report skipped Docker validation")[
         "run"
     ]
-    prefixes = _docker_detector_literal("prefixes")
     for prefix, noun in DOCKER_SCOPE_PREFIX_NOUNS.items():
-        if prefix in prefixes:
+        if prefix in DOCKER_SCOPE_PREFIXES:
             assert noun in message
 
 
-def test_ci_nightly_suppresses_empty_marker_exit_code() -> None:
-    """CI Nightly must handle pytest exit code 5 gracefully when no tests match marker."""
+def test_ci_nightly_fails_on_empty_selection_and_verifies_executed_cases() -> None:
+    """CI Nightly must not go green when nothing is selected or everything skips (#3776)."""
     nightly_workflow = ROOT / ".github" / "workflows" / "ci-nightly.yml"
     assert nightly_workflow.exists()
     content = nightly_workflow.read_text(encoding="utf-8")
-    assert "status=$?" in content
-    assert "if [ $status -eq 5 ]; then" in content
-    assert "exit 0" in content
+    assert "if [ $status -eq 5 ]; then" not in content
+    assert "continuing successfully" not in content
+    assert "--junitxml=nightly-junit.xml" in content
+    assert "python scripts/ci/check_junit_executed.py nightly-junit.xml" in content

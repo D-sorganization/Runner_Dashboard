@@ -32,7 +32,7 @@ plan_epic: null
 planner_profile_id: planner-strong
 executor_profile_id: claude-3-7-sonnet
 requester:
-  id: dieterolson
+  id: fleet-operator
   kind: human
 standards:
   - tdd
@@ -92,7 +92,11 @@ All endpoints are mounted on `/api/code-requests`:
   {
     "requests": [ ... ],
     "total": 1,
-    "dispatchTarget": { "workflow": "...", "available": true, "detail": "" }
+    "dispatchTarget": {
+      "workflow": "Agent-Quick-Dispatch.yml",
+      "available": true,
+      "detail": ""
+    }
   }
 ````
 

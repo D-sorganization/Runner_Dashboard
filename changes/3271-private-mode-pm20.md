@@ -1,0 +1,1 @@
+Add Private Mode PM-20 chaos/stall suite (`backend/private_mode_chaos.py`, `tests/test_private_mode_chaos.py`) covering `pool_down`, `policy_deny`, `key_missing`, `audit_down`, and `overlay_invalid` with visible parked states, `emit_shared('alerts', ...)` canary verification, `PUBLIC` throughput tolerance checks, and flag-off no-op behaviour (#3271).

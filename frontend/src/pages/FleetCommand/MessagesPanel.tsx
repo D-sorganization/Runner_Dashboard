@@ -246,7 +246,13 @@ export function MessagesPanel({ target }: MessagesPanelProps) {
             onChange={(e) => setText(e.target.value)}
           />
           <div className="fleet-cmd__row">
-            <TouchButton type="submit" variant="primary" disabled={!canSend}>
+            <TouchButton
+              type="submit"
+              variant="primary"
+              disabled={!canSend}
+              aria-label={busy ? "Sending fleet message" : "Send fleet message"}
+              title={busy ? "Sending fleet message" : "Send fleet message"}
+            >
               {busy ? "Sending..." : "Send"}
             </TouchButton>
             <span className="staff-muted">

@@ -55,6 +55,9 @@ LOGIN_COMMANDS: dict[str, str] = {
     "cursor-agent": "cursor-agent login",
     "antigravity": "agy",
     "gemini": "gemini login",
+    "grok": "grok login --device-auth",
+    "grok_cli": "grok login --device-auth",
+    "grok-cli": "grok login --device-auth",
     "ollama": "systemctl --user start ollama",
     "claude-ollama": "systemctl --user start ollama",
 }
@@ -84,6 +87,65 @@ CLI_OUTDATED_RE = re.compile(
     r"^\s*error: (?:unknown option|unknown argument|unrecognized arguments?|unexpected argument).*$",
     re.IGNORECASE | re.MULTILINE,
 )
+
+_ERROR_LINE_MARKERS = (
+    "error",
+    "fatal",
+    "failed",
+    "rate limit",
+    "too many requests",
+    "quota",
+    "usage limit",
+    "exceeded",
+    "resource_exhausted",
+    "overloaded",
+    "http 4",
+    "http 5",
+    "stderr",
+)
+
+
+def error_exit_stream_for_classification(*, error_message: str = "", output_text: str = "") -> str:
+    """Lines that look like provider errors — not echoed prompt/tool output (#4272)."""
+    chunks: list[str] = []
+    if error_message.strip():
+        chunks.append(error_message.strip())
+    for raw_line in (output_text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lower = line.lower()
+        if any(marker in lower for marker in _ERROR_LINE_MARKERS):
+            chunks.append(line)
+    return "\n".join(chunks)
+
+
+_ADAPTER_STATUS_MARKERS = (
+    "at capacity",
+    "overloaded",
+    "usage limit",
+    "quota",
+    "resource_exhausted",
+)
+
+
+def adapter_classification_stream(*, error_message: str = "", output_text: str = "") -> str:
+    """Error stream plus provider capacity/quota lines that omit generic error markers."""
+    stream = error_exit_stream_for_classification(error_message=error_message, output_text=output_text)
+    if stream.strip():
+        return stream
+    extra: list[str] = []
+    for raw_line in (output_text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        lower = line.lower()
+        if any(marker in lower for marker in _ADAPTER_STATUS_MARKERS):
+            extra.append(line)
+    if not extra:
+        return stream
+    return "\n".join(extra)
+
 
 UPGRADE_COMMANDS: dict[str, str] = {
     "claude": "npm install -g @anthropic-ai/claude-code@latest",
@@ -205,6 +267,8 @@ def classify_run_failure(
 
     combined = f"{error_message}\n{output_text}".strip()
     lower = combined.lower()
+    error_stream = error_exit_stream_for_classification(error_message=error_message, output_text=output_text)
+    error_lower = error_stream.lower()
 
     if any(pat in lower for pat in ENVIRONMENT_ERROR_PATTERNS):
         detail = _extract_last_line_text(output_text) or error_message or "sandbox/environment failure"
@@ -234,7 +298,10 @@ def classify_run_failure(
             error=NO_RESULT_ERROR,
         )
 
-    adapter_row = adapter_failure_classification(provider, combined)
+    adapter_row = adapter_failure_classification(
+        provider,
+        adapter_classification_stream(error_message=error_message, output_text=output_text),
+    )
     if adapter_row is not None:
         fc, retryable, remediation, error = adapter_row
         return FailureClassification(
@@ -309,6 +376,7 @@ def classify_run_failure(
         "auth error",
         "invalid api key",
         "cursor-agent login",
+        "grok login",
         "authentication failed",
     )
     if any(pat in lower for pat in auth_patterns):
@@ -340,9 +408,8 @@ def classify_run_failure(
             error=detail,
         )
 
-    # 5. Rate limits
+    # 5. Rate limits (error stream only — never tool/prompt echoes)
     rate_patterns = (
-        "429",
         "rate limit",
         "rate_limit_exceeded",
         "too many requests",
@@ -350,7 +417,12 @@ def classify_run_failure(
         "resource_exhausted",
         "quota exceeded",
     )
-    if "disk quota" not in lower and any(pat in lower for pat in rate_patterns):
+    from staff.adapter_failure import _rate_limit_signal  # noqa: PLC0415
+
+    rate_hit = _rate_limit_signal(error_lower) or (
+        "disk quota" not in error_lower and any(pat in error_lower for pat in rate_patterns)
+    )
+    if rate_hit:
         return FailureClassification(
             failure_class="rate_limited",
             retryable=True,

@@ -24,6 +24,7 @@ import base64
 import io
 import json
 import logging
+import os
 import platform
 import re
 import shlex
@@ -39,6 +40,7 @@ from typing import Any
 DEPLOY_DIR = Path(__file__).resolve().parent
 REPO_ROOT = DEPLOY_DIR.parent
 DEFAULT_WORKSTATIONS = REPO_ROOT / "config" / "storage-gc-workstations.json"
+LOCAL_WORKSTATIONS_PATH = Path("~/.config/runner-dashboard/storage-gc-workstations.json").expanduser()
 PAYLOAD_FILES = ("install-storage-gc.sh", "runner-cleanup.sh")
 PROFILES = ("runner", "workstation")
 DEFAULT_RUNNER_USER = "dieterolson"
@@ -134,12 +136,33 @@ def hosts_from_workstations(entries: Iterable[dict[str, Any]]) -> list[Host]:
     return hosts
 
 
-def load_workstations(path: Path) -> list[Host]:
-    data = json.loads(path.read_text(encoding="utf-8"))
+def resolve_storage_gc_workstations_source(path: str | Path | None) -> tuple[Path, str]:
+    """Pick the workstations file and report which source supplied it.
+
+    Order: explicit ``path`` argument, then ``$STORAGE_GC_WORKSTATIONS_PATH``,
+    then the local operator config, then the shipped default — mirrors
+    :func:`machine_registry.resolve_registry_source` so the two real hostnames
+    this file still carries (#3475, part of #3461) can live outside the repo
+    instead of forcing an unsanitizable shipped file (DRY: one override pattern).
+    """
+
+    if path is not None:
+        return Path(path), "explicit"
+    env_path = os.environ.get("STORAGE_GC_WORKSTATIONS_PATH", "").strip()
+    if env_path:
+        return Path(env_path), "env"
+    if LOCAL_WORKSTATIONS_PATH.is_file():
+        return LOCAL_WORKSTATIONS_PATH, "local"
+    return DEFAULT_WORKSTATIONS, "shipped"
+
+
+def load_workstations(path: Path | None) -> list[Host]:
+    resolved, _source = resolve_storage_gc_workstations_source(path)
+    data = json.loads(resolved.read_text(encoding="utf-8"))
     return hosts_from_workstations(data["workstations"])
 
 
-def load_inventory(registry_path: Path | None, workstations_path: Path, runner_user: str) -> list[Host]:
+def load_inventory(registry_path: Path | None, workstations_path: Path | None, runner_user: str) -> list[Host]:
     sys.path.insert(0, str(REPO_ROOT / "backend"))
     from machine_registry import load_machine_registry  # noqa: PLC0415 - backend is not a package
 
@@ -309,7 +332,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="show what the installer would change")
     parser.add_argument("--runner-user", default=DEFAULT_RUNNER_USER)
     parser.add_argument("--registry", type=Path, default=None, help="machine registry (default: backend's)")
-    parser.add_argument("--workstations", type=Path, default=DEFAULT_WORKSTATIONS)
+    parser.add_argument("--workstations", type=Path, default=None, help="workstations config (default: resolved)")
     parser.add_argument("--show-output", action="store_true", help="print each host's full installer output")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(message)s")

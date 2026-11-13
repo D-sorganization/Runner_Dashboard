@@ -463,26 +463,26 @@ def _extract_epub(raw: bytes) -> tuple[str | None, str | None, list[tuple[str, s
 
 
 def ingest_sources(
-    db_path: Path | None = None, *, max_files: int | None = None
+    db_path: Path | None = None, *, max_files: int | None = None, drive_client: Any = None
 ) -> dict[str, dict[str, int | bool | str | None]]:
-    db = init_library_db(db_path)
+    from library.gdrive_ingest import ingest_gdrive_source
+
+    db, results = init_library_db(db_path), {}
     seed_default_source(db)
-    results: dict[str, dict[str, int | bool | str | None]] = {}
     with closing(LibraryStore(db).connect()) as conn:
-        sources = conn.execute(
-            "SELECT id, root_path, last_ingest_path FROM library_sources WHERE status='active' ORDER BY id"
-        ).fetchall()
+        sql = "SELECT id, root_path, last_ingest_path FROM library_sources WHERE status='active' ORDER BY id"
+        sources = conn.execute(sql).fetchall()
     for source_id, root_path, last_ingest_path in sources:
-        p = Path(root_path)
-        if not p.is_dir():
+        if str(root_path).startswith("gdrive://"):
+            results[source_id] = ingest_gdrive_source(db, source_id, drive_client, max_files, last_ingest_path)
+            continue
+        if not (p := Path(root_path)).is_dir():
             continue
         stats = ingest_directory(p, db_path=db, source_id=source_id, max_files=max_files, start_after=last_ingest_path)
         results[source_id] = stats
         with closing(LibraryStore(db).connect()) as conn:
-            conn.execute(
-                "UPDATE library_sources SET last_ingest_at=?, last_ingest_path=? WHERE id=?",
-                (datetime.now(UTC).isoformat(), stats["next_cursor"], source_id),
-            )
+            u = "UPDATE library_sources SET last_ingest_at=?, last_ingest_path=? WHERE id=?"
+            conn.execute(u, (datetime.now(UTC).isoformat(), stats["next_cursor"], source_id))
             conn.commit()
     return results
 

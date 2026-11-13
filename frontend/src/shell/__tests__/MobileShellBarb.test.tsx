@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { MobileShell } from "../MobileShell";
+
+// MobileShell mounts BarbSidebar through React.lazy. Preload it so tests
+// check sidebar behaviour, not cold-import latency on a busy runner (#2774).
+beforeAll(async () => {
+  await import("../BarbSidebar");
+});
 
 const mockUseStaffConsole = vi.hoisted(() => vi.fn());
 vi.mock("../../pages/StaffConsole/useStaffConsole", () => ({

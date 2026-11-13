@@ -1,18 +1,29 @@
-"""Retired legacy dispatch routes returning HTTP 410 Gone (SC-G5-6 / #1503)."""
+"""Retired legacy dispatch routes returning HTTP 410 Gone (SC-G5-6 / #1503).
+
+Sunset: routes stay mounted until ``RETIRED_ROUTE_REMOVAL_AFTER`` (see
+``retired_route_sunset``); ``tests/test_retired_route_sunset.py`` fails after that date
+so handlers and OpenAPI entries are removed together.
+"""
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from identity import Principal, require_scope
+from retired_route_sunset import RETIRED_ROUTE_HTTP_SUNSET
 
 router = APIRouter(tags=["remediation"])
 
-SUNSET_DATE = "Wed, 25 Sep 2026 00:00:00 GMT"
+SUNSET_DATE = RETIRED_ROUTE_HTTP_SUNSET
 SUCCESSOR_URL = "/api/v1/staff/requests"
 
 
-@router.post("/api/agents/quick-dispatch", response_model=None, status_code=410)
+@router.post(
+    "/api/agents/quick-dispatch",
+    response_model=None,
+    status_code=410,
+    include_in_schema=False,
+)
 async def api_quick_dispatch(
     request: Request,
     *,
@@ -41,7 +52,11 @@ async def api_quick_dispatch(
     )
 
 
-@router.post("/api/agent-remediation/dispatch-jules", status_code=410)
+@router.post(
+    "/api/agent-remediation/dispatch-jules",
+    status_code=410,
+    include_in_schema=False,
+)
 async def dispatch_jules_workflow(
     request: Request,
     *,

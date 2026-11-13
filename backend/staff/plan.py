@@ -6,11 +6,15 @@ Precondition: Requests and plans are structured dataclasses with explicit LoD bo
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import MISSING, dataclass, field, fields, replace
+from typing import TYPE_CHECKING, Any
+from unittest.mock import MagicMock, Mock
 
 from staff import consolidation
 from staff.model_tiers import validate_role_tier
+
+if TYPE_CHECKING:
+    from staff.dispatch_bundle import DispatchBundle
 
 _SAFE_BRANCH = re.compile(r"^[A-Za-z0-9._/-]{1,200}$")
 
@@ -37,6 +41,8 @@ class RunRequest:
     consolidation: dict[str, Any] | None = None
     origin_node: str = ""
     pr_lifecycle: str = "arm_and_exit"
+    # Explicit operator PR restrictions (RM#2712); resolved by ``staff.lifecycle_fence``.
+    pr_restrictions: tuple[str, ...] = ()
     # Existing branch the worktree starts from instead of origin/main (RD-1 CI fixes, #1881).
     head_ref: str = ""
     task_type: str = ""
@@ -44,6 +50,9 @@ class RunRequest:
     # When set, must exist in the skills registry (#2157); omit to use role/repo matching + fallback.
     requested_skill: str | None = None
     execution_mode: str = "local"
+    dispatch_origin: str = ""
+    # Barb lane dispatch: skip per-role repo allowlist when planning (#4117).
+    barb_bypass_role_repos: bool = False
 
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):
@@ -84,9 +93,15 @@ class RunPlan:
     work_item_id: str = ""
     origin_node: str = ""
     pr_lifecycle: str = "arm_and_exit"
+    # Operator PR restrictions behind ``pr_lifecycle`` (RM#2712); re-resolved at execute time
+    # so the fence is re-derived (not just stored text) and still fails closed (#4156).
+    pr_restrictions: tuple[str, ...] = ()
     head_ref: str = ""
     model_tier: str = ""
     skill_pin: str = ""
+    # Planning-time dispatch bundle and library block; required when ``_execute`` recomposes the prompt (#4266 A-03).
+    dispatch_bundle: DispatchBundle | None = None
+    library_references: str = ""
     standards_version: str = ""
     standards_tokens: int = 0
     context_stamp: str = "{}"
@@ -109,6 +124,10 @@ class RunPlan:
     @property
     def issue_number(self) -> str:
         return self.target_ref.lstrip("#") if self.target_kind == "issue" else ""
+
+    def derive(self, **overrides: Any) -> RunPlan:
+        """Copy this plan, applying only the fields that change on retry/failover (#4259)."""
+        return derive_run_plan(self, **overrides)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -137,3 +156,36 @@ class RunPlan:
             "lessons_tokens": self.lessons_tokens,
             "execution_mode": self.execution_mode,
         }
+
+
+def _run_plan_field_default(fld: Any) -> Any:
+    if fld.default is not MISSING:
+        return fld.default
+    if fld.default_factory is not MISSING:
+        return fld.default_factory()
+    msg = f"RunPlan field {fld.name!r} has no default"
+    raise TypeError(msg)
+
+
+def _is_unset_mock(value: object) -> bool:
+    return isinstance(value, (MagicMock, Mock))
+
+
+def derive_run_plan(plan: object, **overrides: Any) -> RunPlan:
+    """Derive a :class:`RunPlan` from a plan or any legacy plan-shaped caller object (#4259)."""
+    if isinstance(plan, RunPlan):
+        return replace(plan, **overrides)
+    values: dict[str, Any] = {}
+    for fld in fields(RunPlan):
+        if fld.name in overrides:
+            continue
+        if hasattr(plan, fld.name):
+            val = getattr(plan, fld.name)
+            values[fld.name] = _run_plan_field_default(fld) if _is_unset_mock(val) else val
+        else:
+            values[fld.name] = _run_plan_field_default(fld)
+    values.update(overrides)
+    argv = values.get("argv")
+    if not isinstance(argv, list):
+        values["argv"] = list(argv or [])
+    return RunPlan(**values)

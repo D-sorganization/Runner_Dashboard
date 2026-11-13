@@ -15,7 +15,10 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
+import threading
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -23,12 +26,23 @@ from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field
 from staff.audit import record_audit
 from staff.holds import MAX_TEXT
+from staff.model_tiers import validate_role_model
 from staff.models import (
     StaffHoldsResponse,
     StaffScheduleResponse,
     StaffScheduleToggleResponse,
 )
 from staff.scheduler import get_scheduler
+from staff.scheduler_pause import emit_pause_expired_alert, evaluate_pause
+
+# Production (start-dashboard.sh) and the E2E harness both launch server.py with only
+# backend/ on sys.path; the repo-root scripts package needs this explicit shim (#3311
+# follow-up, reused here for the #3295 S2 role-model-override "one fyi" notification).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from scripts.rd_barb_notify import persona_notify  # noqa: E402
 
 log = logging.getLogger("dashboard.staff.schedule")
 router = APIRouter(prefix="/api/staff", tags=["staff"])
@@ -65,20 +79,35 @@ def scheduler_enabled() -> bool:
     )
 
 
+_bootstrap_thread: threading.Thread | None = None
+
+
 def start_scheduler() -> None:
     """Reconcile orphaned staff runs and start the background ticker once. Called by ``server.py`` on startup."""
-    try:
-        from staff.reconcile import reconcile_orphaned_runs
-        from staff.runner import get_runner
-
-        reconcile_orphaned_runs(get_runner())
-    except Exception as exc:  # noqa: BLE001
-        log.exception("Failed to reconcile orphaned staff runs on startup: %s", exc)
-
-    if not scheduler_enabled():
+    global _bootstrap_thread  # noqa: PLW0603
+    enabled = scheduler_enabled()
+    if not enabled:
         log.info("staff scheduler disabled by %s", SCHEDULER_ENABLED_ENV)
-        return
-    get_scheduler().start()
+        try:
+            emit_pause_expired_alert()
+        except Exception as exc:  # noqa: BLE001 — pause watchdog must not block bootstrap
+            log.exception("staff scheduler pause watchdog failed: %s", exc)
+    sched = get_scheduler() if enabled else None
+
+    def _reconcile_then_start() -> None:
+        try:
+            from staff.reconcile import reconcile_orphaned_runs
+            from staff.runner import get_runner
+
+            reconcile_orphaned_runs(get_runner(), requeue_queued=True)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Failed to reconcile orphaned staff runs on startup: %s", exc)
+        if sched is not None:
+            sched.start()
+
+    thread = threading.Thread(target=_reconcile_then_start, name="staff-scheduler-bootstrap", daemon=True)
+    _bootstrap_thread = thread
+    thread.start()
 
 
 def current_holds() -> list[dict[str, Any]]:
@@ -99,13 +128,34 @@ def schedule_snapshot() -> dict[str, Any]:
     """Per role: next fire, window, blocking hold, budget, last fired; shared by both route versions."""
     sched = get_scheduler()
     now = datetime.now(UTC)
+    enabled = scheduler_enabled()
+    roles = sched.status(now)
+    pause = evaluate_pause(enabled, now)
+    from staff.schedule_placement import load_placements, schedule_inventory  # noqa: PLC0415
+
+    placements = load_placements()
+    inventory = schedule_inventory(sched.runner.machine, sched.runner.roles(), placements=placements)
+    if not enabled:
+        for row in roles:
+            row["enabled"] = False
+            row["next_fire"] = None
+            row["hold"] = f"inactive on this node: {SCHEDULER_ENABLED_ENV}=0"
+    if pause.applies:
+        try:
+            emit_pause_expired_alert(now)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("staff scheduler pause watchdog failed: %s", exc)
     return {
         "machine": sched.runner.machine,
         "generated_at": now.isoformat().replace("+00:00", "Z"),
-        "enabled": scheduler_enabled(),
+        "enabled": enabled,
         "running": sched.running,
         "tick_seconds": sched.tick_seconds,
-        "roles": sched.status(now),
+        "leader_lease": sched.leader_status(now),
+        "pause": pause.to_dict(),
+        "placements": placements,
+        "inventory": inventory,
+        "roles": roles,
     }
 
 
@@ -137,6 +187,11 @@ async def put_holds(body: HoldsBody, caller: Principal = Depends(require_scope("
 
 class ScheduleToggleBody(BaseModel):
     enabled: bool
+
+
+class LeaderLeaseBody(BaseModel):
+    machine: str = Field(min_length=1, max_length=80)
+    ttl_seconds: float | None = Field(default=None, gt=0, le=3600)
 
 
 @router.post(
@@ -172,6 +227,113 @@ async def get_schedule(
     _peer: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     return schedule_snapshot()
+
+
+class SchedulePlacementBody(BaseModel):
+    host: str = Field(min_length=1, max_length=80)
+
+
+@router.put("/schedule/placements/{role}")
+async def put_schedule_placement(
+    role: str,
+    body: SchedulePlacementBody,
+    caller: Principal = Depends(require_scope("staff.admin")),
+) -> dict[str, Any]:
+    """Pin a role's scheduled runs to a fleet machine (#3901)."""
+    from staff.schedule_placement import load_placements, save_placements  # noqa: PLC0415
+
+    sched = get_scheduler()
+    roles = sched.runner.roles()
+    if role not in roles:
+        raise HTTPException(status_code=404, detail=f"role '{role}' not found")
+    placements = load_placements()
+    placements[role] = body.host.strip()
+    try:
+        save_placements(placements, roles=roles)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    caller_str = format_caller(caller)
+    record_audit(
+        action="schedule_placement",
+        target=role,
+        principal=caller_str,
+        surface="api",
+        outcome="success",
+        detail={"role": role, "host": body.host.strip()},
+        fail_closed=True,
+    )
+    return {"role": role, "host": body.host.strip()}
+
+
+class MigrateScheduleOffHostBody(BaseModel):
+    source_host: str = Field(min_length=1, max_length=80)
+    targets: list[str] = Field(min_length=1, max_length=8)
+    dry_run: bool = False
+
+
+@router.post("/schedule/migrate-off-host")
+def migrate_schedule_off_host(
+    body: MigrateScheduleOffHostBody,
+    caller: Principal = Depends(require_scope("staff.admin")),
+) -> dict[str, Any]:
+    """Drop retired/dead placements on ``source_host`` and re-home live roles (#3901)."""
+    from machine_registry import load_machine_registry  # noqa: PLC0415
+    from staff.schedule_placement import (  # noqa: PLC0415
+        load_placements,
+        migrate_placements_off_host,
+        purge_schedule_role_state,
+        save_placements,
+    )
+
+    sched = get_scheduler()
+    roles = sched.runner.roles()
+    targets = tuple(t.strip() for t in body.targets if t.strip())
+    if not targets:
+        raise HTTPException(status_code=422, detail="targets must include at least one non-empty host name")
+    source = body.source_host.strip()
+    if not source:
+        raise HTTPException(status_code=422, detail="source_host must be non-empty")
+    placements = load_placements()
+    try:
+        result = migrate_placements_off_host(
+            source,
+            roles=roles,
+            placements=placements,
+            state={},
+            registry=load_machine_registry(),
+            targets=targets,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if body.dry_run:
+        return {"dry_run": True, "removed": list(result.removed_roles), "moved": list(result.moved)}
+    try:
+        save_placements(placements, roles=roles)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    purge_schedule_role_state(sched, result.removed_roles)
+    record_audit(
+        action="schedule_migrate_off_host",
+        target=source,
+        principal=format_caller(caller),
+        surface="api",
+        outcome="success",
+        detail={"removed": list(result.removed_roles), "moved": list(result.moved), "targets": list(targets)},
+        fail_closed=True,
+    )
+    return {"removed": list(result.removed_roles), "moved": list(result.moved)}
+
+
+@router.post("/schedule/leader-lease", response_model_exclude_none=True)
+async def post_leader_lease(
+    body: LeaderLeaseBody,
+    _peer: Principal = Depends(require_scope("staff.dispatch")),
+) -> dict[str, Any]:
+    """Acquire or renew the scheduler leader lease (fleet peer internal contract)."""
+    # The holder decides which host submits scheduled runs, so this needs ``staff.dispatch``
+    # (which fleet peers carry), never the read scope (#4274 D-13).
+    sched = get_scheduler()
+    return sched.acquire_leader_lease(body.machine, now=datetime.now(UTC), ttl_seconds=body.ttl_seconds)
 
 
 v1_router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
@@ -214,4 +376,68 @@ async def put_role_schedule(
         "next_fire": report.get("next_fire"),
         "reason": body.reason,
         "status": "enabled" if body.enabled else "disabled",
+    }
+
+
+class RoleModelOverrideBody(BaseModel):
+    model: str | None = Field(default=None, max_length=200)
+    reason: str = Field(default="", max_length=500)
+
+
+@v1_router.put("/roles/{role}/model")
+@router.put("/roles/{role}/model")
+async def put_role_model(
+    role: str,
+    body: RoleModelOverrideBody,
+    caller: Principal = Depends(require_scope("staff.holds.write")),
+) -> dict[str, Any]:
+    """Audited runtime model-selector override for a role (epic #3295 S2).
+
+    The YAML ``failover_chain``/``model`` stays the default; this persists an
+    operator override on top of it, one audit row and one persona fyi per switch.
+    """
+    sched = get_scheduler()
+    roles = sched.runner.roles()
+    if role not in roles:
+        raise HTTPException(status_code=404, detail=f"role '{role}' not found")
+    role_spec = roles[role]
+    model = body.model.strip() if body.model else None
+    if model:
+        provider_id = role_spec.providers[0] if role_spec.providers else "claude"
+        problems = validate_role_model(provider_id, model)
+        if problems:
+            raise HTTPException(status_code=422, detail="; ".join(problems))
+
+    previous = sched.role_model_override(role)
+    sched.set_role_model_override(role, model)
+    caller_str = format_caller(caller)
+    record_audit(
+        action="role_model_override",
+        target=role,
+        principal=caller_str,
+        surface="api_v1",
+        outcome="success",
+        detail={"role": role, "model": model, "previous": previous, "reason": body.reason},
+        fail_closed=True,
+    )
+    try:
+        persona_notify(
+            role,
+            {
+                "kind": "fyi",
+                "text": (
+                    f"{role}: model override {previous or 'default'} -> {model or 'default'}"
+                    f" ({body.reason or 'no reason given'})"
+                ),
+            },
+        )
+    except Exception:  # noqa: BLE001 — a notify failure must not block a recorded override
+        log.exception("persona_notify failed for role model override %s", role)
+    return {
+        "role": role,
+        "model": model,
+        "previous": previous,
+        "effective_model": model or role_spec.model,
+        "reason": body.reason,
+        "status": "overridden" if model else "cleared",
     }

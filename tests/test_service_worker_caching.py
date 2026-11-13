@@ -32,7 +32,7 @@ def test_api_contract_covers_sensitive_dashboard_prefixes() -> None:
         "/api/runs",
         "/api/queue",
         "/api/agents/worker-1",
-        "/api/maxwell/tasks",
+        "/api/v1/staff/threads",
         "/api/fleet/orchestration",
     ]
     for path in protected_paths:

@@ -19,6 +19,7 @@ _INVALID_BEARER = {"Authorization": "Bearer not-a-real-token"}
 def holds_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("STAFF_HOLDS_FILE", str(tmp_path / "holds.json"))
     monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
+    monkeypatch.setenv("DASHBOARD_HOST", "127.0.0.1")
     monkeypatch.delenv("DASHBOARD_LOOPBACK_OPERATOR_WRITES", raising=False)
     from server import app  # noqa: PLC0415
 
@@ -30,6 +31,7 @@ def holds_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Te
 def directives_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     monkeypatch.setenv("STAFF_DIRECTIVES_FILE", str(tmp_path / "directives.json"))
     monkeypatch.setenv("DASHBOARD_LOOPBACK_AUTH", "1")
+    monkeypatch.setenv("DASHBOARD_HOST", "127.0.0.1")
     monkeypatch.delenv("DASHBOARD_LOOPBACK_OPERATOR_WRITES", raising=False)
     from server import app  # noqa: PLC0415
 

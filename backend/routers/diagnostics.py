@@ -228,7 +228,8 @@ def generate_markdown_artifact_content(summary: dict[str, Any]) -> str:
     # Git
     lines.append("## Git Metadata")
     lines.append(f"- Commit: `{summary.get('git_commit', 'unknown')}`")
-    lines.append(f"- Drifted: `{summary.get('is_drifted', False)}`")
+    drifted_val = summary.get("is_drifted")
+    lines.append(f"- Drifted: {chr(96)}{'unknown' if drifted_val is None else drifted_val}{chr(96)}")
     if summary.get("drift_details"):
         lines.append("### Drift Details")
         lines.append("```")
@@ -485,7 +486,8 @@ async def get_diagnostics_summary() -> dict:
     except Exception as e:  # noqa: BLE001
         if isinstance(e, (KeyboardInterrupt, SystemExit)):
             raise
-        summary["is_drifted"] = False
+        log.warning("Failed to probe git drift: %s", e)
+        summary["is_drifted"] = None
 
     # Host recovery & WSL lifecycle (Issue #1067)
     try:

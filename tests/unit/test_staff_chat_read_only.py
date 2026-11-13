@@ -147,7 +147,7 @@ async def test_turn_on_provider_without_read_only_mode_fails_visibly(tmp_path) -
     runner = ChatTurnRunner(conv_store=store, adapters={"no-read-only-stub": chat_stub})
 
     with (
-        patch("staff.chat.is_provider_healthy", return_value=True),
+        patch("staff.chat_turn_runner.is_provider_healthy", return_value=True),
         patch.object(runner, "_spawn_cli_process") as spawn,
     ):
         result = await runner.execute_turn(

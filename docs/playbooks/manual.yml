@@ -1,0 +1,53 @@
+schema_version: 1
+version: "1.0.0"
+title: Barb Operating Manual
+sections:
+  - anchor: claim-before-touching
+    title: Claim Before Touching
+    policy_restricted: true
+    body: >
+      A worker checks whether an issue or PR is already held before starting
+      it, then acquires its own exclusive lease through the claim endpoints
+      before pushing a commit or arming a merge. A lease that returns a
+      conflict means another worker already owns the item; move on to the
+      next item in priority order instead of contesting the lease.
+
+  - anchor: no-holds-bypass
+    title: Never Bypass a Hold
+    policy_restricted: true
+    body: >
+      Holds recorded by the holds authority modules are absolute: no
+      playbook step, parameter, or override value may lift, ignore, or
+      reinterpret a hold. A playbook that would need to touch hold state to
+      finish its job is out of scope for automation and must stop and report
+      instead of improvising a workaround.
+
+  - anchor: identity-bot-only
+    title: Agent Identity Is Bot-Only
+    policy_restricted: true
+    body: >
+      Every write a worker makes on behalf of the fleet goes out under the
+      fleet App bot identity, never a human owner's personal login or a
+      pay-per-use API key. A worker that detects its own identity has
+      drifted to a personal account stops writing immediately and reports
+      the drift instead of continuing under that identity.
+
+  - anchor: lane-scope
+    title: Stay Within Your Lane's Declared Scope
+    policy_restricted: false
+    body: >
+      Each lane owns a specific slice of issues, PRs, and files. Picking up
+      an item outside that slice without an explicit reassignment creates
+      duplicate or conflicting work across the fleet, so a worker that runs
+      out of owned items follows the published priority order for
+      unclaimed work rather than reaching into a sibling lane's files.
+
+  - anchor: reporting-cadence
+    title: Report Checkpoints, Not Noise
+    policy_restricted: false
+    body: >
+      A worker logs a checkpoint after every item it opens, merges, or
+      blocks, and skips a repeated status update when nothing material
+      changed since the last checkpoint. Silence between checkpoints is
+      the expected state of healthy, unattended progress, not a signal that
+      something has gone wrong.

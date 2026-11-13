@@ -29,6 +29,7 @@ def _workflow_run(
     prs: list[dict[str, Any]] | None = None,
     head_branch: str = "feat/x",
     event: str = "pull_request",
+    head_sha: str = "deadbeef",
 ) -> dict[str, Any]:
     return {
         "action": "completed",
@@ -39,6 +40,7 @@ def _workflow_run(
             "event": event,
             "conclusion": conclusion,
             "head_branch": head_branch,
+            "head_sha": head_sha,
             "pull_requests": [{"number": 42, "head": {"ref": "feat/x"}, "base": {"ref": "main"}}]
             if prs is None
             else prs,
@@ -93,11 +95,19 @@ def test_parse_merge_group_failure_recovers_pr_from_queue_ref() -> None:
     assert event.base_ref == "main"
 
 
-@pytest.mark.parametrize("conclusion", ["success", "cancelled", "skipped"])
+@pytest.mark.parametrize("conclusion", ["success", "skipped"])
 def test_parse_ignores_non_failures(conclusion: str) -> None:
     event, reason = parse_github_event("workflow_run", _workflow_run(conclusion=conclusion))
     assert event is None
     assert conclusion in reason
+
+
+def test_parse_accepts_cancelled_run_with_head_sha() -> None:
+    """#2766 item 1: a cancelled run is parsed (eligibility is judged downstream by head SHA)."""
+    event, reason = parse_github_event("workflow_run", _workflow_run(conclusion="cancelled", head_sha="abc123"))
+    assert event is not None, reason
+    assert event.conclusion == "cancelled"
+    assert event.head_sha == "abc123"
 
 
 def test_parse_ignores_run_without_pr() -> None:

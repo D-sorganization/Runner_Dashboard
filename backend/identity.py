@@ -34,6 +34,8 @@ class Principal(BaseModel):
     roles: list[str] = []
     scopes: list[str] = []
     assistant_kind: str | None = None  # grokbot | codex | claude | other (config/agent_principals.yml)
+    inbox_webhook_url: str | None = None  # optional off-tailnet push target (#3682 slice 4)
+    inbox_roles: list[str] = Field(default_factory=list)  # agent-bus role addresses; defaults from id
     github_username: str | None = None
     email: str | None = None
     quotas: Quota = Field(default_factory=Quota)
@@ -198,23 +200,40 @@ class IdentityManager:
         self.save_tokens()
 
     def verify_token(self, raw_token: str) -> Principal | None:
+        principal, _reason = self.resolve_bearer_token(raw_token)
+        return principal
+
+    def resolve_bearer_token(self, raw_token: str) -> tuple[Principal | None, str | None]:
+        """Resolve a bearer token or return ``(None, reason_code)`` without logging secrets."""
         import hashlib
+
+        from staff.run_jwt_service import run_jwt_bearer_gate
+
+        jwt_reason = run_jwt_bearer_gate(raw_token)
+        if jwt_reason:
+            return None, jwt_reason
 
         token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
-        # Ephemeral run tokens (issue #1310, SC-E2)
         e_rec = self._ephemeral_tokens.get(token_hash)
         if e_rec is not None:
             if e_rec.expires_at and time.time() > e_rec.expires_at:
-                return None
-            return self._ephemeral_principals.get(e_rec.principal_id)
+                return None, "ephemeral_token_expired"
+            principal = self._ephemeral_principals.get(e_rec.principal_id)
+            if principal is None:
+                return None, "ephemeral_principal_missing"
+            return principal, None
 
-        for t in self.tokens:
-            if t.token_hash == token_hash:
-                if t.expires_at and time.time() > t.expires_at:
-                    return None
-                return self.principals.get(t.principal_id)
-        return None
+        for record in self.tokens:
+            if record.token_hash != token_hash:
+                continue
+            if record.expires_at and time.time() > record.expires_at:
+                return None, "token_expired"
+            principal = self.principals.get(record.principal_id)
+            if principal is None:
+                return None, "principal_missing"
+            return principal, None
+        return None, "token_hash_not_registered"
 
     def add_ephemeral_token(
         self,
@@ -237,6 +256,15 @@ class IdentityManager:
         """Revoke any in-memory ephemeral principal and associated tokens (#1310)."""
         self._ephemeral_principals.pop(principal_id, None)
         self._ephemeral_tokens = {th: t for th, t in self._ephemeral_tokens.items() if t.principal_id != principal_id}
+
+    def revoke_ephemeral_token(self, token_hash: str) -> None:
+        """Revoke one ephemeral token without touching its principal's other tokens (#3879).
+
+        Unlike :meth:`revoke_ephemeral_principal`, this targets a single
+        ``token_hash`` — needed because one principal can have more than one
+        concurrent per-run JWT live at once.
+        """
+        self._ephemeral_tokens.pop(token_hash, None)
 
 
 def resolve_identity_dir() -> Path:
@@ -266,11 +294,30 @@ _IDENTITY_DIR = resolve_identity_dir()
 log.info("Identity store directory: %s", _IDENTITY_DIR)
 identity_manager = IdentityManager(config_dir=_IDENTITY_DIR)
 
+
+def token_store_health_snapshot() -> dict[str, int | bool]:
+    """Compare in-memory tokens to ``tokens.yml`` for operator diagnostics (#3617)."""
+    path = identity_manager.tokens_path
+    on_disk = 0
+    if path.exists():
+        data = safe_yaml_load(path, allowed_roots=[identity_manager.config_dir.resolve()])
+        tokens = data.get("tokens") if isinstance(data, dict) else None
+        if isinstance(tokens, list):
+            on_disk = len(tokens)
+    loaded = len(identity_manager.tokens)
+    return {
+        "loaded_token_count": loaded,
+        "on_disk_token_count": on_disk,
+        "in_sync": loaded == on_disk,
+    }
+
+
 auth_header = APIKeyHeader(name="Authorization", auto_error=False)
 auth_cookie = APIKeyCookie(name="dashboard_session", auto_error=False)
 
 
 def _loopback_auth_enabled() -> bool:
+    # Trusted Host validation runs in middleware before this path (#3010).
     return os.environ.get("DASHBOARD_LOOPBACK_AUTH") == "1"
 
 
@@ -296,11 +343,13 @@ def _reject_unauthenticated_bearer(header_token: str | None) -> None:
     if not header_token or not header_token.startswith("Bearer "):
         return
     raw = header_token[len("Bearer ") :]
-    if identity_manager.verify_token(raw):
+    principal, failure_reason = identity_manager.resolve_bearer_token(raw)
+    if principal:
         return
     hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
     if hub_token and hmac.compare_digest(raw, hub_token):
         return
+    log.warning("bearer_token_rejected reason=%s", failure_reason or "unknown")
     raise HTTPException(status_code=401, detail="Authentication required")
 
 
@@ -397,6 +446,8 @@ def require_principal(
     # access to the transport peer address, never forwarded headers.
     if not prin and _loopback_auth_enabled() and _is_loopback_request(request):
         prin = _loopback_principal()
+        peer = request.client.host if request.client else "unknown"
+        log.info("loopback_auth_grant peer=%s principal_id=%s", peer, prin.id)
 
     if not prin:
         # Fail closed — all callers must present valid credentials (issue #315)
@@ -435,29 +486,49 @@ def require_principal(
 
 
 FLEET_PEER_SCOPES = frozenset(
-    {"staff.read", "staff.dispatch", "staff.cancel", "staff.chat", "fleet.maintain", "fleet.read", "memory.read"}
+    {
+        "staff.read",
+        "staff.dispatch",
+        "staff.cancel",
+        "staff.chat",
+        "staff.relay.write",
+        "fleet.maintain",
+        "fleet.read",
+        "memory.read",
+        "activity.read",
+    }
 )
 LOOPBACK_SCOPES = frozenset(
     (
-        "staff.read staff.dispatch staff.cancel staff.chat staff.holds.write staff.approve "
-        "workflows.dispatch workflows.control runners.control fleet.control fleet.maintain fleet.read "
-        "remediation.dispatch heavy-tests.dispatch tests.rerun coordination.write priorities.write proposals.write "
-        "memory.read"
+        "staff.read staff.chat staff.holds.write "
+        "fleet.read coordination.write priorities.write proposals.write "
+        "memory.read activity.read activity.write"
     ).split()
 )
 
-SCOPE_PRESETS = {
-    "admin": ["*"],
-    # Whitespace-separated to keep this module under the 500-line cap.
-    "operator": (
+# Operator preset scopes (whitespace-separated to keep this module under the cap).
+_OPERATOR_PRESET_SCOPES: tuple[str, ...] = tuple(
+    (
         "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
-        "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute maxwell.control "
+        "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute "
         "assessments.dispatch code-requests.manage feature-requests.manage system.control "
         "coordination.write priorities.write proposals.write "
-        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.approve staff.admin "
-        "fleet.maintain fleet.read"
-    ).split(),
+        "staff.read staff.chat staff.dispatch staff.cancel staff.holds.write staff.write staff.approve staff.admin "
+        "staff.audit.read staff.github_credential staff.dispatcher.ledger.write "
+        "fleet.maintain fleet.read memory.read memory.write activity.read activity.write github.app_token"
+    ).split()
+)
+
+# Barb lanes: same hub agent surface as `operator`, including owner-tap approval (`staff.approve`,
+# #4148) so a Barb can approve another Barb's MEDIUM proposals. HIGH/CRITICAL/OWNER_ONLY actions
+# still require the owner (OWNER_APPROVED_RISKS in approval_authority.py).
+BARB_ROLE_SCOPES: tuple[str, ...] = tuple(sorted(_OPERATOR_PRESET_SCOPES))
+
+SCOPE_PRESETS = {
+    "admin": ["*"],
+    "operator": list(_OPERATOR_PRESET_SCOPES),
     "viewer": ["assistant.chat", "staff.read", "fleet.read"],
+    "barb": list(BARB_ROLE_SCOPES),
     # Barb (Grok Bot), Claude Cowork, Codex orchestrate staff runs and cancel stale runs, but cannot write holds/admin.
     "bot": (
         "remediation.dispatch workflows.dispatch heavy-tests.dispatch coordination.write proposals.write "
@@ -601,6 +672,73 @@ def require_scope(required_scope: str):
         )
 
     return checker
+
+
+@functools.cache
+def _require_any_scope_impl(scopes: tuple[str, ...]):
+    """Like ``require_scope`` but succeeds when the principal has any listed scope."""
+
+    def checker(
+        request: Request,
+        header_token: str | None = Depends(auth_header),
+        cookie_token: str | None = Depends(auth_cookie),
+    ) -> Principal:
+        overrides = getattr(request.app, "dependency_overrides", {})
+        if require_principal in overrides:
+            override_fn = overrides[require_principal]
+            prin = override_fn() if callable(override_fn) else override_fn
+            if isinstance(prin, Principal):
+                if any(principal_has_scope(prin, s) for s in scopes):
+                    return prin
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": "Authorization failed",
+                        "required_scopes": list(scopes),
+                        "principal": prin.id,
+                    },
+                )
+        if require_orchestrator_peer in overrides:
+            return Principal(
+                id="test-orchestrator",
+                type="bot",
+                name="Test Orchestrator",
+                roles=["admin"],
+            )
+        if require_fleet_peer in overrides:
+            return Principal(id="test-peer", type="bot", name="Test Peer", roles=["fleet-peer"])
+
+        prin = _resolve_principal_optional(request, header_token)
+        hub_token = os.environ.get("HUB_FLEET_TOKEN", "")
+        if prin is None and hub_token and header_token and header_token.startswith("Bearer "):
+            if hmac.compare_digest(header_token[7:], hub_token):
+                prin = Principal(id="fleet-peer", type="bot", name="Fleet Peer", roles=["fleet-peer"])
+        if prin is None:
+            _reject_unauthenticated_bearer(header_token)
+        if prin is None and _loopback_auth_enabled() and _is_loopback_request(request):
+            prin = _loopback_principal()
+
+        if prin is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if any(principal_has_scope(prin, s) for s in scopes):
+            return prin
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "Authorization failed",
+                "required_scopes": list(scopes),
+                "principal": prin.id,
+            },
+        )
+
+    return checker
+
+
+def require_any_scope(*scopes: str):
+    """Dependency factory: principal must have one of ``scopes`` (OR)."""
+    if not scopes:
+        raise ValueError("require_any_scope needs at least one scope")
+    return _require_any_scope_impl(tuple(scopes))
 
 
 def _principal_may_read_fleet(principal: Principal) -> bool:

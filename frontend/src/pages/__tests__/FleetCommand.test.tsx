@@ -43,7 +43,7 @@ describe("FleetCommandPage — priorities", () => {
     const table = screen.getByTestId("priorities-active");
     expect(within(table).getByText("Coordination API")).toBeInTheDocument();
     expect(within(table).getByText("claude")).toBeInTheDocument();
-    expect(within(table).getByRole("link", { name: "#1229" })).toHaveAttribute(
+    expect(within(table).getByRole("link", { name: /Open tracking link for Coordination API/i })).toHaveAttribute(
       "href",
       "https://github.com/D-sorganization/Runner_Dashboard/issues/1229",
     );
@@ -86,6 +86,19 @@ describe("FleetCommandPage — priorities", () => {
     expect(within(screen.getByTestId("priorities-deferred")).getByText("docs/agents/grok.md").tagName).toBe("CODE");
   });
 
+  it("shows flow metrics with aging PR badge on the priorities stack", async () => {
+    stubFetch();
+    render(<FleetCommandPage />);
+    const badge = await screen.findByTestId("flow-aging-Runner_Dashboard");
+    expect(badge).toHaveTextContent("1");
+    expect(screen.getByTestId("flow-metrics-table")).toHaveTextContent("+3");
+    const links = screen.getByTestId("flow-aging-links-Runner_Dashboard");
+    expect(within(links).getByRole("link", { name: "#3828" })).toHaveAttribute(
+      "href",
+      "https://github.com/D-sorganization/Runner_Dashboard/pull/3828",
+    );
+  });
+
   it("shows the no-board-meeting empty state when the backend reports none", async () => {
     stubFetch((url) =>
       url === "/api/priorities"
@@ -110,7 +123,7 @@ describe("FleetCommandPage — priorities", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Board meeting" }), { target: { value: "2026-09-14" } });
     await waitFor(() => expect(screen.getByText("Staff Hub")).toBeInTheDocument());
     expect(screen.getByTestId("priorities-date")).toHaveTextContent("2026-09-14");
-    expect(screen.getByRole("link", { name: "Runner_Dashboard#1192" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /Open tracking link for Staff Hub/i })).toHaveAttribute(
       "href",
       "https://github.com/D-sorganization/Runner_Dashboard/issues/1192",
     );
@@ -227,7 +240,7 @@ describe("FleetCommandPage — messages", () => {
     expect(screen.getByLabelText("Repo")).toHaveValue("Runner_Dashboard");
     fireEvent.change(screen.getByLabelText("Issue"), { target: { value: "7" } });
     fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Please rebase on main" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(screen.getByRole("button", { name: /Send fleet message/i }));
 
     await waitFor(() => expect(writes(fetchMock, "POST")).toHaveLength(2));
     expect(writes(fetchMock, "POST")[0][0]).toBe("/api/coordination/presence");
