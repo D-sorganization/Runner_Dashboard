@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import yaml
 from overlay_contract import get_overlay
 from security import safe_yaml_load, validate_config_path
 
@@ -19,6 +21,12 @@ log = logging.getLogger("dashboard.agent_principals")
 _REPO_DEFAULTS = Path(__file__).resolve().parent.parent / "config" / "agent_principals.yml"
 _PROFILE_KEYS = frozenset({"roles", "scopes", "name", "kind"})
 _AGENT_KEYS = frozenset({"inbox_webhook_url", "inbox_roles"})
+# Serialises live reloads (#4256): IdentityManager has no lock of its own.
+_RELOAD_LOCK = threading.Lock()
+
+
+class AgentPrincipalReloadError(RuntimeError):
+    """A live reload could not read its inputs; the identity manager was left unchanged."""
 
 
 def _defaults_path() -> Path:
@@ -181,3 +189,52 @@ def merge_agent_principal_defaults(manager: IdentityManager) -> None:
             )
         )
         log.info("ingested agent bearer from %s for principal %s", path.name, agent_id)
+
+
+def reload_agent_principals(manager: IdentityManager) -> dict[str, Any]:
+    """Re-run :func:`merge_agent_principal_defaults` on a live manager (#4256 ask 1).
+
+    A new ``config/agent_principals.yml`` row plus its ``agent-tokens/*.token``
+    file become live without a hub restart. The merge is the startup merge,
+    unchanged: it only adds principals and tokens and unions config roles and
+    scopes into existing principals; it never removes or revokes anything.
+
+    Contract:
+      * Post: returns ``{"added", "updated", "tokens_ingested", "total"}`` where
+        the three lists are sorted principal ids and ``total`` is the principal
+        count. No token, token hash, or file content is returned or logged.
+      * Post: a second call with unchanged inputs returns three empty lists and
+        leaves the manager unchanged (idempotent).
+      * Raises :class:`AgentPrincipalReloadError` when the config or a token file
+        cannot be read; the manager's principals and tokens are then exactly as
+        they were before the call (all or nothing).
+    """
+    with _RELOAD_LOCK:
+        principals_before = dict(manager.principals)
+        tokens_before = list(manager.tokens)
+        try:
+            merge_agent_principal_defaults(manager)
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            # The merge replaces entries rather than mutating them, so the shallow
+            # snapshots restore the exact prior state.
+            manager.principals = principals_before
+            manager.tokens = tokens_before
+            log.warning("agent principals reload failed (%s); identity store unchanged", type(exc).__name__)
+            raise AgentPrincipalReloadError(type(exc).__name__) from None
+        added = sorted(set(manager.principals) - set(principals_before))
+        updated = sorted(
+            agent_id
+            for agent_id, before in principals_before.items()
+            if agent_id in manager.principals and manager.principals[agent_id] != before
+        )
+        known_hashes = {t.token_hash for t in tokens_before}
+        tokens_ingested = sorted({t.principal_id for t in manager.tokens if t.token_hash not in known_hashes})
+        total = len(manager.principals)
+    log.info(
+        "agent principals reloaded: added=%s updated=%s tokens_ingested=%s total=%d",
+        added,
+        updated,
+        tokens_ingested,
+        total,
+    )
+    return {"added": added, "updated": updated, "tokens_ingested": tokens_ingested, "total": total}
