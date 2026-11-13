@@ -23,6 +23,8 @@ class PullRequest:
     number: int
     state: str
     ci: str
+    auto_merge_armed: bool = False
+    in_merge_queue: bool = False
 
 
 @dataclass(frozen=True)

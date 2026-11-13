@@ -22,9 +22,7 @@ EXPERTS = [
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize(
-    "provider", ["anthropic-api", "deepseek-api", "cursor-agent", "unknown-provider"]
-)
+@pytest.mark.parametrize("provider", ["anthropic-api", "deepseek-api", "cursor-agent", "unknown-provider"])
 def test_unverified_providers_fail_closed_without_probing(provider: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(policy, "provider_oauth_session_alive", lambda _p: pytest.fail("unexpected probe"))
     assert not policy.check_provider_subscription(provider).ok

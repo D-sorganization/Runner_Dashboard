@@ -41,10 +41,33 @@ class GhCliPrProbe:
     def _full(self, repo: str) -> str:
         return repo if "/" in repo else f"{self.org}/{repo}"
 
+    def _merge_queue_active(self, full: str, number: int) -> bool:
+        timeline = self._api(f"/repos/{full}/issues/{number}/timeline?per_page=30")
+        if not isinstance(timeline, list) or not timeline:
+            return False
+        for event in reversed(timeline):
+            if not isinstance(event, dict):
+                continue
+            name = str(event.get("event") or "")
+            if name == "added_to_merge_queue":
+                return True
+            if name == "removed_from_merge_queue":
+                return False
+        return False
+
     def _with_ci(self, full: str, pr: dict[str, Any]) -> PullRequest:
         state = "merged" if pr.get("merged_at") else str(pr.get("state") or "open")
         checks = self._api(f"/repos/{full}/commits/{pr['head']['sha']}/check-runs?per_page=100")
-        return PullRequest(number=int(pr["number"]), state=state, ci=ci_state(checks.get("check_runs") or []))
+        number = int(pr["number"])
+        armed = pr.get("auto_merge") is not None
+        in_queue = self._merge_queue_active(full, number) if not armed else False
+        return PullRequest(
+            number=number,
+            state=state,
+            ci=ci_state(checks.get("check_runs") or []),
+            auto_merge_armed=armed,
+            in_merge_queue=in_queue,
+        )
 
     def find(self, repo: str, branch: str) -> PullRequest | None:
         full = self._full(repo)

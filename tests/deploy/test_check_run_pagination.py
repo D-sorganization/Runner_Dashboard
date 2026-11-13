@@ -71,7 +71,7 @@ def test_failure_on_second_page_blocks_deployment() -> None:
     checks = _fetch(get)
     assert len(checks) == 101
     assert len(paths) == 2
-    assert not ci_gate_for_deploy_commit(checks, SHA)[0]
+    assert not ci_gate_for_deploy_commit(checks, SHA, required_contexts=())[0]
 
 
 @pytest.mark.parametrize(
@@ -162,7 +162,7 @@ def test_real_3c3_same_sha_green_merge_group_survives_cancelled_push_suite() -> 
     fetched = _fetch(get)
 
     assert "filter=all" in paths[0]
-    assert ci_gate_for_deploy_commit(fetched, SHA)[0]
+    assert ci_gate_for_deploy_commit(fetched, SHA, required_contexts=())[0]
 
 
 def test_latest_same_suite_success_supersedes_earlier_failure() -> None:
@@ -185,7 +185,9 @@ def test_latest_same_suite_success_supersedes_earlier_failure() -> None:
         ),
     ]
 
-    assert ci_gate_for_deploy_commit(_fetch(lambda _: {"total_count": 2, "check_runs": checks}), SHA)[0]
+    assert ci_gate_for_deploy_commit(
+        _fetch(lambda _: {"total_count": 2, "check_runs": checks}), SHA, required_contexts=()
+    )[0]
 
 
 def test_latest_same_suite_failure_blocks_earlier_success() -> None:
@@ -208,7 +210,9 @@ def test_latest_same_suite_failure_blocks_earlier_success() -> None:
         ),
     ]
 
-    assert not ci_gate_for_deploy_commit(_fetch(lambda _: {"total_count": 2, "check_runs": checks}), SHA)[0]
+    assert not ci_gate_for_deploy_commit(
+        _fetch(lambda _: {"total_count": 2, "check_runs": checks}), SHA, required_contexts=()
+    )[0]
 
 
 @pytest.mark.parametrize("pending_status", ["queued", "in_progress", "requested", "waiting", "pending"])
@@ -232,7 +236,9 @@ def test_latest_pending_same_suite_attempt_blocks_earlier_success(pending_status
         ),
     ]
 
-    assert not ci_gate_for_deploy_commit(_fetch(lambda _: {"total_count": 2, "check_runs": checks}), SHA)[0]
+    assert not ci_gate_for_deploy_commit(
+        _fetch(lambda _: {"total_count": 2, "check_runs": checks}), SHA, required_contexts=()
+    )[0]
 
 
 @pytest.mark.parametrize(

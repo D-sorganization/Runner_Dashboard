@@ -91,10 +91,12 @@ def test_detect_author_provider_matches_on_branch_and_skips_reviewer_runs(store:
 # ── defect 2: the role's providers and the trailer fallback reach selection ──
 @pytest.mark.unit
 def test_prepare_selects_from_the_code_reviewer_roster_providers() -> None:
-    params = prepare_review_params({"repo": "Runner_Dashboard", "pr": 5}, roster=_roster("gemini", "claude"))
+    params = prepare_review_params(
+        {"repo": "Runner_Dashboard", "pr": 5}, roster=_roster("codex", "claude", "cursor-agent")
+    )
 
     assert params["role"] == "code-reviewer"
-    assert params["provider"] == "gemini"
+    assert params["provider"] == "codex"
 
 
 @pytest.mark.unit

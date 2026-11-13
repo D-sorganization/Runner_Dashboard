@@ -23,6 +23,12 @@ from staff.cli_oauth_session import (
 
 log = logging.getLogger(__name__)
 
+_API_KEY_ENV_OVERRIDES: tuple[str, ...] = (
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "ANTIGRAVITY_API_KEY",
+)
+
 
 @dataclass(frozen=True)
 class AntigravityRouteSnapshot:
@@ -52,6 +58,8 @@ def _read_settings_dict(path: Path) -> dict[str, Any] | None:
 
 
 def _settings_indicates_api_key(home: Path) -> bool:
+    if any(os.environ.get(name, "").strip() for name in _API_KEY_ENV_OVERRIDES):
+        return True
     for rel in ("settings.json", "antigravity-cli/settings.json"):
         data = _read_settings_dict(home / rel)
         if not data:
@@ -129,7 +137,7 @@ def verify_antigravity_subscription_route(snap: AntigravityRouteSnapshot) -> Ant
         return AntigravityRouteVerdict(False, "ambiguous_endpoint")
     if not snap.has_subscription_marker:
         return AntigravityRouteVerdict(False, "subscription_route_unverified")
-    if not snap.oauth_session_ok:
+    if not snap.oauth_session_ok or not snap.models_listing_ok:
         return AntigravityRouteVerdict(False, "subscription_session_not_live")
     return AntigravityRouteVerdict(True, "")
 

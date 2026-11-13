@@ -57,7 +57,7 @@ Repos (only these): {repos_csv}
 Push duration: {duration_min} minutes
 Parallel lanes: {lanes}
 
-Coordinate the lanes to drain pickable backlog in those repos. PRs stay under 500 changed lines.
+Coordinate the lanes to drain pickable backlog in those repos. Prefer small, cohesive PRs (reference ~500 changed lines, advisory — never split a cohesive fix only for line count).
 {merge_policy}
 {fleet_gh}
 {holds}
@@ -73,7 +73,7 @@ Supervisor session: {supervisor_session}
 Repos (only these): {repos_csv}
 Push duration budget: {duration_min} minutes (shared wall clock for the whole push).
 
-Claim pickable issues, implement, open ready PRs under 500 lines.
+Claim pickable issues, implement, open ready cohesive PRs (line count advisory only).
 {merge_policy}
 {fleet_gh}
 {holds}

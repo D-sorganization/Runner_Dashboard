@@ -11,6 +11,7 @@ import pytest
 from scripts.pr_size_gate import (
     DEFAULT_LIMIT,
     SizeVerdict,
+    advisory_warning_message,
     evaluate_size,
     parse_numstat,
     resolve_diff_merge_base,
@@ -176,7 +177,9 @@ def test_main_exits_zero_advisory_when_over_limit(tmp_path: Path, monkeypatch: p
     assert exit_code == 0
 
 
-def test_main_exits_one_strict_when_over_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_strict_still_exits_zero_with_advisory_warning(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     from scripts import pr_size_gate
 
     def fake_run(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -194,4 +197,20 @@ def test_main_exits_one_strict_when_over_limit(tmp_path: Path, monkeypatch: pyte
             "--strict",
         ]
     )
-    assert exit_code == 1
+    assert exit_code == 0
+    err = capsys.readouterr().err
+    assert advisory_warning_message(900, 500) in err
+    assert "::warning::" in err
+
+
+def test_main_over_limit_always_exits_zero_and_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from scripts import pr_size_gate
+
+    def fake_run(argv: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, stdout="600\t0\tbig.py\n", stderr="")
+
+    monkeypatch.setattr(pr_size_gate, "_run_git", fake_run)
+    assert pr_size_gate.main(["--repo-root", str(tmp_path), "--limit", "500"]) == 0
+    assert advisory_warning_message(600, 500) in capsys.readouterr().err

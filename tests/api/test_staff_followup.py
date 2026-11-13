@@ -84,6 +84,7 @@ def test_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[s
     push_db = tmp_path / "push_test.sqlite3"
     monkeypatch.setenv("STAFF_RUNS_DB", str(db_path))
     monkeypatch.setenv("RUNNER_DASHBOARD_PUSH_DB", str(push_db))
+    monkeypatch.setenv("STAFF_CLAIM_GUARD", "0")
 
     reset_store()
     reset_work_item_store()

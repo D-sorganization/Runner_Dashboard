@@ -53,7 +53,7 @@ def test_pm_gasification_resolved_chain_puts_opus_5_5_first_and_override_emits_o
         notify=sent.append,
     )
     assert rc == 0 and len(sent) == 1
-    assert sent[0]["sender_role"] == "pm-gasification" and "antigravity" in sent[0]["summary"]
+    assert sent[0]["sender_role"] == "pm-gasification" and "codex" in sent[0]["summary"]
 
 
 def test_pm_gasification_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:

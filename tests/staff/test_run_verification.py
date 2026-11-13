@@ -172,6 +172,23 @@ def test_no_commit_remediation_action_on_open_target_pr_is_not_applicable(summar
     assert v.deliverable_failure_updates(rec, verdict, opens_pr=True) == {}
 
 
+def test_open_target_pr_armed_without_commits_is_not_applicable() -> None:
+    rec = _rec(
+        role="pr-remediator",
+        repo="Runner_Dashboard",
+        target_kind="pr",
+        target_ref="4230",
+        branch="staff/pr-remediator-4230-abc",
+    )
+    open_pr = v.PullRequest(4230, "open", "green", auto_merge_armed=True)
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=open_pr)
+
+    verdict = v.evaluate(rec, opens_pr=True, probe=probe, now=NOW, result_text="STAFF_RESULT: armed auto-merge")
+
+    assert verdict.verification == "not_applicable"
+    assert "auto-merge armed" in verdict.detail
+
+
 def test_no_commit_action_claim_without_matching_result_text_still_fails() -> None:
     """An unconfirmed claim (no recognized action marker) keeps the existing no_change/failed behavior."""
     rec = _rec(
@@ -559,7 +576,15 @@ def _gh(responses: dict[str, Any]) -> Callable[..., subprocess.CompletedProcess[
 
 def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
     calls: list[list[str]] = []
-    pulls = [{"number": 21, "state": "closed", "merged_at": "2026-09-25T10:00:00Z", "head": {"sha": "abc"}}]
+    pulls = [
+        {
+            "number": 21,
+            "state": "closed",
+            "merged_at": "2026-09-25T10:00:00Z",
+            "head": {"sha": "abc"},
+            "auto_merge": {"merge_method": "squash"},
+        }
+    ]
     checks = {"check_runs": [_check(), _check(conclusion="failure")]}
     runner = _gh({"/pulls?": pulls, "/commits/abc/check-runs": checks})
 
@@ -569,7 +594,7 @@ def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
 
     pr = v.GhCliPrProbe(org="D-sorganization", run=recording).find("Runner_Dashboard", "staff/x y")
 
-    assert pr == v.PullRequest(21, "merged", "red")
+    assert pr == v.PullRequest(21, "merged", "red", auto_merge_armed=True)
     assert "/repos/D-sorganization/Runner_Dashboard/pulls?head=D-sorganization:staff%2Fx%20y&state=all" in calls[0][2]
     assert len(calls) == 2  # one scoped lookup plus the head's check runs; never a sweep
 
@@ -577,14 +602,22 @@ def test_gh_probe_finds_the_newest_pr_for_the_branch_and_its_head_ci() -> None:
 def test_gh_probe_gets_a_pr_by_number_with_its_head_ci() -> None:
     """The Code Request acceptance check (#1605) looks a child's PR up by number."""
     calls: list[list[str]] = []
-    pull = {"number": 7, "state": "closed", "merged_at": "2026-09-26T10:00:00Z", "head": {"sha": "def"}}
+    pull = {
+        "number": 7,
+        "state": "closed",
+        "merged_at": "2026-09-26T10:00:00Z",
+        "head": {"sha": "def"},
+        "auto_merge": {"merge_method": "squash"},
+    }
     runner = _gh({"/pulls/7": pull, "/commits/def/check-runs": {"check_runs": [_check()]}})
 
     def recording(argv: list[str], **kw: Any) -> subprocess.CompletedProcess[str]:
         calls.append(argv)
         return runner(argv, **kw)
 
-    assert v.GhCliPrProbe(org="o", run=recording).get("r", 7) == v.PullRequest(7, "merged", "green")
+    assert v.GhCliPrProbe(org="o", run=recording).get("r", 7) == v.PullRequest(
+        7, "merged", "green", auto_merge_armed=True
+    )
     assert [c[2] for c in calls] == ["/repos/o/r/pulls/7", "/repos/o/r/commits/def/check-runs?per_page=100"]
 
 

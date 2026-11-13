@@ -282,7 +282,13 @@ def relay_run_card_to_origin(
         return False
 
     payload = relay_payload(run, status, question, summary)
-    headers = staff_fleet.fleet_headers()
+    try:
+        from staff.tokens import authorization_headers_for_run  # noqa: PLC0415
+
+        headers = authorization_headers_for_run(run)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("staff.run_link: cannot mint relay auth for %s: %s", run.id, exc)
+        return False
     target_url = f"{origin_url}/api/v1/staff/threads/{thread_id}/relay-card"
     try:
         if relay_fn is not None:
@@ -324,6 +330,10 @@ def handle_run_status_change(
     relay_fn: Any = None,
 ) -> MessageRecord | None:
     """Handler called on run transition (queued, running, needs_input, succeeded, failed)."""
+    if status in claim_guard.TERMINAL_STATUSES:
+        from dispatch_queue_link import release_run_session  # noqa: PLC0415
+
+        release_run_session(run.id, outcome=status)
     if status in claim_guard.TERMINAL_STATUSES and run.target_kind == "issue":
         # Drop the claim label this run applied (#2562); off-thread so a slow `gh` never delays the status change.
         threading.Thread(target=claim_guard.release_claim, args=(run.id, status), daemon=True).start()

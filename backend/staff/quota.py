@@ -48,6 +48,9 @@ BILLING: dict[str, str] = {
     "grok": "subscription",
     "grok_cli": "subscription",
     "grok-cli": "subscription",
+    "qwen": "subscription",
+    "qwen_cli": "subscription",
+    "qwen-cli": "subscription",
     "ollama": "local",
     "claude-ollama": "local",
 }
@@ -456,6 +459,8 @@ def report(
     codex_dirs: Sequence[Path] | None = None,
 ) -> dict[str, Any]:
     """Body of ``GET /api/staff/quota``: billing kind and current windows per provider."""
+    from staff.quota_reader import read_status as quota_read_status  # noqa: PLC0415
+
     rows = []
     for provider in providers:
         snap = for_provider(provider, now, store=store, codex_dirs=codex_dirs)
@@ -464,6 +469,7 @@ def report(
                 "provider": provider,
                 "billing": billing(provider),
                 "readable": provider in QUOTA_ACCOUNT,
+                "quota_status": quota_read_status(provider, now, store=store, codex_dirs=codex_dirs),
                 "quota": snap.to_dict() if snap else None,
             }
         )

@@ -5,6 +5,7 @@
  * requests only, so third-party requests (fonts) never carry it.
  */
 
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -57,13 +58,17 @@ export { expect };
 
 const THREAD_DETAIL = /\/api\/v1\/staff\/threads\/[^/]+$/;
 
+export function staffE2eBackendUrl(): string {
+  return process.env.STAFF_E2E_BACKEND_URL ?? `http://127.0.0.1:${process.env.STAFF_E2E_BACKEND_PORT ?? "5092"}`;
+}
+
 /**
  * Open the Staff Console on the direct thread to `roleTitle`.
  *
  * Threads are reused per role. Post: the composer is ready and the thread's
  * history has been fetched, so counts taken now include earlier tests' messages.
  */
-export async function openThread(page: Page, roleTitle: string): Promise<void> {
+export async function openThread(page: Page, roleTitle: string): Promise<string> {
   await page.goto("/staff");
   const title = roleTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const roleButton = page.getByRole("button", { name: new RegExp(`^${title}, Status:`) });
@@ -75,8 +80,36 @@ export async function openThread(page: Page, roleTitle: string): Promise<void> {
     (r) => r.request().method() === "GET" && THREAD_DETAIL.test(new URL(r.url()).pathname),
   );
   await roleButton.click();
-  await history;
+  const histResp = await history;
+  const parts = new URL(histResp.url()).pathname.split("/").filter(Boolean);
+  const threadId = parts[parts.length - 1] ?? "";
+  if (!threadId) {
+    throw new Error("could not resolve staff thread id from history response");
+  }
   await expect(page.getByRole("textbox", { name: "Staff conversation input" })).toBeVisible();
+  return threadId;
+}
+
+/** POST a chat message with optional meta (e.g. confirm_actions for E-18). */
+export async function postThreadMessageApi(
+  page: Page,
+  threadId: string,
+  text: string,
+  meta: Record<string, unknown> | undefined,
+  headers: Record<string, string>,
+): Promise<void> {
+  const response = await page.request.post(
+    `${staffE2eBackendUrl()}/api/v1/staff/threads/${encodeURIComponent(threadId)}/messages`,
+    {
+      headers: {
+        ...headers,
+        "X-Requested-With": "XMLHttpRequest",
+        "Idempotency-Key": randomUUID(),
+      },
+      data: { body: text, meta: meta ?? {} },
+    },
+  );
+  expect(response.status()).toBe(202);
 }
 
 /** Type and send one message. */

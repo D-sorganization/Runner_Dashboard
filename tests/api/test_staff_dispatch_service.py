@@ -143,6 +143,10 @@ async def test_auto_dispatch_keeps_local_target_after_provider_fallback(
     staff._adapters = {
         **staff._adapters,
         "codex": replace(staff._adapters["codex"], executable="rd-test-codex-not-installed"),
+        "cursor-agent": replace(
+            staff._adapters["cursor-agent"],
+            executable=staff._adapters["claude"].executable,
+        ),
     }
     selected: list[str] = []
 
@@ -205,12 +209,9 @@ async def test_ci_fix_uses_generic_chain_when_routed_primary_is_not_installed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
 ) -> None:
-    """CI-fix keeps its route tier while the shared dispatcher selects an installed alternate."""
-    import json
-
+    """#4273: CI-fix fails closed when the routed provider is not installed on this node."""
     from ci_fix_service import CIFixDispatchRequest
     from staff import failover_dispatch
-    from staff.model_tiers import model_for_provider_tier
     from staff.provider_failover_config import resolve_failover_chain
 
     fake_codex = ProviderAdapter(
@@ -239,33 +240,28 @@ async def test_ci_fix_uses_generic_chain_when_routed_primary_is_not_installed(
     assert failover_dispatch._usable_provider(staff._adapters, role, "claude")
     assert [step.provider for step in resolve_failover_chain(role, requested_provider="codex")] == [
         "codex",
-        "claude",
-        "antigravity",
+        "cursor-agent",
     ]
     audit_path = tmp_path / "ci-fix-audit.json"
     monkeypatch.setattr(ci_fix_dispatch, "DEFAULT_AUDIT_PATH", audit_path)
 
-    result = await ci_fix_service.dispatch_ci_fix(
-        CIFixDispatchRequest(
-            repo="Runner_Dashboard",
-            pr_number=912,
-            branch="feat/ci-fallback",
-            workflow_name="Lint",
-            log_tail="ruff failed",
-        ),
-        APPROVER,
-        launcher=dispatch_service.dispatch_staff_run,
-    )
+    from ci_fix_service import CIFixLaunchUnavailableError
 
-    run = staff.store.get_run(result["staff_run_id"])
-    assert run is not None
-    assert run.provider == "claude"
-    assert run.model == model_for_provider_tier("claude", "routine")
-    assert result["launched_provider"] == run.provider
-    assert result["launched_model"] == run.model
-    audit = json.loads(audit_path.read_text(encoding="utf-8"))[0]
-    assert audit["provider"] == run.provider
-    assert audit["model"] == run.model
+    with pytest.raises(CIFixLaunchUnavailableError, match="codex"):
+        await ci_fix_service.dispatch_ci_fix(
+            CIFixDispatchRequest(
+                repo="Runner_Dashboard",
+                pr_number=912,
+                branch="feat/ci-fallback",
+                workflow_name="Lint",
+                log_tail="ruff failed",
+            ),
+            APPROVER,
+            launcher=dispatch_service.dispatch_staff_run,
+        )
+
+    assert staff.store.list_runs(limit=5) == []
+    assert audit_path.exists() is False
 
 
 @pytest.mark.unit

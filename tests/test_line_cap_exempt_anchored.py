@@ -20,7 +20,7 @@ from pathlib import Path
 from bash_host import require_bash
 from test_workflow_hygiene import _ci_step
 
-_LINECAP_STEP = "Verify no source file exceeds 500 lines"
+_LINECAP_STEP = "Advisory per-file line count (changed sources, reference 500)"
 
 
 def _exempt_paths() -> list[str]:

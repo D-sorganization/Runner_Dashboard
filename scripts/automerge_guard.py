@@ -86,6 +86,9 @@ EXIT_ARM_MAY_BE_ON = 3
 #: Exit code when the armed-PR WIP cap refused ``--arm`` (RD-CI-005, enforce mode).
 EXIT_ARM_CAP_REFUSED = 4
 
+#: Hold appeared during merge/enqueue after the API call succeeded (#4315).
+EXIT_IN_FLIGHT_HOLD = 5
+
 
 def _default_runner(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
     """Run ``cmd`` and capture output. Resolved via PATH so Windows finds gh.exe."""
@@ -118,9 +121,7 @@ def classify_token(token: str) -> str:
     return "unknown"
 
 
-def active_token_kind(
-    env: Mapping[str, str] | None = None, *, runner: CommandRunner = _default_runner
-) -> str:
+def active_token_kind(env: Mapping[str, str] | None = None, *, runner: CommandRunner = _default_runner) -> str:
     """Return the kind of token gh will use: env vars first, then ``gh auth token``.
 
     The token value stays local to this function; only its kind is returned.
@@ -202,7 +203,10 @@ class HoldVerdict:
     def describe(self) -> str:
         if not self.held:
             return "no hold in effect"
-        return "; ".join(self.reasons) or "unknown hold"
+        if self.reasons:
+            text = "; ".join(self.reasons)
+            return f"{text}; {self.error}" if self.error else text
+        return self.error or "unknown hold"
 
 
 @dataclass(frozen=True)
@@ -218,6 +222,8 @@ class ArmResult:
     #: True only when the PR was already clean, arming was refused, and the
     #: guard merged it directly (#1968) and verified ``merged`` is true.
     merged: bool = False
+    #: True when a hold appeared after merge/enqueue completed; still a failure (#4315).
+    in_flight_hold_after_completion: bool = False
 
     def reason(self) -> str:
         """Why the PR is not armed: ``detail`` when set, else the hold verdict."""
@@ -365,19 +371,12 @@ def _disarm_events(run: CommandRunner, repo: str, pr: int) -> dict[str, list[str
 
 def _is_close_side_effect(disarm: str, closes: Sequence[str]) -> bool:
     """True when ``disarm`` is GitHub's automatic disarm of a PR close."""
-    return any(
-        0 <= _seconds(disarm) - _seconds(close) <= _CLOSE_DISARM_WINDOW_SECONDS
-        for close in closes
-    )
+    return any(0 <= _seconds(disarm) - _seconds(close) <= _CLOSE_DISARM_WINDOW_SECONDS for close in closes)
 
 
 def _latest_reviewer_disarm(events: Mapping[str, Sequence[str]]) -> str:
     """Latest disarm that is not the side effect of a PR close, or ``""``."""
-    disarms = [
-        stamp
-        for stamp in events["auto_merge_disabled"]
-        if not _is_close_side_effect(stamp, events["closed"])
-    ]
+    disarms = [stamp for stamp in events["auto_merge_disabled"] if not _is_close_side_effect(stamp, events["closed"])]
     return max(disarms) if disarms else ""
 
 
@@ -405,9 +404,82 @@ def _disarm_reasons(run: CommandRunner, repo: str, pr: int, sha: str) -> list[st
     return []
 
 
-def _deletion_reasons(
-    run: CommandRunner, repo: str, pr: int, pull: _PullRequest
-) -> list[str]:
+def _repo_root_on_path() -> None:
+    root = Path(__file__).resolve().parents[1]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
+
+def _issue_comments(run: CommandRunner, repo: str, pr: int) -> list[dict[str, Any]]:
+    payload = _gh_json(run, ["api", f"repos/{repo}/issues/{pr}/comments?per_page=100", "--paginate"])
+    if not isinstance(payload, list):
+        raise RuntimeError(f"unreadable issue comments for {repo}#{pr}")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _commit_messages(run: CommandRunner, repo: str, pr: int) -> list[str]:
+    payload = _gh_json(run, ["api", f"repos/{repo}/pulls/{pr}/commits?per_page=100", "--paginate"])
+    if not isinstance(payload, list):
+        raise RuntimeError(f"unreadable commits for {repo}#{pr}")
+    rows: list[str] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        commit = item.get("commit")
+        if isinstance(commit, dict):
+            rows.append(str(commit.get("message") or ""))
+    return rows
+
+
+def _independent_review_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> list[str]:
+    """Signal 5: independent exact-head FIX-NEEDED at the current head (#4315, #4323)."""
+    _repo_root_on_path()
+    from shared_scripts.independent_exact_head_review import (  # noqa: PLC0415
+        author_model_from_commit_messages,
+        author_model_from_labels,
+        independent_review_hold_reason,
+        parse_issue_comments,
+    )
+
+    try:
+        comments = _issue_comments(run, repo, pr)
+        messages = _commit_messages(run, repo, pr)
+    except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError):
+        return ["independent exact-head review state is unreadable"]
+    author_model = author_model_from_labels(pull.labels) or author_model_from_commit_messages(messages)
+    reviews = parse_issue_comments(comments)
+    return independent_review_hold_reason(
+        reviews,
+        head_sha=pull.head_sha,
+        author_model=author_model,
+        labels=pull.labels,
+    )
+
+
+def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> bool:
+    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
+    if proc.returncode == 0:
+        logger.warning("Disarmed auto-merge on %s#%s before a blocked merge.", repo, pr)
+        return True
+    err = proc.stderr.strip() or proc.stdout.strip()
+    logger.warning("Could not disarm auto-merge on %s#%s: %s", repo, pr, err)
+    return False
+
+
+def disarm_if_held(repo: str, pr: int, *, runner: CommandRunner | None = None) -> HoldVerdict:
+    """Re-check holds on an already-armed PR; disarm when a hold applies (#4315).
+
+    Post: returns the current :func:`evaluate_hold` verdict. When ``held``, one
+  ``DELETE .../ccr/auto_merge`` is attempted (author-bot / scheduled paths).
+    """
+    run = runner or _default_runner
+    verdict = evaluate_hold(repo, pr, runner=run)
+    if verdict.held:
+        _disarm_auto_merge(repo, pr, run)
+    return verdict
+
+
+def _deletion_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> list[str]:
     """Signal 4: the diff deletes tracked files with no acknowledgement."""
     removed = _gh_lines(
         run,
@@ -424,15 +496,10 @@ def _deletion_reasons(
         return []
     sample = ", ".join(removed[:5])
     more = f" (+{len(removed) - 5} more)" if len(removed) > 5 else ""
-    return [
-        f"diff deletes {len(removed)} tracked file(s) with no "
-        f"acknowledgement: {sample}{more}"
-    ]
+    return [f"diff deletes {len(removed)} tracked file(s) with no acknowledgement: {sample}{more}"]
 
 
-def _verdict_from(
-    raw: dict[str, Any], pull: _PullRequest, reasons: list[str]
-) -> HoldVerdict:
+def _verdict_from(raw: dict[str, Any], pull: _PullRequest, reasons: list[str]) -> HoldVerdict:
     """Build the verdict, carrying the PR facts later merge steps pin to."""
     head, base = _obj(raw.get("head")), _obj(raw.get("base"))
     head_repo = str(_obj(head.get("repo")).get("full_name") or "").lower()
@@ -448,9 +515,7 @@ def _verdict_from(
     )
 
 
-def evaluate_hold(
-    repo: str, pr: int, *, runner: CommandRunner | None = None
-) -> HoldVerdict:
+def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) -> HoldVerdict:
     """Decide whether ``repo#pr`` is held back from auto-merge.
 
     ``repo`` is ``owner/name``. Signals mirror ``Merge-Hold-Guard.yml`` exactly,
@@ -461,6 +526,7 @@ def evaluate_hold(
     3. auto-merge disabled by a non-bot account more recently than the head
        commit — a reviewer said no and nobody has pushed since
     4. the diff deletes tracked files with no acknowledgement
+    5. an independent exact-head review is ``FIX-NEEDED`` at the current head
 
     Fails closed: any error computing the verdict returns ``held=True``.
     """
@@ -476,7 +542,8 @@ def evaluate_hold(
             reasons.append("PR is a draft (mark ready first)")
         reasons += _disarm_reasons(run, repo, pr, pull.head_sha)
         reasons += _deletion_reasons(run, repo, pr, pull)
-    except (RuntimeError, json.JSONDecodeError, OSError) as exc:
+        reasons += _independent_review_reasons(run, repo, pr, pull)
+    except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
         # Fail closed. An unknown state is not a licence to arm.
         return HoldVerdict(True, (), error=str(exc))
     return _verdict_from(raw, pull, reasons)
@@ -500,9 +567,7 @@ def _stored_merge_method(repo: str, pr: int, run: CommandRunner) -> str:
     Used after the REST fallback, whose route may not honour the requested
     method (Codex review on #1937). Returns "" when it cannot be read.
     """
-    proc = run(
-        ["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".auto_merge.merge_method"]
-    )
+    proc = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".auto_merge.merge_method"])
     return proc.stdout.strip().lower() if proc.returncode == 0 else ""
 
 
@@ -579,9 +644,7 @@ def _base_has_merge_queue(repo: str, base: str, run: CommandRunner) -> bool:
     return "merge_queue" in {t.strip() for t in types}
 
 
-def _enqueue_clean_pr(
-    repo: str, pr: int, strategy: str, verdict: HoldVerdict, run: CommandRunner
-) -> ArmResult:
+def _enqueue_clean_pr(repo: str, pr: int, strategy: str, verdict: HoldVerdict, run: CommandRunner) -> ArmResult:
     """Enqueue an already-clean PR on a merge-queue base via one GraphQL call.
 
     Never falls back to ``PUT /merge``: that route cannot honour a merge queue.
@@ -590,8 +653,17 @@ def _enqueue_clean_pr(
         f"PR is already clean and the base uses a merge queue; enqueue it with "
         f"`gh pr merge {pr} --repo {repo} --{strategy}` (without any admin bypass)"
     )
-    if not (verdict.node_id and verdict.head_sha):
+    if not verdict.head_sha:
+        hold = disarm_if_held(repo, pr, runner=run)
+        detail = "enqueue refused: PR head SHA is unknown"
+        if hold.held:
+            detail = f"{detail} ({hold.describe()})"
+        return ArmResult(False, hold, detail)
+    if not verdict.node_id:
         return ArmResult(False, verdict, hint)
+    hold = disarm_if_held(repo, pr, runner=run)
+    if hold.held:
+        return ArmResult(False, hold, f"enqueue refused: {hold.describe()}")
     proc = run(
         [
             "gh",
@@ -609,6 +681,20 @@ def _enqueue_clean_pr(
         err = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Enqueue of clean %s#%s failed: %s", repo, pr, err)
         return ArmResult(False, verdict, f"{hint} (enqueue failed: {err})")
+    hold_after = disarm_if_held(repo, pr, runner=run)
+    if hold_after.held:
+        logger.error(
+            "IN-FLIGHT HOLD: enqueue of %s#%s completed but %s",
+            repo,
+            pr,
+            hold_after.describe(),
+        )
+        return ArmResult(
+            False,
+            hold_after,
+            f"IN-FLIGHT HOLD: enqueue completed but {hold_after.describe()}",
+            in_flight_hold_after_completion=True,
+        )
     logger.info("Enqueued clean %s#%s in the merge queue.", repo, pr)
     return ArmResult(True, verdict, "enqueued in merge queue (PR was already clean)")
 
@@ -632,9 +718,17 @@ def _merge_clean_pr(
     is a warning appended to the detail and never un-merges the result.
     """
     if not sha:
-        return ArmResult(
-            False, verdict, "PR was already clean but the verified head SHA is unknown"
-        )
+        return ArmResult(False, verdict, "PR was already clean but the verified head SHA is unknown")
+    hold = disarm_if_held(repo, pr, runner=run)
+    if hold.held:
+        return ArmResult(False, hold, f"merge refused: {hold.describe()}")
+    pinned = _current_head_sha(repo, pr, run)
+    if not pinned:
+        hold = disarm_if_held(repo, pr, runner=run)
+        return ArmResult(False, hold, "merge refused: PR head SHA could not be verified")
+    if pinned != sha:
+        disarm_if_held(repo, pr, runner=run)
+        return ArmResult(False, hold, f"merge refused: head moved (expected {sha}, saw {pinned})")
     proc = run(
         [
             "gh",
@@ -651,16 +745,32 @@ def _merge_clean_pr(
     if proc.returncode != 0:
         err = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Direct merge of clean %s#%s refused: %s", repo, pr, err)
+        return ArmResult(False, verdict, f"PR was already clean but direct merge refused: {err}")
+    hold_after = disarm_if_held(repo, pr, runner=run)
+    if hold_after.held:
+        check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
+        merged = check.returncode == 0 and check.stdout.strip().lower() == "true"
+        if not merged:
+            return ArmResult(False, hold_after, f"merge refused after in-flight verdict: {hold_after.describe()}")
+        logger.error(
+            "IN-FLIGHT HOLD: merge of %s#%s completed but %s",
+            repo,
+            pr,
+            hold_after.describe(),
+        )
         return ArmResult(
-            False, verdict, f"PR was already clean but direct merge refused: {err}"
+            False,
+            hold_after,
+            f"IN-FLIGHT HOLD: merge completed but {hold_after.describe()}",
+            merged=True,
+            in_flight_hold_after_completion=True,
         )
     check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
     if check.returncode != 0 or check.stdout.strip().lower() != "true":
         return ArmResult(
             False,
             verdict,
-            "PR was already clean; merge call succeeded but PR is not merged "
-            "(could not verify the merged flag)",
+            "PR was already clean; merge call succeeded but PR is not merged (could not verify the merged flag)",
         )
     logger.info("Merged clean %s#%s directly (%s).", repo, pr, strategy)
     detail = "merged (PR was already clean)"
@@ -679,9 +789,7 @@ def _delete_head_branch(repo: str, verdict: HoldVerdict, run: CommandRunner) -> 
     proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/git/refs/heads/{ref}"])
     if proc.returncode != 0:
         err = proc.stderr.strip() or proc.stdout.strip()
-        logger.warning(
-            "Merged %s but could not delete %s: %s", repo, verdict.head_ref, err
-        )
+        logger.warning("Merged %s but could not delete %s: %s", repo, verdict.head_ref, err)
         return f"; branch not deleted: {err}"
     return ""
 
@@ -715,11 +823,9 @@ def arm_auto_merge(
     direct merge.
     """
     run = runner or _default_runner
-    verdict = evaluate_hold(repo, pr, runner=run)
+    verdict = disarm_if_held(repo, pr, runner=run)
     if verdict.held:
-        logger.warning(
-            "Refusing to arm auto-merge on %s#%s: %s", repo, pr, verdict.describe()
-        )
+        logger.warning("Refusing to arm auto-merge on %s#%s: %s", repo, pr, verdict.describe())
         return ArmResult(False, verdict, "held")
 
     cmd = ["gh", "pr", "merge", str(pr), "--repo", repo, f"--{strategy}", "--auto"]
@@ -741,16 +847,9 @@ def arm_auto_merge(
         )
         if proc.returncode == 0:
             reported = _put_body_merge_method(proc.stdout)
-            stored = (
-                reported
-                if reported is not None
-                else _stored_merge_method(repo, pr, run)
-            )
+            stored = reported if reported is not None else _stored_merge_method(repo, pr, run)
             if stored != strategy:
-                detail = (
-                    f"REST route stored merge method {stored or 'none'!r}, "
-                    f"not the requested {strategy!r}"
-                )
+                detail = f"REST route stored merge method {stored or 'none'!r}, not the requested {strategy!r}"
                 logger.warning("Not armed as requested on %s#%s: %s", repo, pr, detail)
                 revoked, may_be_on = _revoke_rest_arm(repo, pr, run)
                 full = f"{detail}; {revoked}"
@@ -760,9 +859,7 @@ def arm_auto_merge(
         elif CLEAN_STATUS_MARKER in (proc.stderr + proc.stdout).lower():
             if _base_has_merge_queue(repo, verdict.base_ref, run):
                 return _enqueue_clean_pr(repo, pr, strategy, verdict, run)
-            return _merge_clean_pr(
-                repo, pr, strategy, verdict.head_sha, verdict, run, delete_branch
-            )
+            return _merge_clean_pr(repo, pr, strategy, verdict.head_sha, verdict, run, delete_branch)
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Could not arm auto-merge on %s#%s: %s", repo, pr, detail)
@@ -792,7 +889,7 @@ def enqueue_stalled_pr(
     left alone (never merged directly); at most one GraphQL call is made.
     """
     run = runner or _default_runner
-    verdict = evaluate_hold(repo, pr, runner=run)
+    verdict = disarm_if_held(repo, pr, runner=run)
     if verdict.held:
         logger.warning("Refusing to enqueue %s#%s: %s", repo, pr, verdict.describe())
         return ArmResult(False, verdict, "held")
@@ -821,6 +918,11 @@ def _import_arm_cap_module() -> Any:
     return arm_cap
 
 
+def _current_head_sha(repo: str, pr: int, run: CommandRunner) -> str:
+    proc = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".head.sha"])
+    return proc.stdout.strip() if proc.returncode == 0 else ""
+
+
 def _arm_cli(
     repo: str,
     pr: int,
@@ -830,8 +932,16 @@ def _arm_cli(
     arm_tier: str,
     dispatch_kind: str,
     repo_root: str,
+    match_head_commit: str = "",
+    runner: CommandRunner | None = None,
 ) -> int:
     """Run ``--arm`` with optional WIP-cap reservation (RD-CI-005)."""
+    run = runner or _default_runner
+    if match_head_commit:
+        head = _current_head_sha(repo, pr, run)
+        if not head or head != match_head_commit.strip():
+            _emit(f"NOT armed {repo}#{pr}: head moved (expected {match_head_commit}, saw {head or 'unknown'})")
+            return 1
     cap_token: str | None = None
     arm_cap = _import_arm_cap_module()
     if arm_cap is not None:
@@ -870,6 +980,9 @@ def _arm_cli(
             cap_store.confirm_reservation(cap_token)
         else:
             cap_store.release_reservation(cap_token)
+    if result.in_flight_hold_after_completion:
+        _emit(f"IN-FLIGHT HOLD {repo}#{pr}: {result.reason()}")
+        return EXIT_IN_FLIGHT_HOLD
     if result.armed:
         _emit(f"armed {repo}#{pr}")
         return 0
@@ -889,7 +1002,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     Without ``--arm`` this only reports. Exit code 0 means "safe to arm", 1
     means held (or, with ``--arm``, that arming did not happen), 2 means
     ``--require-app-token`` refused a non-App token (GOV-1, #1917), 3 means
-    an unverified REST arm could not be revoked (auto-merge may still be ON).
+    an unverified REST arm could not be revoked (auto-merge may still be ON), 4
+    is the armed-PR cap refusal, and 5 means a hold appeared after merge or
+    enqueue completed (#4315).
     """
     import argparse
 
@@ -897,9 +1012,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("repo", help="owner/name")
     parser.add_argument("pr", type=int)
     parser.add_argument("--arm", action="store_true", help="arm auto-merge if not held")
-    parser.add_argument(
-        "--strategy", default="squash", choices=["squash", "merge", "rebase"]
-    )
+    parser.add_argument("--strategy", default="squash", choices=["squash", "merge", "rebase"])
     parser.add_argument("--delete-branch", action="store_true")
     parser.add_argument(
         "--require-app-token",
@@ -922,6 +1035,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         default="",
         help="repository root for config/dispatch_limits.json (default: cwd)",
     )
+    parser.add_argument(
+        "--match-head-commit",
+        default="",
+        help="refuse to arm unless the PR head SHA matches (merge shepherd pin)",
+    )
+    parser.add_argument(
+        "--disarm-if-held",
+        action="store_true",
+        help="disarm an already-armed PR when a hold applies (author-bot safety path)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -938,9 +1061,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             arm_tier=args.arm_tier,
             dispatch_kind=args.dispatch_kind,
             repo_root=args.repo_root,
+            match_head_commit=args.match_head_commit,
         )
 
-    verdict = evaluate_hold(args.repo, args.pr)
+    if args.disarm_if_held:
+        verdict = disarm_if_held(args.repo, args.pr)
+    else:
+        verdict = evaluate_hold(args.repo, args.pr)
     _emit(f"{args.repo}#{args.pr}: {verdict.describe()}")
     return 1 if verdict.held else 0
 

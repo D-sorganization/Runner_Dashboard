@@ -13,7 +13,7 @@ from staff.workspace import is_standalone_mode, rm_root
 
 log = logging.getLogger("dashboard.staff.skills")
 SKILLS_DIR_ENV = "STAFF_SKILLS_DIR"
-_SKILL_GLOB = "*/*/SKILL.md"
+_SKILL_GLOB_PATTERNS = ("*/SKILL.md", "*/*/SKILL.md")
 
 _CACHE_LOCK = threading.Lock()
 _CACHE_DIR_SIG: tuple[str, tuple[tuple[str, int, int], ...]] | None = None
@@ -58,7 +58,23 @@ def _load_directory(root: Path) -> None:
     summaries: dict[str, SkillSummary] = {}
     details: dict[tuple[str, str], SkillDetail] = {}
     errors: dict[str, list[str]] = {}
-    for skill_file in sorted(root.glob(_SKILL_GLOB)):
+    skill_files: list[Path] = []
+    seen: set[Path] = set()
+    for pattern in _SKILL_GLOB_PATTERNS:
+        for skill_file in root.glob(pattern):
+            try:
+                resolved = skill_file.resolve()
+            except (OSError, RuntimeError) as exc:
+                # A symlink loop raises RuntimeError before Python 3.13 and OSError
+                # after; either way it must not abort indexing of siblings (C-16).
+                rel = str(skill_file.relative_to(root))
+                errors[rel] = [f"unresolvable skill path: {exc}"]
+                log.warning("skill validation failed for %s: %s", rel, exc)
+                continue
+            if resolved not in seen:
+                seen.add(resolved)
+                skill_files.append(skill_file)
+    for skill_file in sorted(skill_files):
         rel = str(skill_file.relative_to(root))
         try:
             body_text, package_dir, _ = resolve_skill_source(skill_file)
@@ -69,6 +85,7 @@ def _load_directory(root: Path) -> None:
             )
         except (OSError, SkillValidationError) as exc:
             errors[rel] = [str(exc)]
+            log.warning("skill validation failed for %s: %s", rel, exc)
             continue
         key = (detail.name, detail.version)
         if key in details:
@@ -119,6 +136,23 @@ def repo_matches_skill(skill_repos: tuple[str, ...], repo: str) -> bool:
     return bool(repo) and repo in skill_repos
 
 
+def role_matches_skill(skill_roles: tuple[str, ...], role: str) -> bool:
+    if not skill_roles or "*" in skill_roles:
+        return True
+    return bool(role) and role in skill_roles
+
+
+def role_match_rank(skill_roles: tuple[str, ...], role: str) -> int:
+    """Higher is a better match: explicit role beats ``*`` only."""
+    if not role_matches_skill(skill_roles, role):
+        return -1
+    if role in skill_roles:
+        return 2
+    if "*" in skill_roles:
+        return 1
+    return 0
+
+
 def list_skills(
     *,
     role: str | None = None,
@@ -129,7 +163,7 @@ def list_skills(
     with _CACHE_LOCK:
         rows = list(_CACHE_SUMMARIES.values())
     if role:
-        rows = [r for r in rows if role in r.roles]
+        rows = [r for r in rows if role_matches_skill(r.roles, role)]
     if repo:
         rows = [r for r in rows if repo_matches_skill(r.repos, repo)]
     if task_type:

@@ -68,6 +68,9 @@ _CANCEL_FALSE_ALLOWLIST: dict[str, str] = {
         "Cursor read-scan-push to bot/recurring-scan-state must finish; cancel mid-run risks a corrupt "
         "cursor or a lost heartbeat."
     ),
+    "merge-shepherd.yml": (
+        "At most one shepherd pass per repo; overlapping cron ticks must not cancel an in-flight arm batch."
+    ),
 }
 
 _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
@@ -79,6 +82,7 @@ _SINGLETON_GROUP_ALLOWLIST: dict[str, str] = {
     "issue-taxonomy-backfill.yml": "Backfill is an explicit singleton maintenance workflow.",
     "taxonomy-rollout.yml": "Taxonomy rollout is a singleton governance workflow.",
     "util-queued-job-reaper.yml": "Queue reaper is a singleton maintenance workflow with a max-cancel cap.",
+    "merge-shepherd.yml": "Scheduled merge shepherd; singleton per repository.",
 }
 
 
@@ -731,6 +735,25 @@ def test_required_typecheck_job_always_reports_context() -> None:
     assert job["name"] == "TypeScript typecheck (tsc)"
 
 
+def test_job_level_if_never_references_secrets() -> None:
+    """GitHub Actions rejects ``secrets.*`` in workflow-level or job-level ``if:`` (#4300)."""
+    violations: list[str] = []
+    for path in _workflow_files():
+        data = _load_workflow(path)
+        workflow_if = data.get("if")
+        if workflow_if is not None and "secrets." in str(workflow_if):
+            violations.append(f"{path.name}:workflow")
+        for job_name, job in (data.get("jobs") or {}).items():
+            job_if = (job or {}).get("if")
+            if job_if is not None and "secrets." in str(job_if):
+                violations.append(f"{path.name}:{job_name}")
+    assert not violations, (
+        "Workflow-level and job-level `if:` must not reference secrets.*; "
+        "gate on missing credentials inside a step or a reusable workflow instead. "
+        f"Violations: {violations}"
+    )
+
+
 def test_detect_secrets_runs_on_fork_prs() -> None:
     text = (_WORKFLOWS_DIR / "ci-secrets.yml").read_text(encoding="utf-8")
     job_block = text.split("detect-secrets:", 1)[1].split("gitleaks:", 1)[0]
@@ -1103,7 +1126,7 @@ def test_tests_required_fails_closed() -> None:
 
 # --- ci-health-check line cap advisory on pull_request (RD#2730) -------------
 
-_LINECAP_STEP = "Verify no source file exceeds 500 lines"
+_LINECAP_STEP = "Advisory per-file line count (changed sources, reference 500)"
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -1205,6 +1228,17 @@ def test_line_cap_step_has_no_error_swallowing_on_the_diff() -> None:
     assert diff_lines, "PR path must fetch and diff the base"
     assert not any("|| true" in line for line in diff_lines)
     assert "set -euo pipefail" in run
+
+
+def test_pr_size_advisory_job_never_fails_on_over_limit() -> None:
+    """pr-size-advisory mirrors scripts/pr_size_gate.py (advisory-only, 2026-11-06)."""
+    step = _ci_step("pr-size-advisory", name="Report changed-line count (advisory)")
+    run = step["run"]
+    assert "scripts/pr_size_gate.py" in run
+    assert "--strict" not in run
+    assert "advisory only; merge is not blocked" in run
+    tail = run.split("REASON=\"${REASON}\" python - <<'PY'")[-1]
+    assert "sys.exit(1)" not in tail
 
 
 _SELF_HOSTED_RUNNER_MARKERS = ("d-sorg-fleet", "self-hosted", "pick-runner")

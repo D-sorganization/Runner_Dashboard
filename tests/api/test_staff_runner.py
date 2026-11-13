@@ -12,6 +12,7 @@ import json
 import sys
 import time
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -727,3 +728,45 @@ def test_finished_run_is_verified_and_only_enforce_changes_its_status(
     assert lookups == [(done.repo, done.branch)]
     assert "no pull request" in done.verification_detail
     assert [e["kind"] for e in staff.store.events_after(rec.id)][-1] == "verify"
+
+
+def test_pr_remediator_arm_only_run_verifies_not_applicable(monkeypatch: pytest.MonkeyPatch) -> None:
+    from staff import verification
+
+    rec = store_mod.RunRecord(
+        id="run-1fdc3be9d01e",
+        role="pr-remediator",
+        provider="fake",
+        model=None,
+        machine="TestNode",
+        repo="Runner_Dashboard",
+        target_kind="pr",
+        target_ref="4230",
+        prompt="arm",
+        status="succeeded",
+        branch="staff/pr-remediator-4230-deadbeef",
+        ended_at="2026-11-09T00:00:00Z",
+        pr_number=4230,
+    )
+    open_pr = verification.PullRequest(4230, "open", "green", auto_merge_armed=True)
+
+    class TargetOnly:
+        def find(self, repo: str, branch: str) -> None:
+            return None
+
+        def remote_ahead_by(self, repo: str, branch: str, base: str = "main") -> int:
+            return 0
+
+        def get(self, repo: str, number: int) -> verification.PullRequest:
+            return open_pr
+
+    monkeypatch.setattr(verification, "GhCliPrProbe", TargetOnly)
+    verdict = verification.evaluate(
+        rec,
+        opens_pr=True,
+        probe=TargetOnly(),
+        now=datetime(2026, 11, 9, tzinfo=UTC),
+        result_text="STAFF_RESULT: armed auto-merge on green head",
+    )
+    assert verdict.verification == "not_applicable"
+    assert "4230" in verdict.detail

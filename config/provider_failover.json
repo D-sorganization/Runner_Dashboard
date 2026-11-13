@@ -1,8 +1,8 @@
 {
   "schema_version": "provider-failover.v1",
   "default_chain": [
-    {"provider": "codex", "model": "gpt-6-luna"},
-    {"provider": "claude"},
+    {"provider": "codex", "model": "gpt-6.1-sol"},
+    {"provider": "claude", "model": "claude-opus-5-5"},
     {"provider": "anthropic-api"},
     {"provider": "antigravity", "model": "gemini-3.8-flash-high"},
     {"provider": "cursor-agent"}

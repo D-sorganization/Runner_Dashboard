@@ -38,7 +38,7 @@ def _valid_manual_dict() -> dict[str, object]:
             {
                 "anchor": "pr-gates-and-sizing",
                 "title": "PR Gates and Sizing",
-                "body": "Pull requests must stay non-draft, under 500 changed lines, and branched from main.",
+                "body": "Pull requests must stay non-draft and branched from main; prefer cohesive PRs (~500 changed lines advisory, not a merge gate).",
             },
         ],
     }
