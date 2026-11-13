@@ -13,14 +13,15 @@ from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller
-from staff import claim_guard, consolidation, resource_admission
-from staff import fleet as staff_fleet
 from staff.audit import AuditError, record_audit
 from staff.barb_lease_fence import BarbClaim, barb_write_fence, is_barb_seat
 from staff.budget import BudgetGuard
 from staff.rate_limit import check_rate_limit
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import _now
+
+from staff import claim_guard, consolidation, resource_admission
+from staff import fleet as staff_fleet
 
 log = logging.getLogger("dashboard.staff")
 DispatchResourceSnapshot = resource_admission.DispatchResourceSnapshot
@@ -200,7 +201,7 @@ def _refuse_if_hold(cmd: DispatchCommand) -> None:
     """409 when an active fleet hold blocks this dispatch slice (issue #2657)."""
     if not cmd.repo:
         return
-    from staff.holds import refuse_dispatch_if_held, refusal_detail  # noqa: PLC0415
+    from staff.holds import refusal_detail, refuse_dispatch_if_held  # noqa: PLC0415
 
     hit = refuse_dispatch_if_held(cmd.role, cmd.repo, cmd.prompt)
     if hit is not None:

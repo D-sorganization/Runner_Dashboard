@@ -7112,6 +7112,11 @@
             "title": "Lifted When",
             "type": "string"
           },
+          "set_by": {
+            "default": "",
+            "title": "Set By",
+            "type": "string"
+          },
           "set_on": {
             "title": "Set On",
             "type": "string"

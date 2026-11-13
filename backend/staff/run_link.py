@@ -11,7 +11,6 @@ import logging
 import threading
 from typing import Any
 
-from staff import claim_guard
 from staff.barb_fence import FencedAuthorityError
 from staff.barb_runtime import enqueue_run_card, get_authority_config, relay_payload
 from staff.barb_versions import ApplyOutcome, ApplyResult
@@ -21,6 +20,8 @@ from staff.conversations import get_conversation_store
 from staff.plan import RunRequest
 from staff.store import RunRecord
 from staff.thread_bus import get_thread_bus
+
+from staff import claim_guard
 
 log = logging.getLogger("dashboard.staff.run_link")
 

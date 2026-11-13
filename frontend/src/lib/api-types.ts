@@ -12530,6 +12530,11 @@ export interface components {
             kind: "guardrail" | "schedule";
             /** Lifted When */
             lifted_when: string;
+            /**
+             * Set By
+             * @default
+             */
+            set_by: string;
             /** Set On */
             set_on: string;
             /** Text */
