@@ -27,10 +27,15 @@ from scripts.render_mcp_tool_inventory import (  # noqa: E402
     CONNECT_INVENTORY_END,
     README_INVENTORY_BEGIN,
     README_INVENTORY_END,
+    _cell,
     fleet_inventory_rows,
     rd_threads_inventory_rows,
     updated_documents,
 )
+
+
+def test_table_cells_escape_asterisks_like_prettier() -> None:
+    assert _cell("broadcast with to='*'") == "broadcast with to='\\*'"
 
 
 def test_every_fleet_mcp_tool_has_auth_scope_mapping() -> None:

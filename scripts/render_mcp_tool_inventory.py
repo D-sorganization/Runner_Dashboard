@@ -45,7 +45,7 @@ class InventoryRow:
 
 
 def _cell(text: str) -> str:
-    return " ".join(text.split()).replace("|", "\\|")
+    return " ".join(text.split()).replace("|", "\\|").replace("*", "\\*")
 
 
 def _one_line(description: str) -> str:
