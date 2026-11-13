@@ -15,15 +15,15 @@ def _registry(*machines: dict[str, Any]) -> dict[str, Any]:
 
 
 _FLEET = _registry(
-    {"name": "ControlTower", "role": "hub", "aliases": ["ct"]},
-    {"name": "Brick", "role": "node", "aliases": ["d-sorg-local-Brick-1"]},
-    {"name": "OG Laptop", "role": "node", "aliases": ["og_laptop"]},
+    {"name": "HubAlpha", "role": "hub", "aliases": ["ha"]},
+    {"name": "Kiln", "role": "node", "aliases": ["d-sorg-local-Kiln-1"]},
+    {"name": "Lab Bench", "role": "node", "aliases": ["lab_bench"]},
     {
-        "name": "DeskComputer",
+        "name": "TowerBox",
         "role": "node",
-        "runner_pools": [{"name": "DeskComputer-Runner", "role": "runner_pool"}],
+        "runner_pools": [{"name": "TowerBox-Runner", "role": "runner_pool"}],
     },
-    {"name": "Pi5", "role": "node", "retired": True},
+    {"name": "OldNode7", "role": "node", "retired": True},
 )
 
 
@@ -35,13 +35,13 @@ def _resolve(monkeypatch: pytest.MonkeyPatch, registry: dict[str, Any], header: 
 @pytest.mark.parametrize(
     ("header", "canonical"),
     [
-        ("Brick", "Brick"),  # plain alphanumeric control: passed before the fix
-        ("d-sorg-local-Brick-1", "Brick"),
-        ("OG Laptop", "OG Laptop"),
-        ("og_laptop", "OG Laptop"),
-        ("OG-Laptop", "OG Laptop"),
-        ("DeskComputer-Runner", "DeskComputer-Runner"),
-        ("  Brick  ", "Brick"),
+        ("Kiln", "Kiln"),  # plain alphanumeric control: passed before the fix
+        ("d-sorg-local-Kiln-1", "Kiln"),
+        ("Lab Bench", "Lab Bench"),
+        ("lab_bench", "Lab Bench"),
+        ("Lab-Bench", "Lab Bench"),
+        ("TowerBox-Runner", "TowerBox-Runner"),
+        ("  Kiln  ", "Kiln"),
     ],
 )
 def test_registered_node_names_with_separators_resolve(
@@ -50,7 +50,7 @@ def test_registered_node_names_with_separators_resolve(
     assert _resolve(monkeypatch, _FLEET, header) == canonical
 
 
-@pytest.mark.parametrize("header", ["Brick-2", "Bric", "Brickx", "local-Brick", "unknown_node", "Pi5"])
+@pytest.mark.parametrize("header", ["Kiln-2", "Kil", "Kilnx", "local-Kiln", "unknown_node", "OldNode7"])
 def test_unknown_or_retired_names_stay_unregistered(monkeypatch: pytest.MonkeyPatch, header: str) -> None:
     with pytest.raises(HTTPException) as exc:
         _resolve(monkeypatch, _FLEET, header)
@@ -66,14 +66,14 @@ def test_unknown_or_retired_names_stay_unregistered(monkeypatch: pytest.MonkeyPa
         "Bri\nck",
         "Bri\x00ck",
         "Br\tick",
-        "../Brick",
-        "Brick/1",
+        "../Kiln",
+        "Kiln/1",
         "Bri\\ck",
-        "-Brick",
-        "Brick_",
+        "-Kiln",
+        "Kiln_",
         "---",
-        "B" * 65,
-        "Brïck",
+        "K" * 65,
+        "Kïln",
     ],
 )
 def test_malformed_names_are_rejected(monkeypatch: pytest.MonkeyPatch, header: str) -> None:
@@ -84,7 +84,7 @@ def test_malformed_names_are_rejected(monkeypatch: pytest.MonkeyPatch, header: s
 
 def test_hub_is_still_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(HTTPException) as exc:
-        _resolve(monkeypatch, _FLEET, "ControlTower")
+        _resolve(monkeypatch, _FLEET, "HubAlpha")
     assert exc.value.detail == "hub cannot request spoke run tokens"
 
 
@@ -104,8 +104,8 @@ def test_machine_and_its_own_pool_sharing_a_name_is_not_a_collision(monkeypatch:
 
 
 def test_canonical_node_token_contract() -> None:
-    assert canonical_node_token("ControlTower-Runner") == "controltowerrunner"
-    assert canonical_node_token(" OG_Laptop ") == canonical_node_token("og laptop") == "oglaptop"
+    assert canonical_node_token("HubAlpha-Runner") == "hubalpharunner"
+    assert canonical_node_token(" Lab_Bench ") == canonical_node_token("lab bench") == "labbench"
     for bad in ("", "a/b", "a\x1fb", "a.b", "-a"):
         with pytest.raises(ValueError, match="node name"):
             canonical_node_token(bad)
