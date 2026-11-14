@@ -42,6 +42,11 @@ TERMINAL_STATUSES: frozenset[RunStatus] = frozenset(
     }
 )
 
+# Lifecycle terminals that must not be relabeled to ``blocked`` (metadata updates still apply).
+_IMMUTABLE_BLOCKED_TARGETS: frozenset[RunStatus] = frozenset(
+    {RunStatus.FAILED, RunStatus.SUCCEEDED, RunStatus.CANCELLED},
+)
+
 LEGAL_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
     RunStatus.QUEUED: frozenset(
         {RunStatus.PREPARING, RunStatus.CANCELLED, RunStatus.FAILED, RunStatus.BLOCKED},
@@ -165,18 +170,27 @@ def mark_run_blocked(
     from_status: RunStatus | str,
     **fields: Any,
 ) -> None:
-    """Mark ``blocked`` when provider failover is exhausted (#2047, #4269)."""
+    """Mark ``blocked`` when provider failover is exhausted (#2047, #4269).
+
+    Uses ``transition()`` when the move is legal. Terminal lifecycle rows
+    (``failed`` / ``succeeded`` / ``cancelled``) keep their status; ``fields``
+    are still written (status no-op). Already-``blocked`` rows accept field
+    patches only.
+    """
     expected = _coerce_status(from_status)
     if fields.get("status") is not None:
         raise ValueError("pass status via mark_run_blocked, not in fields")
-    if is_legal_transition(expected, RunStatus.BLOCKED):
-        transition(store, run_id, expected, RunStatus.BLOCKED, raise_on_race=False, **fields)
-        return
     if expected == RunStatus.BLOCKED:
         if fields:
             store.update_run(run_id, **fields)
         return
-    # Lifecycle terminal ``failed`` cannot transition; relabel via store for cooldown hold.
+    if expected in _IMMUTABLE_BLOCKED_TARGETS:
+        if fields:
+            store.update_run(run_id, **fields)
+        return
+    if is_legal_transition(expected, RunStatus.BLOCKED):
+        transition(store, run_id, expected, RunStatus.BLOCKED, raise_on_race=False, **fields)
+        return
     store.update_run(run_id, status=RunStatus.BLOCKED.value, **fields)
 
 

@@ -15,6 +15,7 @@ from staff.run_status import (
     RunStatus,
     RunStatusRaceError,
     is_legal_transition,
+    mark_run_blocked,
     transition,
 )
 from staff.store import RunRecord, RunStore
@@ -127,6 +128,58 @@ def test_compare_and_set_concurrent_single_winner(tmp_path: Path) -> None:
     assert final is not None
     assert final.status in {"preparing", "cancelled"}
     store.close()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("terminal_status", [RunStatus.FAILED, RunStatus.SUCCEEDED, RunStatus.CANCELLED])
+def test_mark_run_blocked_leaves_terminal_lifecycle_status_unchanged(
+    tmp_path: Path, terminal_status: RunStatus
+) -> None:
+    store = RunStore(tmp_path / f"blocked-term-{terminal_status}.sqlite3")
+    run_id = f"term-{terminal_status.value}"
+    try:
+        store.create_run(
+            RunRecord(
+                run_id,
+                "ad-hoc",
+                "claude",
+                None,
+                "m",
+                "repo",
+                "prompt",
+                "",
+                "p",
+                status=terminal_status.value,
+            )
+        )
+        mark_run_blocked(
+            store,
+            run_id,
+            terminal_status,
+            failure_class="providers_exhausted",
+            remediation="all providers cooling down",
+        )
+        got = store.get_run(run_id)
+        assert got is not None
+        assert got.status == terminal_status.value
+        assert got.failure_class == "providers_exhausted"
+        assert got.remediation == "all providers cooling down"
+    finally:
+        store.close()
+
+
+@pytest.mark.unit
+def test_mark_run_blocked_transitions_non_terminal_to_blocked(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "blocked-active.sqlite3")
+    try:
+        store.create_run(RunRecord("active-1", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="running"))
+        mark_run_blocked(store, "active-1", RunStatus.RUNNING, failure_class="providers_exhausted")
+        got = store.get_run("active-1")
+        assert got is not None
+        assert got.status == "blocked"
+        assert got.failure_class == "providers_exhausted"
+    finally:
+        store.close()
 
 
 @pytest.mark.unit
