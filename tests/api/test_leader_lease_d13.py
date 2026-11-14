@@ -1,8 +1,12 @@
-"""WP19 D-13 (#4274), scope half: who may take the scheduler leader lease.
+"""WP19 D-13 (#4274): scheduler leader lease scope and failover double-fire.
 
-``POST /api/staff/schedule/leader-lease`` mutates the lease but was gated by
-``staff.read``, so any viewer (or an anonymous tailnet caller on a node with
-no fleet token) could take or renew it.
+Two defects from the adversarial review:
+
+* ``POST /api/staff/schedule/leader-lease`` mutates the lease but was gated by
+  ``staff.read``, so any viewer (or an anonymous tailnet caller on a node with
+  no fleet token) could take or renew the lease.
+* Slot cursors are per-machine, so a host that took the lease over re-fired a
+  slot the previous leader had already handled.
 """
 
 from __future__ import annotations
@@ -76,6 +80,60 @@ def fleet(
 
     monkeypatch.setattr(lease_mod, "acquire_remote_leader_lease", _ask_hub)
     return hub, hub_runner, node, node_runner, clock
+
+
+@pytest.mark.unit
+def test_failover_does_not_refire_slot_the_old_leader_fired(fleet: Any) -> None:
+    hub, hub_runner, node, node_runner, clock = fleet
+    clock["now"] = _la(2026, 9, 22, 22, 0, 5)
+    assert [d["fired"] for d in hub.tick()] == [True]
+    assert node.tick() == []  # hub holds the lease
+    # The hub scheduler dies; its lease (90 s) expires and node-b takes over.
+    clock["now"] = _la(2026, 9, 22, 22, 5, 0)
+    assert node.tick() == []
+    assert node.leader_status()["holder"] == "" and hub.leader_status()["holder"] == "node-b"
+    assert node_runner.submitted == [], "new leader re-fired the 22:00 slot the old leader already fired"
+    assert len(hub_runner.submitted) == 1
+
+
+@pytest.mark.unit
+def test_returning_primary_does_not_refire_slot_the_failover_fired(fleet: Any) -> None:
+    hub, hub_runner, node, node_runner, clock = fleet
+    # Hub scheduler is down across the slot; node-b leads and fires it.
+    clock["now"] = _la(2026, 9, 22, 22, 0, 5)
+    assert [d["fired"] for d in node.tick()] == [True]
+    # Hub comes back and preempts as the higher-priority host.
+    clock["now"] = _la(2026, 9, 22, 22, 0, 40)
+    assert hub.tick() == []
+    assert hub.leader_status()["holder"] == "hub-a"
+    assert hub_runner.submitted == [], "returning primary re-fired the slot the failover host fired"
+    assert len(node_runner.submitted) == 1
+    # The next slot is the hub's and fires exactly once.
+    clock["now"] = _la(2026, 9, 23, 22, 0, 5)
+    assert [d["fired"] for d in hub.tick()] == [True]
+
+
+@pytest.mark.unit
+def test_failover_still_fires_slot_the_old_leader_never_reached(fleet: Any) -> None:
+    hub, hub_runner, node, node_runner, clock = fleet
+    assert hub.tick() == []  # 21:59:50: hub renews the lease, then dies before the slot
+    clock["now"] = _la(2026, 9, 22, 22, 5, 0)
+    assert [d["fired"] for d in node.tick()] == [True]
+    assert hub_runner.submitted == [] and len(node_runner.submitted) == 1
+
+
+@pytest.mark.unit
+def test_lease_reply_reports_how_far_the_peer_leader_got(fleet: Any) -> None:
+    hub, _, _, _, _ = fleet
+    t0 = _la(2026, 9, 22, 22, 0, 0)
+    first = hub.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30)
+    assert first["granted"] is True and first.get("handled_through") is None
+    denied = hub.acquire_leader_lease("node-b", now=_la(2026, 9, 22, 22, 0, 10), ttl_seconds=30)
+    assert denied["granted"] is False and denied["handled_through"] == t0.isoformat()
+    takeover = hub.acquire_leader_lease("node-b", now=_la(2026, 9, 22, 22, 1, 0), ttl_seconds=30)
+    assert takeover["granted"] is True and takeover["handled_through"] == t0.isoformat()
+    renewed = hub.acquire_leader_lease("node-b", now=_la(2026, 9, 22, 22, 1, 20), ttl_seconds=30)
+    assert renewed["reason"] == "renewed" and renewed["handled_through"] == t0.isoformat()
 
 
 # ── scope (claim a) ──────────────────────────────────────────────────────

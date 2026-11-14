@@ -45,6 +45,7 @@ from staff.scheduler_leader_lease import (
     leader_chain,
     lease_allows_firing,
     lease_ttl_seconds,
+    skip_slots_handled_by_peer,
 )
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
@@ -243,7 +244,14 @@ class StaffScheduler:
             return _lease_acquire_leader_lease(self._load_state, self._save_state, machine, now=now, ttl_seconds=ttl)
 
     def _lease_allows_firing(self, now: datetime) -> bool:
-        return lease_allows_firing(self.acquire_leader_lease, self.runner.machine, now, self._lease_ttl_seconds())
+        ttl = self._lease_ttl_seconds()
+        return lease_allows_firing(self.acquire_leader_lease, self.runner.machine, now, ttl, self._skip_peer_slots)
+
+    def _skip_peer_slots(self, decision: dict[str, Any], now: datetime) -> None:
+        """Never re-fire a slot another leader already handled (#4274 D-13)."""
+        with self._lock:
+            if skip_slots_handled_by_peer(self._load_state(), self.runner.roles(), decision, now, self._tz):
+                self._save_state()
 
     def leader_status(self, now: datetime | None = None) -> dict[str, Any]:
         now = now or self._clock()
