@@ -388,6 +388,95 @@ def test_ensure_worktree_bootstrap_ready_propagates_submodule_timeout_failure(tm
 
 
 @pytest.mark.unit
+def test_submodule_lock_bootstrap_failure_schedules_automatic_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from unittest.mock import MagicMock
+
+    from staff.retry import handle_post_execution_retry, should_retry
+    from staff.roles import RoleSpec
+
+    store = RunStore(tmp_path / "runs.sqlite3")
+    rec = RunRecord(
+        id="run-submodule-lock",
+        role="night-watch",
+        provider="fake",
+        model=None,
+        machine="TestNode",
+        repo="Runner_Dashboard",
+        target_kind="issue",
+        target_ref="42",
+        prompt="x",
+        status="preparing",
+        attempt=1,
+        max_attempts=3,
+    )
+    store.create_run(rec)
+    plan = runner_ops.RunPlan(
+        role="night-watch",
+        provider="fake",
+        model="default",
+        repo="Runner_Dashboard",
+        target_kind="issue",
+        target_ref="42",
+        operator_prompt="x",
+        prompt="x",
+        argv=["fake"],
+        branch="staff/night-watch-42",
+        lease_ritual=False,
+    )
+
+    lock_detail = "fatal: Unable to create '.../modules/vendor/ud-tools/index.lock': File exists."
+    original = runner_ops.run_worktree_bootstrap_preflight
+    runner_ops.run_worktree_bootstrap_preflight = lambda _workdir: runner_ops.WorktreeBootstrapPreflight(
+        ok=False,
+        attention=f"submodule init failed: {lock_detail}",
+        failure_class="submodule_lock",
+        retryable=True,
+        remediation="Concurrent staff runs or a stale submodule index.lock blocked init; re-dispatch after locks age out.",
+    )
+    try:
+        assert runner_ops.ensure_worktree_bootstrap_ready(store, rec, plan, tmp_path) is None
+    finally:
+        runner_ops.run_worktree_bootstrap_preflight = original
+
+    updated = store.get_run(rec.id)
+    assert updated is not None
+    assert updated.failure_class == "submodule_lock"
+    assert updated.retryable is True
+
+    role = RoleSpec(name="night-watch", title="Night Watch", providers=("fake",), max_attempts=3)
+    ok, reason = should_retry(updated, role)
+    assert ok is True, reason
+
+    runner = MagicMock()
+    runner.store = store
+    runner.machine = "TestNode"
+    runner.roles.return_value = {"night-watch": role}
+    runner._cancel_flags = set()
+    runner._adapters = {
+        "fake": MagicMock(
+            installed=lambda: True,
+            unattended=True,
+            build_command=lambda *a, **k: ["fake"],
+        ),
+    }
+    scheduled: list[tuple[RunRecord, object]] = []
+
+    def capture_schedule(_runner: object, attempt_rec: RunRecord, attempt_plan: object, _delay: float) -> None:
+        scheduled.append((attempt_rec, attempt_plan))
+
+    monkeypatch.setattr("staff.retry.automatic_retry_admission", lambda *a, **k: (True, ""))
+    monkeypatch.setattr("staff.retry._schedule", capture_schedule)
+
+    assert handle_post_execution_retry(runner, updated, plan) is True
+    assert len(scheduled) == 1
+    attempt_rec, _ = scheduled[0]
+    assert attempt_rec.retry_of == rec.id
+    assert attempt_rec.attempt == 2
+
+
+@pytest.mark.unit
 def test_clean_stale_git_locks_removes_stale_locks_when_no_git_process_active(tmp_path: Path) -> None:
     worktree = tmp_path / "wt"
     worktree.mkdir()

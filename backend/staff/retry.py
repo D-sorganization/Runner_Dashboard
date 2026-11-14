@@ -1,7 +1,7 @@
 """Bounded retry policy and backoff calculation for staff runs (SC-A7, Issue #1303).
 
 Scope:
-- Retry only retryable classes (rate_limited, provider_error, workspace_error)
+- Retry only retryable classes (rate_limited, provider_error, workspace_error, submodule_lock)
   with exponential backoff and jitter.
 - Never retry needs_input, auth_expired, lease_blocked, cli_missing.
 - Max attempts per role (default 2); each attempt is a new run linked by retry_of.
