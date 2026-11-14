@@ -21,6 +21,7 @@ RETRYABLE_FAILURE_CLASSES = frozenset(
         "quota_exhausted",
         "provider_error",
         "workspace_error",
+        "submodule_lock",
     }
 )
 
