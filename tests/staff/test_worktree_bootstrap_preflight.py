@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
-from staff import runner_ops
 from staff.store import RunRecord, RunStore
+
+from staff import runner_ops
 
 
 def _cp(argv: list[str], code: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
@@ -655,6 +659,7 @@ def test_bootstrap_submodules_retries_after_per_worktree_index_lock(tmp_path: Pa
     worktree.mkdir()
     main_repo = tmp_path / "UpstreamDrift"
     wt_gitdir = main_repo / ".git" / "worktrees" / "wt"
+    wt_gitdir.mkdir(parents=True)
     wt_modules = wt_gitdir / "modules" / "vendor" / "ud-tools"
     (worktree / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
     stale_lock = wt_modules / "index.lock"
@@ -797,3 +802,184 @@ def test_role_requires_pre_pr_entrypoint_honors_open_pr_and_code_read_only(
     assert role_requires_pre_pr_entrypoint("issue-remediator") is True
     assert role_requires_pre_pr_entrypoint("research-scout") is False
     assert role_requires_pre_pr_entrypoint("unknown-role") is True
+
+
+@pytest.mark.unit
+def test_clean_stale_git_locks_removes_aged_main_module_lock_when_git_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from staff import runner_ops_worktree_bootstrap as boot
+
+    monkeypatch.setattr(boot, "STALE_GIT_LOCK_MAX_AGE_S", 60.0)
+
+    main_repo = tmp_path / "UpstreamDrift"
+    main_modules = main_repo / ".git" / "modules" / "vendor" / "ud-tools"
+    main_modules.mkdir(parents=True)
+    module_lock = main_modules / "index.lock"
+    module_lock.write_text("lock", encoding="utf-8")
+    old_mtime = time.time() - 120
+    os.utime(module_lock, (old_mtime, old_mtime))
+
+    wt_path = tmp_path / "staff-wt"
+    wt_path.mkdir()
+    wt_gitdir = main_repo / ".git" / "worktrees" / "staff-wt"
+    wt_gitdir.mkdir(parents=True)
+    (wt_path / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {wt_path}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    removed = runner_ops.clean_stale_git_locks(
+        wt_path,
+        run=fake_run,
+        main_root=main_repo,
+        is_git_process_active=lambda _p: True,
+    )
+
+    assert module_lock in removed
+    assert not module_lock.exists()
+
+
+@pytest.mark.unit
+def test_clean_stale_git_locks_preserves_fresh_main_module_lock_when_git_busy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from staff import runner_ops_worktree_bootstrap as boot
+
+    monkeypatch.setattr(boot, "STALE_GIT_LOCK_MAX_AGE_S", 300.0)
+
+    main_repo = tmp_path / "UpstreamDrift"
+    main_modules = main_repo / ".git" / "modules" / "vendor" / "ud-tools"
+    main_modules.mkdir(parents=True)
+    module_lock = main_modules / "index.lock"
+    module_lock.write_text("lock", encoding="utf-8")
+
+    wt_path = tmp_path / "staff-wt"
+    wt_path.mkdir()
+    wt_gitdir = main_repo / ".git" / "worktrees" / "staff-wt"
+    wt_gitdir.mkdir(parents=True)
+    (wt_path / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {wt_path}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    removed = runner_ops.clean_stale_git_locks(
+        wt_path,
+        run=fake_run,
+        main_root=main_repo,
+        is_git_process_active=lambda _p: True,
+    )
+
+    assert removed == []
+    assert module_lock.exists()
+
+
+@pytest.mark.unit
+def test_bootstrap_submodules_exhausted_lock_error_is_retryable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from staff import runner_ops_worktree_bootstrap as boot
+
+    monkeypatch.setattr(boot, "_SUBMODULE_RETRY_BACKOFF_S", (0.0, 0.0))
+
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    main_repo = tmp_path / "UpstreamDrift"
+    wt_gitdir = main_repo / ".git" / "worktrees" / "wt"
+    wt_gitdir.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
+    stale_lock = wt_gitdir / "modules" / "vendor" / "ud-tools" / "index.lock"
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:2] == ["git", "--version"]:
+            return _cp(command, 0, "git version 2.47.1\n")
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {worktree}\n")
+        if "submodule" in command and "update" in command:
+            stale_lock.parent.mkdir(parents=True, exist_ok=True)
+            stale_lock.write_text("leftover", encoding="utf-8")
+            return _cp(
+                command,
+                1,
+                stderr=f"fatal: Unable to create '{stale_lock}': File exists.\n",
+            )
+        raise AssertionError(f"unexpected command: {command}")
+
+    failure = boot._bootstrap_submodules(worktree, fake_run, is_git_process_active=lambda _p: False)
+
+    assert failure is not None
+    assert failure.retryable is True
+    assert failure.failure_class == "submodule_lock"
+    assert "submodule init failed" in failure.attention
+
+
+@pytest.mark.unit
+def test_submodule_clone_lock_git_dir_resolves_main_checkout(tmp_path: Path) -> None:
+    from staff import runner_ops_worktree_bootstrap as boot
+
+    main_repo = tmp_path / "UpstreamDrift"
+    (main_repo / ".git").mkdir(parents=True)
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    wt_gitdir = main_repo / ".git" / "worktrees" / "wt"
+    wt_gitdir.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {wt_gitdir}\n", encoding="utf-8")
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:4] == ["git", "worktree", "list", "--porcelain"]:
+            return _cp(command, 0, f"worktree {main_repo}\nworktree {worktree}\n")
+        raise AssertionError(f"unexpected command: {command}")
+
+    git_dir = boot._submodule_clone_lock_git_dir(worktree, fake_run)
+
+    assert git_dir == main_repo / ".git"
+
+
+@pytest.mark.unit
+def test_bootstrap_submodules_holds_clone_file_lock(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from staff import runner_ops_worktree_bootstrap as boot
+
+    monkeypatch.setattr(boot, "_SUBMODULE_RETRY_BACKOFF_S", (0.0, 0.0))
+
+    worktree = tmp_path / "wt"
+    worktree.mkdir()
+    (worktree / ".gitmodules").write_text('[submodule "x"]\n\tpath = vendor/x\n', encoding="utf-8")
+    git_dir = worktree / ".git"
+    git_dir.mkdir()
+    held: dict[str, bool] = {"locked": False, "flock_calls": 0}
+
+    class FakeFcntl:
+        LOCK_EX = 2
+        LOCK_UN = 8
+
+        @staticmethod
+        def flock(fd: int, flag: int) -> None:
+            held["flock_calls"] += 1
+            if flag == FakeFcntl.LOCK_EX:
+                held["locked"] = True
+            elif flag == FakeFcntl.LOCK_UN:
+                held["locked"] = False
+
+    monkeypatch.setitem(sys.modules, "fcntl", FakeFcntl)
+    monkeypatch.setattr(boot, "_SUBMODULE_ATTEMPTS", 1)
+
+    def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if command[:2] == ["git", "--version"]:
+            return _cp(command, 0, "git version 2.47.1\n")
+        if command[:3] == ["git", "submodule", "status"]:
+            return _cp(command, 0, "-abc vendor/x\n")
+        if command[:2] == ["git", "worktree"]:
+            return _cp(command, 0, f"worktree {worktree}\n")
+        if "submodule" in command and "update" in command:
+            assert held["locked"], "submodule update must run under clone lock"
+            return _cp(command, 0)
+        raise AssertionError(f"unexpected command: {command}")
+
+    boot._bootstrap_submodules(worktree, fake_run, is_git_process_active=lambda _p: False)
+
+    assert held["flock_calls"] >= 2
+    assert held["locked"] is False
