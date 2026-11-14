@@ -10,6 +10,12 @@ introduced for runner-dashboard:
 - `detect-secrets` baseline at `.secrets.baseline`
 - `tests/test_no_secrets_in_repo.py` (fast in-tree grep)
 
+## What the local gitleaks hook needs
+
+The hook runs `scripts/gitleaks_hook.py`, which scans the staged changes at commit time and the pushed commit range at push time. It fails when the scan did not run, so every host that commits or pushes needs a working `gitleaks` on `PATH` (#4451).
+
+A WSL push host needs a native Linux `gitleaks`. A shim to the Windows binary cannot run git on a WSL path, and the hook then fails with `gitleaks exited 0 but reported that git failed`. Install the upstream Linux release at user level (for example to `~/.local/bin`) and verify it against the release checksums file.
+
 ## When the pre-commit hook fires
 
 1. Read the finding line — gitleaks reports the file, line number and rule.
