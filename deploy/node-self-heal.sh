@@ -20,8 +20,14 @@ if [[ ! -x "${PYTHON_BIN}" ]]; then
   PYTHON_BIN="python3"
 fi
 STATUS_FILE="${DASHBOARD_HOME}/.config/runner-dashboard/self-heal-status.json"
+ENV_CHECK="${SCRIPT_DIR}/runner_dashboard_env_check.py"
+if [[ ! -f "${ENV_CHECK}" && -f "${DEPLOY_DIR}/deploy/runner_dashboard_env_check.py" ]]; then
+  ENV_CHECK="${DEPLOY_DIR}/deploy/runner_dashboard_env_check.py"
+fi
 
 healed_actions=()
+env_file_ok=1
+env_file_issues_json="[]"
 
 # 1. Bi-directional Windows <-> WSL provider credential sync (0600 permissions)
 SYNC_SCRIPT="${SCRIPT_DIR}/sync_provider_credentials.py"
@@ -80,17 +86,29 @@ if [[ "${auto_deploy_busy}" -eq 0 && -d "${RELEASES_DIR}" && -L "${DEPLOY_DIR}" 
   done < <(find "${RELEASES_DIR}" -mindepth 1 -maxdepth 1 -type d -mmin +15 -print0 2>/dev/null || true)
 fi
 
-# 3. Verify local Runner Dashboard HTTP health and restart if hung
+# 2b. Detect NUL bytes or unparseable lines in the secrets EnvironmentFile (systemd skips the whole file)
+ENV_FILE="${RUNNER_DASHBOARD_ENV_FILE:-${DASHBOARD_HOME}/.config/runner-dashboard/env}"
+if [[ -f "${ENV_CHECK}" ]]; then
+  env_report="$("${PYTHON_BIN}" "${ENV_CHECK}" --env-file "${ENV_FILE}" --json 2>/dev/null || echo '{"ok":true}')"
+  if ! echo "${env_report}" | "${PYTHON_BIN}" -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("ok") else 1)' 2>/dev/null; then
+    env_file_ok=0
+    env_file_issues_json="$(echo "${env_report}" | "${PYTHON_BIN}" -c 'import json,sys; print(json.dumps(json.load(sys.stdin).get("issues") or []))' 2>/dev/null || echo "[]")"
+    "${PYTHON_BIN}" "${ENV_CHECK}" --env-file "${ENV_FILE}" --warn 2>&1 || true
+    healed_actions+=("alert:env_file_corrupt")
+  fi
+fi
+
+# 3. Verify local Runner Dashboard HTTP health (unauthenticated /health) and restart if hung
 health_ok=0
 for _ in 1 2; do
-  if curl -fsS --max-time 8 "http://127.0.0.1:${PORT}/api/version" >/dev/null 2>&1; then
+  if curl -fsS --max-time 8 "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then
     health_ok=1
     break
   fi
   sleep 2
 done
 
-if [[ "${health_ok}" -eq 0 && "${auto_deploy_busy}" -eq 0 ]]; then
+if [[ "${health_ok}" -eq 0 && "${auto_deploy_busy}" -eq 0 && "${env_file_ok}" -eq 1 ]]; then
   LOOPBACK_GUARD="${SCRIPT_DIR}/loopback_bind_guard.py"
   if [[ ! -f "${LOOPBACK_GUARD}" && -f "${DASHBOARD_HOME}/actions-runners/dashboard/deploy/loopback_bind_guard.py" ]]; then
     LOOPBACK_GUARD="${DASHBOARD_HOME}/actions-runners/dashboard/deploy/loopback_bind_guard.py"
@@ -169,19 +187,26 @@ if [[ -d "${BASE_DIR}" ]]; then
 fi
 
 mkdir -p "$(dirname "${STATUS_FILE}")"
-"${PYTHON_BIN}" - "${STATUS_FILE}" "${health_ok}" "${credential_sync_ok}" "${credential_sync_error}" "${healed_actions[@]:-}" << 'PY'
+"${PYTHON_BIN}" - "${STATUS_FILE}" "${health_ok}" "${credential_sync_ok}" "${credential_sync_error}" "${env_file_ok}" "${env_file_issues_json}" "${healed_actions[@]:-}" << 'PY'
 import datetime, json, os, sys
 status_path = sys.argv[1]
 health_ok = sys.argv[2] == "1"
 credential_sync_ok = sys.argv[3] == "1"
 credential_sync_error = sys.argv[4]
-actions = [a for a in sys.argv[5:] if a]
+env_file_ok = sys.argv[5] == "1"
+try:
+    env_file_issues = json.loads(sys.argv[6]) if sys.argv[6] else []
+except json.JSONDecodeError:
+    env_file_issues = []
+actions = [a for a in sys.argv[7:] if a]
 payload = {
     "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
-    "healthy": health_ok and credential_sync_ok,
+    "healthy": health_ok and credential_sync_ok and env_file_ok,
     "http_healthy": health_ok,
     "credential_sync_ok": credential_sync_ok,
     "credential_sync_error": credential_sync_error or None,
+    "env_file_ok": env_file_ok,
+    "env_file_issues": env_file_issues or None,
     "actions": actions,
 }
 tmp = f"{status_path}.tmp"

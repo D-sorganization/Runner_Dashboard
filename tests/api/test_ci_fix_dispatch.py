@@ -227,8 +227,9 @@ def test_agy_gate_reads_the_staff_adapter() -> None:
 def test_route_ci_fix_escalation_after_cap() -> None:
     route = route_ci_fix(
         failure_type="test",
-        attempt_number=3,
-        max_attempts=3,
+        attempt_number=2,
+        max_attempts=2,
+        allow_strong_escalation=True,
     )
     assert route.escalated is True
     assert route.tier == "strong"
@@ -351,6 +352,12 @@ def test_remediation_ci_fix_dispatch_lifecycle(
     isolated = BareLockManager()
     monkeypatch.setattr(ci_fix_service, "GLOBAL_CI_FIX_LOCK_MGR", isolated)
     monkeypatch.setattr(remediation_ci_fix, "GLOBAL_CI_FIX_LOCK_MGR", isolated)
+    # The default attempt store is the host's ~/.local/share/runner-dashboard/ci_fix_locks.db: the two
+    # attempts recorded below would persist there and trip the per-head cap (429) on every later run.
+    from ci_fix_attempt_store import CIFixAttemptStore
+
+    attempt_store = CIFixAttemptStore(tmp_path / "ci_fix_attempts.db")
+    monkeypatch.setattr(ci_fix_service, "global_ci_fix_attempt_store", lambda: attempt_store)
     dispatch_payload = {
         "repo": "Runner_Dashboard",
         "pr_number": 202,
@@ -399,20 +406,24 @@ def test_remediation_ci_fix_dispatch_lifecycle(
     client.delete("/api/remediation/ci-fix/locks/Runner_Dashboard/202")
 
 
-def test_acceptance_criteria_escalation_after_three_attempts() -> None:
-    # Acceptance requirement: A seeded test failure escalates after 3 failed attempts
-    route_att1 = route_ci_fix(failure_type="test", attempt_number=1, max_attempts=3)
+def test_acceptance_criteria_escalation_requires_operator_approval() -> None:
+    route_att1 = route_ci_fix(failure_type="test", attempt_number=1, max_attempts=2)
     assert route_att1.escalated is False
     assert route_att1.tier == "cli"
 
-    route_att2 = route_ci_fix(failure_type="test", attempt_number=2, max_attempts=3)
+    route_att2 = route_ci_fix(failure_type="test", attempt_number=2, max_attempts=2)
     assert route_att2.escalated is False
     assert route_att2.tier == "cli"
 
-    route_att3 = route_ci_fix(failure_type="test", attempt_number=3, max_attempts=3)
-    assert route_att3.escalated is True
-    assert route_att3.tier == "strong"
-    assert route_att3.model == "claude-opus-5-5"
+    route_auto = route_ci_fix(failure_type="test", attempt_number=2, max_attempts=2, allow_strong_escalation=False)
+    assert route_auto.tier == "cli"
+
+    route_strong = route_ci_fix(
+        failure_type="test", attempt_number=2, max_attempts=2, allow_strong_escalation=True
+    )
+    assert route_strong.escalated is True
+    assert route_strong.tier == "strong"
+    assert route_strong.model == "claude-opus-5-5"
 
 
 QUEUE_REF = f"gh-readonly-queue/main/pr-77-{'a' * 40}"

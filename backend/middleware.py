@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from collections import defaultdict
@@ -9,101 +10,177 @@ from collections.abc import Callable
 from typing import Any
 
 from external_ingress import deny_external_ingress_bearer
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
+from starlette.routing import Match
 
 log = logging.getLogger("dashboard.middleware")
 
 # --------------------------------------------------------------------------- #
-# MaxBodySizeMiddleware  (issue #350)
+# MaxBodySizeMiddleware  (issue #350; hardened for #4274 WP19 F-07)
 # --------------------------------------------------------------------------- #
-# Default limits per path (bytes).  Overridden per-route via decorator.
-_DEFAULT_MAX_BODY = 1 * 1024 * 1024  # 1 MB
-_WEBHOOK_MAX_BODY = 256 * 1024  # 256 KB
-_STREAMING_MAX_BODY = 10 * 1024 * 1024  # 10 MB
+# Contract: no handler ever receives more request-body bytes than its limit.
+# The limit is DEFAULT_MAX_BODY_SIZE unless the matched route's endpoint is
+# marked with ``@limit_body_size``; nothing a client sends can change it.
+DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB
+WEBHOOK_MAX_BODY_SIZE = 256 * 1024  # 256 KB
+_BODY_LIMIT_ATTR = "__max_body_size__"
 
-_LIMIT_OVERRIDES: dict[str, int] = {
-    "/api/linear/webhook": _WEBHOOK_MAX_BODY,
-}
 
-_MAX_BODY_HEADER = "X-Max-Body-Size"
+def _require_positive_limit(value: Any, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer number of bytes, got {value!r}")
+    return value
+
+
+def limit_body_size(max_bytes: int) -> Callable[[Callable], Callable]:
+    """Decorator to set a per-route maximum body size in bytes.
+
+    Usage::
+
+        @router.post("/webhook")
+        @limit_body_size(256 * 1024)
+        async def my_handler(request: Request): ...
+
+    ``MaxBodySizeMiddleware`` resolves this marker for the matched route, so a
+    route may be tighter or (explicitly) larger than the default.
+    """
+    _require_positive_limit(max_bytes, "max_bytes")
+
+    def decorator(func: Callable) -> Callable:
+        setattr(func, _BODY_LIMIT_ATTR, max_bytes)
+        return func
+
+    return decorator
+
+
+def endpoint_body_limit(endpoint: Any) -> int | None:
+    """Return the ``@limit_body_size`` marker of *endpoint*, or None for the default."""
+    # FastAPI may wrap endpoints; walk the __wrapped__ chain.
+    candidate: Any = endpoint
+    while candidate is not None:
+        limit = getattr(candidate, _BODY_LIMIT_ATTR, None)
+        if isinstance(limit, int):
+            return limit
+        candidate = getattr(candidate, "__wrapped__", None)
+    return None
+
+
+def _declared_content_length(scope: Any) -> int | None:
+    """Return the declared Content-Length, or None; raise ValueError if malformed."""
+    declared: int | None = None
+    for name, value in scope.get("headers", ()):
+        if name.lower() != b"content-length":
+            continue
+        text = value.decode("latin-1").strip()
+        if not (text.isascii() and text.isdigit()):
+            raise ValueError("malformed Content-Length")
+        declared = max(declared or 0, int(text))
+    return declared
+
+
+async def _send_json_error(send: Any, status: int, message: str) -> None:
+    body = json.dumps({"error": message}).encode()
+    headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
+    await send({"type": "http.response.start", "status": status, "headers": headers})
+    await send({"type": "http.response.body", "body": body})
+
+
+class _BodyTooLargeError(HTTPException):
+    """Raised from ``receive`` once the body crosses the limit (an HTTPException so
+    FastAPI's body parsing re-raises it instead of masking it as a 400)."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=413, detail="Request body too large")
 
 
 class MaxBodySizeMiddleware:
-    """Reject requests whose Content-Length exceeds a per-route cap.
+    """The single enforcement point for request body size (pure ASGI).
 
-    Falls back to ``X-Max-Body-Size`` header (set by route handlers that
-    stream large payloads) and finally to the global default.
+    * A declared ``Content-Length`` above the route's limit is rejected with 413
+      before the application runs; a malformed one with 400.
+    * The bytes actually received are counted as they stream in, whatever the
+      method and whether or not a Content-Length was sent (chunked) or was
+      understated. The request is answered 413 as soon as the count crosses the
+      limit, so an oversized body is never buffered or handed to a handler.
+    * A route whose endpoint is not visible before routing (nested router or
+      mounted application) is resolved from ``scope["route"]`` when its body is
+      first read, and falls back to the default limit.
     """
 
-    def __init__(self, app: Any, default_limit: int = _DEFAULT_MAX_BODY) -> None:
+    def __init__(self, app: Any, default_limit: int = DEFAULT_MAX_BODY_SIZE) -> None:
         self.app = app
-        self.default_limit = default_limit
+        self.default_limit = _require_positive_limit(default_limit, "default_limit")
+
+    def _route_limit(self, scope: Any) -> int | None:
+        """Limit of the route serving this request; None while it cannot be known yet."""
+        route = scope.get("route")  # set by the router once the request is routed
+        if route is None:
+            # Not routed yet: apply the router's own first-full-match rule.
+            for candidate in getattr(scope.get("app"), "routes", None) or ():
+                match, child_scope = candidate.matches(scope)
+                if match is Match.FULL:
+                    route = child_scope.get("route", candidate)
+                    break
+            else:
+                return self.default_limit
+        endpoint = getattr(route, "endpoint", None)
+        if endpoint is None:
+            return None
+        limit = endpoint_body_limit(endpoint)
+        return self.default_limit if limit is None else limit
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
 
-        path = scope.get("path", "")
-        limit = _LIMIT_OVERRIDES.get(path, self.default_limit)
-
-        # Allow route handlers to override via header in their own middleware
-        # or by setting state before we run.  We inspect headers last so the
-        # explicit header wins.
-        for name, value in scope.get("headers", []):
-            if name.lower() == b"x-max-body-size":
-                try:
-                    limit = int(value.decode())
-                except (ValueError, UnicodeDecodeError):
-                    pass
-                break
-
-        content_length = None
-        for name, value in scope.get("headers", []):
-            if name.lower() == b"content-length":
-                try:
-                    content_length = int(value.decode())
-                except (ValueError, UnicodeDecodeError):
-                    pass
-                break
-
-        if content_length is not None and content_length > limit:
-            # Early reject — don't even start the app
-            await send(
-                {
-                    "type": "http.response.start",
-                    "status": 413,
-                    "headers": [
-                        (b"content-type", b"application/json"),
-                        (b"content-length", b"0"),
-                    ],
-                }
-            )
-            await send({"type": "http.response.body", "body": b""})
+        where = f"{scope.get('method')} {scope.get('path')}"
+        try:
+            declared = _declared_content_length(scope) or 0
+        except ValueError:
+            await _send_json_error(send, 400, "Invalid Content-Length header")
+            return
+        # Bodyless requests skip route resolution; None means "resolve on first byte".
+        limit = self._route_limit(scope) if declared else None
+        if limit is not None and declared > limit:
+            log.warning("max_body_size: rejecting %s: declared %d bytes > limit %d bytes", where, declared, limit)
+            await _send_json_error(send, 413, f"Request body too large ({declared} bytes > {limit} bytes)")
             return
 
-        await self.app(scope, receive, send)
+        received = 0
+        exceeded = False
+        started = False
 
+        async def counted_receive() -> Any:
+            nonlocal limit, received, exceeded
+            if exceeded:
+                raise _BodyTooLargeError()
+            message = await receive()
+            if message["type"] == "http.request" and message.get("body"):
+                if limit is None:
+                    limit = self._route_limit(scope) or self.default_limit
+                received += len(message["body"])
+                if max(received, declared) > limit:
+                    exceeded = True
+                    log.warning("max_body_size: rejecting %s: body exceeds limit %d bytes", where, limit)
+                    raise _BodyTooLargeError()
+            return message
 
-def max_body_size(limit_bytes: int) -> Callable[[Any], Any]:
-    """Decorator for route handlers that need a larger body limit.
+        async def guarded_send(message: Any) -> None:
+            nonlocal started
+            if exceeded and not started:
+                return  # the 413 below replaces whatever the application answers
+            started = True
+            await send(message)
 
-    Usage::
-        @app.post("/api/upload")
-        @max_body_size(10 * 1024 * 1024)
-        async def upload(...):
-            ...
-    """
-
-    def decorator(func: Any) -> Any:
-        # Store the limit on the function so the middleware can read it
-        # via a custom header injected by a FastAPI dependency or middleware.
-        # For simplicity we just note it in a well-known attribute.
-        func._max_body_size = limit_bytes  # noqa: B010
-        return func
-
-    return decorator
+        try:
+            await self.app(scope, counted_receive, guarded_send)
+        except Exception:
+            if not exceeded or started:
+                raise
+        if exceeded and not started:
+            await _send_json_error(send, 413, f"Request body too large (more than {limit} bytes)")
 
 
 _AUTH_EXEMPT_PATHS = {
@@ -194,93 +271,8 @@ _ALT_AUTH_EXEMPT_PREFIXES = (
     "/api/proposals/",
 )
 
-DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024  # 1 MB
-WEBHOOK_MAX_BODY_SIZE = 256 * 1024  # 256 KB
-
-
-def limit_body_size(max_bytes: int) -> Callable[[Callable], Callable]:
-    """Decorator to set a per-route maximum body size in bytes.
-
-    Usage::
-
-        @router.post("/webhook")
-        @limit_body_size(256 * 1024)
-        async def my_handler(request: Request): ...
-
-    The middleware inspects the matched route's endpoint for this marker.
-    """
-
-    def decorator(func: Callable) -> Callable:
-        func.__max_body_size__ = max_bytes  # type: ignore[attr-defined]
-        return func
-
-    return decorator
-
-
-def _get_route_body_limit(request: Request) -> int | None:
-    """Return the body size limit for the matched route, or None for default."""
-    route = request.scope.get("route")
-    if route is None:
-        return None
-
-    endpoint = getattr(route, "endpoint", None)
-    if endpoint is None:
-        return None
-
-    # FastAPI may wrap endpoints; walk the __wrapped__ chain.
-    candidate: Any = endpoint
-    while candidate is not None:
-        limit = getattr(candidate, "__max_body_size__", None)
-        if isinstance(limit, int):
-            return limit
-        candidate = getattr(candidate, "__wrapped__", None)
-
-    return None
-
-
-async def max_body_size_check(request: Request, call_next: Any) -> Any:
-    """Reject requests whose Content-Length exceeds the route limit.
-
-    Default limit is 1 MB.  Routes may override via ``@limit_body_size(bytes)``.
-    Requests without a Content-Length header (streaming / chunked) are allowed.
-    """
-    # Only enforce for mutating methods that typically carry a body.
-    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
-        return await call_next(request)
-
-    content_length = request.headers.get("content-length")
-    if content_length is None:
-        # No Content-Length header — allow through (streaming/chunked).
-        return await call_next(request)
-
-    try:
-        body_len = int(content_length)
-    except ValueError:
-        return JSONResponse(
-            {"error": "Invalid Content-Length header"},
-            status_code=400,
-        )
-
-    route_limit = _get_route_body_limit(request)
-    if route_limit is None:
-        limit = DEFAULT_MAX_BODY_SIZE
-    else:
-        limit = route_limit
-
-    if body_len > limit:
-        log.warning(
-            "max_body_size_check: rejecting %s %s — body %d bytes > limit %d bytes",
-            request.method,
-            request.url.path,
-            body_len,
-            limit,
-        )
-        return JSONResponse(
-            {"error": f"Request body too large ({body_len} bytes > {limit} bytes)"},
-            status_code=413,
-        )
-
-    return await call_next(request)
+# Process-local drain switches live outside /api/* but are state-changing (#4274 F-04).
+_PRIVILEGED_STATE_PATHS = frozenset({"/_drain", "/_undrain"})
 
 
 def is_auth_exempt(path: str) -> bool:
@@ -381,6 +373,12 @@ async def csrf_check(request: Request, call_next: Any) -> Any:
         # Allow health / static routes without the header so monitoring tools
         # (e.g. curl health checks) still work.  Only enforce on /api/* paths.
         if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/linear/webhook"):
+            if request.headers.get("X-Requested-With") != "XMLHttpRequest":
+                return JSONResponse(
+                    {"error": "CSRF check failed: missing X-Requested-With header"},
+                    status_code=403,
+                )
+        elif request.url.path in _PRIVILEGED_STATE_PATHS:
             if request.headers.get("X-Requested-With") != "XMLHttpRequest":
                 return JSONResponse(
                     {"error": "CSRF check failed: missing X-Requested-With header"},

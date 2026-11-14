@@ -33,8 +33,8 @@ def test_vision_quest_yaml_passes_schema_validation_and_loads_into_roster(tmp_pa
     assert spec_raw["permissions"]["open_pr"] is True
     assert spec_raw["permissions"]["merge"] is False
     assert spec_raw["reports_to"] == "user" and spec_raw["surface"] == "dashboard"
-    assert spec_raw["providers"] == ["claude", "antigravity", "codex", "cursor-agent"]
-    assert "retry" not in spec_raw
+    assert spec_raw["providers"] == ["claude", "codex", "cursor-agent"]
+    assert "failover_chain" in spec_raw["retry"]
     clear_roles_cache()
     role = load_roles(tmp_path)["vision-quest"]
     assert role.valid
@@ -46,17 +46,14 @@ def test_vision_quest_yaml_passes_schema_validation_and_loads_into_roster(tmp_pa
     assert slots["monthly_quest"].startswith("2026-12-01T09:00:00")
 
 
-def test_vision_quest_rd_barb_provider_chain_has_no_retry_block_in_real_yaml() -> None:
-    # No retry block in the real yaml -> rd-barb provider selection uses the static
-    # PERSONA_ROLE_CHAINS entry, matching the real file's 4-provider list.
-    assert rp.select({}, role="vision-quest") == rp.Decision("claude", "opus", False)
-    rest = (FailoverStep("antigravity", None), FailoverStep("codex", None), FailoverStep("cursor-agent", None))
-    assert rp.chain({}, role="vision-quest") == (FailoverStep("claude", "opus"), *rest)
+def test_vision_quest_rd_barb_provider_chain_matches_approved_policy() -> None:
+    assert rp.select({}, role="vision-quest") == rp.Decision("claude", "claude-opus-5-5", False)
+    assert rp.chain({}, role="vision-quest") == vq.VISION_QUEST_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
     args = ["--role", "vision-quest", "next", "--current", "claude", "--failure", "rate_limited"]
     rc = rp.main(args, config={}, notify=sent.append)
     assert rc == 0 and len(sent) == 1
-    assert sent[0]["sender_role"] == "vision-quest" and "antigravity" in sent[0]["summary"]
+    assert sent[0]["sender_role"] == "vision-quest" and "codex" in sent[0]["summary"]
 
 
 def test_vision_quest_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:

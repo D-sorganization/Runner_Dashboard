@@ -32,7 +32,7 @@ def test_claim_blocked_when_agent_owns_aging_pr(
     rm.respond("check_agent_claim", claim_status(False))
 
     def fetch(path: str) -> list[dict]:
-        if path.endswith("/pulls?state=open&per_page=100"):
+        if path.endswith("/pulls?state=open") or path.endswith("/pulls?state=open&per_page=100"):
             return [
                 {
                     "number": 55,
@@ -59,7 +59,10 @@ def _stale_pr_in(repo: str, files: list[str]):
     """Evidence stub: one aging claude PR in ``repo`` that changes ``files`` (#3892)."""
 
     def fetch(path: str) -> list[dict]:
-        if path == f"/repos/D-sorganization/{repo}/pulls?state=open&per_page=100":
+        if path in (
+            f"/repos/D-sorganization/{repo}/pulls?state=open&per_page=100",
+            f"/repos/D-sorganization/{repo}/pulls?state=open",
+        ):
             return [
                 {
                     "number": 87,
@@ -70,7 +73,10 @@ def _stale_pr_in(repo: str, files: list[str]):
                     "draft": True,
                 }
             ]
-        if path == f"/repos/D-sorganization/{repo}/pulls/87/files?per_page=100":
+        if path in (
+            f"/repos/D-sorganization/{repo}/pulls/87/files?per_page=100",
+            f"/repos/D-sorganization/{repo}/pulls/87/files",
+        ):
             return [{"filename": name} for name in files]
         return []
 

@@ -59,8 +59,23 @@ def _forbid_network(monkeypatch: pytest.MonkeyPatch) -> None:
     _mock_http_client(monkeypatch, forbidden)
 
 
+def _opt_in_context_pack(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BARB_SHARED_MEMORY_CONTEXT_PACK", "1")
+
+
 def test_memory_context_is_disabled_without_explicit_origin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("BARB_SHARED_MEMORY_URL", raising=False)
+    monkeypatch.delenv("BARB_SHARED_MEMORY_CONTEXT_PACK", raising=False)
+    _forbid_network(monkeypatch)
+
+    result = asyncio.run(chat_shared_memory.build_shared_memory_context_block("barb", _principal("memory.read")))
+
+    assert result is None
+
+
+def test_memory_context_stays_off_when_url_set_without_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
+    monkeypatch.delenv("BARB_SHARED_MEMORY_CONTEXT_PACK", raising=False)
     _forbid_network(monkeypatch)
 
     result = asyncio.run(chat_shared_memory.build_shared_memory_context_block("barb", _principal("memory.read")))
@@ -76,6 +91,7 @@ def test_memory_context_is_not_requested_for_other_roles_or_unscoped_callers(
     monkeypatch: pytest.MonkeyPatch,
     role: str,
 ) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     _forbid_network(monkeypatch)
 
@@ -89,6 +105,7 @@ def test_configured_barb_without_memory_scope_gets_unavailable_block_without_fet
     monkeypatch: pytest.MonkeyPatch,
     requester: Principal | None,
 ) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     _forbid_network(monkeypatch)
 
@@ -98,6 +115,7 @@ def test_configured_barb_without_memory_scope_gets_unavailable_block_without_fet
 
 
 def test_shared_memory_fetch_uses_scoped_token_and_validates_pack(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     requests, options = _mock_http_client(
@@ -130,6 +148,7 @@ def test_shared_memory_fetch_uses_scoped_token_and_validates_pack(monkeypatch: p
     ],
 )
 def test_invalid_shared_memory_origins_are_reported_without_network(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", url)
     monkeypatch.delenv("BARB_SHARED_MEMORY_ALLOW_HTTP", raising=False)
     _forbid_network(monkeypatch)
@@ -140,6 +159,7 @@ def test_invalid_shared_memory_origins_are_reported_without_network(monkeypatch:
 
 
 def test_remote_http_requires_explicit_private_transport_opt_in(monkeypatch: pytest.MonkeyPatch) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "http://memory.example:8321")
     monkeypatch.delenv("BARB_SHARED_MEMORY_ALLOW_HTTP", raising=False)
     _forbid_network(monkeypatch)
@@ -153,6 +173,7 @@ def test_remote_http_requires_explicit_private_transport_opt_in(monkeypatch: pyt
 def test_loopback_http_is_allowed_without_remote_http_opt_in(
     monkeypatch: pytest.MonkeyPatch, tmp_path, url: str
 ) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", url)
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     requests, _ = _mock_http_client(monkeypatch, lambda _: httpx.Response(200, json=_pack()))
@@ -164,6 +185,7 @@ def test_loopback_http_is_allowed_without_remote_http_opt_in(
 
 
 def test_remote_http_can_be_enabled_only_by_explicit_opt_in(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "http://memory.example:8321")
     monkeypatch.setenv("BARB_SHARED_MEMORY_ALLOW_HTTP", "1")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
@@ -176,6 +198,7 @@ def test_remote_http_can_be_enabled_only_by_explicit_opt_in(monkeypatch: pytest.
 
 
 def test_redirect_response_is_not_followed(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     requests, options = _mock_http_client(
@@ -193,6 +216,7 @@ def test_redirect_response_is_not_followed(monkeypatch: pytest.MonkeyPatch, tmp_
 def test_configured_memory_failure_is_honest_and_does_not_fall_back_to_local_store(
     monkeypatch: pytest.MonkeyPatch, tmp_path
 ) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     _mock_http_client(
@@ -211,6 +235,7 @@ def test_configured_memory_failure_is_honest_and_does_not_fall_back_to_local_sto
 
 
 def test_context_pack_is_validated_and_prompt_bound_is_enforced(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     oversized = _pack()
@@ -238,6 +263,7 @@ def test_context_pack_is_validated_and_prompt_bound_is_enforced(monkeypatch: pyt
 
 
 def test_oversized_response_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     _mock_http_client(
@@ -251,6 +277,7 @@ def test_oversized_response_is_rejected(monkeypatch: pytest.MonkeyPatch, tmp_pat
 
 
 def test_compressed_context_pack_is_rejected_before_reading_body(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
 
@@ -276,6 +303,7 @@ def test_compressed_context_pack_is_rejected_before_reading_body(monkeypatch: py
 
 
 def test_deeply_nested_small_json_is_reported_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     nested = b"{" + b'"session_digests":' + b"[" * 1200 + b"0" + b"]" * 1200 + b","
@@ -289,6 +317,7 @@ def test_deeply_nested_small_json_is_reported_unavailable(monkeypatch: pytest.Mo
 
 
 def test_invalid_httpx_url_is_reported_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     _mock_http_client(
@@ -302,6 +331,7 @@ def test_invalid_httpx_url_is_reported_unavailable(monkeypatch: pytest.MonkeyPat
 
 
 def test_oversized_token_file_is_rejected_before_http(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     token_file = tmp_path / "token"
     token_file.write_bytes(b"x" * (chat_shared_memory.MAX_TOKEN_BYTES + 1))
@@ -316,6 +346,7 @@ def test_oversized_token_file_is_rejected_before_http(monkeypatch: pytest.Monkey
 def test_missing_token_file_is_unavailable_when_origin_is_configured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.delenv("BARB_SHARED_MEMORY_TOKEN_FILE", raising=False)
     _forbid_network(monkeypatch)
@@ -335,6 +366,7 @@ def test_empty_pack_from_maximum_source_label_stays_prompt_bounded() -> None:
 
 
 def test_invalid_response_model_is_reported_as_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     _mock_http_client(monkeypatch, lambda _: httpx.Response(200, json={"unexpected": True}))
@@ -346,6 +378,7 @@ def test_invalid_response_model_is_reported_as_unavailable(monkeypatch: pytest.M
 
 @pytest.mark.asyncio
 async def test_outer_deadline_cancels_slow_async_request(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    _opt_in_context_pack(monkeypatch)
     monkeypatch.setenv("BARB_SHARED_MEMORY_URL", "https://memory.example")
     monkeypatch.setenv("BARB_SHARED_MEMORY_TOKEN_FILE", _token_file(tmp_path))
     monkeypatch.setattr(chat_shared_memory, "FETCH_TIMEOUT_SECONDS", 0.01)

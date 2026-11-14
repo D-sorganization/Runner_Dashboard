@@ -17,7 +17,13 @@ from coordination.merge_shepherd import (
     get_auto_merge_flag,
     rank_candidates_for_shepherding,
 )
-from coordination.merge_shepherd_low_risk import arm_eligibility_reason
+from coordination.merge_shepherd_exact_head import (
+    DEFAULT_REVIEW_PASS_TTL_HOURS,
+    HeadReviewPass,
+    HoldReasonFn,
+    collect_review_passes_from_store,
+    shepherd_arm_eligibility,
+)
 from coordination.merge_shepherd_low_risk import low_risk_line_cap as default_low_risk_line_cap
 
 log = logging.getLogger(__name__)
@@ -36,6 +42,10 @@ QUEUE_BACKOFF_THRESHOLD = 6
 ARM_CAP_RD = 2
 ARM_CAP_DEFAULT = 4
 SHEPHERD_HOLD_LABELS = frozenset({"hold", "do-not-merge", "needs-dieter", "dnm"})
+# The only fetch failures that mean "this token may not read this repo": GitHub's
+# 403 text for an App installation, and GraphQL's not-found for a repo it cannot see.
+_REPO_ACCESS_DENIED = "Resource not accessible by integration"
+_REPO_NOT_VISIBLE = re.compile(r"Could not resolve to a Repository with the name '[^']+'\.")
 _PR_REF = re.compile(r"\b(?:PR\s*#|#)(\d+)\b", re.IGNORECASE)
 
 OPEN_PRS_QUERY = """
@@ -111,6 +121,9 @@ class PassConfig:
     repo_root: Path = field(default_factory=Path.cwd)
     skip_path: Path | None = None
     low_risk_line_cap: int = field(default_factory=default_low_risk_line_cap)
+    review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS
+    hold_reason: HoldReasonFn | None = None
+    review_store: object | None = None
 
 
 @dataclass(frozen=True)
@@ -131,10 +144,22 @@ class PassSummary:
     skipped: list[dict[str, Any]] = field(default_factory=list)
     backoff: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    inaccessible_repos: list[dict[str, str]] = field(default_factory=list)
 
 
 def default_skip_path(repo_root: Path) -> Path:
     return repo_root / "config" / "merge_shepherd_skip.json"
+
+
+def resolve_merge_shepherd_review_store(*, repo_root: Path) -> object | None:
+    """Open the staff run store at the same path the hub ``RunStore`` uses."""
+    from staff.store import RunStore, default_db_path
+
+    _ = repo_root  # skip list and arming still key off the checkout; reviews live in config dir
+    path = default_db_path()
+    if not path.is_file():
+        return None
+    return RunStore(path=path)
 
 
 def load_skip_list(path: Path) -> frozenset[tuple[str, int]]:
@@ -237,6 +262,21 @@ def holds_gate_failed_payload(*, live: bool, reason: str) -> dict[str, Any]:
     payload["holds_unavailable"] = reason
     payload["status"] = "holds_unavailable"
     return payload
+
+
+def _access_denial_lines(message: str) -> list[str]:
+    return [line.strip().removeprefix("gh: ") for line in message.splitlines() if line.strip()]
+
+
+def is_repo_access_error(message: str) -> bool:
+    """Return True only when a fetch failure is purely "this token cannot read this repo".
+
+    Contract: every non-empty line of ``message`` (``gh`` prints one per denied node)
+    must be an access denial. An empty message, or a denial mixed with any other
+    error (auth, rate limit, server, malformed payload), is not an access error.
+    """
+    lines = _access_denial_lines(message)
+    return bool(lines) and all(line == _REPO_ACCESS_DENIED or _REPO_NOT_VISIBLE.fullmatch(line) for line in lines)
 
 
 def _pr_file_metadata(node: Mapping[str, Any]) -> tuple[tuple[str, ...], int, int, bool]:
@@ -409,6 +449,9 @@ def plan_repo_pass(
     queue_depth: int,
     live: bool,
     line_cap: int | None = None,
+    review_passes: Sequence[HeadReviewPass] = (),
+    review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
+    hold_reason: HoldReasonFn | None = None,
 ) -> tuple[list[PassAction], list[dict[str, Any]], bool]:
     """Plan arm actions for one repo. Returns actions, skip audit rows, backoff flag."""
     if armed_count + queue_depth > QUEUE_BACKOFF_THRESHOLD:
@@ -426,7 +469,9 @@ def plan_repo_pass(
             skip_rows.append({"repo": repo, "pr": int(node["number"]), "reason": pre})
             continue
         paths, additions, deletions, files_complete = _pr_file_metadata(node)
-        eligibility, eligibility_detail = arm_eligibility_reason(
+        number = int(node["number"])
+        head = str(node.get("headRefOid") or "")
+        eligibility, eligibility_detail = shepherd_arm_eligibility(
             review_decision=str(node.get("reviewDecision") or ""),
             file_paths=paths,
             additions=additions,
@@ -435,8 +480,11 @@ def plan_repo_pass(
             labels=_label_names(node),
             checks_state=_checks_state(node),
             files_complete=files_complete,
+            pr_number=number,
+            head_sha=head,
+            review_passes=review_passes,
+            review_pass_ttl_hours=review_pass_ttl_hours,
         )
-        number = int(node["number"])
         if eligibility == "no_approval":
             skip_rows.append(
                 {
@@ -470,6 +518,17 @@ def plan_repo_pass(
             if int(node.get("number") or 0) == decision.pr_number:
                 head = str(node.get("headRefOid") or "")
                 break
+        if hold_reason is not None:
+            hold = hold_reason(repo, decision.pr_number)
+            if hold:
+                skip_rows.append(
+                    {
+                        "repo": repo,
+                        "pr": decision.pr_number,
+                        "reason": f"merge_hold:{hold}",
+                    }
+                )
+                continue
         flag = decision.merge_flag or get_auto_merge_flag(repo)
         strategy = "squash" if "squash" in flag else "merge"
         actions.append(
@@ -502,9 +561,18 @@ def run_merge_shepherd_pass(
         try:
             payload = fetch_graphql(owner, name)
         except OSError as exc:
-            summary.errors.append(f"{full}: {exc}")
+            if is_repo_access_error(str(exc)):
+                reason = _access_denial_lines(str(exc))[0]
+                log.warning("merge shepherd skipping inaccessible repo %s: %s", full, reason)
+                summary.inaccessible_repos.append({"repo": full, "reason": reason})
+            else:
+                summary.errors.append(f"{full}: {exc}")
             continue
         nodes, armed_count, queue_depth = graphql_nodes(payload)
+        repo_passes = collect_review_passes_from_store(
+            store=config.review_store,
+            repo=full.rsplit("/", 1)[-1],
+        )
         actions, skips, backoff = plan_repo_pass(
             full,
             nodes,
@@ -514,6 +582,9 @@ def run_merge_shepherd_pass(
             queue_depth=queue_depth,
             live=config.live and not config.dry_run,
             line_cap=config.low_risk_line_cap,
+            review_passes=repo_passes,
+            review_pass_ttl_hours=config.review_pass_ttl_hours,
+            hold_reason=config.hold_reason,
         )
         repo_row = {
             "repo": full,
@@ -540,6 +611,9 @@ def run_merge_shepherd_pass(
                     "eligibility": act.eligibility,
                 }
             )
+    if summary.inaccessible_repos and not summary.repos and not summary.errors:
+        # No repo was readable: the token is broken, not one repo's installation.
+        summary.errors.append(f"all_repos_inaccessible:{len(summary.inaccessible_repos)}")
     return summary
 
 
@@ -550,4 +624,5 @@ def summary_to_json(summary: PassSummary) -> dict[str, Any]:
         "skipped": summary.skipped,
         "backoff": summary.backoff,
         "errors": summary.errors,
+        "inaccessible_repos": summary.inaccessible_repos,
     }

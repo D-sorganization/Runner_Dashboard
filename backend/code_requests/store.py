@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import builtins
+import fcntl
 import json
 import logging
 import re
@@ -19,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from code_requests.dispatch_service import DISPATCH_HISTORY_PATH
 from code_requests.lifecycle import TransitionGate, transition
 from code_requests.model import (
     CodeRequest,
@@ -29,6 +31,7 @@ from code_requests.model import (
     code_request_from_issue,
     serialize_issue_body,
 )
+from code_requests.storage_split import migrate_combined_storage_if_needed
 from config_schema import atomic_write_json
 from dashboard_config import ORG
 from dispatch.audit import CodeRequestTransitionAuditEntry, record_code_request_transition
@@ -71,7 +74,15 @@ class CodeRequestStore:
         fn = self._write_fn or gh_api_write
         return await fn(endpoint, method=method, json_body=json_body)
 
+    def _interprocess_lock(self) -> tuple[Path, Any]:
+        lock_path = self.cache_path.with_suffix(self.cache_path.suffix + ".lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        handle = lock_path.open("a+", encoding="utf-8")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        return lock_path, handle
+
     def _read_cache(self) -> list[dict[str, Any]]:
+        migrate_combined_storage_if_needed(self.cache_path, DISPATCH_HISTORY_PATH)
         if not self.cache_path.exists():
             return []
         try:
@@ -138,38 +149,54 @@ class CodeRequestStore:
     async def create(self, request: CodeRequest) -> CodeRequest:
         """Persist a new Code Request as a GitHub issue and update the cache."""
         async with self._lock:
-            body = serialize_issue_body(request)
-            title = request.title or f"Code Request: {request.prompt[:40]}"
-            labels = ["code-request", f"code-request:{request.state.value}"]
+            _, lock_handle = self._interprocess_lock()
+            try:
+                if request.request_file:
+                    for entry in self._read_cache():
+                        if not isinstance(entry, dict):
+                            continue
+                        if entry.get("request_file") == request.request_file and entry.get("issue_number"):
+                            return CodeRequest.model_validate(entry)
 
-            endpoint = f"/repos/{self.org}/{request.repository}/issues"
-            payload = {
-                "title": title,
-                "body": body,
-                "labels": labels,
-            }
+                body = serialize_issue_body(request)
+                title = request.title or f"Code Request: {request.prompt[:40]}"
+                labels = ["code-request", f"code-request:{request.state.value}"]
 
-            resp = await self._write(endpoint, method="POST", json_body=payload)
-            issue_number = resp.get("number")
-            issue_url = resp.get("html_url")
+                endpoint = f"/repos/{self.org}/{request.repository}/issues"
+                payload = {
+                    "title": title,
+                    "body": body,
+                    "labels": labels,
+                }
 
-            updated = request.model_copy(deep=True)
-            updated.title = title
-            if issue_number is not None:
-                updated.issue_number = int(issue_number)
-                if not updated.id or updated.id.startswith("cr-unknown"):
-                    updated.id = f"cr-{request.repository}-{issue_number}"
-            if issue_url:
-                updated.issue_url = str(issue_url)
+                resp = await self._write(endpoint, method="POST", json_body=payload)
+                issue_number = resp.get("number")
+                issue_url = resp.get("html_url")
 
-            # Update cache
-            current = self._read_cache()
-            current_models = [CodeRequest.model_validate(e) for e in current if isinstance(e, dict) and "id" in e]
-            # Prepend or replace
-            new_items = [updated] + [m for m in current_models if m.id != updated.id]
-            self._write_cache(new_items)
+                updated = request.model_copy(deep=True)
+                updated.title = title
+                if issue_number is not None:
+                    updated.issue_number = int(issue_number)
+                    if not updated.id or updated.id.startswith("cr-unknown"):
+                        updated.id = f"cr-{request.repository}-{issue_number}"
+                if issue_url:
+                    updated.issue_url = str(issue_url)
 
-            return updated
+                if request.request_file:
+                    for entry in self._read_cache():
+                        if not isinstance(entry, dict):
+                            continue
+                        if entry.get("request_file") == request.request_file and entry.get("issue_number"):
+                            return CodeRequest.model_validate(entry)
+
+                current = self._read_cache()
+                current_models = [CodeRequest.model_validate(e) for e in current if isinstance(e, dict) and "id" in e]
+                new_items = [updated] + [m for m in current_models if m.id != updated.id]
+                self._write_cache(new_items)
+                return updated
+            finally:
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+                lock_handle.close()
 
     async def save(self, request: CodeRequest) -> CodeRequest:
         """Update an existing Code Request on GitHub and in local cache."""

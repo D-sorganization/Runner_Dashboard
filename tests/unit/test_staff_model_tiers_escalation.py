@@ -82,7 +82,7 @@ def test_same_tier_failover_uses_tier_model(tmp_path, monkeypatch: pytest.Monkey
     attempt = store.get_run("run-tier-a2")
     assert attempt is not None
     assert attempt.provider == "claude"
-    assert attempt.model == "haiku"
+    assert attempt.model == "claude-opus-5-5"
     assert attempt.model_tier == "routine"
 
 

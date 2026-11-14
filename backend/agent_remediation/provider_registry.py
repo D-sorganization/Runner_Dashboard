@@ -144,6 +144,14 @@ _ANTIGRAVITY_MODELS = (
     "gemini-4-argon-medium",
     "gemini-3.8-flash-medium",
 )
+_QWEN_MODELS = (
+    "qwen3.8-flash",
+    "qwen3.8-max",
+    "qwen3.7-plus",
+    "qwen3.7-max",
+    "qwen3.6-flash",
+    "qwen4-max-preview",
+)
 
 #: Notes for the providers retired fleet-wide by RM#1483 / RM#1505 (#1193).
 _JULES_RETIRED_NOTE = (
@@ -422,6 +430,33 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
             "tracking (#4133) and docs (#4134) land in the sibling issues."
         ),
     ),
+    ProviderEntry(
+        dashboard_id="qwen_cli",
+        conductor_id="qwen-cli",
+        label="Qwen Code CLI",
+        execution_mode="local_exec",
+        dispatch_mode="future",
+        auth_mode="api_key",
+        resource="runner",
+        capabilities=("code_edit", "ci_fix", "test_fix", "refactor", "doc"),
+        cost_per_task=0.0,
+        max_concurrency=1,
+        models=_QWEN_MODELS,
+        availability_probe=("qwen",),
+        required_env=("QWENCLOUD_TOKEN_PLAN_API_KEY", "BAILIAN_TOKEN_PLAN_API_KEY"),
+        credential_id="qwen_cli",
+        setup_hint=(
+            "npm i -g @qwen-code/qwen-code, then set the QwenCloud Token Plan key "
+            "(QWENCLOUD_TOKEN_PLAN_API_KEY) in /etc/runner-dashboard/qwen.env"
+        ),
+        editable=False,
+        enabled=True,
+        notes=(
+            "QwenCloud Token Plan subscription (sk-sp- keys), not pay-as-you-go. Opt in per role "
+            "via `providers:`; excluded from default failover until health monitoring lands. "
+            "See docs/agents/qwen-cli.md."
+        ),
+    ),
 )
 
 # Staff and older clients historically used several spellings for the same
@@ -441,6 +476,8 @@ PROVIDER_ID_COMPATIBILITY: dict[str, str] = {
     "cursor-agent": "cursor_agent",
     "grok": "grok_cli",
     "grok-cli": "grok_cli",
+    "qwen": "qwen_cli",
+    "qwen-code": "qwen_cli",
     "ollama-local": "ollama",
     "claude-ollama": "ollama",
     "claude_ollama": "ollama",

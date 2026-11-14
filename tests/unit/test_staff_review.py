@@ -45,7 +45,7 @@ def make_run(**kwargs: Any) -> RunRecord:
 class TestProviderSelection:
     def test_author_claude_picks_different_provider(self) -> None:
         """When author is claude, pick first available provider from a different family."""
-        role_providers = ["claude", "codex", "gemini", "antigravity"]
+        role_providers = ["codex", "claude", "cursor-agent"]
         sel = select_reviewer_provider(author_provider="claude", role_providers=role_providers)
         assert sel.provider != "claude"
         assert PROVIDER_FAMILY.get(sel.provider) != PROVIDER_FAMILY.get("claude")
@@ -119,6 +119,12 @@ class TestVerdictParser:
         assert v.verdict == "approve"
         assert v.pr_number == 42
         assert v.outcome == "review approve #42"
+
+    def test_valid_verdict_approve_includes_head_sha(self) -> None:
+        line = "STAFF_RESULT: review approve #42 @0000ab010000"
+        v = parse_review_verdict(line)
+        assert v.head_sha == "0000ab010000"
+        assert v.outcome == "review approve #42 @0000ab0"
 
     def test_valid_verdict_changes(self) -> None:
         line = "Everything tested.\nSTAFF_RESULT: review changes #1803\n"

@@ -101,6 +101,7 @@ def test_same_provider_retry_preserves_skill_block_and_library_refs(
     with (
         patch("staff.provider_fallback.try_declarative_fallback", return_value=False),
         patch("staff.failover_dispatch.try_chain_failover", return_value=False),
+        patch("staff.claim_guard.scheduler_blocker", return_value=""),
         patch.object(retry_mod, "_schedule", side_effect=_capture_schedule),
     ):
         assert handle_post_execution_retry(runner, store.get_run("run-retry-root"), plan)

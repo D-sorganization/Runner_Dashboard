@@ -7,7 +7,8 @@ sources; the board stores no card state. Slice 1 defines the column mapper and
 its contracts. GitHub ingestion (#4319), claims/leases (#4320), holds (#4321),
 and UI (#4322) are out of scope here.
 
-Implementation: `backend/kanban_projection.py`.
+Implementation: `backend/kanban_projection.py`. GitHub ingestion (#4319):
+`backend/kanban_github_ingestion.py` and [kanban-github-ingestion.md](kanban-github-ingestion.md).
 
 ## Columns
 
@@ -37,7 +38,7 @@ Ingestion (#4319–#4321) assembles a `KanbanWorkItemSnapshot` per card:
 | Reviews | `KanbanReviewsSnapshot` | GitHub review events on PR |
 | Auto-merge | `KanbanAutoMergeSnapshot` | GitHub `auto_merge` / merge queue |
 | Claim / lease | `KanbanClaimSnapshot` | `kanban_claims_ingestion.claim_snapshot_from_check` ← `coordination.claims.check` (read-only) |
-| Owner wait | `KanbanOwnerWaitSnapshot` | Holds list, issue labels, staff approvals |
+| Owner wait | `KanbanOwnerWaitSnapshot` | Holds list, issue labels, staff approvals (`backend/kanban_owner_wait.py`, #4321) |
 | Staff run | `KanbanStaffRunSnapshot` | `kanban_claims_ingestion.staff_run_snapshot_for_issue` ← `staff.store.RunStore` (read-only) |
 
 Each sub-record carries `available`, optional `degraded`, and URLs for source
