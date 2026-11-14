@@ -219,16 +219,21 @@ def load_roles(directory: Path | None | _UnsetDirectoryType = _UNSET_DIRECTORY) 
     of being silently dropped.
     """
     apply_bundled_overrides = directory is _UNSET_DIRECTORY
-    directory = roles_dir() if directory is _UNSET_DIRECTORY else directory
+    if directory is _UNSET_DIRECTORY:
+        resolved_directory: Path | None = roles_dir()
+    elif isinstance(directory, Path) or directory is None:
+        resolved_directory = directory
+    else:
+        raise AssertionError("unreachable load_roles directory sentinel")
     bundled_sig = _bundled_roles_signature()
-    if directory is None:
+    if resolved_directory is None:
         roles: dict[str, RoleSpec] = {}
         for raw in _FALLBACK_ROLES:
             roles.setdefault(raw["name"], parse_role(raw, "<builtin>"))
         _apply_bundled_role_overrides(roles)
         return roles
 
-    files = sorted(directory.glob("*.yml")) + sorted(directory.glob("*.yaml"))
+    files = sorted(resolved_directory.glob("*.yml")) + sorted(resolved_directory.glob("*.yaml"))
     file_stats: list[tuple[str, int]] = []
     for p in files:
         try:
@@ -237,9 +242,9 @@ def load_roles(directory: Path | None | _UnsetDirectoryType = _UNSET_DIRECTORY) 
             file_stats.append((p.name, -1))
     from staff.role_avatar_paths import avatars_dir_mtime_sig, staff_avatars_dir_for_roles
 
-    avatars_dir = staff_avatars_dir_for_roles(directory)
+    avatars_dir = staff_avatars_dir_for_roles(resolved_directory)
     avatars_sig = avatars_dir_mtime_sig(avatars_dir)
-    dir_sig = (str(directory.resolve()), tuple(file_stats), avatars_sig, bundled_sig)
+    dir_sig = (str(resolved_directory.resolve()), tuple(file_stats), avatars_sig, bundled_sig)
 
     global _CACHE_DIR_SIG, _CACHE_ROLES, _CACHE_ERRORS
     with _CACHE_LOCK:
@@ -273,7 +278,7 @@ def load_roles(directory: Path | None | _UnsetDirectoryType = _UNSET_DIRECTORY) 
         return dict(_CACHE_ROLES)
 
 
-def role_validation_errors(directory: Path | None = None) -> dict[str, list[str]]:
+def role_validation_errors(directory: Path | None | _UnsetDirectoryType = _UNSET_DIRECTORY) -> dict[str, list[str]]:
     """Return map of file name -> list of schema validation errors."""
     load_roles(directory)
     with _CACHE_LOCK:
