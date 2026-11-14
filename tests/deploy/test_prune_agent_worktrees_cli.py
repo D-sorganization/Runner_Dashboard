@@ -108,6 +108,7 @@ def test_cli_import_closure_stays_small() -> None:
     assert closure == {
         "deploy/prune_agent_worktrees.py",
         "backend/agent_worktree_hygiene.py",
+        "backend/scratch_clone_hygiene.py",
         "backend/staff/__init__.py",
         "backend/staff/repo_roots.py",
         "backend/platform_utils/__init__.py",
