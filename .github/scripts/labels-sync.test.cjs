@@ -1,5 +1,5 @@
-// Tests for labels-sync.js
-// Run with: node --test .github/scripts/labels-sync.test.js
+// Tests for labels-sync.cjs
+// Run with: node --test .github/scripts/labels-sync.test.cjs
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
 
@@ -39,7 +39,7 @@ Module._load = function (request, parent, isMain) {
 };
 
 // Now require labels-sync - it should pick up our mocks via interception
-const { sync } = require("./labels-sync");
+const { sync } = require("./labels-sync.cjs");
 
 // Restore original loader after require
 Module._load = originalLoad;

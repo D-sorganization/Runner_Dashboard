@@ -78,7 +78,7 @@ jobs:
           ONLY_HIERARCHY: ${{ inputs.only_hierarchy }}
         with:
           script: |
-            const backfill = require('./.github/scripts/issue-backfill.js');
+            const backfill = require('./.github/scripts/issue-backfill.cjs');
             const dry = process.env.DRY_RUN === 'true';
             const onlyLabels = process.env.ONLY_LABELS === 'true';
             const onlyHierarchy = process.env.ONLY_HIERARCHY === 'true';

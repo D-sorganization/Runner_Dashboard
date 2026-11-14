@@ -118,7 +118,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
-            const { sync } = require('./.github/scripts/labels-sync.js');
+            const { sync } = require('./.github/scripts/labels-sync.cjs');
             await sync({ github, context, core, dryRun: false });
 
       - name: Mark in-progress, announce start
@@ -158,7 +158,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
-            const backfill = require('./.github/scripts/issue-backfill.js');
+            const backfill = require('./.github/scripts/issue-backfill.cjs');
             const labelsRes = await backfill.applyLabels({
               github, context, core, dryRun: true, collectPreview: true,
             });
@@ -249,7 +249,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
-            const backfill = require('./.github/scripts/issue-backfill.js');
+            const backfill = require('./.github/scripts/issue-backfill.cjs');
             const labelsRes = await backfill.applyLabels({
               github, context, core, dryRun: false, collectPreview: false,
             });
