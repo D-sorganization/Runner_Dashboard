@@ -199,12 +199,20 @@ skipping (or failing) rather than a node problem.
    `CI Standard` and `Frontend Tests` workflows complete on `main`. Read the gate job log.
 2. In `deploy/publish-main-ci-release.sh`, these log lines explain a missing
    release:
-   - `CI gate has terminal failures for <sha>; skipping release`: a required
-     check on that commit failed, so the publisher exits 0 without a release.
-     Fix or re-run the failing check; the node scanner treats the same commit
-     as not green.
-   - `CI gate not satisfied for <sha> after N attempts; skipping release`: a
-     check stayed pending past the wait window.
+   - `CI gate has terminal failures for <sha>; no release published`: the
+     newest run of a check on that commit failed. The gate job fails with
+     status 4 and an error annotation. Fix or re-run the failing check; the
+     node scanner treats the same commit as not green.
+   - `CI gate not satisfied for <sha> after N attempts; no release published`:
+     a check stayed pending past the wait window. The gate job fails with
+     status 5 and an error annotation.
+   - Several runs of one check name on a commit are normal (the merge queue
+     runs CI under `merge_group`, then GitHub runs it again under `push`). The
+     newest run that passed or failed decides; skipped runs and superseded
+     cancelled runs do not. A check that only skipped passes unless it is a
+     required context. A required context that only skipped fails, except
+     those in `SKIPPED_CONCLUSION_ALLOWLIST` (`check_runs.py`): today only
+     `guard`, the pull-request guard, which never runs on a main commit.
    - `... was superseded by <sha>` / `is not an ancestor of current main` /
      `is older than the latest auto-release`: the candidate was skipped on
      purpose; a newer commit should be released instead.

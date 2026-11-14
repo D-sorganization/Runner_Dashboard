@@ -270,8 +270,9 @@ def test_terminal_failure_stops_without_sleeping_or_releasing(tmp_path: Path) ->
         [_runs_with_quality_gate("completed", "failure")],
     )
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 4, result.stderr  # #4419: visible, not a silent exit 0
     assert "terminal" in result.stdout.lower()
+    assert "::error title=Main CI release not published::" in result.stdout
     assert not (tmp_path / "sleep.log").exists()
     assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "1"
     assert "DRY RUN" not in result.stdout
@@ -690,8 +691,9 @@ def test_pending_gate_exhausts_bound_without_release(tmp_path: Path) -> None:
         [_runs_with_quality_gate("in_progress", None)],
     )
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 5, result.stderr  # #4419: visible, not a silent exit 0
     assert "after 3 attempts" in result.stdout
+    assert "::error title=Main CI release not published::" in result.stdout
     assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "3"
     assert len((tmp_path / "sleep.log").read_text(encoding="utf-8").splitlines()) == 2
     assert "DRY RUN" not in result.stdout
@@ -857,7 +859,7 @@ def test_gate_only_reports_ok_false_on_exhausted_wait_and_terminal_failure(tmp_p
         compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
         extra_args=("--gate-only",),
     )
-    assert pending.returncode == 0, pending.stderr
+    assert pending.returncode == 5, pending.stderr
     assert "after 3 attempts" in pending.stdout
     assert _gate_output(tmp_path) == "ok=false"
 
@@ -870,8 +872,32 @@ def test_gate_only_reports_ok_false_on_exhausted_wait_and_terminal_failure(tmp_p
         compare_payloads=[_compare_payload(base=SHA, head="b" * 40, merge_base=SHA)],
         extra_args=("--gate-only",),
     )
-    assert failed.returncode == 0, failed.stderr
+    assert failed.returncode == 4, failed.stderr
     assert _gate_output(failed_dir) == "ok=false"
+
+
+def test_merge_queue_duplicates_and_skipped_jobs_release(tmp_path: Path) -> None:
+    """#4419: a green commit whose checks ran under merge_group and push is released."""
+    merge_group_runs = success_runs_for_required_contexts(SHA)
+    push_runs = [
+        {**run, "id": 990000 + offset, "check_suite": {"id": 880000 + offset}}
+        for offset, run in enumerate(merge_group_runs, start=1)
+    ]
+    skipped_by_design = {
+        **merge_group_runs[0],
+        "id": 995000,
+        "name": "Auto-deploy live regression",
+        "check_suite": {"id": 885000},
+        "conclusion": "skipped",
+    }
+
+    result = _run_publisher(
+        tmp_path,
+        [_payload_from_runs([*merge_group_runs, *push_runs, skipped_by_design])],
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "DRY RUN" in result.stdout
 
 
 def test_gate_wait_exits_early_when_newer_commit_is_released_mid_wait(tmp_path: Path) -> None:
@@ -904,7 +930,7 @@ def test_publish_only_takes_one_gate_look_and_rechecks_order(tmp_path: Path) -> 
         extra_args=("--publish-only",),
     )
 
-    assert result.returncode == 0, result.stderr
+    assert result.returncode == 5, result.stderr  # #4419: an unpublished release is visible
     assert "after 1 attempts" in result.stdout
     assert (tmp_path / "check-count.txt").read_text(encoding="utf-8") == "1"
     assert not (tmp_path / "sleep.log").exists()
