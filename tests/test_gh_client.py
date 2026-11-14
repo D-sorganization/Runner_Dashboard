@@ -23,10 +23,13 @@ sys.path.insert(0, str(_BACKEND_DIR))
 @pytest.fixture(autouse=True)
 def _reset_gh_rate_limit_breakers() -> None:
     import gh_utils
+    import github_rate_governor
 
     gh_utils.clear_rate_limit_breakers()
+    github_rate_governor.reset_governors_for_tests()
     yield
     gh_utils.clear_rate_limit_breakers()
+    github_rate_governor.reset_governors_for_tests()
 
 
 # ---------------------------------------------------------------------------

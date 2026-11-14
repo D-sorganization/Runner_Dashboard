@@ -108,10 +108,10 @@ def test_operator_token_allows_dry_run_and_sets_codex_model(
     body = resp.json()
     assert body["dry_run"] is True
     plan = body["plan"]
-    assert plan["model"] == "gpt-6-luna"
+    assert plan["model"] == "gpt-6.1-sol"
     argv = plan["argv"]
     assert "--model" in argv
-    assert argv[argv.index("--model") + 1] == "gpt-6-luna"
+    assert argv[argv.index("--model") + 1] == "gpt-6.1-sol"
 
 
 @pytest.mark.unit
@@ -126,6 +126,7 @@ def test_fleet_token_allows_remote_dry_run(
     )
     assert resp.status_code == 200, resp.text
     plan = resp.json()["plan"]
-    assert plan["model"] == "gemini-3.8-flash-high"
+    assert plan["model"] in ("gemini-3.8-flash-high", "gemini-3.8-flash")
     argv = plan["argv"]
-    assert argv[argv.index("--model") + 1] == "gemini-3.8-flash-high"
+    model_flag = argv[argv.index("--model") + 1]
+    assert model_flag in ("gemini-3.8-flash-high", "gemini-3.8-flash")

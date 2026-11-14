@@ -1362,7 +1362,10 @@ def resource_offline_reason(system: dict) -> dict | None:
 
     mem_obj = system.get("memory")
     mem: dict[str, Any] = mem_obj if isinstance(mem_obj, dict) else {}
-    if mem.get("percent", 0) >= 98:
+    # ``percent`` is None when a WSL node cannot read its Windows host (source "unknown").
+    # Unknown is not pressure: only a real number can trip the OOM threshold.
+    mem_percent = mem.get("percent")
+    if isinstance(mem_percent, int | float) and not isinstance(mem_percent, bool) and mem_percent >= 98:
         return {"offline_reason": "oom-pressure", "offline_detail": "Memory usage >= 98%"}
 
     return None

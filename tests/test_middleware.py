@@ -160,6 +160,30 @@ def test_csrf_get_not_blocked() -> None:
     assert resp.status_code == 200
 
 
+def test_csrf_blocks_drain_switch_without_header() -> None:
+    app = _make_app_with_csrf()
+
+    @app.post("/_drain")
+    async def drain() -> dict[str, str]:
+        return {"status": "draining"}
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post("/_drain")
+    assert resp.status_code == 403
+
+
+def test_csrf_allows_drain_switch_with_header() -> None:
+    app = _make_app_with_csrf()
+
+    @app.post("/_undrain")
+    async def undrain() -> dict[str, str]:
+        return {"status": "admitting"}
+
+    client = TestClient(app, raise_server_exceptions=False)
+    resp = client.post("/_undrain", headers={"X-Requested-With": "XMLHttpRequest"})
+    assert resp.status_code == 200
+
+
 # ---------------------------------------------------------------------------
 # add_security_headers middleware
 # ---------------------------------------------------------------------------
@@ -281,12 +305,13 @@ def test_max_body_size_middleware_allows_within_limit() -> None:
 
 
 def test_max_body_size_webhook_smaller_limit() -> None:
-    """Webhook path uses the smaller 256 KB override."""
+    """A route marked with the 256 KB webhook cap is tighter than the default."""
     from starlette.applications import Starlette
     from starlette.middleware import Middleware
     from starlette.responses import JSONResponse
     from starlette.routing import Route
 
+    @mw.limit_body_size(mw.WEBHOOK_MAX_BODY_SIZE)
     async def webhook(request):
         return JSONResponse({"ok": True})
 
@@ -306,13 +331,13 @@ def test_max_body_size_webhook_smaller_limit() -> None:
 
 
 # ---------------------------------------------------------------------------
-# max_body_size_check (FastAPI middleware function)
+# MaxBodySizeMiddleware on a FastAPI app with the default limit
 # ---------------------------------------------------------------------------
 
 
 def _make_app_with_body_check() -> FastAPI:
     app = FastAPI()
-    app.middleware("http")(mw.max_body_size_check)
+    app.add_middleware(mw.MaxBodySizeMiddleware)
 
     @app.post("/api/small")
     async def small():
@@ -370,11 +395,3 @@ def test_limit_body_size_sets_attribute() -> None:
         pass
 
     assert handler.__max_body_size__ == 512
-
-
-def test_max_body_size_decorator_sets_attribute() -> None:
-    @mw.max_body_size(1024)
-    async def handler():
-        pass
-
-    assert handler._max_body_size == 1024

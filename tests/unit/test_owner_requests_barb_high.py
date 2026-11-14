@@ -1,4 +1,4 @@
-"""Owner requests to a Barb approve HIGH actions such as hold changes (#3647)."""
+"""Owner requests to a Barb approve HIGH actions such as hold changes (#3647, #4274 E-18)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,10 @@ from staff.owner_requests import is_barb_role, request_approves
 
 def _owner() -> Principal:
     return Principal(id="human-owner", type="human", name="Owner", scopes=["staff.approve"])
+
+
+def _meta(*actions: str) -> dict[str, list[str]]:
+    return {"confirm_actions": list(actions)}
 
 
 @pytest.mark.parametrize("role", ["barb", "rd-barb", "claude-barb", "cursor-barb", "agy-barb"])
@@ -23,16 +27,16 @@ def test_non_barb_roles(role) -> None:
 
 @pytest.mark.parametrize("action", ["staff.hold", "staff.unhold"])
 def test_owner_request_to_barb_approves_holds(action: str) -> None:
-    assert request_approves(_owner(), action, "rd-barb")
-    assert request_approves(_owner(), action, "barb")
+    assert request_approves(_owner(), action, "rd-barb", message_meta=_meta(action))
+    assert request_approves(_owner(), action, "barb", message_meta=_meta(action))
 
 
 @pytest.mark.parametrize("action", ["staff.hold", "staff.unhold"])
 def test_other_roles_still_need_a_tap_for_holds(action: str) -> None:
-    assert not request_approves(_owner(), action, "maintenance")
-    assert not request_approves(_owner(), action)
+    assert not request_approves(_owner(), action, "maintenance", message_meta=_meta(action))
+    assert not request_approves(_owner(), action, message_meta=_meta(action))
 
 
 def test_requester_without_approve_scope_never_approves() -> None:
     nobody = Principal(id="x", type="human", name="X", scopes=["staff.read"])
-    assert not request_approves(nobody, "staff.unhold", "rd-barb")
+    assert not request_approves(nobody, "staff.unhold", "rd-barb", message_meta=_meta("staff.unhold"))

@@ -31,7 +31,7 @@ def test_pragmatic_programmer_yaml_passes_schema_validation_and_loads_into_roste
     assert spec_raw["permissions"]["code_read_only"] is True
     assert not any(spec_raw["permissions"][k] for k in ("open_pr", "merge", "lease", "push_branch", "notify_user"))
     assert spec_raw["reports_to"] == "barb" and spec_raw["surface"] == "both"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity", "cursor-agent"]
+    assert spec_raw["providers"] == ["claude", "codex", "cursor-agent"]
     clear_roles_cache()
     role = load_roles(tmp_path)["pragmatic-programmer"]
     assert role.valid and role.code_read_only is True
@@ -44,15 +44,12 @@ def test_pragmatic_programmer_resolved_chain_has_no_model_override(tmp_path: Pat
     pp.write_pragmatic_programmer_role_yaml(tmp_path)
     resolved = resolve_failover_chain(pp.load_pragmatic_programmer_role_spec(tmp_path))
     assert resolved == pp.PRAGMATIC_PROGRAMMER_FAILOVER_CHAIN
-    assert resolved[0] == FailoverStep("claude", None)
-    assert [s.provider for s in resolved] == ["claude", "codex", "antigravity", "cursor-agent"]
+    assert resolved[0] == FailoverStep("claude", 'claude-opus-5-5')
+    assert [s.provider for s in resolved] == ["claude", "codex", "cursor-agent"]
     # rd_barb_provider.chain() defaults a bare claude head to "opus" when nothing overrides it
     # (shared DEFAULT_PROVIDER/DEFAULT_MODEL rule, not something this role's own chain sets).
-    assert rp.select({}, role="pragmatic-programmer") == rp.Decision("claude", "opus", False)
-    assert rp.chain({}, role="pragmatic-programmer") == (
-        FailoverStep("claude", "opus"),
-        *pp.PRAGMATIC_PROGRAMMER_FAILOVER_CHAIN[1:],
-    )
+    assert rp.select({}, role="pragmatic-programmer") == rp.Decision("claude", "claude-opus-5-5", False)
+    assert rp.chain({}, role="pragmatic-programmer") == pp.PRAGMATIC_PROGRAMMER_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
     rc = rp.main(
         ["--role", "pragmatic-programmer", "next", "--current", "claude", "--failure", "rate_limited"],

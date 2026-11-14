@@ -113,6 +113,7 @@ class CodeRequest(BaseModel):
     board_proposal: str | None = None
     plan_epic: str | None = None
     branch: str = "main"
+    request_file: str | None = None
     standards: list[str] = Field(default_factory=list)
     audit_trail: list[CodeRequestAuditEvent] = Field(default_factory=list)
     created_at: str
@@ -136,6 +137,7 @@ def serialize_front_matter(request: CodeRequest) -> str:
         },
         "standards": list(request.standards),
         "branch": request.branch,
+        "request_file": request.request_file,
         "created_at": request.created_at,
         "updated_at": request.updated_at,
     }

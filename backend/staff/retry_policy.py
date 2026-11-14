@@ -42,6 +42,7 @@ NON_RETRYABLE_FAILURE_CLASSES = frozenset(
 
 DEFAULT_BASE_BACKOFF_SECONDS = float(os.environ.get("STAFF_RETRY_BASE_SECONDS", "2.0"))
 DEFAULT_MAX_BACKOFF_SECONDS = float(os.environ.get("STAFF_RETRY_MAX_SECONDS", "300.0"))
+DEFAULT_FALLBACK_CHAIN_CAP = max(1, int(os.environ.get("STAFF_FALLBACK_CHAIN_CAP", "3")))
 
 
 def compute_backoff(
@@ -102,19 +103,22 @@ def next_fallback_provider(
     role: RoleSpec,
     current_provider: str,
     usable: Callable[[str], bool] = lambda _pid: True,
+    *,
+    visited: frozenset[str] = frozenset(),
 ) -> str | None:
     """Return the next usable provider in the role's fallback chain, or None if exhausted."""
+    skip = visited | {current_provider}
     fallback_chain = getattr(role, "fallback_providers", ())
     if fallback_chain:
         for p in fallback_chain:
-            if p != current_provider and usable(p):
+            if p not in skip and usable(p):
                 return p
         return None
 
     providers = list(role.providers)
     if current_provider in providers:
         for p in providers[providers.index(current_provider) + 1 :]:
-            if usable(p):
+            if p not in skip and usable(p):
                 return p
 
     return None

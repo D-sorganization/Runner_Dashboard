@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from staff.adapters import READ_ONLY_RUN_PROVIDERS
+from staff.provider_spec import known_staff_providers
 
 log = logging.getLogger("dashboard.staff.provider_fallback")
 
@@ -22,18 +23,7 @@ IMMEDIATE_FALLBACK_CLASSES = frozenset({"provider_capacity", "quota_exhausted"})
 # Only these classes may appear in declarative ``when`` lists (DbC).
 ALLOWED_WHEN_CLASSES = frozenset({"provider_capacity", "quota_exhausted", "rate_limited"})
 
-KNOWN_PROVIDERS = frozenset(
-    {
-        "claude",
-        "codex",
-        "antigravity",
-        "gemini",
-        "cursor-agent",
-        "ollama",
-        "claude-ollama",
-        "grok-chat",
-    }
-)
+KNOWN_PROVIDERS = known_staff_providers()
 
 
 @dataclass(frozen=True)
@@ -206,7 +196,6 @@ def try_declarative_fallback(
     read_only_kwargs: Any,
 ) -> bool:
     """Schedule a declarative fallback attempt when rules match (#2021)."""
-    from staff.plan import RunPlan  # noqa: PLC0415
     from staff.store import RunRecord  # noqa: PLC0415
 
     rules = getattr(role, "provider_fallbacks", ())
@@ -244,21 +233,14 @@ def try_declarative_fallback(
         adapter=runner._adapters[target],
     )
     argv = runner._adapters[target].build_command(plan.prompt, "<workdir>", fallback_model, **read_only_kwargs(role))
-    fallback_plan = RunPlan(
-        role=plan.role,
+    from staff.plan import derive_run_plan  # noqa: PLC0415
+
+    fallback_plan = derive_run_plan(
+        plan,
         provider=target,
         model=fallback_model,
-        repo=plan.repo,
-        target_kind=plan.target_kind,
-        target_ref=plan.target_ref,
-        operator_prompt=plan.operator_prompt,
-        prompt=plan.prompt,
         argv=argv,
         branch=next_branch,
-        lease_ritual=plan.lease_ritual,
-        consolidation=plan.consolidation,
-        focus=plan.focus,
-        head_ref=plan.head_ref,
     )
     fallback_rec = RunRecord(
         id=attempt_id,

@@ -491,6 +491,7 @@ FLEET_PEER_SCOPES = frozenset(
         "staff.dispatch",
         "staff.cancel",
         "staff.chat",
+        "staff.relay.write",
         "fleet.maintain",
         "fleet.read",
         "memory.read",

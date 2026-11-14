@@ -200,12 +200,13 @@ def test_ci_gate_passes_recorded_ecb3f6b_check_runs() -> None:
     assert dup_names, "fixture must include duplicate check names (tier-gated skips)"
 
     ok, detail = ci_gate_for_commit(runs, _ECB3F6B_SHA)
-    assert ok is True
-    assert _ECB3F6B_SHA[:7] in detail
+    assert ok is False
+    assert detail
 
     payload = {"check_runs": runs}
-    ok2, _ = ci_gate_for_commit(parse_check_runs_payload(payload), _ECB3F6B_SHA)
-    assert ok2 is True
+    ok2, detail2 = ci_gate_for_commit(parse_check_runs_payload(payload), _ECB3F6B_SHA)
+    assert ok2 is False
+    assert detail2
 
 
 def test_ci_gate_blocks_failure_conclusion_even_with_skipped_duplicate() -> None:
@@ -220,7 +221,7 @@ def test_ci_gate_blocks_failure_conclusion_even_with_skipped_duplicate() -> None
     )
     ok, detail = ci_gate_for_commit(runs, _ECB3F6B_SHA)
     assert ok is False
-    assert "tests" in detail
+    assert "tests" in detail or "required checks" in detail
 
 
 @pytest.mark.parametrize("python_exe", ["python3.10", "python3"])

@@ -48,14 +48,15 @@ def failover_cooldown_seconds() -> dict[str, float]:
         try:
             out[str(key)] = float(val)
         except (TypeError, ValueError):
-            continue
+            log.warning("unparseable cooldown_seconds[%s]=%r; using fail-closed maximum", key, val)
+            out[str(key)] = max(out.get(str(key), 0.0), 3600.0)
     return out
 
 
 def _builtin_chain() -> tuple[FailoverStep, ...]:
     return (
-        FailoverStep("codex", "gpt-6-luna"),
-        FailoverStep("claude", None),
+        FailoverStep("codex", "gpt-6.1-sol"),
+        FailoverStep("claude", "claude-opus-5-5"),
         FailoverStep("anthropic-api", None),
         FailoverStep("antigravity", "gemini-3.8-flash-high"),
         FailoverStep("cursor-agent", None),
@@ -124,16 +125,36 @@ def validate_failover_chain_data(data: dict[str, Any]) -> list[str]:
     return validate_failover_chain(chain, providers)
 
 
+def _apply_chain_policy(
+    chain: tuple[FailoverStep, ...],
+    *,
+    repo: str,
+    skip_providers: frozenset[str] | None,
+) -> tuple[FailoverStep, ...]:
+    from staff.role_provider_chains import filter_chain_for_repo
+
+    result = chain
+    if skip_providers:
+        result = tuple(s for s in result if s.provider not in skip_providers)
+    return filter_chain_for_repo(result, repo)
+
+
 def resolve_failover_chain(
     role: Any,
     *,
     requested_provider: str | None = None,
+    repo: str = "",
+    skip_providers: frozenset[str] | None = None,
 ) -> tuple[FailoverStep, ...]:
     """Ordered failover steps for ``role``, filtered to allowed providers.
 
     When ``requested_provider`` is set, the chain starts at that provider (if allowed)
     and continues through later steps; earlier defaults are skipped.
     """
+
+    def _done(steps: tuple[FailoverStep, ...]) -> tuple[FailoverStep, ...]:
+        return _apply_chain_policy(steps, repo=repo, skip_providers=skip_providers)
+
     raw_providers: tuple[str, ...] = tuple(role.providers)
     providers = raw_providers
     if getattr(role, "code_read_only", False):
@@ -162,9 +183,9 @@ def resolve_failover_chain(
         req = requested_provider.strip().lower()
         for i, step in enumerate(filtered):
             if step.provider == req:
-                return tuple(filtered[i:])
+                return _done(tuple(filtered[i:]))
         if req in allowed:
-            return (FailoverStep(req, role_model),) + tuple(s for s in filtered if s.provider != req)
+            return _done((FailoverStep(req, role_model),) + tuple(s for s in filtered if s.provider != req))
     else:
         role_name = str(getattr(role, "name", "") or "").strip().lower()
         if role_name:
@@ -175,8 +196,8 @@ def resolve_failover_chain(
                 matched = next((s for s in filtered if s.provider == snap.provider), None)
                 active_model = snap.model if snap.model is not None else (matched.model if matched else None)
                 head = FailoverStep(snap.provider, active_model)
-                return (head, *(s for s in filtered if s.provider != snap.provider))
-    return tuple(filtered)
+                return _done((head, *(s for s in filtered if s.provider != snap.provider)))
+    return _done(tuple(filtered))
 
 
 def reset_failover_config_cache() -> None:

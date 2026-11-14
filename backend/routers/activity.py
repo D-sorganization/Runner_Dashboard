@@ -157,7 +157,7 @@ async def _read_bounded_body(
             raise HTTPException(413, "activity batch exceeds byte limit")
         body.extend(chunk)
     try:
-        events = TypeAdapter(list[ActivityEnvelope]).validate_json(bytes(body))
+        events: list[ActivityEnvelope] = TypeAdapter(list[ActivityEnvelope]).validate_json(bytes(body))
     except ValidationError as exc:
         # Do not reflect unredacted input through validation errors.
         raise HTTPException(422, "invalid activity batch") from exc

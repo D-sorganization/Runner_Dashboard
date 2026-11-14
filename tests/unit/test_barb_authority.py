@@ -90,13 +90,13 @@ def _client(t: _Transport, epoch: int = 3) -> AuthorityClient:
 def test_post_carries_epoch_version_and_key_and_maps_outcomes() -> None:
     t = _Transport((200, {"outcome": "applied"}), (200, {"outcome": "duplicate"}), (409, {"code": "stale_version"}))
     c = _client(t)
-    assert c.post("run_card", "thr", "run-1", 2, {"status": "running"}) is DeliveryOutcome.DELIVERED
+    assert c.post("run_card", "thr", "run-1", 2, {"status": "running", "role": "librarian"}) is DeliveryOutcome.DELIVERED
     url, body, headers = t.calls[0]
     assert url == "http://ct:8321/api/v1/staff/threads/thr/relay-card"
     assert body["version"] == 2 and body["epoch"] == 3 and body["run_id"] == "run-1"
     assert headers["Idempotency-Key"] == "run_card:thr:run-1:2"
-    assert c.post("run_card", "thr", "run-1", 2, {"status": "running"}) is DeliveryOutcome.DELIVERED
-    assert c.post("run_card", "thr", "run-1", 1, {"status": "queued"}) is DeliveryOutcome.STALE
+    assert c.post("run_card", "thr", "run-1", 2, {"status": "running", "role": "librarian"}) is DeliveryOutcome.DELIVERED
+    assert c.post("run_card", "thr", "run-1", 1, {"status": "queued", "role": "librarian"}) is DeliveryOutcome.STALE
 
 
 @pytest.mark.unit
@@ -111,11 +111,11 @@ def test_failures_are_classified() -> None:
     c = _client(t)
     for _ in range(3):
         with pytest.raises(AuthorityUnavailable):
-            c.post("run_card", "thr", "run-1", 1, {})
+            c.post("run_card", "thr", "run-1", 1, {"role": "librarian"})
     with pytest.raises(AuthorityEpochMismatch):
-        c.post("run_card", "thr", "run-1", 1, {})
+        c.post("run_card", "thr", "run-1", 1, {"role": "librarian"})
     with pytest.raises(AuthorityRejected):
-        c.post("run_card", "thr", "run-1", 1, {})
+        c.post("run_card", "thr", "run-1", 1, {"role": "librarian"})
 
 
 @pytest.mark.unit

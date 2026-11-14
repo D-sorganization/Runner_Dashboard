@@ -21,8 +21,19 @@ from staff.runner_ops import can_run_unattended, read_only_kwargs
 
 log = logging.getLogger("dashboard.staff.failover_dispatch")
 
-FAILOVER_FAILURE_CLASSES = frozenset({"provider_capacity", "quota_exhausted", "rate_limited"})
-IMMEDIATE_FAILOVER_CLASSES = frozenset({"provider_capacity", "quota_exhausted"})
+FAILOVER_FAILURE_CLASSES = frozenset(
+    {
+        "provider_capacity",
+        "quota_exhausted",
+        "rate_limited",
+        "auth_expired",
+        "auth_stale",
+        "upstream_unavailable",
+    }
+)
+IMMEDIATE_FAILOVER_CLASSES = frozenset(
+    {"provider_capacity", "quota_exhausted", "auth_expired", "auth_stale", "upstream_unavailable"}
+)
 
 
 def is_failover_failure(failure_class: str) -> bool:
@@ -119,7 +130,7 @@ def pick_machine_for_chain(
 ) -> str:
     """Choose an online machine with a healthy chain provider; least loaded wins."""
     cooling = machine_cooldowns or {}
-    best: tuple[int, int, int, str] | None = None
+    best: tuple[int, int, float, float, int, str] | None = None
     for name, node in (board.get("machines") or {}).items():
         if node.get("status") != "online":
             continue
@@ -135,11 +146,14 @@ def pick_machine_for_chain(
             break
         if pick_idx is None:
             continue
-        load = len(node.get("running", [])) + len(node.get("queued", []))
-        rank = (pick_idx, load, 0 if name == local_name else 1, name)
+        from staff.fleet import _placement_load  # noqa: PLC0415
+
+        runs, cpu, mem = _placement_load(node)
+        local_tie = 1 if name == local_name else 0
+        rank = (pick_idx, runs, cpu, mem, local_tie, name)
         if best is None or rank < best:
             best = rank
-    return best[3] if best else local_name
+    return best[5] if best else local_name
 
 
 def tried_slots_for_root(store: Any, root_id: str) -> set[str]:
@@ -171,7 +185,6 @@ def try_chain_failover(
     retries_exhausted: bool,
 ) -> bool:
     """Schedule the next provider in the fleet failover chain when appropriate."""
-    from staff.plan import RunPlan  # noqa: PLC0415
     from staff.retry import _claim, _provenance, _schedule, attempt_run_id  # noqa: PLC0415
     from staff.store import RunRecord  # noqa: PLC0415
 
@@ -197,7 +210,7 @@ def try_chain_failover(
         tier=active_tier,
     )
 
-    chain = resolve_failover_chain(role, requested_provider=None)
+    chain = resolve_failover_chain(role, requested_provider=None, repo=str(getattr(plan, "repo", "") or ""))
     tried_slots = tried_slots_for_root(runner.store, root_id)
     next_step: FailoverStep | None = None
     next_tier = active_tier
@@ -244,22 +257,15 @@ def try_chain_failover(
     argv = runner._adapters[next_step.provider].build_command(
         plan.prompt, "<workdir>", target_model, **read_only_kwargs(role)
     )
-    fallback_plan = RunPlan(
-        role=plan.role,
+    from staff.plan import derive_run_plan  # noqa: PLC0415
+
+    fallback_plan = derive_run_plan(
+        plan,
         provider=next_step.provider,
         model=target_model,
         model_tier=resolved_tier,
-        repo=plan.repo,
-        target_kind=plan.target_kind,
-        target_ref=plan.target_ref,
-        operator_prompt=plan.operator_prompt,
-        prompt=plan.prompt,
         argv=argv,
         branch=next_branch,
-        lease_ritual=plan.lease_ritual,
-        consolidation=plan.consolidation,
-        focus=plan.focus,
-        head_ref=plan.head_ref,
     )
     fallback_rec = RunRecord(
         id=attempt_id,
@@ -435,7 +441,10 @@ def select_provider_from_chain(
     from staff.failover_model import resolve_launch_model, role_base_tier
 
     auth_skipped: list[dict[str, str]] = []
-    chain = resolve_failover_chain(role, requested_provider=requested_provider)
+    repo = ""
+    if req is not None:
+        repo = str(getattr(req, "repo", "") or "")
+    chain = resolve_failover_chain(role, requested_provider=requested_provider, repo=repo)
     step = pick_launch_step(chain, adapters, role, skip_cooling=True, machine=machine, auth_skipped=auth_skipped)
     if step is None:
         step = pick_launch_step(chain, adapters, role, skip_cooling=False, machine=machine, auth_skipped=auth_skipped)
