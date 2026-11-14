@@ -277,7 +277,10 @@
       ]
     },
     "group": { "type": ["string", "null"] },
-    "avatar": { "type": "string", "description": "Persona avatar identifier or path (#2680)." },
+    "avatar": {
+      "type": "string",
+      "description": "Persona avatar identifier or path (#2680)."
+    },
     "chat": {
       "type": "object",
       "properties": {
@@ -357,7 +360,11 @@
                 "uniqueItems": true,
                 "items": {
                   "type": "string",
-                  "enum": ["provider_capacity", "quota_exhausted", "rate_limited"]
+                  "enum": [
+                    "provider_capacity",
+                    "quota_exhausted",
+                    "rate_limited"
+                  ]
                 }
               },
               "from": {
