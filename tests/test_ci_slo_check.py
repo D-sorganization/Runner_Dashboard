@@ -46,8 +46,16 @@ def _expand(spec: Mapping[str, Any], base: slo.QueueDataset) -> slo.QueueDataset
                     "enqueued_at": (created - timedelta(minutes=30)).isoformat().replace("+00:00", "Z"),
                 }
             )
+    depth = int((base.queue_samples[0] or {}).get("merge_queue_depth", len(base.merge_queue_entries)))
     return slo.QueueDataset(
-        base.as_of, base.open_pr_count, base.queue_samples, base.merge_queue_entries, merged, runs, jobs
+        base.as_of,
+        base.open_pr_count,
+        base.queue_samples,
+        base.merge_queue_entries,
+        depth,
+        merged,
+        runs,
+        jobs,
     )
 
 
@@ -58,6 +66,7 @@ def _baseline() -> slo.QueueDataset:
         int(raw["open_pr_count"]),
         list(raw["queue_samples"]),
         list(raw["merge_queue_entries"]),
+        len(raw["merge_queue_entries"]),
         [],
         [],
         {},
@@ -82,8 +91,9 @@ def test_stall_alarm_windows() -> None:
     stalled = slo.QueueDataset(
         datetime(2026, 10, 25, 18, 0, tzinfo=UTC),
         40,
-        [{"queued_runs": 120}],
+        [{"queued_runs": 4, "queued_merge_group_runs": 4, "merge_queue_depth": 2}],
         [{"pr_number": 1}],
+        2,
         [_merged_row("2026-10-25T16:45:00Z", "2026-10-25T16:00:00Z")],
         [],
         {},
@@ -91,14 +101,32 @@ def test_stall_alarm_windows() -> None:
     healthy = slo.QueueDataset(
         datetime(2026, 10, 25, 12, 30, tzinfo=UTC),
         12,
-        [{"queued_runs": 0}],
+        [{"queued_runs": 0, "queued_merge_group_runs": 0, "merge_queue_depth": 0}],
         [],
+        0,
         [_merged_row("2026-10-25T12:05:00Z", "2026-10-25T11:50:00Z")],
         [],
         {},
     )
     assert slo.stall_alarm(stalled)[0] and slo.run_check(stalled, mode="stall") == 1
     assert not slo.stall_alarm(healthy)[0] and slo.run_check(healthy, mode="stall") == 0
+
+
+def test_stall_alarm_ignores_unrelated_queued_workflows() -> None:
+    """Scheduled stall checks must not fire when only non-merge_group jobs are queued."""
+    dataset = slo.QueueDataset(
+        datetime(2026, 11, 14, 2, 9, tzinfo=UTC),
+        12,
+        [{"queued_runs": 13, "queued_merge_group_runs": 0, "merge_queue_depth": 0}],
+        [],
+        0,
+        [_merged_row("2026-11-13T22:42:43Z", "2026-11-13T22:00:00Z")],
+        [],
+        {},
+    )
+    assert not slo.merge_queue_is_active(dataset)
+    assert not slo.stall_alarm(dataset)[0]
+    assert slo.run_check(dataset, mode="stall") == 0
 
 
 class _Proc:
@@ -186,6 +214,28 @@ def test_gh_api_handles_pretty_printed_and_empty_output(monkeypatch: pytest.Monk
         return _PagedProc("  \n")
 
     assert slo.gh_api("repos/o/r/pulls", runner=empty_runner) == []
+
+
+def test_merge_queue_depth_from_graphql_reads_total_count() -> None:
+    payload = {"data": {"repository": {"mergeQueue": {"entries": {"totalCount": 3}}}}}
+    assert slo.merge_queue_depth_from_graphql(payload) == 3
+
+
+def test_gh_graphql_uses_gh_api(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", "test")
+    seen: list[list[str]] = []
+
+    def runner(cmd: list[str]) -> _Proc:
+        seen.append(list(cmd))
+        proc = _Proc()
+        proc.stdout = '{"data":{"repository":{"mergeQueue":{"entries":{"totalCount":0}}}}}'
+        return proc
+
+    depth = slo.merge_queue_depth_from_graphql(
+        slo.gh_graphql(slo.MERGE_QUEUE_DEPTH_GRAPHQL, {"owner": "o", "name": "r"}, runner=runner)
+    )
+    assert depth == 0
+    assert seen[0][1:3] == ["api", "graphql"]
 
 
 def test_gh_api_still_raises_on_malformed_trailing_data(monkeypatch: pytest.MonkeyPatch) -> None:
