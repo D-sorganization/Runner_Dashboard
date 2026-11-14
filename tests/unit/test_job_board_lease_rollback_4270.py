@@ -14,7 +14,6 @@ from typing import Any
 import pytest
 from coordination import claim_state as claim_state_mod
 from coordination import claims as claims_mod
-from coordination import job_board_lease
 from coordination import jobs as jobs_mod
 from coordination.board import RMScriptError
 
@@ -41,8 +40,8 @@ def _releases(rm: FakeRM) -> list[list[str]]:
     return [argv for name, argv in rm.calls() if name == "release_agent_lease"]
 
 
-def _lease_row(issue: int) -> tuple[Any, ...] | None:
-    return job_board_lease._lease_state.get(job_board_lease._lease_key(REPO, issue))
+def _lease_row(issue: int) -> Any:
+    return claim_state_mod.get_store().get_job_lease(REPO, issue)
 
 
 @pytest.fixture

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import importlib
 import logging
-import threading
 from datetime import UTC, datetime
 from typing import Any
 
@@ -225,32 +224,26 @@ class StaleFenceError(RuntimeError):
         }
 
 
-_fence_guard = threading.Lock()
-_fences: dict[str, int] = {}
-
-
 def reset_job_board_claim_state() -> None:
-    """Forget in-process fencing and TTL bookkeeping (tests)."""
-    with _fence_guard:
-        _fences.clear()
-    job_board_lease.clear_lease_state()
+    """Drop this process's handle on the durable claim state, as a restart does (tests).
+
+    Fences and lease rows are durable (#4270 B-09), so they are still there afterwards;
+    ``purge_job_board_claim_state`` deletes them.
+    """
+    claim_state_mod.reset_claim_state_store()
 
 
-def _fence_key(repo: str, issue: int) -> str:
-    return f"{repo.casefold()}#{issue}"
+def purge_job_board_claim_state() -> None:
+    """Delete every durable fence and lease row (tests)."""
+    claim_state_mod.get_store().purge_job_board_rows()
 
 
 def _mint_fence(repo: str, issue: int) -> int:
-    with _fence_guard:
-        key = _fence_key(repo, issue)
-        value = _fences.get(key, 0) + 1
-        _fences[key] = value
-        return value
+    return claim_state_mod.get_store().mint_fence(repo, issue)
 
 
 def _current_fence(repo: str, issue: int) -> int:
-    with _fence_guard:
-        return _fences.get(_fence_key(repo, issue), 0)
+    return claim_state_mod.get_store().current_fence(repo, issue)
 
 
 def _require_fence(repo: str, issue: int, fence: int) -> None:

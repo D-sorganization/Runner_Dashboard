@@ -57,12 +57,12 @@ class FakeLeases:
 
 @pytest.fixture
 def leases(monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeLeases]:
-    jobs_mod.reset_job_board_claim_state()
+    jobs_mod.purge_job_board_claim_state()
     fake = FakeLeases()
     monkeypatch.setattr(claims_mod, "check", fake.check)
     monkeypatch.setattr(claims_mod, "release", fake.release)
     yield fake
-    jobs_mod.reset_job_board_claim_state()
+    jobs_mod.purge_job_board_claim_state()
 
 
 def _expired_claim(leases: FakeLeases, issue: int) -> int:
@@ -77,7 +77,7 @@ def _expired_claim(leases: FakeLeases, issue: int) -> int:
 
 
 def _tracked() -> set[int]:
-    return {row[1] for row in job_board_lease._lease_state.values()}
+    return {row.issue for row in job_board_lease.tracked_leases()}
 
 
 def _dead_letters(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:

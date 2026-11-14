@@ -19,6 +19,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from coordination.job_board_rows import JobBoardRows
+
 log = logging.getLogger("dashboard.coordination.claim_state")
 
 _SQLITE_BUSY_RETRIES = 8
@@ -85,8 +87,8 @@ def _default_db_path() -> Path:
     return base / "claim_state.sqlite3"
 
 
-class ClaimStateStore:
-    """SQLite WAL store: one row per ``repo#issue`` with CAS acquire."""
+class ClaimStateStore(JobBoardRows):
+    """SQLite WAL store: one row per ``repo#issue`` with CAS acquire, plus job-board fences and leases."""
 
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -111,6 +113,7 @@ class ClaimStateStore:
         columns = {str(row[1]) for row in self._execute("PRAGMA table_info(issue_claims)").fetchall()}
         if "expires_at" not in columns:
             self._execute("ALTER TABLE issue_claims ADD COLUMN expires_at REAL")
+        self._create_job_board_tables()
 
     def _retry(self, operation: Any) -> Any:
         for attempt in range(_SQLITE_BUSY_RETRIES):
