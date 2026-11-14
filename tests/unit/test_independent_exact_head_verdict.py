@@ -40,6 +40,7 @@ def test_mint_runner_dashboard_verdict_token_uses_hub_app_path() -> None:
     assert mint.call_args.kwargs["repositories"] == ["Runner_Dashboard"]
     perms = mint.call_args.kwargs["permissions"]
     assert perms["issues"] == "write"
+    assert perms["pull_requests"] == "write"
 
 
 def test_post_pr_comment_403_raises_verdict_post_error() -> None:
@@ -61,13 +62,14 @@ def test_publish_independent_exact_head_verdict_posts_with_minted_token() -> Non
     with patch("staff.independent_exact_head_verdict.github_app_auth_configured", return_value=True):
         with patch("staff.independent_exact_head_verdict.mint_installation_access_token", return_value=fake):
             with patch("staff.independent_exact_head_verdict.post_pr_comment") as post:
-                publish_independent_exact_head_verdict(
-                    repo="Runner_Dashboard",
-                    pr_number=9,
-                    verdict="PASS",
-                    head_sha="deadbeef",
-                    reviewer_model="gpt-5.x-codex",
-                )
+                with patch("staff.staff_github_pr_review.ensure_runner_dashboard_formal_approve"):
+                    publish_independent_exact_head_verdict(
+                        repo="Runner_Dashboard",
+                        pr_number=9,
+                        verdict="PASS",
+                        head_sha="deadbeef",
+                        reviewer_model="gpt-5.x-codex",
+                    )
     post.assert_called_once()
     assert post.call_args.kwargs["token"] == _FAKE_GHS
     assert "PASS" in post.call_args.kwargs["body"]

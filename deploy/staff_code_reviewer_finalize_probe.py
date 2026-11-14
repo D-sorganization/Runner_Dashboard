@@ -17,6 +17,7 @@ from pathlib import Path
 _FINALIZER_REL_PATHS: tuple[str, ...] = (
     "staff/independent_exact_head_verdict.py",
     "staff/review.py",
+    "staff/staff_github_pr_review.py",
 )
 
 _PROBE = r"""

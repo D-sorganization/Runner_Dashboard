@@ -625,6 +625,57 @@ def finalize_code_reviewer_run(
             error=review_verdict.error or "Malformed review verdict line",
             remediation="Review completed with a malformed STAFF_RESULT line.",
         )
+    if (
+        review_verdict.status == "succeeded"
+        and review_verdict.verdict == "approve"
+        and expected_pr_number is not None
+    ):
+        from staff.independent_exact_head_verdict import (  # noqa: PLC0415
+            VerdictPostError,
+            fetch_pull_head_sha,
+        )
+        from coordination.merge_shepherd_exact_head import head_sha_matches  # noqa: PLC0415
+        from staff.staff_github_pr_review import (  # noqa: PLC0415
+            build_advisory_approve_review_body,
+            ensure_runner_dashboard_formal_approve,
+        )
+
+        try:
+            head_sha = fetch_pull_head_sha(repo, expected_pr_number)
+            if review_verdict.head_sha and not head_sha_matches(review_verdict.head_sha, head_sha):
+                return CodeReviewerRunOutcome(
+                    status="failed",
+                    failure_class="invalid_output",
+                    retryable=False,
+                    error=(
+                        f"STAFF_RESULT head @{review_verdict.head_sha} does not match "
+                        f"the PR head @{head_sha}"
+                    ),
+                    remediation="STAFF_RESULT must name this run's PR and current head SHA.",
+                )
+            body = build_advisory_approve_review_body(pr_number=expected_pr_number, head_sha=head_sha)
+            ensure_runner_dashboard_formal_approve(
+                repo=repo,
+                pr_number=expected_pr_number,
+                head_sha=head_sha,
+                body=body,
+            )
+        except VerdictPostError as exc:
+            msg = str(exc)
+            rem = (
+                "Advisory approve verdict could not be posted as a formal GitHub APPROVE "
+                "review with the Runner Dashboard App identity."
+            )
+            if exc.http_status == 403:
+                rem += " (HTTP 403 — missing pull_requests:write or wrong App identity.)"
+            return CodeReviewerRunOutcome(
+                status="failed",
+                failure_class="provider_error",
+                retryable=False,
+                error=msg,
+                remediation=rem,
+                error_event=msg,
+            )
     return CodeReviewerRunOutcome(status, failure_class, retryable, error, remediation)
 
 
