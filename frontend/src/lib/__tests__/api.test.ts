@@ -96,7 +96,11 @@ describe("api client", () => {
     const err = await api.runners.list().catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiClientError);
     expect((err as ApiClientError).status).toBe(409);
-    expect((err as ApiClientError).detail).toBe("waiting for active session PR to merge or close");
+    expect((err as ApiClientError).detail).toEqual({
+      code: "queued_overlapping_paths",
+      message: "waiting for active session PR to merge or close",
+    });
+    expect((err as ApiClientError).message).toContain("waiting for active session PR to merge or close");
   });
 
   it("throws ApiClientError with status on non-JSON 5xx", async () => {

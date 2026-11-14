@@ -12,13 +12,14 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from staff.review import prepare_review_params
+from staff.runner import RunRequest
+
 from staff import adapters as adapters_mod
 from staff import runner as runner_mod
 from staff import runner_registry
 from staff import store as store_mod
 from staff import workspace as workspace_mod
-from staff.review import prepare_review_params
-from staff.runner import RunRequest
 
 _FAKE_CLI = """
 import json
@@ -40,7 +41,8 @@ def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mo
     roles = tmp_path / "roles"
     roles.mkdir()
     (roles / "code-reviewer.yml").write_text(
-        "name: code-reviewer\ntitle: Code Reviewer\nproviders: [fake]\npermissions: {lease: false}\n",
+        "name: code-reviewer\ntitle: Code Reviewer\nproviders: [fake]\n"
+        "permissions: {lease: false, code_read_only: false}\n",
         encoding="utf-8",
     )
     script = tmp_path / "fake_cli.py"

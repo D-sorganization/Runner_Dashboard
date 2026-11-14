@@ -62,10 +62,10 @@ export type { EventsResponse, FleetEvent } from "./fleetEvents";
 export class ApiClientError extends Error {
   constructor(
     public readonly status: number,
-    public readonly detail: string,
+    public readonly detail: unknown,
     public readonly url: string,
   ) {
-    super(`API ${status} — ${detail} (${url})`);
+    super(`API ${status} — ${formatApiErrorDetail(detail)} (${url})`);
     this.name = "ApiClientError";
   }
 }
@@ -151,7 +151,7 @@ async function request<T>(
       if (errBody?.error?.message) {
         detail = errBody.error.message;
       } else if (errBody?.detail !== undefined && errBody?.detail !== null) {
-        detail = formatApiErrorDetail(errBody.detail);
+        detail = errBody.detail;
       }
     } catch {
       // Non-JSON error body — use status text

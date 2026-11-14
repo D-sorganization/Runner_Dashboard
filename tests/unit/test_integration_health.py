@@ -16,9 +16,10 @@ from integration_health import (  # noqa: E402
     check_all_integration_availability,
     check_repository_management,
 )
+from staff.skills import registry as skills_registry  # noqa: E402
+
 from staff import roles as roles_mod  # noqa: E402
 from staff import workspace  # noqa: E402
-from staff.skills import registry as skills_registry  # noqa: E402
 
 
 def test_check_repository_management_unavailable_without_rm_root(monkeypatch, tmp_path) -> None:
@@ -90,7 +91,7 @@ def test_standalone_flag_gates_roles_and_skills(monkeypatch, tmp_path) -> None:
     skills_registry.clear_skills_cache()
 
     assert roles_mod.roles_dir() is None
-    assert list(roles_mod.load_roles()) == [roles_mod.AD_HOC_ROLE]
+    assert sorted(roles_mod.load_roles()) == sorted([roles_mod.AD_HOC_ROLE, "code-reviewer"])
     assert skills_registry.skills_dir() is None
     assert skills_registry.list_skills() == []
 
