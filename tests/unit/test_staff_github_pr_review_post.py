@@ -6,12 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
-
 from staff.independent_exact_head_verdict import VerdictPostError
 from staff.staff_github_pr_review import (
     ensure_runner_dashboard_formal_approve,
+    fetch_pull_reviews,
+    own_stale_changes_requested_review_ids,
     submit_pull_request_review,
 )
+
 from shared_scripts.independent_exact_head_review import RUNNER_DASHBOARD_BOT_LOGIN
 
 pytestmark = pytest.mark.unit
@@ -19,6 +21,48 @@ pytestmark = pytest.mark.unit
 _FAKE_GHS = "ghs_" + "A" * 40 + "_jwtbody"
 _HEAD = "cccccccccccccccccccccccccccccccccccccccc"
 _OLD = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+
+
+def test_fetch_pull_reviews_follows_github_link_pagination() -> None:
+    """Stale bot CR on page 2 must be visible (default GitHub page size is 30)."""
+    filler = [{"id": i, "state": "COMMENTED", "commit_id": _OLD, "user": {"login": "other-bot"}} for i in range(30)]
+    stale_cr = {
+        "id": 9001,
+        "state": "CHANGES_REQUESTED",
+        "commit_id": _OLD,
+        "user": {"login": RUNNER_DASHBOARD_BOT_LOGIN},
+    }
+    page1 = httpx.Response(
+        200,
+        json=filler,
+        headers={
+            "link": (
+                "<https://api.github.com/repos/D-sorganization/Runner_Dashboard/pulls/1/reviews?page=2&per_page=100>; "
+                'rel="next"'
+            )
+        },
+        request=httpx.Request("GET", "https://api.github.com/page1"),
+    )
+    page2 = httpx.Response(
+        200,
+        json=[stale_cr],
+        headers={},
+        request=httpx.Request("GET", "https://api.github.com/page2"),
+    )
+
+    def _get(url: str, **kwargs: object) -> httpx.Response:
+        if "page=2" in url:
+            return page2
+        return page1
+
+    with patch("staff.staff_github_pr_review.httpx.get", side_effect=_get):
+        reviews = fetch_pull_reviews(
+            full_repo="D-sorganization/Runner_Dashboard",
+            pr_number=1,
+            token=_FAKE_GHS,
+        )
+    assert len(reviews) == 31
+    assert own_stale_changes_requested_review_ids(reviews, head_sha=_HEAD) == [9001]
 
 
 def test_submit_pull_request_review_posts_approve_event() -> None:
@@ -46,11 +90,11 @@ def test_ensure_formal_approve_dismisses_stale_cr_then_submits() -> None:
             with patch("staff.staff_github_pr_review.dismiss_pull_review") as dismiss:
                 with patch("staff.staff_github_pr_review.submit_pull_request_review") as submit:
                     ensure_runner_dashboard_formal_approve(
-                            repo="Runner_Dashboard",
-                            pr_number=42,
-                            head_sha=_HEAD,
-                            body="PASS",
-                        )
+                        repo="Runner_Dashboard",
+                        pr_number=42,
+                        head_sha=_HEAD,
+                        body="PASS",
+                    )
     dismiss.assert_called_once()
     assert dismiss.call_args.kwargs["review_id"] == 90
     submit.assert_called_once()

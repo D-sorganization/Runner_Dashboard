@@ -83,21 +83,27 @@ def _auth_headers(token: str) -> dict[str, str]:
 
 
 def fetch_pull_reviews(*, full_repo: str, pr_number: int, token: str) -> list[dict[str, Any]]:
-    url = f"https://api.github.com/repos/{full_repo}/pulls/{int(pr_number)}/reviews?per_page=100"
-    try:
-        resp = httpx.get(url, headers=_auth_headers(token), timeout=httpx.Timeout(30.0))
-    except httpx.HTTPError as exc:
-        raise VerdictPostError(f"GitHub PR reviews list failed: {exc}") from exc
-    if resp.status_code >= 400:
-        detail = (resp.text or "").strip()[:240]
-        raise VerdictPostError(
-            f"GitHub PR reviews list refused: HTTP {resp.status_code} ({detail})",
-            http_status=resp.status_code,
-        )
-    payload = resp.json()
-    if not isinstance(payload, list):
-        raise VerdictPostError("GitHub PR reviews list returned unexpected payload")
-    return [row for row in payload if isinstance(row, dict)]
+    from github_pagination import parse_next_link
+
+    url: str | None = f"https://api.github.com/repos/{full_repo}/pulls/{int(pr_number)}/reviews?per_page=100"
+    out: list[dict[str, Any]] = []
+    while url:
+        try:
+            resp = httpx.get(url, headers=_auth_headers(token), timeout=httpx.Timeout(30.0))
+        except httpx.HTTPError as exc:
+            raise VerdictPostError(f"GitHub PR reviews list failed: {exc}") from exc
+        if resp.status_code >= 400:
+            detail = (resp.text or "").strip()[:240]
+            raise VerdictPostError(
+                f"GitHub PR reviews list refused: HTTP {resp.status_code} ({detail})",
+                http_status=resp.status_code,
+            )
+        payload = resp.json()
+        if not isinstance(payload, list):
+            raise VerdictPostError("GitHub PR reviews list returned unexpected payload")
+        out.extend(row for row in payload if isinstance(row, dict))
+        url = parse_next_link(resp.headers.get("link", ""))
+    return out
 
 
 def dismiss_pull_review(
