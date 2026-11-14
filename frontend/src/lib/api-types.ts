@@ -7045,6 +7045,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/barb/leases/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Atomic Barb lease turnover, release, transfer, or takeover */
+        post: operations["post_barb_lease_handoff_api_v1_staff_barb_leases_handoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/barb/leases/heartbeat": {
         parameters: {
             query?: never;
@@ -7073,6 +7090,23 @@ export interface paths {
         put?: never;
         /** Release a scoped Barb lease with turnover compliance check */
         post: operations["post_barb_lease_release_api_v1_staff_barb_leases_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/barb/leases/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Renew or re-acquire a scoped Barb lease in one call */
+        post: operations["post_barb_lease_renew_api_v1_staff_barb_leases_renew_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7209,6 +7243,40 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/dispatch-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dispatch Sessions */
+        get: operations["list_dispatch_sessions_api_v1_staff_dispatch_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/dispatch-sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Release Dispatch Session */
+        delete: operations["release_dispatch_session_api_v1_staff_dispatch_sessions__session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -9514,7 +9582,69 @@ export interface components {
             takeover: boolean;
             /**
              * Ttl Sec
-             * @default 3600
+             * @default 14400
+             */
+            ttl_sec: number;
+        };
+        /** BarbLeaseHandoffRequest */
+        BarbLeaseHandoffRequest: {
+            /** Blockers */
+            blockers?: string[];
+            /** Completed Items */
+            completed_items?: string[];
+            /** Holder */
+            holder?: string | null;
+            /** In Progress Items */
+            in_progress_items?: string[];
+            /**
+             * Machine
+             * @default
+             */
+            machine: string;
+            /**
+             * Mode
+             * @default
+             */
+            mode: string;
+            /** Next Actions */
+            next_actions?: string[];
+            /** Next Holder */
+            next_holder?: string | null;
+            /**
+             * Next Machine
+             * @default
+             */
+            next_machine: string;
+            /**
+             * Next Persona
+             * @default
+             */
+            next_persona: string;
+            /**
+             * Persona
+             * @default rd-barb
+             */
+            persona: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Scope
+             * @default barb:front-door
+             */
+            scope: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Takeover
+             * @default false
+             */
+            takeover: boolean;
+            /**
+             * Ttl Sec
+             * @default 14400
              */
             ttl_sec: number;
         };
@@ -9528,7 +9658,7 @@ export interface components {
             scope: string;
             /**
              * Ttl Sec
-             * @default 3600
+             * @default 14400
              */
             ttl_sec: number;
         };
@@ -9556,6 +9686,33 @@ export interface components {
              * @default
              */
             turnover_summary: string;
+        };
+        /** BarbLeaseRenewRequest */
+        BarbLeaseRenewRequest: {
+            /** Holder */
+            holder?: string | null;
+            /**
+             * Machine
+             * @default
+             */
+            machine: string;
+            /**
+             * Persona
+             * @default
+             */
+            persona: string;
+            /**
+             * Scope
+             * @default barb:front-door
+             */
+            scope: string;
+            /** Summary */
+            summary?: string | null;
+            /**
+             * Ttl Sec
+             * @default 14400
+             */
+            ttl_sec: number;
         };
         /** BarbSurfaceClassifyRequest */
         BarbSurfaceClassifyRequest: {
@@ -12524,6 +12681,11 @@ export interface components {
             kind: "guardrail" | "schedule";
             /** Lifted When */
             lifted_when: string;
+            /**
+             * Set By
+             * @default
+             */
+            set_by: string;
             /** Set On */
             set_on: string;
             /** Text */
@@ -24950,6 +25112,41 @@ export interface operations {
             };
         };
     };
+    post_barb_lease_handoff_api_v1_staff_barb_leases_handoff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbLeaseHandoffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post: {
         parameters: {
             query?: never;
@@ -24995,6 +25192,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BarbLeaseReleaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_barb_lease_renew_api_v1_staff_barb_leases_renew_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbLeaseRenewRequest"];
             };
         };
         responses: {
@@ -25251,6 +25483,61 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_dispatch_sessions_api_v1_staff_dispatch_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    release_dispatch_session_api_v1_staff_dispatch_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

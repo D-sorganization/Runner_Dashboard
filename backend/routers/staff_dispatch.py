@@ -6,11 +6,12 @@ from typing import Any
 
 from fastapi import Request
 from identity import Principal, identity_manager
-from staff import fleet as staff_fleet
 from staff.barb_lease_fence import EPOCH_HEADER, SCOPE_HEADER, claim_for_write
 from staff.barb_origin_fence import ORIGIN_FENCE_HEADER, apply_origin_fence_trust
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 from staff.dispatcher_metrics import dispatcher_origin
+
+from staff import fleet as staff_fleet
 
 
 async def run_dispatch(

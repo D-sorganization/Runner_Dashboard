@@ -486,14 +486,133 @@
             "type": "boolean"
           },
           "ttl_sec": {
-            "default": 3600,
-            "maximum": 14400.0,
+            "default": 14400,
+            "maximum": 86400.0,
             "minimum": 60.0,
             "title": "Ttl Sec",
             "type": "integer"
           }
         },
         "title": "BarbLeaseCheckoutRequest",
+        "type": "object"
+      },
+      "BarbLeaseHandoffRequest": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "completed_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Items",
+            "type": "array"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "in_progress_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "In Progress Items",
+            "type": "array"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "mode": {
+            "default": "",
+            "maxLength": 16,
+            "title": "Mode",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "next_holder": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Holder"
+          },
+          "next_machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Next Machine",
+            "type": "string"
+          },
+          "next_persona": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Next Persona",
+            "type": "string"
+          },
+          "persona": {
+            "default": "rd-barb",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "scope": {
+            "default": "barb:front-door",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "takeover": {
+            "default": false,
+            "title": "Takeover",
+            "type": "boolean"
+          },
+          "ttl_sec": {
+            "default": 14400,
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["summary"],
+        "title": "BarbLeaseHandoffRequest",
         "type": "object"
       },
       "BarbLeaseHeartbeatRequest": {
@@ -522,8 +641,8 @@
             "type": "string"
           },
           "ttl_sec": {
-            "default": 3600,
-            "maximum": 14400.0,
+            "default": 14400,
+            "maximum": 86400.0,
             "minimum": 60.0,
             "title": "Ttl Sec",
             "type": "integer"
@@ -595,6 +714,61 @@
         },
         "required": ["scope"],
         "title": "BarbLeaseReleaseRequest",
+        "type": "object"
+      },
+      "BarbLeaseRenewRequest": {
+        "properties": {
+          "holder": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "persona": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "scope": {
+            "default": "barb:front-door",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "ttl_sec": {
+            "default": 14400,
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "title": "BarbLeaseRenewRequest",
         "type": "object"
       },
       "BarbSurfaceClassifyRequest": {
@@ -7089,6 +7263,11 @@
           },
           "lifted_when": {
             "title": "Lifted When",
+            "type": "string"
+          },
+          "set_by": {
+            "default": "",
+            "title": "Set By",
             "type": "string"
           },
           "set_on": {
@@ -27096,6 +27275,55 @@
         "tags": ["staff-barb"]
       }
     },
+    "/api/v1/staff/barb/leases/handoff": {
+      "post": {
+        "operationId": "post_barb_lease_handoff_api_v1_staff_barb_leases_handoff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseHandoffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Handoff Api V1 Staff Barb Leases Handoff Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Atomic Barb lease turnover, release, transfer, or takeover",
+        "tags": ["staff-barb"]
+      }
+    },
     "/api/v1/staff/barb/leases/heartbeat": {
       "post": {
         "operationId": "post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post",
@@ -27191,6 +27419,55 @@
           }
         ],
         "summary": "Release a scoped Barb lease with turnover compliance check",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/leases/renew": {
+      "post": {
+        "operationId": "post_barb_lease_renew_api_v1_staff_barb_leases_renew_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseRenewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Renew Api V1 Staff Barb Leases Renew Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Renew or re-acquire a scoped Barb lease in one call",
         "tags": ["staff-barb"]
       }
     },
@@ -27591,6 +27868,85 @@
         ],
         "summary": "Context Agents Sync V1",
         "tags": ["staff-v1", "staff-context"]
+      }
+    },
+    "/api/v1/staff/dispatch-sessions": {
+      "get": {
+        "operationId": "list_dispatch_sessions_api_v1_staff_dispatch_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Dispatch Sessions Api V1 Staff Dispatch Sessions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Dispatch Sessions",
+        "tags": ["staff-dispatch-sessions"]
+      }
+    },
+    "/api/v1/staff/dispatch-sessions/{session_id}": {
+      "delete": {
+        "operationId": "release_dispatch_session_api_v1_staff_dispatch_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Release Dispatch Session Api V1 Staff Dispatch Sessions  Session Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Release Dispatch Session",
+        "tags": ["staff-dispatch-sessions"]
       }
     },
     "/api/v1/staff/dispatcher/ledger": {

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from pathlib import Path
 
 import pytest
@@ -84,11 +83,16 @@ def test_acquire_blocks_different_holder_until_expired(tmp_path: Path, monkeypat
     monkeypatch.setenv("CLAIM_STATE_CAS_TTL_S", "60")
     claim_state.reset_claim_state_store()
     store = claim_state.get_store()
-    assert store.try_acquire("Tools", 42, agent="codex", session="codex-a", reserve_ttl_s=0.05).acquired
+    # A controlled clock: against the wall clock a loaded host can take longer than the
+    # reservation between the two calls, and the "still blocked" step then fails (#4393).
+    clock = [1_800_000_000.0]
+    monkeypatch.setattr(claim_state.time, "time", lambda: clock[0])
+    assert store.try_acquire("Tools", 42, agent="codex", session="codex-a", reserve_ttl_s=30).acquired
+    clock[0] += 29
     blocked = store.try_acquire("Tools", 42, agent="cursor", session="cursor-b")
     assert not blocked.acquired
     assert blocked.holder_agent == "codex"
-    time.sleep(0.06)
+    clock[0] += 2
     taken = store.try_acquire("Tools", 42, agent="cursor", session="cursor-b", reserve_ttl_s=60)
     assert taken.acquired
     row = store.read("Tools", 42)
