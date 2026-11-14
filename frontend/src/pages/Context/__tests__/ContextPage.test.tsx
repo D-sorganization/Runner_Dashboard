@@ -21,7 +21,7 @@ const sampleSkills = [{ name: "fleet-meaningful-tests", version: "1.0.0", pin: "
 const sampleLessons: ContextLesson[] = [
   { id: "mem_01", repo: "Runner_Dashboard", review_status: "proposed", author_principal: "staff:fleet-swe:run-101", source_run: "run-101", created_at: "2026-10-22T20:00:00Z", expires_at: "2026-11-21T20:00:00Z", body: { summary: "Use pytest fixtures for db isolation" } },
   { id: "mem_02", repo: "Runner_Dashboard", review_status: "accepted", author_principal: "staff:librarian:run-102", source_run: "run-102", created_at: "2026-10-20T10:00:00Z", expires_at: "2026-11-19T10:00:00Z", body: { summary: "Deterministic sorting on lesson ids" } },
-  { id: "mem_03", repo: "Repository_Management", review_status: "quarantined", author_principal: "staff:reviewer:run-103", source_run: "run-103", created_at: "2026-10-15T08:00:00Z", expires_at: "2026-11-14T08:00:00Z", body: { summary: "Conflicting rule on reviewer assignment" }, quarantine_reason: "Direct contradiction with FLEET.md" },
+  { id: "mem_03", repo: "Repository_Management", review_status: "quarantined", author_principal: "staff:reviewer:run-103", source_run: "run-103", created_at: "2026-10-15T08:00:00Z", expires_at: "2026-12-14T08:00:00Z", body: { summary: "Conflicting rule on reviewer assignment" }, quarantine_reason: "Direct contradiction with FLEET.md" },
   { id: "mem_04_expired", repo: "Runner_Dashboard", review_status: "retired", author_principal: "staff:swe:run-99", source_run: "run-99", created_at: "2026-08-01T00:00:00Z", expires_at: "2026-08-31T00:00:00Z", body: { summary: "Legacy test harness argument" } },
   { id: "mem_05_barb", repo: "Runner_Dashboard", review_status: "accepted", visibility: "barb-only", author_principal: "barb:internal", source_run: "run-barb", created_at: "2026-10-22T00:00:00Z", expires_at: "2026-11-21T00:00:00Z", body: { summary: "Internal Barb credential hint" } },
 ];
@@ -99,7 +99,7 @@ describe("ContextPage", () => {
     expect(screen.getByText("staff:fleet-swe:run-101")).toBeInTheDocument();
     expect(screen.getByText("run-101")).toBeInTheDocument();
     expect(screen.getByText(/Direct contradiction with FLEET.md/i)).toBeInTheDocument();
-    expect(screen.getByText(/expired/i)).toBeInTheDocument();
+    expect(screen.getByText("Legacy test harness argument").closest("tr")).toHaveTextContent("Expired");
   });
 
   it("keeps full-prompt estimates out of the context cap and reports partial coverage", () => {
