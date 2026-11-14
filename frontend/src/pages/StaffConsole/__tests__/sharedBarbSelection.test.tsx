@@ -156,7 +156,9 @@ it("deep links restore both surfaces and a central specialist selection preserve
 });
 
 it("central New conversation refreshes the sidebar's authorized list for the new Barb thread", async () => {
-  api.fetchThreads.mockResolvedValueOnce({ threads: [threads[0]] });
+  api.fetchThreads
+    .mockResolvedValueOnce({ threads: [threads[0]] })
+    .mockResolvedValue({ threads });
   render(
     <BrowserRouter>
       <Surfaces />
