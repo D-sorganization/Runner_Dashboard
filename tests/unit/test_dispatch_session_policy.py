@@ -193,6 +193,32 @@ async def test_failed_review_dispatch_leaves_no_blocking_session(
     class FakeRunner:
         machine = "test-node"
 
+        def __init__(self) -> None:
+            self._rec: SimpleNamespace | None = None
+            self.store = SimpleNamespace(
+                append_event=lambda *a, **k: None,
+                update_run=lambda *a, **k: None,
+                compare_and_set_run_status=self._compare_and_set_run_status,
+                get_run=self._get_run,
+            )
+
+        def _get_run(self, _run_id: str) -> SimpleNamespace | None:
+            return self._rec
+
+        def _compare_and_set_run_status(
+            self,
+            run_id: str,
+            *,
+            expected: str,
+            status: str,
+            **_fields: Any,
+        ) -> bool:
+            rec = self._rec
+            if rec is None or rec.id != run_id or rec.status != expected:
+                return False
+            rec.status = status
+            return True
+
         def roles(self) -> dict[str, RoleSpec]:
             return runner_roles
 
@@ -212,7 +238,7 @@ async def test_failed_review_dispatch_leaves_no_blocking_session(
             )
 
         def admit(self, _req: Any, run_id: str = "") -> tuple[Any, RunPlan, bool]:
-            rec = SimpleNamespace(
+            self._rec = SimpleNamespace(
                 id=run_id or "run-review-fail",
                 role="code-reviewer",
                 provider="codex",
@@ -221,15 +247,10 @@ async def test_failed_review_dispatch_leaves_no_blocking_session(
                 status="queued",
             )
             plan = self.plan(_req)
-            return rec, plan, True
+            return self._rec, plan, True
 
         def launch(self, _rec: Any, _plan: RunPlan) -> None:
             raise RuntimeError("stale submodule index.lock")
-
-        store = SimpleNamespace(
-            append_event=lambda *a, **k: None,
-            update_run=lambda *a, **k: None,
-        )
 
     fake = FakeRunner()
 

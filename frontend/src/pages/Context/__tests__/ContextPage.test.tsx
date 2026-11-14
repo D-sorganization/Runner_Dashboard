@@ -1,6 +1,6 @@
 import React from "react";
 import { beforeEach, describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 const { legacyFetchMock } = vi.hoisted(() => ({ legacyFetchMock: vi.fn() }));
 vi.mock("../../../lib/api", () => ({ legacyFetch: legacyFetchMock }));
 vi.mock("../AgentsSyncPanel", () => ({ AgentsSyncPanel: () => <section><h2>Repository AGENTS.md Sync</h2></section> }));
@@ -99,9 +99,7 @@ describe("ContextPage", () => {
     expect(screen.getByText("staff:fleet-swe:run-101")).toBeInTheDocument();
     expect(screen.getByText("run-101")).toBeInTheDocument();
     expect(screen.getByText(/Direct contradiction with FLEET.md/i)).toBeInTheDocument();
-    const retiredRow = screen.getByText("Legacy test harness argument").closest("tr");
-    expect(retiredRow).not.toBeNull();
-    expect(within(retiredRow as HTMLElement).getByText(/^Expired$/i)).toBeInTheDocument();
+    expect(screen.getByText("Legacy test harness argument").closest("tr")).toHaveTextContent("Expired");
   });
 
   it("keeps full-prompt estimates out of the context cap and reports partial coverage", () => {
