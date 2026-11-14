@@ -62,6 +62,15 @@ def staff(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[runner_mo
         "ensure_worktree_bootstrap_ready",
         lambda *_a, **_k: runner_mod.ops.WorktreeBootstrapPreflight(ok=True),
     )
+    # Advisory approve finalization posts a formal GitHub APPROVE; keep these tests on outcome tagging.
+    monkeypatch.setattr(
+        "staff.independent_exact_head_verdict.fetch_pull_head_sha",
+        lambda _repo, _pr: "c" * 40,
+    )
+    monkeypatch.setattr(
+        "staff.staff_github_pr_review.ensure_runner_dashboard_formal_approve",
+        lambda **_kwargs: None,
+    )
     store_mod.reset_store()
     runner_mod.reset_runner()
     r = runner_mod.StaffRunner(

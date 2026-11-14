@@ -32,7 +32,7 @@ INDEPENDENT_REVIEW_MARKER = "Independent Exact-Head Acceptance Review"
 VERDICT_COMMENT_PERMISSIONS = {
     "contents": "read",
     "issues": "write",
-    "pull_requests": "read",
+    "pull_requests": "write",
     "metadata": "read",
 }
 
@@ -226,3 +226,12 @@ def publish_independent_exact_head_verdict(
         head_sha[:7],
     )
     post_pr_comment(full_repo=full_repo, pr_number=pr_number, body=body, token=cred.token)
+    if verdict.upper() == "PASS":
+        from staff.staff_github_pr_review import ensure_runner_dashboard_formal_approve  # noqa: PLC0415
+
+        ensure_runner_dashboard_formal_approve(
+            repo=repo,
+            pr_number=pr_number,
+            head_sha=head_sha,
+            body=body,
+        )
