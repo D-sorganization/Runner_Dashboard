@@ -16,6 +16,7 @@ from activity_producers import record_job_claim_activity
 from coordination.rm_scripts import run_module
 from staff import claim_guard
 from staff import dispatch_self_claim as dispatch_self_claim_mod
+from staff.run_status import RunStatus, transition_to
 from staff.store import RunRecord, RunStore
 from staff.workspace import rm_root
 
