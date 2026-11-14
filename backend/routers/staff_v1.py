@@ -33,8 +33,6 @@ from routers.staff_projects import router as staff_projects_router
 from routers.staff_references import router as staff_references_router
 from routers.staff_schedule import HoldsBody, current_holds, replace_holds, schedule_snapshot
 from routers.staff_skills import router as staff_skills_router
-from staff import fleet as staff_fleet
-from staff import summary_view, usage
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
 from staff.audit import (
     get_audit_store,
@@ -68,6 +66,9 @@ from staff.pricing import price_table_rows
 from staff.role_avatar_paths import avatar_url_for
 from staff.runner import get_runner
 from staff.store import USAGE_GROUPS
+
+from staff import fleet as staff_fleet
+from staff import summary_view, usage
 
 log = logging.getLogger("dashboard.staff.v1")
 router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])
