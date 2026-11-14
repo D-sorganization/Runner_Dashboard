@@ -106,6 +106,8 @@ const DEFAULT_THREAD_API: ThreadApi = {
 };
 
 const NO_MESSAGES: ThreadMessage[] = [];
+/** Cap passive restore retries when a peer-created thread id is not listed yet. */
+const PREFERRED_RESTORE_RETRY_LIMIT = 8;
 
 export function useStaffConsole({
   roles: suppliedRoles,
@@ -159,6 +161,7 @@ export function useStaffConsole({
   const [openingRole, setOpeningRole] = useState<string | null>(() =>
     restoreInitialRoleThread && initialRole && !initialThread && !initialThreadId ? initialRole : null,
   );
+  const [preferredRestoreRetry, setPreferredRestoreRetry] = useState(0);
   const [history, setHistory] = useState<ThreadMessage[]>(initialMessages);
   const [error, setError] = useState<ConsoleError | null>(null);
 
@@ -267,13 +270,29 @@ export function useStaffConsole({
       .then((threads) => {
         if (cancelled || !isSelectionCurrent(revision)) return;
         const roleThreads = listRoleThreads(threads, initialRole);
-        const thread = roleThreads.find((candidate) => candidate.id === preferredRoleThreadId)
-          ?? pickRoleThread(roleThreads, initialRole);
-        if (thread) {
-          setHistory(NO_MESSAGES);
-          commitThread(thread, "restore");
-          setError(null);
+        let thread: ThreadInfo | null;
+        if (preferredRoleThreadId) {
+          thread = roleThreads.find((candidate) => candidate.id === preferredRoleThreadId) ?? null;
+          if (!thread) {
+            if (threads.some((candidate) => candidate.id === preferredRoleThreadId)) {
+              thread = pickRoleThread(roleThreads, initialRole);
+            } else if (preferredRestoreRetry < PREFERRED_RESTORE_RETRY_LIMIT) {
+              window.setTimeout(() => setPreferredRestoreRetry((attempt) => attempt + 1), 0);
+              return;
+            } else {
+              thread = pickRoleThread(roleThreads, initialRole);
+            }
+          }
+        } else {
+          thread = pickRoleThread(roleThreads, initialRole);
         }
+        if (!thread) {
+          return;
+        }
+        setHistory(NO_MESSAGES);
+        commitThread(thread, "restore");
+        lastRestoredPreferred.current = preferredRoleThreadId ?? thread.id;
+        setError(null);
       })
       .catch((err: unknown) => {
         if (!cancelled && isSelectionCurrent(revision)) report("thread", err);
@@ -291,6 +310,7 @@ export function useStaffConsole({
     initialThread,
     initialThreadId,
     preferredRoleThreadId,
+    preferredRestoreRetry,
     threadApi,
     beginSelection,
     isSelectionCurrent,

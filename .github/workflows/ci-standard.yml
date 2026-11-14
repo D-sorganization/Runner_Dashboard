@@ -144,28 +144,50 @@ jobs:
           FORK_PR: ${{ github.event.pull_request &&
             github.event.pull_request.head.repo.full_name != github.repository }}
         run: |
+          emit_fast_checks_runner() {
+            local fast_checks="${RD_FAST_CHECKS_RUNNER:-}"
+            if [ -n "$fast_checks" ] && [ "$fast_checks" != "hosted" ] && [ "$fast_checks" != "local" ]; then
+              echo "::error::RD_FAST_CHECKS_RUNNER must be 'hosted', 'local', or unset (got '$fast_checks')"
+              exit 1
+            fi
+            if [ "$FORK_PR" = "true" ]; then
+              echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
+              echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
+              echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$fast_checks" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
+              echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+            else
+              echo "fast_checks_runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
+            fi
+          }
           if [ "$FORK_PR" = "true" ]; then
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
             echo "Fork PR - never routed to the self-hosted fleet (RM#1989)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$FORCE_LOCAL" = "true" ]; then
             echo "runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
             echo "mode=local" >> "$GITHUB_OUTPUT"
             echo "Forced local fleet via workflow_dispatch input" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$HAS_EXPEDITE" = "true" ] && { [ "$EVENT_NAME" = "pull_request" ] || [ "$EVENT_NAME" = "merge_group" ]; }; then
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-expedite" >> "$GITHUB_OUTPUT"
             echo "priority:expedite — GitHub-hosted runners (escalation lane #2952)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-queue" >> "$GITHUB_OUTPUT"
             echo "Merge queue on GitHub-hosted runners (CI_QUEUE_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           # Postcondition (#3046): merge_group only, not hosted, label set ->
@@ -174,12 +196,14 @@ jobs:
             echo "runner=$CI_QUEUE_RUNNER_LABEL" >> "$GITHUB_OUTPUT"
             echo "mode=queue-label" >> "$GITHUB_OUTPUT"
             echo "Merge queue routed to reserved runner label $CI_QUEUE_RUNNER_LABEL (#3046)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$EVENT_NAME" = "pull_request" ] && [ "$CI_PR_RUNNER_MODE" = "hosted" ]; then
             echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
             echo "mode=hosted-pr" >> "$GITHUB_OUTPUT"
             echo "PR checks on GitHub-hosted runners (CI_PR_RUNNER_MODE=hosted)" >> "$GITHUB_STEP_SUMMARY"
+            emit_fast_checks_runner
             exit 0
           fi
           if [ "$REPOSITORY_PRIVATE" = "true" ] || [ "$CONFIGURED_MODE" = "local" ]; then
@@ -191,22 +215,7 @@ jobs:
             echo "mode=hosted" >> "$GITHUB_OUTPUT"
             echo "Public repo hosted runner (CI_RUNNER_MODE not local)" >> "$GITHUB_STEP_SUMMARY"
           fi
-          FAST_CHECKS="${RD_FAST_CHECKS_RUNNER:-}"
-          if [ -n "$FAST_CHECKS" ] && [ "$FAST_CHECKS" != "hosted" ] && [ "$FAST_CHECKS" != "local" ]; then
-            echo "::error::RD_FAST_CHECKS_RUNNER must be 'hosted', 'local', or unset (got '$FAST_CHECKS')"
-            exit 1
-          fi
-          if [ "$FORK_PR" = "true" ]; then
-            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-          elif [ "$REPOSITORY_PRIVATE" != "true" ] && [ "$CONFIGURED_MODE" != "local" ]; then
-            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-          elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$EVENT_NAME" = "merge_group" ] && [ "$CI_QUEUE_RUNNER_MODE" = "hosted" ]; then
-            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-          elif [ "$REPOSITORY_PRIVATE" = "true" ] && [ "$FAST_CHECKS" = "hosted" ] && [ "$EVENT_NAME" = "merge_group" ]; then
-            echo "fast_checks_runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-          else
-            echo "fast_checks_runner=d-sorg-fleet" >> "$GITHUB_OUTPUT"
-          fi
+          emit_fast_checks_runner
 
   # ── Event tier + docs-only fast path (issue #1864, RM#1915) ─────────────
   # Decides how much of this workflow an event needs:
@@ -916,9 +925,10 @@ jobs:
           SHARDS: ${{ matrix.shards }}
         # -n auto: pytest-xdist parallel workers (issue #401).
         # -m exclusion: integration / playwright tests run nightly only.
-        # Full tier (merge_group): whole suite with coverage (issue #342); the
-        # coverage floor is enforced there. PR tier: the fast subset without
-        # coverage instrumentation (issue #1864).
+        # full_suite (schedule / workflow_dispatch): one job runs pytest-cov with
+        # fail_under on the non-integration subset. merge_group: fast shards
+        # collect coverage and the coverage-floor job combines them (#4299).
+        # pull_request: fast subset without coverage instrumentation (#1864).
         run: |
           python - <<'PY'
           import os
@@ -944,11 +954,13 @@ jobs:
             pytest tests/ --tb=short -n auto -m "not integration and not playwright" \
               --cov=backend --cov-report=xml --cov-report=term-missing
           elif [ "$SHARDS" -gt 1 ]; then
-            echo "merge_group shard ${SHARD}/${SHARDS}"
+            echo "merge_group shard ${SHARD}/${SHARDS} (coverage instrumented)"
+            pip install pytest-cov==6.1.1 --quiet
             pytest tests/ --tb=short -n auto -m "$FAST_MARKER" \
               -p scripts.pytest_ci_shard \
               --ci-shard-groups "$SHARDS" \
-              --ci-shard-index "$SHARD"
+              --ci-shard-index "$SHARD" \
+              --cov=backend --cov-report=xml --cov-report=term-missing
           else
             pytest tests/ --tb=short -n auto -m "$FAST_MARKER"
           fi
@@ -962,11 +974,41 @@ jobs:
         if: always() && hashFiles('coverage.xml') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.3.0
         with:
-          name: coverage
+          name: coverage-${{ matrix.shard }}
           path: |
             coverage.xml
+            .coverage
+            .coverage.*
           retention-days: 14
           if-no-files-found: ignore
+
+  coverage-floor:
+    name: coverage floor
+    needs:
+      - changes
+      - tests
+    if: >-
+      always() &&
+      !cancelled() &&
+      github.event_name == 'merge_group' &&
+      needs.changes.outputs.run_python_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Download shard coverage data
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+      - name: Enforce backend coverage floor
+        run: |
+          python -m pip install --quiet coverage==7.6.1
+          python scripts/ci/enforce_coverage_floor.py --root "$PWD"
 
   # Posts the required `tests` context. It must run even when the matrix
   # failed: without `if: always()` a red matrix *skips* this job, and GitHub
@@ -978,6 +1020,7 @@ jobs:
       - changes
       - ci-health-check
       - tests
+      - coverage-floor
       - pick-runner
       - pr-guard
       - push-hygiene
@@ -1009,6 +1052,7 @@ jobs:
           HEALTH: ${{ needs.ci-health-check.result }}
           RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           TESTS: ${{ needs.tests.result }}
+          COVERAGE_FLOOR: ${{ needs.coverage-floor.result }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           RUN_HEAD_SHA: ${{ github.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -1057,6 +1101,10 @@ jobs:
             echo "::error::Python test matrix reported '$TESTS' on merge_group; cannot merge untested."
             exit 1
           fi
+          if merge_queue_lane && [ "$COVERAGE_FLOOR" != "success" ]; then
+            echo "::error::coverage-floor reported '$COVERAGE_FLOOR' on merge_group; cannot merge below the floor."
+            exit 1
+          fi
           if handle_cancelled_upstream "$CHANGES" changes; then exit; fi
           if [ "$CHANGES" != "success" ]; then
             echo "::error::changes reported '$CHANGES'; cannot trust the tier decision."
@@ -1101,6 +1149,7 @@ jobs:
         ci-health-check,
         lint,
         tests-required,
+        coverage-floor,
         security-scan,
       ]
     if: >-
@@ -1140,6 +1189,7 @@ jobs:
           RUN_PYTHON_TESTS: ${{ needs.changes.outputs.run_python_tests }}
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_TESTS: ${{ needs.tests-required.result }}
+          RESULT_COVERAGE_FLOOR: ${{ needs.coverage-floor.result }}
           RESULT_SECURITY: ${{ needs.security-scan.result }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           RUN_HEAD_SHA: ${{ github.sha }}
@@ -1195,11 +1245,15 @@ jobs:
             echo "::error::ci-health-check reported '$HEALTH', expected 'success'."
             failed=1
           fi
-          for pair in "lint=$RESULT_LINT" "tests=$RESULT_TESTS" "security-scan=$RESULT_SECURITY"; do
+          for pair in "lint=$RESULT_LINT" "tests=$RESULT_TESTS" "coverage-floor=$RESULT_COVERAGE_FLOOR" "security-scan=$RESULT_SECURITY"; do
             job="${pair%%=*}"
             result="${pair#*=}"
             echo "$job: $result"
             if [ "$result" = "success" ]; then
+              continue
+            fi
+            if [ "$job" = "coverage-floor" ] && [ "$result" = "skipped" ]; then
+              echo "::notice::coverage-floor only runs on merge_group."
               continue
             fi
             if [ "$result" = "cancelled" ] && pr_supersession_lane; then
@@ -1214,6 +1268,11 @@ jobs:
             if merge_queue_lane; then
               if [ "$job" = "security-scan" ] && [ "$result" = "skipped" ]; then
                 echo "::notice::security-scan not run on merge_group slim gate."
+                continue
+              fi
+              if [ "$job" = "coverage-floor" ] && [ "$result" = "skipped" ]; then
+                echo "::error::coverage-floor skipped on merge_group; cannot merge without the floor."
+                failed=1
                 continue
               fi
               echo "::error::$job reported '$result' on merge_group; cannot merge untested."
@@ -1241,3 +1300,43 @@ jobs:
             python3 scripts/ci/verify_merge_group_companion_checks.py
           fi
           echo "quality-gate: all gated jobs succeeded."
+
+  ci-failure-alert:
+    name: CI failure alert
+    needs:
+      - quality-gate
+    if: >-
+      always() &&
+      failure() &&
+      !cancelled() &&
+      contains(fromJSON('["push","schedule","merge_group","workflow_dispatch"]'), github.event_name)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          sparse-checkout: |
+            scripts/ci
+            shared_scripts
+            backend/andon
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.11"
+      - name: File Andon alert for red CI
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_WORKFLOW: ${{ github.workflow }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA: ${{ github.sha }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ ! -f scripts/ci/workflow_failure_andon.py ]; then
+            echo "::notice::ci-failure-alert: workflow_failure_andon.py not on main yet; skipping Andon filing until bootstrap completes."
+            exit 0
+          fi
+          python scripts/ci/workflow_failure_andon.py

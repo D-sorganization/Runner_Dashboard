@@ -61,7 +61,11 @@ def _base_env(**overrides: str) -> dict[str, str]:
 def test_private_pull_request_hosted_when_pr_mode_hosted() -> None:
     code, outputs = _run_select(_base_env(CI_PR_RUNNER_MODE="hosted"))
     assert code == 0
-    assert outputs == {"runner": "ubuntu-latest", "mode": "hosted-pr"}
+    assert outputs == {
+        "runner": "ubuntu-latest",
+        "mode": "hosted-pr",
+        "fast_checks_runner": "d-sorg-fleet",
+    }
 
 
 def test_private_pull_request_defaults_to_fleet() -> None:

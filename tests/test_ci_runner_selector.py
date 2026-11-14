@@ -50,9 +50,39 @@ def test_hosted_required_jobs_match_policy() -> None:
 
 
 def test_pick_runner_bash_fragment_validates_fast_checks_mode() -> None:
-    fragment = selector.pick_runner_fast_checks_bash_fragment()
-    assert "hosted" in fragment and "local" in fragment
-    assert selector.RD_FAST_CHECKS_VAR in fragment
+    function_body = selector.pick_runner_emit_fast_checks_runner_function_bash()
+    assert "hosted" in function_body and "local" in function_body
+    assert selector.RD_FAST_CHECKS_VAR in function_body
+    assert selector.pick_runner_fast_checks_bash_fragment().strip() == "emit_fast_checks_runner"
+
+
+def _ci_standard_pick_runner_select_script() -> str:
+    import yaml
+
+    path = REPO_ROOT / ".github/workflows/ci-standard.yml"
+    steps = yaml.safe_load(path.read_text(encoding="utf-8"))["jobs"]["pick-runner"]["steps"]
+    select = next(step for step in steps if step.get("id") == "select")
+    return str(select["run"])
+
+
+def test_pick_runner_select_defines_canonical_emit_fast_checks_function() -> None:
+    script = _ci_standard_pick_runner_select_script()
+    canonical = selector.pick_runner_emit_fast_checks_runner_function_bash().strip()
+    assert canonical in script, "pick-runner select must embed ci_runner_selector emit function"
+
+
+def test_pick_runner_select_emits_fast_checks_before_every_success_exit() -> None:
+    """Regression: early return paths must set fast_checks_runner (merge-queue gate)."""
+    script = _ci_standard_pick_runner_select_script()
+    lines = script.splitlines()
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped != "exit 0":
+            continue
+        prev = lines[index - 1].strip() if index > 0 else ""
+        assert prev == "emit_fast_checks_runner", (
+            f"line {index + 1}: exit 0 must immediately follow emit_fast_checks_runner; got {prev!r}"
+        )
 
 
 def test_workflows_use_canonical_required_check_expression() -> None:

@@ -993,6 +993,53 @@ def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:
     assert "not slow" in run, "the PR tier runs the fast subset"
 
 
+def test_merge_group_shards_collect_coverage_and_floor_job_enforces() -> None:
+    """merge_group shards must instrument coverage; a follow-up job enforces fail_under (#4299)."""
+    run = _ci_step("tests", name="Run Python tests")["run"]
+    assert 'elif [ "$SHARDS" -gt 1 ]' in run
+    shard_section = run.split('elif [ "$SHARDS" -gt 1 ]', 1)[1].split("else", 1)[0]
+    assert "--cov=backend" in shard_section
+    assert "merge_group" not in shard_section or "coverage instrumented" in shard_section
+    floor = _ci_jobs()["coverage-floor"]
+    assert "merge_group" in str(floor.get("if", ""))
+    assert "enforce_coverage_floor.py" in str(floor)
+
+
+def test_ci_standard_files_andon_on_main_path_failures_only() -> None:
+    data = _load_workflow(_CI_STANDARD)
+    alert = data["jobs"]["ci-failure-alert"]
+    alert_if = str(alert.get("if", ""))
+    assert "failure()" in alert_if
+    assert "pull_request" not in alert_if
+    assert "workflow_failure_andon.py" in str(alert)
+
+
+def test_ci_failure_alert_checks_out_main_for_trusted_andon_script() -> None:
+    """Issue write must not run Andon filing code from a PR/merge_group checkout."""
+    for filename in ("ci-standard.yml", "ci-nightly.yml"):
+        data = _load_workflow(_WORKFLOWS_DIR / filename)
+        alert = data["jobs"]["ci-failure-alert"]
+        perms = alert.get("permissions") or {}
+        assert perms.get("issues") == "write", filename
+        checkout = next(s for s in alert["steps"] if str(s.get("uses", "")).startswith("actions/checkout@"))
+        assert (checkout.get("with") or {}).get("ref") == "main", filename
+
+
+@pytest.mark.parametrize("filename", ("ci-standard.yml", "ci-nightly.yml"))
+def test_ci_failure_alert_skips_when_andon_script_absent_on_main(filename: str) -> None:
+    """Sparse checkout from main must not hard-fail before workflow_failure_andon.py lands (#4302)."""
+    data = _load_workflow(_WORKFLOWS_DIR / filename)
+    alert = data["jobs"]["ci-failure-alert"]
+    andon_step = next(
+        s for s in alert["steps"] if "workflow_failure_andon.py" in str(s.get("run", ""))
+    )
+    run = str(andon_step["run"])
+    assert "[ ! -f scripts/ci/workflow_failure_andon.py ]" in run
+    assert "exit 0" in run
+    assert "::notice::ci-failure-alert:" in run
+    assert "workflow_failure_andon.py not on main yet" in run
+
+
 @pytest.mark.parametrize("job_id", ["quality-gate", "tests-required"])
 def test_required_aggregates_report_on_every_event(job_id: str) -> None:
     from scripts.check_required_checks_drift import check_job_fails_closed
@@ -1014,6 +1061,7 @@ def _quality_gate(**env: str) -> int:
         "RUN_PYTHON_TESTS": "true",
         "RESULT_LINT": "success",
         "RESULT_TESTS": "success",
+        "RESULT_COVERAGE_FLOOR": "skipped",
         "RESULT_SECURITY": "success",
         "RESULT_FRONTEND": "skipped",
         "RESULT_SECRETS": "skipped",  # pragma: allowlist secret
@@ -1032,6 +1080,8 @@ def _tests_required(**env: str) -> int:
         "TIER": "pr",
         "RUN_PYTHON_TESTS": "true",
         "TESTS": "success",
+        "COVERAGE_FLOOR": "skipped",
+        "GITHUB_EVENT_NAME": "pull_request",
     }
     code, _ = _run_step(_ci_step("tests-required", name="Confirm Python test matrix"), {**defaults, **env})
     return code
@@ -1064,6 +1114,7 @@ def test_quality_gate_fails_closed_on_merge_group_skips() -> None:
         "TIER": "merge-group",
         "FULL_SUITE": "false",
         "GITHUB_EVENT_NAME": "merge_group",
+        "RESULT_COVERAGE_FLOOR": "success",
     }
     assert _quality_gate(**mq, RESULT_SECURITY="skipped") == 0
     assert _quality_gate(**dict(mq, RESULT_LINT="skipped")) == 1

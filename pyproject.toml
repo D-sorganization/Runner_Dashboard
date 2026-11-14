@@ -35,6 +35,7 @@ dev = [
     "mypy==1.13.0",
     "bandit==1.7.7",
     "pip-audit>=2.10.0",
+    "coverage==7.6.1",
     "types-PyYAML",
     "types-requests",
     "mcp==2.3.0",
@@ -68,6 +69,9 @@ markers = [
     "heavy: resource-intensive tests",
     "requires_posix: requires POSIX filesystem or process semantics",
 ]
+
+[tool.coverage.run]
+parallel = true
 
 [tool.coverage.report]
 # Phase 4 step 2 (EPIC #1140): raise fail_under 55 -> 60.

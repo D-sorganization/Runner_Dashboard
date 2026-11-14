@@ -89,7 +89,11 @@ def _base_env(**overrides: str) -> dict[str, str]:
 def test_ci_standard_merge_group_resolves_queue_label_when_set() -> None:
     code, outputs = _run_select(_base_env(CI_QUEUE_RUNNER_LABEL="d-sorg-fleet-queue"))
     assert code == 0
-    assert outputs == {"runner": "d-sorg-fleet-queue", "mode": "queue-label"}
+    assert outputs == {
+        "runner": "d-sorg-fleet-queue",
+        "mode": "queue-label",
+        "fast_checks_runner": "d-sorg-fleet",
+    }
 
 
 def test_ci_standard_pick_runner_job_runs_on_carries_queue_label_switch() -> None:
@@ -188,13 +192,21 @@ def test_runs_on_unset_label_falls_back_to_heavy_text(workflow: str, only: list[
 def test_hosted_mode_wins_over_queue_label_on_merge_group() -> None:
     code, outputs = _run_select(_base_env(CI_QUEUE_RUNNER_MODE="hosted", CI_QUEUE_RUNNER_LABEL="d-sorg-fleet-queue"))
     assert code == 0
-    assert outputs == {"runner": "ubuntu-latest", "mode": "hosted-queue"}
+    assert outputs == {
+        "runner": "ubuntu-latest",
+        "mode": "hosted-queue",
+        "fast_checks_runner": "ubuntu-latest",
+    }
 
 
 def test_expedite_wins_over_queue_label_on_merge_group() -> None:
     code, outputs = _run_select(_base_env(HAS_EXPEDITE="true", CI_QUEUE_RUNNER_LABEL="d-sorg-fleet-queue"))
     assert code == 0
-    assert outputs == {"runner": "ubuntu-latest", "mode": "hosted-expedite"}
+    assert outputs == {
+        "runner": "ubuntu-latest",
+        "mode": "hosted-expedite",
+        "fast_checks_runner": "d-sorg-fleet",
+    }
 
 
 def test_fork_pr_never_reaches_fleet_even_with_queue_label_set() -> None:

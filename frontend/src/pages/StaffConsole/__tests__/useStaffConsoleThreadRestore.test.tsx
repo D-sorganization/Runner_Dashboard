@@ -266,6 +266,44 @@ describe("selected role thread restoration", () => {
     expect(listThreads).toHaveBeenCalledTimes(2);
   });
 
+  it("re-resyncs when the URL preferred id still differs after an earlier preferred update", async () => {
+    const threadA: ThreadInfo = {
+      ...MAINT_THREAD,
+      id: "thr_a",
+      kind: "auto",
+      participants: ["user:me", "barb"],
+    };
+    const threadB: ThreadInfo = {
+      ...threadA,
+      id: "thr_b",
+      title: "Conversation with Barb",
+    };
+    const listThreads = vi
+      .fn()
+      .mockResolvedValueOnce([threadA])
+      .mockResolvedValueOnce([threadA])
+      .mockResolvedValueOnce([threadA, threadB]);
+    const deps = threadApi({ listThreads });
+    const { result, rerender } = renderHook(
+      ({ preferredRoleThreadId }: { preferredRoleThreadId: string }) =>
+        useStaffConsole({
+          roles: ROLES,
+          initialRole: "barb",
+          preferredRoleThreadId,
+          restoreInitialRoleThread: true,
+          threadApi: deps,
+          streamEnabled: false,
+        }),
+      { initialProps: { preferredRoleThreadId: threadA.id } },
+    );
+
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(threadA.id));
+    rerender({ preferredRoleThreadId: threadB.id });
+    await waitFor(() => expect(listThreads).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(result.current.activeThread?.id).toBe(threadB.id));
+    expect(result.current.openingRole).toBeNull();
+  });
+
   it("keeps a new conversation when its selected URL id catches up", async () => {
     const threadA: ThreadInfo = {
       ...MAINT_THREAD,
