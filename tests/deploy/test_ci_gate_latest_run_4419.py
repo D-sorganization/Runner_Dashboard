@@ -26,6 +26,8 @@ sys.path.insert(0, str(REPO / "deploy"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from main_auto_release.gate import commit_passes_publisher_ci_gate  # noqa: E402
+from main_auto_release.publish_cli import main as publish_cli_main  # noqa: E402
+from node_auto_deploy.check_inventory import fetch_commit_checks  # noqa: E402
 from node_auto_deploy.check_runs import check_name_passes, latest_attempts  # noqa: E402
 from node_auto_deploy.ci_gate import ci_gate_for_commit, ci_gate_for_deploy_commit  # noqa: E402
 from required_context_helper import (  # noqa: E402
@@ -297,3 +299,78 @@ def test_optional_check_that_is_only_neutral_blocks() -> None:
     ok, detail = ci_gate_for_commit(runs, _SHA)
     assert ok is False
     assert "Advisory scan" in detail
+
+
+# --- Production ingestion (hub review of PR #4438) -------------------------------------------
+# Both production paths reduce the raw inventory before the gate sees it: the node through
+# ``fetch_commit_checks`` and the publisher through ``publish_cli verify-gate``. The reduction
+# must keep the attempt the decision policy would pick, not simply the newest one.
+
+
+def _reran(name: str, first: str, second: str | None) -> list[dict[str, Any]]:
+    """Green required contexts, with ``name`` run twice in one suite: ``first`` then ``second``."""
+    runs: list[dict[str, Any]] = [dict(run) for run in success_runs_for_required_contexts(_SHA) if run["name"] != name]
+    return [*runs, _run(name, first, 5000), _run(name, second, 5001)]
+
+
+def _node_gate(runs: list[dict[str, Any]]) -> tuple[bool, str]:
+    """Decide ``runs`` the way a node does: fetch every page, reduce, then gate."""
+
+    def get(path: str) -> dict[str, Any]:
+        page = int(path.rsplit("page=", 1)[1])
+        return {"total_count": len(runs), "check_runs": runs[(page - 1) * 100 : page * 100]}
+
+    return ci_gate_for_deploy_commit(fetch_commit_checks(get, "D-sorganization/Runner_Dashboard", _SHA), _SHA)
+
+
+def _publisher_gate(runs: list[dict[str, Any]], tmp_path: Path) -> int:
+    """Exit status of the publisher's gate for ``runs`` (0 pass, 1 wait, 2 terminal failure)."""
+    path = tmp_path / "check-runs.json"
+    path.write_text(json.dumps([{"total_count": len(runs), "check_runs": runs}]), encoding="utf-8")
+    return publish_cli_main(["verify-gate", "--publisher", "--sha", _SHA, "--check-runs-json", str(path)])
+
+
+_REQUIRED = next(name for name in policy_required_context_names() if name != "guard")
+
+
+@pytest.mark.parametrize("later", ["skipped", "neutral", "cancelled", "stale"])
+@pytest.mark.parametrize("name", [_REQUIRED, "guard", "Vitest + Coverage"])
+def test_production_paths_keep_a_failure_that_a_later_attempt_did_not_repair(
+    name: str, later: str, tmp_path: Path
+) -> None:
+    runs = _reran(name, "failure", later)
+
+    ok, detail = _node_gate(runs)
+
+    assert ok is False and name in detail
+    assert _publisher_gate(runs, tmp_path) == 2
+
+
+@pytest.mark.parametrize("later", ["skipped", "neutral", "cancelled", "stale"])
+@pytest.mark.parametrize("name", [_REQUIRED, "Vitest + Coverage"])
+def test_production_paths_keep_a_success_that_a_later_attempt_did_not_replace(
+    name: str, later: str, tmp_path: Path
+) -> None:
+    runs = _reran(name, "success", later)
+
+    ok, detail = _node_gate(runs)
+
+    assert ok is True, detail
+    assert _publisher_gate(runs, tmp_path) == 0
+
+
+@pytest.mark.parametrize("first", ["failure", "success"])
+def test_production_paths_wait_for_a_rerun_that_is_still_running(first: str, tmp_path: Path) -> None:
+    runs = _reran(_REQUIRED, first, None)
+
+    ok, detail = _node_gate(runs)
+
+    assert ok is False and "still running" in detail
+    assert _publisher_gate(runs, tmp_path) == 1
+
+
+def test_production_paths_let_a_newer_verdict_replace_an_older_one(tmp_path: Path) -> None:
+    repaired, broken = _reran(_REQUIRED, "failure", "success"), _reran(_REQUIRED, "success", "failure")
+
+    assert _node_gate(repaired)[0] is True and _publisher_gate(repaired, tmp_path) == 0
+    assert _node_gate(broken)[0] is False and _publisher_gate(broken, tmp_path) == 2
