@@ -34,7 +34,7 @@ async def test_fleet_nodes_returns_local_node_when_collection_fails(monkeypatch:
     monkeypatch.setattr(server, "_cache_get", lambda key, ttl: None)
     monkeypatch.setattr(server, "_cache_set", lambda key, value: None)
     monkeypatch.setattr(server, "_collect_live_fleet_nodes", broken_collection)
-    monkeypatch.setattr(server, "get_system_metrics_snapshot", fake_system)
+    monkeypatch.setattr(server._system_router, "get_system_metrics", fake_system)
     monkeypatch.setattr(server._health_router, "_health_impl", fake_health)
     monkeypatch.setattr(server, "load_machine_registry", lambda: {"version": 1, "machines": []})
     monkeypatch.setattr(server, "merge_registry_with_live_nodes", lambda nodes, registry: nodes)
