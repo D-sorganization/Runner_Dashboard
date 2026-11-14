@@ -23,7 +23,7 @@ jobs:
       (!github.event.pull_request ||
       github.event.pull_request.head.repo.full_name == github.repository) &&
       !github.event.pull_request.draft
-    uses: D-sorganization/fleet-workflows/.github/workflows/reusable-codex-review-request.yml@57daa2f9bce4cb98b4fa13375c160745ab621ff4 # main 2026-11-13 (gh api paginate without --slurp)
+    uses: D-sorganization/fleet-workflows/.github/workflows/reusable-codex-review-request.yml@57daa2f9bce4cb98b4fa13375c160745ab621ff4 # gh pagination without --slurp
     with:
       timeout-minutes: 5
     secrets:
