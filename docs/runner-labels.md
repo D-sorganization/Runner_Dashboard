@@ -9,13 +9,13 @@ to the correct runner tier.
 
 ## Label Taxonomy
 
-| Label                  | Storage tier | Use for                                                                                          | Avoid for                                                      |
-| ---------------------- | ------------ | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| `d-sorg-fleet-nvme`    | NVMe SSD     | Compile-heavy native builds, large dependency installs, Playwright suites, cache-intensive jobs  | Lightweight governance, docs checks, read-mostly maintenance   |
-| `d-sorg-fleet-fast-io` | NVMe or SSD  | CI test suites, lockfile refreshes, Jules Auto-Repair / PR-AutoFix, release builds               | Pure documentation or governance                               |
-| `d-sorg-fleet-docker`  | NVMe or SSD  | Docker image builds, Trivy scans, container-layer cache churn                                    | Lightweight maintenance workflows                              |
-| `d-sorg-fleet-bulk`    | HDD          | Governance, issue taxonomy sync, label sync, spec checks, secret scans, lease reaper, verify-tag | Docker builds, native-build CI, lockfile refreshes, Playwright |
-| `d-sorg-fleet-queue`   | Reserved slot | `merge_group` validation only, to keep merge-queue checks from waiting behind PR builds         | Pull-request builds, scheduled and manual jobs                |
+| Label                  | Storage tier              | Use for                                                                                                   | Avoid for                                                         |
+| ---------------------- | ------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `d-sorg-fleet-nvme`    | NVMe SSD                  | Compile-heavy native builds, large dependency installs, Playwright suites, cache-intensive jobs           | Lightweight governance, docs checks, read-mostly maintenance      |
+| `d-sorg-fleet-fast-io` | NVMe or SSD               | CI test suites, lockfile refreshes, Jules Auto-Repair / PR-AutoFix, release builds                        | Pure documentation or governance                                  |
+| `d-sorg-fleet-docker`  | NVMe or SSD               | Docker image builds, Trivy scans, container-layer cache churn                                             | Lightweight maintenance workflows                                 |
+| `d-sorg-fleet-bulk`    | HDD                       | Governance, issue taxonomy sync, label sync, spec checks, secret scans, lease reaper, verify-tag          | Docker builds, native-build CI, lockfile refreshes, Playwright    |
+| `d-sorg-fleet-queue`   | Reserved slot             | `merge_group` validation only, to keep merge-queue checks from waiting behind PR builds                   | Pull-request builds, scheduled and manual jobs                    |
 | `d-sorg-fleet-browser` | Playwright/Vitest-capable | Frontend/E2E jobs in `frontend-tests.yml`, opt-in via the `CI_BROWSER_RUNNER_LABEL` repo variable (#3045) | The node-c runners (node-c-1/-2); never assign this label to them |
 
 ## Neutral Labels (safe during transition)
@@ -237,6 +237,8 @@ GET /api/runners/label-guidance
    will be needed before the dual-tier pool goes live.
 4. A workflow using at least one **recommended** label passes the audit.
 5. No hosted-runner fallback is introduced by this taxonomy.
+   The existing switches to GitHub-hosted runners, and the job they do not
+   move, are in [runbooks/ci-hosted-fallback.md](runbooks/ci-hosted-fallback.md).
 
 ## Current Status
 
