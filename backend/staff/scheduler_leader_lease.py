@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.error import URLError
@@ -20,6 +20,8 @@ from urllib.request import Request, urlopen
 
 from dashboard_config import HUB_URL
 from machine_registry import is_portable_machine
+from staff.schedule import next_fire, parse_cron
+from staff.scheduler_named_jobs import named_jobs
 
 log = logging.getLogger("dashboard.staff.scheduler")
 
@@ -114,6 +116,10 @@ def acquire_leader_lease(
     holder = str(entry.get("holder") or "")
     expires_at = parse_iso(str(entry.get("expires_at") or ""))
     acquired_at = str(entry.get("acquired_at") or "")
+    # How far another host's leadership provably got: a leader renews before it handles the due
+    # slots of the same tick, so slots at or before its last renewal are its own (#4274 D-13).
+    handled_through = str(entry.get("handled_through") or "")
+    peer_renewed_at = str(entry.get("renewed_at") or "") if holder and holder != machine else ""
     ranks = {name: idx for idx, name in enumerate(chain)}
     holder_rank = ranks.get(holder, 10_000)
     requester_rank = ranks.get(machine, 10_000)
@@ -132,7 +138,11 @@ def acquire_leader_lease(
     else:
         reason = f"held by {holder}"
 
+    if peer_renewed_at:
+        handled_through = peer_renewed_at
     if granted:
+        if peer_renewed_at:
+            entry["handled_through"] = peer_renewed_at
         expires = now + timedelta(seconds=ttl_seconds)
         entry["holder"] = machine
         entry["acquired_at"] = acquired_at or now.isoformat()
@@ -151,7 +161,45 @@ def acquire_leader_lease(
         "reason": reason,
         "expires_at": iso(expires_at),
         "chain": list(chain),
+        "handled_through": handled_through or None,
     }
+
+
+def skip_slots_handled_by_peer(
+    state: dict[str, dict[str, Any]],
+    roles: Mapping[str, Any],
+    decision: Mapping[str, Any],
+    now: datetime,
+    tz: str,
+) -> bool:
+    """Move slot cursors past slots another leader already handled. Returns True when ``state`` changed.
+
+    Cursors are per host, so without this a host that takes the lease over (failover or a
+    returning primary) re-fires the slot the previous leader fired (#4274 D-13). Only a cursor
+    with a slot at or before the lease reply's ``handled_through`` moves; a slot the previous
+    leader never reached still fires here.
+    """
+    through = parse_iso(str(decision.get("handled_through") or ""))
+    if through is None:
+        return False
+    changed = False
+    for role in roles.values():
+        if not role.dispatchable:
+            continue
+        jobs = named_jobs(role)
+        crons = {f"{role.name}::{job}": cron for job, cron in jobs.items()} if jobs else {role.name: role.schedule}
+        for key, cron in crons.items():
+            entry = state.get(key) or {}
+            cursor = parse_iso(str(entry.get("cursor") or ""))
+            try:
+                if not cron or cursor is None or next_fire(parse_cron(cron), cursor, tz) > through:
+                    continue
+                entry["cursor"] = min(through, now).isoformat()
+            except (TypeError, ValueError):  # bad cron, or naive/aware timestamps that cannot be compared
+                continue
+            entry["last_reason"] = f"slots through {through.isoformat()} handled by another scheduler leader"
+            changed = True
+    return changed
 
 
 def acquire_remote_leader_lease(
@@ -202,6 +250,7 @@ def lease_allows_firing(
     runner_machine: str,
     now: datetime,
     ttl_seconds: float,
+    on_decision: Callable[[dict[str, Any], datetime], None] | None = None,
 ) -> bool:
     if is_portable_machine(runner_machine):
         return False
@@ -211,6 +260,8 @@ def lease_allows_firing(
     if runner_machine not in chain:
         return False
     decision = acquire_remote_leader_lease(acquire_local, runner_machine, now, ttl_seconds)
+    if on_decision is not None:
+        on_decision(decision, now)
     if not bool(decision.get("granted", False)):
         holder = str(decision.get("holder") or "<none>")
         reason = str(decision.get("reason") or "lease denied")
