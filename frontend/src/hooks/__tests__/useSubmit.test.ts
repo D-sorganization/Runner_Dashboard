@@ -92,4 +92,23 @@ describe("useSubmit", () => {
     await waitFor(() => expect(keys).toHaveLength(2));
     expect(keys[0]).not.toBe(keys[1]);
   });
+
+  it.each([
+    ["the same intent", "request-a", true],
+    ["a different intent", "request-b", false],
+  ])("a retry with %s reuses the key: %s", async (_name, retryIntent, reused) => {
+    const keys: string[] = [];
+    const { result } = renderHook(() => useSubmit<void>());
+    const failing = async (ctx: { idempotencyKey: string }) => {
+      keys.push(ctx.idempotencyKey);
+      throw new Error("HTTP 500: boom");
+    };
+
+    act(() => result.current.submit(failing, "request-a"));
+    await waitFor(() => expect(result.current.state.status).toBe("failed"));
+    act(() => result.current.submit(failing, retryIntent));
+    await waitFor(() => expect(keys).toHaveLength(2));
+
+    expect(keys[1] === keys[0]).toBe(reused);
+  });
 });
