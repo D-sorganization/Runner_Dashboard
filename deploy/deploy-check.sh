@@ -14,6 +14,7 @@
 #   7. Hook lockfile dir exists and is writable for the runner user
 #   8. Drop-ins from deploy/migrate-runner-units.sh are present on every unit
 #   9. Installed runner-scheduler / wsl-cache-trim match this revision (#1927)
+#  10. Host-metrics probe timer enabled and cache fresh (#4443)
 #
 # Usage:
 #   bash deploy/deploy-check.sh
@@ -204,7 +205,70 @@ else
     record "maintenance_assets" FAIL "stale host asset(s): $(printf '%s' "$DRIFT_OUT" | grep DRIFT | paste -sd ';' -) — run deploy/update-deployed.sh"
 fi
 
-# ── 10. Runner job hooks (#4046) ─────────────────────────────────────────────
+# ── 10. Host metrics probe timer + cache (#4443) ────────────────────────────
+_host_metrics_probe_check() {
+    local timer_state="" cache_status=""
+    if systemctl is-enabled runner-dashboard-host-metrics-probe.timer &>/dev/null; then
+        timer_state="$(systemctl is-active runner-dashboard-host-metrics-probe.timer 2>/dev/null || echo inactive)"
+    elif systemctl --user is-enabled runner-dashboard-host-metrics-probe.timer &>/dev/null 2>&1; then
+        timer_state="user:$(systemctl --user is-active runner-dashboard-host-metrics-probe.timer 2>/dev/null || echo inactive)"
+    else
+        timer_state="missing"
+    fi
+    cache_status="$(
+        python3 - <<'PY' 2>/dev/null
+import json, os, time
+from datetime import UTC, datetime
+from pathlib import Path
+
+state = Path(os.environ.get("RUNNER_DASHBOARD_STATE_DIR", Path.home() / ".config" / "runner-dashboard"))
+path = state / "host_metrics.json"
+stale_s = float(os.environ.get("RUNNER_HOST_METRICS_STALE_S", "90"))
+if not path.is_file():
+    print("missing")
+    raise SystemExit
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    print("missing")
+    raise SystemExit
+raw = payload.get("sampled_at")
+if not isinstance(raw, str):
+    print("stale")
+    raise SystemExit
+try:
+    sampled = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    if sampled.tzinfo is None:
+        sampled = sampled.replace(tzinfo=UTC)
+except ValueError:
+    print("stale")
+    raise SystemExit
+age = (datetime.now(UTC) - sampled).total_seconds()
+print("fresh" if age <= stale_s else "stale")
+PY
+    )"
+    if [[ "$timer_state" == "missing" ]]; then
+        record "host_metrics_probe" WARN "timer not installed — run: bash deploy/install-host-metrics-probe.sh (system scope: sudo)"
+    elif [[ "$timer_state" == "inactive" || "$timer_state" == *"inactive"* ]]; then
+        record "host_metrics_probe" WARN "timer installed but not active ($timer_state)"
+    elif [[ "$cache_status" == "fresh" ]]; then
+        record "host_metrics_probe" PASS "timer=$timer_state cache=fresh"
+    elif [[ "$cache_status" == "stale" ]]; then
+        record "host_metrics_probe" WARN "cache stale — check probe logs: journalctl -u runner-dashboard-host-metrics-probe.service"
+    elif [[ "$cache_status" == "missing" ]]; then
+        record "host_metrics_probe" WARN "cache missing — timer=$timer_state; run install-host-metrics-probe.sh"
+    else
+        record "host_metrics_probe" WARN "cache check failed (status=$cache_status, timer=$timer_state)"
+    fi
+}
+if systemctl is-enabled runner-dashboard.service &>/dev/null || \
+   systemctl --user is-enabled runner-dashboard.service &>/dev/null 2>&1; then
+    _host_metrics_probe_check
+else
+    record "host_metrics_probe" PASS "runner-dashboard not installed on this host"
+fi
+
+# ── 11. Runner job hooks (#4046) ─────────────────────────────────────────────
 HOOKS_RESTORE="${RUNNER_HOOKS_RESTORE:-/usr/local/bin/runner-hooks-restore}"
 if (( TOTAL == 0 )); then
     record "runner_hooks" PASS "no runner units → hooks not required"

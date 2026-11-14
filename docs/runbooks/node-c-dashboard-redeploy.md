@@ -52,6 +52,30 @@ The user scope restarts and checks only `runner-dashboard.service` through
 runner units. The updater verifies dashboard health and restores the backup
 through the user service manager if health verification fails.
 
+## Host metrics probe timer (#4443)
+
+`update-deployed.sh` and `setup.sh` install `runner-dashboard-host-metrics-probe.timer`
+idempotently. On hubs that use a **system** unit (DeskComputer / ControlTower /
+OGLaptop WSL), the bash installer needs **sudo inside WSL** for
+`/etc/systemd/system`. Brick-style **user** units need no sudo.
+
+```bash
+# WSL hub (system scope)
+sudo -n bash ~/actions-runners/dashboard/deploy/install-host-metrics-probe.sh
+
+# User-scope node (Brick, node-c)
+bash ~/actions-runners/dashboard/deploy/install-host-metrics-probe.sh
+```
+
+From Windows without opening WSL manually:
+
+```powershell
+.\deploy\windows\install-host-metrics-probe-wsl.ps1 -Distro Ubuntu-22.04
+```
+
+Verify: `systemctl is-active runner-dashboard-host-metrics-probe.timer` (or
+`systemctl --user …`) and a fresh `~/.config/runner-dashboard/host_metrics.json`.
+
 After an approved deployment, inspect the live result separately:
 
 ```bash

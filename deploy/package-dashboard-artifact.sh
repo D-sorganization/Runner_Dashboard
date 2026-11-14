@@ -156,6 +156,8 @@ if command -v rsync >/dev/null 2>&1; then
 else
     cp -r "${SCRIPT_DIR}/deploy/." "${STAGE_DIR}/deploy/"
 fi
+chmod 0755 "${STAGE_DIR}/deploy/host-metrics-probe.py" 2>/dev/null || true
+find "${STAGE_DIR}/deploy" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
 
 # 5. Config (if present)
 if [[ -d "${SCRIPT_DIR}/config" ]]; then

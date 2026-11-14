@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# Install the host-metrics-probe systemd timer (#4309).
+# Install the host-metrics-probe systemd timer (#4309, #4443).
 #
 # Usage:
 #   bash deploy/install-host-metrics-probe.sh
 #
 # Idempotent; follows the same system/user scope detection as install-node-auto-deploy.sh.
+#
+# Privilege notes:
+#   - **User scope** (Brick and other user-service hubs): no sudo; uses
+#     systemctl --user and ~/.config/systemd/user/.
+#   - **System scope** (DeskComputer / ControlTower / OGLaptop WSL hubs): requires
+#     passwordless sudo for install/tee/cp under /etc/systemd/system and
+#     systemctl enable/start.
+#   - On a Windows host, run this inside the dashboard WSL distro (or use
+#     deploy/windows/install-host-metrics-probe-wsl.ps1 from an elevated shell).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -57,11 +66,15 @@ install_host_metrics_probe() {
   SCOPE="$(detect_scope)"
   PYTHON_BIN="$(resolve_auto_deploy_python "${DEPLOY_DIR}" "${SCOPE}" 2>/dev/null || command -v python3)"
   TIMER_SRC="${SCRIPT_DIR}/systemd/runner-dashboard-host-metrics-probe.timer"
+  local PROBE_SRC="${SCRIPT_DIR}/host-metrics-probe.py"
+  local PROBE_DEST="${DEPLOY_DIR}/deploy/host-metrics-probe.py"
 
-  [[ -x "${DEPLOY_DIR}/deploy/host-metrics-probe.py" ]] || {
-    echo "Refusing host-metrics-probe install: ${DEPLOY_DIR}/deploy/host-metrics-probe.py missing" >&2
+  [[ -f "${PROBE_SRC}" ]] || {
+    echo "Refusing host-metrics-probe install: ${PROBE_SRC} missing" >&2
     return 1
   }
+  install -d -m 0755 "${DEPLOY_DIR}/deploy"
+  install -m 0755 "${PROBE_SRC}" "${PROBE_DEST}"
 
   if [[ "${SCOPE}" == user ]]; then
     local UNIT_DIR="${DASHBOARD_HOME}/.config/systemd/user"
@@ -71,15 +84,16 @@ install_host_metrics_probe() {
     systemctl --user daemon-reload
     systemctl --user enable --now runner-dashboard-host-metrics-probe.timer
     systemctl --user start runner-dashboard-host-metrics-probe.service || true
-    echo "Installed user timer: runner-dashboard-host-metrics-probe.timer"
+    echo "Installed user timer: runner-dashboard-host-metrics-probe.timer (no sudo)"
   else
+    echo "Installing system units (sudo required for /etc/systemd/system)..." >&2
     sudo install -d -m 0755 /etc/systemd/system
     render_service_unit system "${PYTHON_BIN}" | sudo tee /etc/systemd/system/runner-dashboard-host-metrics-probe.service >/dev/null
     sudo cp "${TIMER_SRC}" /etc/systemd/system/runner-dashboard-host-metrics-probe.timer
     sudo systemctl daemon-reload
     sudo systemctl enable --now runner-dashboard-host-metrics-probe.timer
     sudo systemctl start runner-dashboard-host-metrics-probe.service || true
-    echo "Installed system timer: runner-dashboard-host-metrics-probe.timer"
+    echo "Installed system timer: runner-dashboard-host-metrics-probe.timer (sudo)"
   fi
 }
 

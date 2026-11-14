@@ -443,6 +443,14 @@ else
     warn "Runner maintenance installer not found; skipping cleanup/scheduler timers"
 fi
 
+if [[ -f "${SCRIPT_DIR}/deploy/install-host-metrics-probe.sh" ]]; then
+    RUNNER_DASHBOARD_DEPLOY_DIR="${DEPLOY_DIR}" \
+        bash "${SCRIPT_DIR}/deploy/install-host-metrics-probe.sh" \
+        || warn "host-metrics-probe install failed — run: bash ${SCRIPT_DIR}/deploy/install-host-metrics-probe.sh (system scope needs sudo)"
+else
+    warn "install-host-metrics-probe.sh not found; skipping host metrics timer"
+fi
+
 sleep 3
 if dashboard_systemctl_active; then
     ok "Dashboard service started and enabled (${SYSTEMD_DASHBOARD_SCOPE} scope)"
