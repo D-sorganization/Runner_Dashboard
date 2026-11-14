@@ -43,6 +43,9 @@ class FakeGitHub:
         self.comment_post_status = 201
         self.comment_is_readable = True
         self.comment_stored_body: str | None = None
+        self.comment_get_failures = 0
+        self.review_reads_that_lag = 0
+        self.reviews_are_json = True
         self.calls: list[str] = []
 
     def get(self, url: str, **_: Any) -> httpx.Response:
@@ -50,9 +53,18 @@ class FakeGitHub:
         if url.endswith(f"/pulls/{_PR}"):
             return httpx.Response(200, json={"head": {"sha": _HEAD}})
         if f"/pulls/{_PR}/reviews" in url:
-            return httpx.Response(200, json=list(self.reviews))
+            if not self.reviews_are_json:
+                return httpx.Response(200, text="<html>bad gateway</html>")
+            rows = list(self.reviews)
+            if self.review_reads_that_lag > 0 and any(row["id"] == 7 for row in rows):
+                self.review_reads_that_lag -= 1
+                rows = [row for row in rows if row["id"] != 7]
+            return httpx.Response(200, json=rows)
         if "/issues/comments/" in url:
             comment_id = int(url.rsplit("/", 1)[1])
+            if self.comment_get_failures > 0:
+                self.comment_get_failures -= 1
+                return httpx.Response(502, json={"message": "Bad Gateway"})
             if not self.comment_is_readable or comment_id not in self.comments:
                 return httpx.Response(404, json={"message": "Not Found"})
             return httpx.Response(200, json={"id": comment_id, "body": self.comments[comment_id], "user": _BOT})
@@ -75,6 +87,22 @@ class FakeGitHub:
             return httpx.Response(201, json={"id": 501})
         raise AssertionError(f"unexpected POST {url}")
 
+    def put(self, url: str, **_: Any) -> httpx.Response:
+        self.calls.append(f"PUT {url.split('/repos/')[1]}")
+        review_id = int(url.split("/reviews/")[1].split("/")[0])
+        for row in self.reviews:
+            if row["id"] == review_id:
+                row["state"] = "DISMISSED"
+        return httpx.Response(200, json={"id": review_id, "state": "DISMISSED"})
+
+    def delete(self, url: str, **_: Any) -> httpx.Response:
+        self.calls.append(f"DELETE {url.split('/repos/')[1]}")
+        self.comments.pop(int(url.rsplit("/", 1)[1]), None)
+        return httpx.Response(204)
+
+    def approved_at_head(self) -> list[int]:
+        return [row["id"] for row in self.reviews if row["state"] == "APPROVED" and row["commit_id"] == _HEAD]
+
     def posted(self, suffix: str) -> int:
         return sum(call.startswith("POST") and call.endswith(suffix) for call in self.calls)
 
@@ -88,11 +116,14 @@ def github() -> Iterator[FakeGitHub]:
         patch("staff.staff_github_pr_review.mint_runner_dashboard_verdict_token", return_value=token),
         patch.object(httpx, "get", side_effect=fake.get),
         patch.object(httpx, "post", side_effect=fake.post),
+        patch.object(httpx, "put", side_effect=fake.put),
+        patch.object(httpx, "delete", side_effect=fake.delete),
+        patch("time.sleep"),
     ):
         yield fake
 
 
-def _finalize(result_line: str) -> Any:
+def _finalize(result_line: str, *, pr_number: int | None = _PR) -> Any:
     return finalize_code_reviewer_run(
         status="succeeded",
         failure_class="",
@@ -103,7 +134,7 @@ def _finalize(result_line: str) -> Any:
         same_provider=False,
         repo=_REPO,
         reviewer_model="gpt-6.1-sol",
-        expected_pr_number=_PR,
+        expected_pr_number=pr_number,
     )
 
 
@@ -264,3 +295,76 @@ def test_a_fix_needed_verdict_read_back_on_the_exact_sha_is_accepted(github: Fak
     assert out.status == "succeeded"
     assert github.posted("/reviews") == 0
     assert f"FIX-NEEDED @{_HEAD}" in github.comments[501]
+
+
+def test_a_pass_whose_comment_is_refused_withdraws_the_approve_it_just_posted(github: FakeGitHub) -> None:
+    github.comment_post_status = 403
+
+    out = _finalize(_INDEPENDENT_PASS)
+
+    assert out.status == "failed"
+    assert github.approved_at_head() == [], "no half of a failed PASS may stay published"
+
+
+def test_a_pass_whose_comment_cannot_be_read_back_leaves_nothing_published(github: FakeGitHub) -> None:
+    github.comment_is_readable = False
+
+    out = _finalize(_INDEPENDENT_PASS)
+
+    assert out.status == "failed"
+    assert github.approved_at_head() == []
+    assert github.comments == {}
+
+
+def test_a_failed_comment_does_not_withdraw_an_approval_published_by_an_earlier_run(github: FakeGitHub) -> None:
+    github.reviews.append({"id": 3, "state": "APPROVED", "commit_id": _HEAD, "user": _BOT})
+    github.comment_post_status = 403
+
+    out = _finalize(_INDEPENDENT_PASS)
+
+    assert out.status == "failed"
+    assert github.approved_at_head() == [3]
+
+
+def test_a_review_list_that_lags_behind_the_post_is_read_again(github: FakeGitHub) -> None:
+    github.review_reads_that_lag = 1
+
+    out = _finalize(_ADVISORY_APPROVE)
+
+    assert out.status == "succeeded"
+    assert github.posted("/reviews") == 1
+
+
+def test_a_review_that_never_appears_fails_after_the_retries(github: FakeGitHub) -> None:
+    github.review_reads_that_lag = 99
+
+    out = _finalize(_ADVISORY_APPROVE)
+
+    assert out.status == "failed"
+    assert "read-back" in out.error
+
+
+def test_one_failed_comment_read_is_retried(github: FakeGitHub) -> None:
+    github.comment_get_failures = 1
+
+    out = _finalize(_INDEPENDENT_FIX)
+
+    assert out.status == "succeeded"
+    assert 501 in github.comments
+
+
+def test_a_review_list_that_is_not_json_fails_the_run_as_a_provider_error(github: FakeGitHub) -> None:
+    github.reviews_are_json = False
+
+    out = _finalize(_ADVISORY_APPROVE)
+
+    assert out.status == "failed"
+    assert out.failure_class == "provider_error"
+
+
+def test_an_approve_line_on_a_run_without_a_pull_request_is_not_a_verdict(github: FakeGitHub) -> None:
+    out = _finalize(_ADVISORY_APPROVE, pr_number=None)
+
+    assert out.status == "failed"
+    assert github.calls == []
+    assert collect_review_passes_from_store(_RunStore(out.status, _ADVISORY_APPROVE), _REPO) == ()
