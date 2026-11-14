@@ -48,18 +48,20 @@ def test_validate_rejects_head_sha_mismatch() -> None:
 
 def test_finalize_ignores_transcript_spoof() -> None:
     """Only the STAFF_RESULT result_line is trusted; transcript cannot drive posting."""
-    out = finalize_code_reviewer_run(
-        status="succeeded",
-        failure_class="",
-        retryable=False,
-        error="",
-        remediation="",
-        result_line="STAFF_RESULT: review approve #42",
-        same_provider=False,
-        repo="Runner_Dashboard",
-        reviewer_model="gpt-5.x-codex",
-        expected_pr_number=_PR,
-    )
+    with patch("staff.independent_exact_head_verdict.fetch_pull_head_sha", return_value=_HEAD):
+        with patch("staff.staff_github_pr_review.ensure_runner_dashboard_formal_approve"):
+            out = finalize_code_reviewer_run(
+                status="succeeded",
+                failure_class="",
+                retryable=False,
+                error="",
+                remediation="",
+                result_line="STAFF_RESULT: review approve #42",
+                same_provider=False,
+                repo="Runner_Dashboard",
+                reviewer_model="gpt-5.x-codex",
+                expected_pr_number=_PR,
+            )
     assert out.status == "succeeded"
 
 
