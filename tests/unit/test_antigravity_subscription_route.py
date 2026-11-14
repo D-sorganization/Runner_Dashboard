@@ -48,6 +48,21 @@ def test_fail_closed_on_untrusted_routes(snap_kwargs: dict[str, bool], reason: s
 
 
 @pytest.mark.unit
+def test_collect_snapshot_propagates_live_models_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for PR review #4241: probe result must land on ``models_listing_ok``."""
+    home = tmp_path / "agy"
+    cli = home / "antigravity-cli"
+    cli.mkdir(parents=True)
+    (cli / "jetski_state.pbtxt").write_text("marker", encoding="utf-8")
+    monkeypatch.setattr(route, "resolve_antigravity_home", lambda: home)
+    monkeypatch.setattr(route, "antigravity_oauth_session_alive", lambda: (True, ""))
+    snap = route.collect_antigravity_route_snapshot()
+    assert snap.models_listing_ok is True
+
+
+@pytest.mark.unit
 def test_positive_disk_markers_with_failed_live_probe_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

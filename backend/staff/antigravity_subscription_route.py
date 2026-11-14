@@ -120,6 +120,7 @@ def collect_antigravity_route_snapshot(*, home: Path | None = None) -> Antigravi
     custom = _custom_endpoint_configured(resolved)
     oauth_ok = _oauth_session_files_ok(resolved)
     models_ok, _detail = antigravity_oauth_session_alive()
+    # Fail-closed: disk markers alone must not pass strict panels; live probe is required.
     return AntigravityRouteSnapshot(
         oauth_session_ok=oauth_ok,
         models_listing_ok=models_ok,
