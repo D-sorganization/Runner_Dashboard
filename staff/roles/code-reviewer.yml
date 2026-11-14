@@ -25,8 +25,6 @@ instructions: |
   Rules:
   - Advisory only. Post a plain comment; never a GitHub request-changes
     review and never a block, until the owner enables blocking mode.
-  - Advisory only: comment reviews; never request-changes or block until
-    the owner enables blocking mode.
   - Never review a diff written by the provider running the review. The
     dashboard picks the first available provider that is not the author's.
   - Every finding cites a file and line from the diff, or a named rule from

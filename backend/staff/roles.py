@@ -244,7 +244,13 @@ def load_roles(directory: Path | None | _UnsetDirectoryType = _UNSET_DIRECTORY) 
 
     avatars_dir = staff_avatars_dir_for_roles(resolved_directory)
     avatars_sig = avatars_dir_mtime_sig(avatars_dir)
-    dir_sig = (str(resolved_directory.resolve()), tuple(file_stats), avatars_sig, bundled_sig)
+    dir_sig = (
+        str(resolved_directory.resolve()),
+        tuple(file_stats),
+        avatars_sig,
+        bundled_sig,
+        apply_bundled_overrides,
+    )
 
     global _CACHE_DIR_SIG, _CACHE_ROLES, _CACHE_ERRORS
     with _CACHE_LOCK:

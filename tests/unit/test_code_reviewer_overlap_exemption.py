@@ -25,6 +25,53 @@ def _reset_role_cache() -> None:
     roles_mod.clear_roles_cache()
 
 
+_RM_CODE_REVIEWER_WITHOUT_FLAGS = (
+    "name: code-reviewer\ntitle: Code Reviewer\nproviders: [codex]\n"
+    "permissions:\n  lease: false\n  push_branch: false\n  open_pr: false\n"
+)
+
+
+def _write_rm_code_reviewer_without_flags(rm_roles: Path) -> None:
+    rm_roles.mkdir(exist_ok=True)
+    (rm_roles / "code-reviewer.yml").write_text(_RM_CODE_REVIEWER_WITHOUT_FLAGS, encoding="utf-8")
+
+
+def _assert_code_reviewer_read_only_overlap_exempt(spec: roles_mod.RoleSpec) -> None:
+    assert spec.code_read_only is True
+    assert spec.occupies_paths is False
+    assert role_occupies_paths(spec) is False
+
+
+def test_load_roles_cache_respects_bundled_overrides_path_then_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Explicit directory load must not poison the default load_roles() cache (#4437)."""
+    rm_roles = tmp_path / "rm-roles"
+    _write_rm_code_reviewer_without_flags(rm_roles)
+    monkeypatch.setenv("STAFF_ROLES_DIR", str(rm_roles))
+
+    bare = roles_mod.load_roles(rm_roles)["code-reviewer"]
+    assert bare.code_read_only is False
+
+    _assert_code_reviewer_read_only_overlap_exempt(roles_mod.load_roles()["code-reviewer"])
+
+
+def test_load_roles_cache_respects_bundled_overrides_default_then_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Default load_roles() cache must not leak bundled overrides into explicit directory loads."""
+    rm_roles = tmp_path / "rm-roles"
+    _write_rm_code_reviewer_without_flags(rm_roles)
+    monkeypatch.setenv("STAFF_ROLES_DIR", str(rm_roles))
+
+    _assert_code_reviewer_read_only_overlap_exempt(roles_mod.load_roles()["code-reviewer"])
+
+    bare = roles_mod.load_roles(rm_roles)["code-reviewer"]
+    assert bare.code_read_only is False
+
+    _assert_code_reviewer_read_only_overlap_exempt(roles_mod.load_roles()["code-reviewer"])
+
+
 def test_bundled_code_reviewer_role_does_not_occupy_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """RM YAML without flags is overridden by Runner_Dashboard staff/roles/code-reviewer.yml."""
     rm_roles = tmp_path / "rm-roles"
