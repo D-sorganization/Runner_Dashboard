@@ -291,7 +291,13 @@ async def dispatch_staff_run(
             )
 
         if cmd.repo:
+            from dispatch_queue_link import purge_stale_overlap_sessions
+            from dispatch_session_policy import role_occupies_paths
+
             paths = extract_declared_paths(cmd.prompt)
+            role_spec = get_runner().roles().get(cmd.role)
+            occupies = role_occupies_paths(role_spec)
+            purge_stale_overlap_sessions()
             attempt = dispatch_queue_manager.try_dispatch(
                 repository=cmd.repo,
                 number=cmd.issue,
@@ -299,6 +305,8 @@ async def dispatch_staff_run(
                 labels=(),
                 declared_paths=paths,
                 requested_model=cmd.model or "",
+                occupies_paths=occupies,
+                role=cmd.role,
             )
             if not attempt.dispatched:
                 blocker = attempt.queued_item.blocking_session_id if attempt.queued_item else ""

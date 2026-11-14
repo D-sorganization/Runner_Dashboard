@@ -27891,6 +27891,85 @@
         "tags": ["staff-v1", "staff-context"]
       }
     },
+    "/api/v1/staff/dispatch-sessions": {
+      "get": {
+        "operationId": "list_dispatch_sessions_api_v1_staff_dispatch_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Dispatch Sessions Api V1 Staff Dispatch Sessions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Dispatch Sessions",
+        "tags": ["staff-dispatch-sessions"]
+      }
+    },
+    "/api/v1/staff/dispatch-sessions/{session_id}": {
+      "delete": {
+        "operationId": "release_dispatch_session_api_v1_staff_dispatch_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Release Dispatch Session Api V1 Staff Dispatch Sessions  Session Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Release Dispatch Session",
+        "tags": ["staff-dispatch-sessions"]
+      }
+    },
     "/api/v1/staff/dispatcher/ledger": {
       "post": {
         "description": "Append one bounded fallback record; the dedicated scope has no read access.",
