@@ -61,16 +61,20 @@ def test_publish_independent_exact_head_verdict_posts_with_minted_token() -> Non
     fake = MagicMock(token=_FAKE_GHS, expires_at=1_700_000_000.0)
     with patch("staff.independent_exact_head_verdict.github_app_auth_configured", return_value=True):
         with patch("staff.independent_exact_head_verdict.mint_installation_access_token", return_value=fake):
-            with patch("staff.independent_exact_head_verdict.post_pr_comment") as post:
-                with patch("staff.staff_github_pr_review.ensure_runner_dashboard_formal_approve"):
-                    publish_independent_exact_head_verdict(
-                        repo="Runner_Dashboard",
-                        pr_number=9,
-                        verdict="PASS",
-                        head_sha="deadbeef",
-                        reviewer_model="gpt-5.x-codex",
-                    )
+            with patch("staff.independent_exact_head_verdict.post_pr_comment", return_value=501) as post:
+                with patch("staff.independent_exact_head_verdict.confirm_verdict_comment_published") as confirm:
+                    with patch("staff.staff_github_pr_review.ensure_runner_dashboard_formal_approve"):
+                        publish_independent_exact_head_verdict(
+                            repo="Runner_Dashboard",
+                            pr_number=9,
+                            verdict="PASS",
+                            head_sha="deadbeef",
+                            reviewer_model="gpt-5.x-codex",
+                        )
     post.assert_called_once()
+    confirm.assert_called_once()
+    assert confirm.call_args.kwargs["comment_id"] == 501
+    assert confirm.call_args.kwargs["head_sha"] == "deadbeef"
     assert post.call_args.kwargs["token"] == _FAKE_GHS
     assert "PASS" in post.call_args.kwargs["body"]
     assert "deadbeef" in post.call_args.kwargs["body"]

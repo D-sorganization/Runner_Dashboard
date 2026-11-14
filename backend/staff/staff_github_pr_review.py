@@ -174,7 +174,12 @@ def ensure_runner_dashboard_formal_approve(
     head_sha: str,
     body: str,
 ) -> None:
-    """Submit APPROVE at ``head_sha`` and dismiss this App's stale CHANGES_REQUESTED reviews."""
+    """Submit APPROVE at ``head_sha`` and dismiss this App's stale CHANGES_REQUESTED reviews.
+
+    Post: an APPROVED review by this App on ``head_sha`` was read back from GitHub. A
+    post that GitHub answered with success but that the read-back does not show raises
+    :class:`VerdictPostError`, so the head stays unreviewed (#4249, board ruling 2026-11-13).
+    """
     from staff.independent_exact_head_verdict import _repo_slug
 
     slug = _repo_slug(repo)
@@ -203,4 +208,10 @@ def ensure_runner_dashboard_formal_approve(
         body=body,
         token=cred.token,
     )
-    log.info("Posted formal APPROVE for %s#%s at %s", full_repo, pr_number, sha[:7])
+    published = fetch_pull_reviews(full_repo=full_repo, pr_number=pr_number, token=cred.token)
+    if not runner_dashboard_has_approved_at_head(published, head_sha=sha):
+        raise VerdictPostError(
+            f"Formal APPROVE for {full_repo}#{pr_number} at {sha[:7]} was not found on read-back; "
+            "the head stays unreviewed"
+        )
+    log.info("Posted formal APPROVE for %s#%s at %s and read it back", full_repo, pr_number, sha[:7])

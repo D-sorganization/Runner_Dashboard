@@ -86,7 +86,8 @@ def test_ensure_formal_approve_dismisses_stale_cr_then_submits() -> None:
     ]
     fake = MagicMock(token=_FAKE_GHS, expires_at=1_700_000_000.0)
     with patch("staff.staff_github_pr_review.mint_runner_dashboard_verdict_token", return_value=fake):
-        with patch("staff.staff_github_pr_review.fetch_pull_reviews", return_value=reviews):
+        approved = {"id": 91, "state": "APPROVED", "commit_id": _HEAD, "user": {"login": RUNNER_DASHBOARD_BOT_LOGIN}}
+        with patch("staff.staff_github_pr_review.fetch_pull_reviews", side_effect=[reviews, [*reviews, approved]]):
             with patch("staff.staff_github_pr_review.dismiss_pull_review") as dismiss:
                 with patch("staff.staff_github_pr_review.submit_pull_request_review") as submit:
                     ensure_runner_dashboard_formal_approve(
@@ -124,15 +125,16 @@ def test_publish_pass_triggers_formal_approve() -> None:
     fake = MagicMock(token=_FAKE_GHS, expires_at=1_700_000_000.0)
     with patch("staff.independent_exact_head_verdict.github_app_auth_configured", return_value=True):
         with patch("staff.independent_exact_head_verdict.mint_installation_access_token", return_value=fake):
-            with patch("staff.independent_exact_head_verdict.post_pr_comment"):
-                with patch("staff.staff_github_pr_review.ensure_runner_dashboard_formal_approve") as formal:
-                    publish_independent_exact_head_verdict(
-                        repo="Runner_Dashboard",
-                        pr_number=9,
-                        verdict="PASS",
-                        head_sha=_HEAD,
-                        reviewer_model="gpt-5.x-codex",
-                    )
+            with patch("staff.independent_exact_head_verdict.post_pr_comment", return_value=501):
+                with patch("staff.independent_exact_head_verdict.confirm_verdict_comment_published"):
+                    with patch("staff.staff_github_pr_review.ensure_runner_dashboard_formal_approve") as formal:
+                        publish_independent_exact_head_verdict(
+                            repo="Runner_Dashboard",
+                            pr_number=9,
+                            verdict="PASS",
+                            head_sha=_HEAD,
+                            reviewer_model="gpt-5.x-codex",
+                        )
     formal.assert_called_once()
     assert formal.call_args.kwargs["head_sha"] == _HEAD
 

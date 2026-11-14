@@ -178,17 +178,22 @@ def build_independent_verdict_comment_body(
     )
 
 
-def post_pr_comment(*, full_repo: str, pr_number: int, body: str, token: str) -> None:
+def _github_headers(token: str) -> dict[str, str]:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def post_pr_comment(*, full_repo: str, pr_number: int, body: str, token: str) -> int:
+    """Post one PR comment and return its id. Post: the id is a positive integer."""
     url = f"https://api.github.com/repos/{full_repo}/issues/{int(pr_number)}/comments"
     try:
         resp = httpx.post(
             url,
             json={"body": body},
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Accept": "application/vnd.github+json",
-                "X-GitHub-Api-Version": "2022-11-28",
-            },
+            headers=_github_headers(token),
             timeout=httpx.Timeout(30.0),
         )
     except httpx.HTTPError as exc:
@@ -199,6 +204,43 @@ def post_pr_comment(*, full_repo: str, pr_number: int, body: str, token: str) ->
             f"GitHub comment post refused: HTTP {resp.status_code} ({detail})",
             http_status=resp.status_code,
         )
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise VerdictPostError("GitHub comment post returned non-JSON; the comment cannot be read back") from exc
+    comment_id = payload.get("id") if isinstance(payload, dict) else None
+    if isinstance(comment_id, bool) or not isinstance(comment_id, int) or comment_id <= 0:
+        raise VerdictPostError("GitHub comment post returned no comment id; the comment cannot be read back")
+    return comment_id
+
+
+def confirm_verdict_comment_published(
+    *, full_repo: str, comment_id: int, verdict: str, head_sha: str, token: str
+) -> None:
+    """Read the posted verdict comment back from GitHub (#4249, board ruling 2026-11-13).
+
+    A post that GitHub answered with success is not yet a verdict: the head stays
+    unreviewed until the comment is read back and names ``verdict`` at ``head_sha``.
+    Raises :class:`VerdictPostError` otherwise.
+    """
+    url = f"https://api.github.com/repos/{full_repo}/issues/comments/{int(comment_id)}"
+    try:
+        resp = httpx.get(url, headers=_github_headers(token), timeout=httpx.Timeout(30.0))
+    except httpx.HTTPError as exc:
+        raise VerdictPostError(f"Verdict comment read-back failed: {exc}") from exc
+    if resp.status_code >= 400:
+        raise VerdictPostError(
+            f"Verdict comment read-back refused: HTTP {resp.status_code}; the head stays unreviewed",
+            http_status=resp.status_code,
+        )
+    try:
+        payload = resp.json()
+    except ValueError as exc:
+        raise VerdictPostError("Verdict comment read-back returned non-JSON") from exc
+    body = str(payload.get("body") or "") if isinstance(payload, dict) else ""
+    expected = f"`{verdict.upper()} @{head_sha.lower()}`"
+    if INDEPENDENT_REVIEW_MARKER not in body or expected not in body:
+        raise VerdictPostError(f"Verdict comment read-back does not show {expected}; the head stays unreviewed")
 
 
 def publish_independent_exact_head_verdict(
@@ -209,7 +251,12 @@ def publish_independent_exact_head_verdict(
     head_sha: str,
     reviewer_model: str,
 ) -> None:
-    """Post one exact-head verdict comment; raises :class:`VerdictPostError` on failure."""
+    """Publish one exact-head verdict and read it back; raises :class:`VerdictPostError` on failure.
+
+    For ``PASS`` the formal APPROVE review goes first, so a refused review (for example
+    HTTP 403) leaves no PASS comment on the PR. Post: the verdict comment, and for
+    ``PASS`` the APPROVE review, were read back from GitHub at ``head_sha`` (#4249).
+    """
     slug = _repo_slug(repo)
     full_repo = f"{ORG}/{slug}"
     cred = mint_runner_dashboard_verdict_token(repo)
@@ -225,7 +272,6 @@ def publish_independent_exact_head_verdict(
         pr_number,
         head_sha[:7],
     )
-    post_pr_comment(full_repo=full_repo, pr_number=pr_number, body=body, token=cred.token)
     if verdict.upper() == "PASS":
         from staff.staff_github_pr_review import ensure_runner_dashboard_formal_approve  # noqa: PLC0415
 
@@ -235,3 +281,11 @@ def publish_independent_exact_head_verdict(
             head_sha=head_sha,
             body=body,
         )
+    comment_id = post_pr_comment(full_repo=full_repo, pr_number=pr_number, body=body, token=cred.token)
+    confirm_verdict_comment_published(
+        full_repo=full_repo,
+        comment_id=comment_id,
+        verdict=verdict,
+        head_sha=head_sha,
+        token=cred.token,
+    )
