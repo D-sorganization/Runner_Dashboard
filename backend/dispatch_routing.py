@@ -318,11 +318,7 @@ class DispatchQueueManager:
         self._queued_items: list[QueuedDispatchItem] = []
 
     def _blocking_sessions(self, repository: str | None = None) -> list[ActiveSession]:
-        sessions = [
-            s
-            for s in self._active_sessions.values()
-            if s.status == "active" and s.occupies_paths
-        ]
+        sessions = [s for s in self._active_sessions.values() if s.status == "active" and s.occupies_paths]
         if repository:
             repo_norm = repository.strip().lower()
             return [s for s in sessions if s.repository.strip().lower() == repo_norm]
