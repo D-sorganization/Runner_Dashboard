@@ -221,6 +221,9 @@ export function useStaffConsole({
     const activeThreadId = activeThreadIdRef.current;
     if (preferredRoleThreadId && activeThreadId === preferredRoleThreadId) {
       lastRestoredPreferred.current = preferredRoleThreadId;
+      // A prior in-flight restore may have left openingRole set after this id
+      // was already committed (for example a peer resync that finished early).
+      setOpeningRole(null);
       return;
     }
     const previousPreferred = lastRestoredPreferred.current;
