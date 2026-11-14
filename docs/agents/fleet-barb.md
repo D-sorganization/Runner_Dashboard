@@ -2,13 +2,13 @@
 
 Hub routes live under `/api/v1/staff/barb/leases`.
 
-| Action | Route | Notes |
-| --- | --- | --- |
-| Checkout | `POST …/checkout` | Default TTL 4h; cap 24h |
-| Heartbeat | `POST …/heartbeat` | Requires `epoch` |
-| Renew | `POST …/renew` | One call; no epoch; renews or re-acquires when expired |
-| Handoff | `POST …/handoff` | Turnover + push release/transfer, or pull takeover |
-| List | `GET …/leases` | `include_expired=true` (alias of `include_released`) |
+| Action    | Route              | Notes                                                  |
+| --------- | ------------------ | ------------------------------------------------------ |
+| Checkout  | `POST …/checkout`  | Default TTL 4h; cap 24h                                |
+| Heartbeat | `POST …/heartbeat` | Requires `epoch`                                       |
+| Renew     | `POST …/renew`     | One call; no epoch; renews or re-acquires when expired |
+| Handoff   | `POST …/handoff`   | Turnover + push release/transfer, or pull takeover     |
+| List      | `GET …/leases`     | `include_expired=true` (alias of `include_released`)   |
 
 ## Handoff modes
 
