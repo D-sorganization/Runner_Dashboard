@@ -106,6 +106,8 @@ const DEFAULT_THREAD_API: ThreadApi = {
 };
 
 const NO_MESSAGES: ThreadMessage[] = [];
+/** Cap passive restore retries when a peer-created thread id is not listed yet. */
+const PREFERRED_RESTORE_RETRY_LIMIT = 8;
 
 export function useStaffConsole({
   roles: suppliedRoles,
@@ -222,12 +224,21 @@ export function useStaffConsole({
     const activeThreadId = activeThreadIdRef.current;
     if (preferredRoleThreadId && activeThreadId === preferredRoleThreadId) {
       lastRestoredPreferred.current = preferredRoleThreadId;
+      // A prior in-flight restore may have left openingRole set after this id
+      // was already committed (for example a peer resync that finished early).
+      setOpeningRole(null);
       return;
     }
+    const previousPreferred = lastRestoredPreferred.current;
+    const preferredChanged = previousPreferred !== preferredRoleThreadId;
+    lastRestoredPreferred.current = preferredRoleThreadId;
     const resyncPreferred = Boolean(
+      preferredChanged &&
       preferredRoleThreadId &&
-      activeThreadId &&
-      activeThreadId !== preferredRoleThreadId,
+      (
+        (activeThreadId && activeThreadId !== preferredRoleThreadId) ||
+        (!activeThreadId && previousPreferred !== undefined)
+      ),
     );
     let cancelled = false;
     const revision = beginSelection("restore", initialRole);
@@ -236,9 +247,6 @@ export function useStaffConsole({
     const restoreKey = JSON.stringify([initialRole, preferredRoleThreadId ?? null]);
     let request: Promise<ThreadInfo[]>;
     if (resyncPreferred) {
-      // Another mounted console may have changed the URL while a first-open restore
-      // was still in flight; do not keep that stale opening lock on the composer.
-      setOpeningRole(null);
       request = threadApi.listThreads(initialRole);
     } else {
       const inflight = initialRoleThreads.current.get(restoreKey);
@@ -251,7 +259,13 @@ export function useStaffConsole({
         initialRoleThreads.current.set(restoreKey, request);
       }
     }
-    if (!resyncPreferred) setOpeningRole(initialRole);
+    if (resyncPreferred) {
+      // A peer console may have updated the URL while this restore was still
+      // listing threads; do not keep the sidebar composer locked on stale state.
+      setOpeningRole(null);
+    } else {
+      setOpeningRole(initialRole);
+    }
     request
       .then((threads) => {
         if (cancelled || !isSelectionCurrent(revision)) return;
@@ -262,9 +276,11 @@ export function useStaffConsole({
           if (!thread) {
             if (threads.some((candidate) => candidate.id === preferredRoleThreadId)) {
               thread = pickRoleThread(roleThreads, initialRole);
-            } else {
+            } else if (preferredRestoreRetry < PREFERRED_RESTORE_RETRY_LIMIT) {
               window.setTimeout(() => setPreferredRestoreRetry((attempt) => attempt + 1), 0);
               return;
+            } else {
+              thread = pickRoleThread(roleThreads, initialRole);
             }
           }
         } else {
@@ -286,7 +302,7 @@ export function useStaffConsole({
       });
     return () => {
       cancelled = true;
-      setOpeningRole(null);
+      if (!resyncPreferred) setOpeningRole(null);
     };
   }, [
     restoreInitialRoleThread,

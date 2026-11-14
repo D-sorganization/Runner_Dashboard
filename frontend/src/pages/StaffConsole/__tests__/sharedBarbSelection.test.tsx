@@ -156,7 +156,11 @@ it("deep links restore both surfaces and a central specialist selection preserve
 });
 
 it("central New conversation refreshes the sidebar's authorized list for the new Barb thread", async () => {
-  api.fetchThreads.mockResolvedValueOnce({ threads: [threads[0]] });
+  let listCalls = 0;
+  api.fetchThreads.mockImplementation(async () => {
+    listCalls += 1;
+    return { threads: listCalls === 1 ? [threads[0]] : threads };
+  });
   render(
     <BrowserRouter>
       <Surfaces />
@@ -174,6 +178,10 @@ it("central New conversation refreshes the sidebar's authorized list for the new
     expect(new URLSearchParams(window.location.search).get("thread")).toBe("b"),
   );
   await waitFor(() => expect(api.fetchThreads.mock.calls.length).toBeGreaterThanOrEqual(2));
+  await sidebar.findByRole("region", { name: /Conversation thread with Barb B/i });
+  await waitFor(() =>
+    expect(sidebar.queryByText(/Opening a conversation/i)).not.toBeInTheDocument(),
+  );
   fireEvent.change(
     sidebar.getByRole("textbox", { name: /staff conversation input/i }),
     { target: { value: "new mission" } },
