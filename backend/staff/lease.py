@@ -14,10 +14,11 @@ from typing import Any
 
 from activity_producers import record_job_claim_activity
 from coordination.rm_scripts import run_module
-from staff import claim_guard
-from staff import dispatch_self_claim as dispatch_self_claim_mod
 from staff.store import RunRecord, RunStore
 from staff.workspace import rm_root
+
+from staff import claim_guard
+from staff import dispatch_self_claim as dispatch_self_claim_mod
 
 LEASE_SKIPPED_NOTE = (
     "Lease ritual could not run from this node; post a `lease:` comment on the issue yourself before editing."

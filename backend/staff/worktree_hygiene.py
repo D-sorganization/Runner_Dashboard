@@ -17,7 +17,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from staff import cli_projects
 from staff.worktree_links import (
     _is_junction_path,
     _link_kind,
@@ -25,6 +24,8 @@ from staff.worktree_links import (
     refuse_worktree_links,
     unlink_worktree_links,
 )
+
+from staff import cli_projects
 
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
 
