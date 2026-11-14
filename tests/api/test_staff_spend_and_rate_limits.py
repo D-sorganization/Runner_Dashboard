@@ -25,7 +25,9 @@ from staff.conversations import (
     get_conversation_store,
     reset_conversation_store,
 )
-from staff.loop_guard import LoopGuard
+from datetime import UTC, datetime, timedelta
+
+from staff.loop_guard import DEFAULT_MAX_AGENT_TURNS, LoopGuard, reset_global_loop_guard
 from staff.rate_limit import (
     TokenBucketLimiter,
     get_rate_limiter,
@@ -48,6 +50,22 @@ HUMAN_PRINCIPAL = Principal(
     type="human",
     name="Fleet Operator",
     roles=["admin", "operator"],
+    scopes=["staff.chat", "staff.dispatch", "staff.read"],
+)
+
+ADMIN_PRINCIPAL = Principal(
+    id="fleet-admin",
+    type="human",
+    name="Fleet Admin",
+    roles=["admin", "operator"],
+    scopes=["staff.chat", "staff.dispatch", "staff.read", "staff.admin"],
+)
+
+BARB_PRINCIPAL = Principal(
+    id="agent-grok",
+    type="bot",
+    name="Grok Barb",
+    roles=["bot", "barb"],
     scopes=["staff.chat", "staff.dispatch", "staff.read"],
 )
 
@@ -283,8 +301,8 @@ def test_loop_guard_trips_after_n_consecutive_agent_turns(client: TestClient) ->
         created_by="agent-claude",
     )
 
-    # Add 5 consecutive agent/role messages
-    for i in range(1, 6):
+    # Add 10 consecutive agent/role messages
+    for i in range(1, 11):
         conv_store.add_message(
             thread_id=thread.id,
             author_kind="role",
@@ -294,10 +312,10 @@ def test_loop_guard_trips_after_n_consecutive_agent_turns(client: TestClient) ->
         )
 
     # Check loop guard
-    guard = LoopGuard(max_agent_turns=5)
+    guard = LoopGuard(max_agent_turns=10)
     tripped, count = guard.check(thread.id, conv_store)
     assert tripped is True
-    assert count >= 5
+    assert count >= 10
 
     # Posting as bot when loop guard is tripped returns 429 loop_guard_triggered
     app.dependency_overrides[require_principal] = lambda: BOT_PRINCIPAL
@@ -324,7 +342,7 @@ def test_loop_guard_resets_when_human_user_sends_message(client: TestClient) -> 
         created_by="agent-claude",
     )
 
-    for i in range(1, 6):
+    for i in range(1, 11):
         conv_store.add_message(
             thread_id=thread.id,
             author_kind="role",
@@ -333,7 +351,7 @@ def test_loop_guard_resets_when_human_user_sends_message(client: TestClient) -> 
             body_md=f"Agent turn {i}",
         )
 
-    guard = LoopGuard(max_agent_turns=5)
+    guard = LoopGuard(max_agent_turns=10)
     tripped, _ = guard.check(thread.id, conv_store)
     assert tripped is True
 
@@ -490,3 +508,163 @@ def test_handoff_hop_cap_halts_handoff_loop_fail_closed(
     assert api_res.status_code == 429
     err = api_res.json().get("error", api_res.json().get("detail", api_res.json()))
     assert err.get("code") == "handoff_hop_cap_exceeded"
+
+
+def test_loop_guard_default_limit_is_ten() -> None:
+    assert DEFAULT_MAX_AGENT_TURNS == 10
+
+
+def test_barb_messages_do_not_count_toward_loop_guard(client: TestClient) -> None:
+    conv_store = get_conversation_store()
+    thread = conv_store.create_thread(
+        title="Barb traffic",
+        kind="direct",
+        participants=["agent-grok", "scout"],
+        created_by="agent-grok",
+    )
+    for i in range(1, 15):
+        conv_store.add_message(
+            thread_id=thread.id,
+            author_kind="bot",
+            author="principal:agent-grok",
+            kind="text",
+            body_md=f"BARB-HEARTBEAT seat {i}",
+        )
+    for i in range(1, 9):
+        conv_store.add_message(
+            thread_id=thread.id,
+            author_kind="role",
+            author="scout",
+            kind="text",
+            body_md=f"Scout turn {i}",
+        )
+    guard = LoopGuard(max_agent_turns=10)
+    tripped, count = guard.check(thread.id, conv_store)
+    assert tripped is False
+    assert count == 8
+
+
+def test_loop_guard_idle_cooldown_resets_without_human(client: TestClient) -> None:
+    conv_store = get_conversation_store()
+    thread = conv_store.create_thread(
+        title="Idle reset",
+        kind="direct",
+        participants=["agent-claude", "scout"],
+        created_by="agent-claude",
+    )
+    stale = (datetime.now(UTC) - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    for i in range(1, 11):
+        msg = conv_store.add_message(
+            thread_id=thread.id,
+            author_kind="role",
+            author="scout",
+            kind="text",
+            body_md=f"Stale turn {i}",
+        )
+        conv_store._conn.execute("UPDATE messages SET created_at = ? WHERE id = ?", (stale, msg.id))
+    guard = LoopGuard(max_agent_turns=10, idle_cooldown_seconds=60)
+    tripped, count = guard.check(thread.id, conv_store)
+    assert tripped is False
+    assert count == 0
+    refreshed = conv_store.get_thread(thread.id)
+    assert refreshed is not None
+    assert not (refreshed.meta or {}).get("loop_guard_paused")
+
+
+def test_loop_guard_admin_reset_requires_elevated_principal(client: TestClient) -> None:
+    conv_store = get_conversation_store()
+    thread = conv_store.create_thread(
+        title="Admin reset auth",
+        kind="direct",
+        participants=["agent-claude", "scout"],
+        created_by="agent-claude",
+        meta={"loop_guard_paused": True},
+    )
+
+    app.dependency_overrides[require_principal] = lambda: BOT_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.chat")] = lambda: BOT_PRINCIPAL
+    denied = client.post(f"/api/v1/staff/threads/{thread.id}/loop-guard/reset")
+    assert denied.status_code == 403
+
+    app.dependency_overrides[require_principal] = lambda: ADMIN_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.chat")] = lambda: ADMIN_PRINCIPAL
+    ok = client.post(f"/api/v1/staff/threads/{thread.id}/loop-guard/reset")
+    assert ok.status_code == 200
+    assert ok.json()["loop_guard_paused"] is False
+
+
+def test_loop_guard_admin_reset_unpauses_non_barb_bot_posts(client: TestClient) -> None:
+    reset_global_loop_guard()
+    conv_store = get_conversation_store()
+    thread = conv_store.create_thread(
+        title="Unpause after reset",
+        kind="direct",
+        participants=["agent-claude", "scout"],
+        created_by="agent-claude",
+        meta={"no_auto_reply": True},
+    )
+    for i in range(1, 11):
+        conv_store.add_message(
+            thread_id=thread.id,
+            author_kind="bot",
+            author="principal:agent-claude",
+            kind="text",
+            body_md=f"Bot turn {i}",
+        )
+
+    app.dependency_overrides[require_principal] = lambda: BOT_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.chat")] = lambda: BOT_PRINCIPAL
+    blocked = client.post(
+        f"/api/v1/staff/threads/{thread.id}/messages",
+        headers={"Idempotency-Key": "blocked-before-reset"},
+        json={"body": "should block"},
+    )
+    assert blocked.status_code == 429
+
+    app.dependency_overrides[require_principal] = lambda: ADMIN_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.chat")] = lambda: ADMIN_PRINCIPAL
+    reset_res = client.post(f"/api/v1/staff/threads/{thread.id}/loop-guard/reset")
+    assert reset_res.status_code == 200
+
+    app.dependency_overrides[require_principal] = lambda: BOT_PRINCIPAL
+    app.dependency_overrides[require_scope("staff.chat")] = lambda: BOT_PRINCIPAL
+    allowed = client.post(
+        f"/api/v1/staff/threads/{thread.id}/messages",
+        headers={"Idempotency-Key": "allowed-after-reset"},
+        json={"body": "ok after reset"},
+    )
+    assert allowed.status_code == 202
+
+
+def test_non_barb_agent_loop_still_pauses_at_ten(client: TestClient) -> None:
+    conv_store = get_conversation_store()
+    thread = conv_store.create_thread(
+        title="Non-Barb pause at 10",
+        kind="direct",
+        participants=["agent-claude", "scout"],
+        created_by="agent-claude",
+        meta={"no_auto_reply": True},
+    )
+    for i in range(1, 10):
+        conv_store.add_message(
+            thread_id=thread.id,
+            author_kind="bot",
+            author="principal:agent-claude",
+            kind="text",
+            body_md=f"Turn {i}",
+        )
+    guard = LoopGuard(max_agent_turns=10)
+    tripped, count = guard.check(thread.id, conv_store)
+    assert tripped is False
+    assert count == 9
+
+    conv_store.add_message(
+        thread_id=thread.id,
+        author_kind="bot",
+        author="principal:scout",
+        kind="text",
+        body_md="Turn 10",
+    )
+    tripped, count = guard.check(thread.id, conv_store)
+    assert tripped is True
+    assert count >= 10

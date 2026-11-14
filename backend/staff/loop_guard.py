@@ -2,25 +2,48 @@
 
 Specifications:
 - Detects threads with more than N consecutive agent-to-agent turns without a human user message.
-- Default limit is 5 turns (configurable via STAFF_LOOP_GUARD_TURNS).
-- When triggered, pauses the thread, emits a system alert asking the owner, and records an audit event.
+- Default limit is 10 turns (``STAFF_LOOP_GUARD_TURNS``).
+- Barb-seat traffic and coordination message kinds do not count toward the limit.
+- Idle cooldown (``STAFF_LOOP_GUARD_IDLE_COOLDOWN_SECONDS``, default 30 minutes) resets the counter.
+- Human user messages and admin reset clear pause state.
+- When triggered, pauses the thread, emits a system alert, and records an audit event.
 - Bot message attempts while tripped return HTTP 429 / classified loop_guard_triggered error.
-- Resets as soon as a human user sends a message.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from fastapi import HTTPException, status
 from staff.audit import record_audit
+from staff.barb_lease_fence import BARB_ID_SUFFIXES, BARB_SEAT_IDS, is_barb_seat
+
+if TYPE_CHECKING:
+    from identity import Principal
 
 log = logging.getLogger("dashboard.staff.loop_guard")
 
-DEFAULT_MAX_AGENT_TURNS = 5
+DEFAULT_MAX_AGENT_TURNS = 10
 DEFAULT_MAX_HANDOFF_HOPS = 3
+DEFAULT_IDLE_COOLDOWN_SECONDS = 30 * 60
+ENV_MAX_AGENT_TURNS = "STAFF_LOOP_GUARD_TURNS"
+ENV_IDLE_COOLDOWN_SECONDS = "STAFF_LOOP_GUARD_IDLE_COOLDOWN_SECONDS"
+
+# Message kinds (normalized) that never count toward the consecutive-agent-turn limit.
+EXEMPT_MESSAGE_KINDS = frozenset(
+    {
+        "barb-heartbeat",
+        "barb_heartbeat",
+        "barb-handoff",
+        "barb_handoff",
+        "turnover",
+        "barb-turnover",
+        "barb_turnover",
+    }
+)
 
 
 class HandoffHopCapExceededError(RuntimeError):
@@ -44,6 +67,109 @@ def _parse_cap(env_names: tuple[str, ...], default: int) -> int:
     return default
 
 
+def _normalize_principal_id(author: str) -> str:
+    author = (author or "").strip()
+    if author.startswith("principal:"):
+        return author.split(":", 1)[1]
+    return author
+
+
+def is_barb_author_id(author_id: str) -> bool:
+    """True when *author_id* names a Barb seat (registry + suffix rules, no Principal required)."""
+    pid = _normalize_principal_id(author_id)
+    if not pid:
+        return False
+    if pid == "barb" or pid in BARB_SEAT_IDS:
+        return True
+    return any(pid.endswith(suffix) for suffix in BARB_ID_SUFFIXES)
+
+
+def _parse_message_time(created_at: str) -> datetime | None:
+    if not created_at:
+        return None
+    try:
+        text = created_at.strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        return datetime.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def message_exempt_from_loop_guard(msg: Any) -> bool:
+    """Return True when this message must not count toward consecutive agent turns."""
+    author = getattr(msg, "author", "") or ""
+    if is_barb_author_id(author):
+        return True
+
+    kind = str(getattr(msg, "kind", "") or "").strip().lower().replace("_", "-")
+    if kind in EXEMPT_MESSAGE_KINDS:
+        return True
+
+    body = str(getattr(msg, "body_md", "") or "").lstrip()
+    upper = body.upper()
+    if upper.startswith("BARB-HEARTBEAT") or upper.startswith("BARB-HANDOFF"):
+        return True
+
+    meta = getattr(msg, "meta", None) or {}
+    if isinstance(meta, dict):
+        if meta.get("barb_turnover") or meta.get("barb_heartbeat") or meta.get("coordination_exempt"):
+            return True
+        if meta.get("paused_by") == "loop_guard":
+            return True
+        rd_threads = meta.get("rd_threads")
+        if isinstance(rd_threads, dict):
+            sealed_kind = str(rd_threads.get("kind") or "").strip().lower()
+            if sealed_kind in {"heartbeat", "handoff", "turnover"}:
+                return True
+
+    return False
+
+
+def _merge_thread_meta(store: Any, thread_id: str, updates: dict[str, Any]) -> None:
+    thread = store.get_thread(thread_id)
+    if not thread:
+        return
+    meta = dict(thread.meta or {})
+    meta.update(updates)
+    store.update_thread(thread_id, meta=meta)
+
+
+def clear_loop_guard_pause(
+    thread_id: str,
+    store: Any,
+    *,
+    principal: str = "system",
+    reason: str,
+) -> None:
+    """Clear loop-guard pause metadata and record an audit event."""
+    if not thread_id:
+        return
+    latest_seq = 0
+    for msg in store.list_messages(thread_id, limit=500):
+        latest_seq = max(latest_seq, int(getattr(msg, "seq", 0)))
+    _merge_thread_meta(
+        store,
+        thread_id,
+        {
+            "loop_guard_paused": False,
+            "loop_guard_paused_at": None,
+            "loop_guard_consecutive_turns": 0,
+            "loop_guard_reset_seq": latest_seq,
+            "loop_guard_reset_reason": reason,
+        },
+    )
+    record_audit(
+        action="loop_guard_reset",
+        target=f"thread:{thread_id}",
+        principal=principal,
+        surface="loop_guard",
+        outcome="resumed",
+        detail={"reason": reason},
+        fail_closed=False,
+    )
+
+
 class LoopGuard:
     """Detects and interrupts unattended multi-agent conversation and handoff loops."""
 
@@ -51,15 +177,26 @@ class LoopGuard:
         self,
         max_agent_turns: int | None = None,
         max_handoff_hops: int | None = None,
+        idle_cooldown_seconds: int | None = None,
+        *,
+        now: datetime | None = None,
     ) -> None:
         self._configured_max_turns = max_agent_turns
         self._configured_max_hops = max_handoff_hops
+        self._configured_idle_cooldown = idle_cooldown_seconds
+        self._now = now or datetime.now(UTC)
 
     @property
     def max_agent_turns(self) -> int:
         if self._configured_max_turns is not None:
             return self._configured_max_turns
-        return _parse_cap(("STAFF_LOOP_GUARD_TURNS",), DEFAULT_MAX_AGENT_TURNS)
+        return _parse_cap((ENV_MAX_AGENT_TURNS,), DEFAULT_MAX_AGENT_TURNS)
+
+    @property
+    def idle_cooldown_seconds(self) -> int:
+        if self._configured_idle_cooldown is not None:
+            return self._configured_idle_cooldown
+        return _parse_cap((ENV_IDLE_COOLDOWN_SECONDS,), DEFAULT_IDLE_COOLDOWN_SECONDS)
 
     @property
     def max_handoff_hops(self) -> int:
@@ -67,29 +204,49 @@ class LoopGuard:
             return self._configured_max_hops
         return _parse_cap(("STAFF_HANDOFF_HOP_CAP", "STAFF_MAX_HANDOFF_HOPS"), DEFAULT_MAX_HANDOFF_HOPS)
 
+    def _idle_cooldown_expired(self, last_agent_at: datetime | None) -> bool:
+        cooldown = self.idle_cooldown_seconds
+        if cooldown <= 0 or last_agent_at is None:
+            return False
+        age = (self._now - last_agent_at).total_seconds()
+        return age >= cooldown
+
     def check(self, thread_id: str, store: Any) -> tuple[bool, int]:
         """Check if thread has exceeded max consecutive agent turns without human user input.
 
         Returns (tripped: bool, consecutive_agent_turns: int).
         """
         limit = self.max_agent_turns
-        messages = store.list_messages(thread_id, limit=max(limit, 1) + 10)
+        messages = store.list_messages(thread_id, limit=max(limit, 1) + 50)
         if not messages:
             return limit <= 0, 0
+
+        thread = store.get_thread(thread_id)
+        reset_seq = int((thread.meta or {}).get("loop_guard_reset_seq") or 0) if thread else 0
 
         sorted_messages = sorted(messages, key=lambda m: getattr(m, "seq", 0), reverse=True)
 
         consecutive_agent_turns = 0
+        last_counted_at: datetime | None = None
         for msg in sorted_messages:
             if getattr(msg, "delivery", "") == "pending":
                 continue
+            if int(getattr(msg, "seq", 0)) <= reset_seq:
+                break
             author_kind = getattr(msg, "author_kind", "user")
-            # Human user message resets the loop count; bot and role turns increment it
             if author_kind == "user":
                 break
             if author_kind == "system":
                 continue
+            if message_exempt_from_loop_guard(msg):
+                continue
             consecutive_agent_turns += 1
+            if last_counted_at is None:
+                last_counted_at = _parse_message_time(getattr(msg, "created_at", ""))
+
+        if consecutive_agent_turns >= limit and self._idle_cooldown_expired(last_counted_at):
+            clear_loop_guard_pause(thread_id, store, reason="idle_cooldown")
+            return False, 0
 
         tripped = consecutive_agent_turns >= limit
         return tripped, consecutive_agent_turns
@@ -179,6 +336,16 @@ class LoopGuard:
         except Exception as exc:  # noqa: BLE001
             log.error("Failed to append loop guard system message to thread %s: %s", thread_id, exc)
 
+        _merge_thread_meta(
+            store,
+            thread_id,
+            {
+                "loop_guard_paused": True,
+                "loop_guard_paused_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+                "loop_guard_consecutive_turns": turn_count,
+            },
+        )
+
         record_audit(
             action="loop_guard_tripped",
             target=f"thread:{thread_id}",
@@ -198,6 +365,12 @@ def get_loop_guard() -> LoopGuard:
     if _GLOBAL_LOOP_GUARD is None:
         _GLOBAL_LOOP_GUARD = LoopGuard()
     return _GLOBAL_LOOP_GUARD
+
+
+def reset_global_loop_guard() -> None:
+    """Clear cached guard (tests)."""
+    global _GLOBAL_LOOP_GUARD  # noqa: PLW0603
+    _GLOBAL_LOOP_GUARD = None
 
 
 def check_loop_guard(thread_id: str, store: Any) -> tuple[bool, int]:
@@ -234,6 +407,7 @@ def enforce_loop_guard_or_raise(
     store: Any,
     principal_type: str = "bot",
     message_kind: str = "text",
+    caller: Principal | None = None,
 ) -> None:
     """Enforce loop guard for incoming bot message; trips and raises 429 if limit exceeded."""
     if message_kind == "handoff":
@@ -249,8 +423,16 @@ def enforce_loop_guard_or_raise(
                 },
             ) from exc
 
-    # Human user messages break the loop and are always allowed
+    # Human user messages break the loop and are always allowed.
     if principal_type.lower() == "human":
+        from identity import format_caller
+
+        pid = format_caller(caller) if caller is not None else "human"
+        clear_loop_guard_pause(thread_id, store, principal=pid, reason="human_message")
+        return
+
+    # Barb seats may post even when non-Barb traffic tripped the guard.
+    if caller is not None and is_barb_seat(caller):
         return
 
     guard = get_loop_guard()
@@ -268,3 +450,12 @@ def enforce_loop_guard_or_raise(
                 "retryable": False,
             },
         )
+
+
+def admin_reset_loop_guard(thread_id: str, store: Any, principal: str) -> dict[str, Any]:
+    """Admin/Barb reset of loop-guard pause state for *thread_id*."""
+    thread = store.get_thread(thread_id)
+    if not thread:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="thread not found")
+    clear_loop_guard_pause(thread_id, store, principal=principal, reason="admin_reset")
+    return {"ok": True, "thread_id": thread_id, "loop_guard_paused": False}
