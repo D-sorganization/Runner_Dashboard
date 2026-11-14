@@ -1,0 +1,744 @@
+{
+  "fetched_from": "repos/D-sorganization/Runner_Dashboard/commits/74b0a1a/check-runs",
+  "note": "All runs had status completed. Fetched 2026-11-14.",
+  "check_runs": [
+    {
+      "id": 132080514951,
+      "suite": 117741555059,
+      "name": "Merge queue ref guard",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080515346,
+      "suite": 117741555027,
+      "name": "Adversarial redaction gate fixtures",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080515416,
+      "suite": 117741555339,
+      "name": "Merge queue ref guard",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080515522,
+      "suite": 117741555059,
+      "name": "Decide Docker validation scope",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080515728,
+      "suite": 117741555098,
+      "name": "Backend smoke test without a Repository_Management checkout",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080515761,
+      "suite": 117741555034,
+      "name": "api-contract-regeneration",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080516558,
+      "suite": 117741556282,
+      "name": "detect-secrets (baseline diff)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080516678,
+      "suite": 117741555158,
+      "name": "Select reversible CI runner",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080516895,
+      "suite": 117741555460,
+      "name": "Determine frontend validation scope",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080517526,
+      "suite": 117741555059,
+      "name": "pr-guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080518071,
+      "suite": 117741554909,
+      "name": "guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080518167,
+      "suite": 117741555339,
+      "name": "pr-guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080518901,
+      "suite": 117741555158,
+      "name": "pr-guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080518984,
+      "suite": 117741556282,
+      "name": "pr-guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080519081,
+      "suite": 117741555339,
+      "name": "Auto-deploy live regression",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080519554,
+      "suite": 117741555460,
+      "name": "pr-guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080520040,
+      "suite": 117741556282,
+      "name": "github.event_name == 'pull_request' && 'gitleaks (PR commit range)' || 'gitleaks (full history scan)'",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080532011,
+      "suite": 117741567298,
+      "name": "Publish Guard and Fork Canary",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080580009,
+      "suite": 117741555059,
+      "name": "Build and scan image",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080581156,
+      "suite": 117741555460,
+      "name": "TypeScript typecheck (tsc)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080581229,
+      "suite": 117741555460,
+      "name": "Vitest + Coverage",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080583558,
+      "suite": 117741555460,
+      "name": "Staff Console e2e (fake providers)",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080584435,
+      "suite": 117741555460,
+      "name": "Frontend perf budget (real bundle)",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080587170,
+      "suite": 117741555158,
+      "name": "Decide CI tier",
+      "conclusion": "success"
+    },
+    {
+      "id": 132080589244,
+      "suite": 117741555158,
+      "name": "Push hygiene guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080590459,
+      "suite": 117741555158,
+      "name": "PR size advisory (CI mirror,",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132080649754,
+      "suite": 117741555158,
+      "name": "ci-health-check",
+      "conclusion": "success"
+    },
+    {
+      "id": 132081028733,
+      "suite": 117741555158,
+      "name": "lint",
+      "conclusion": "success"
+    },
+    {
+      "id": 132081028763,
+      "suite": 117741555158,
+      "name": "tests (3.11, 1, 2)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132081029061,
+      "suite": 117741555158,
+      "name": "tests (3.11, 2, 2)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132081031903,
+      "suite": 117741555158,
+      "name": "security-scan",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132081515915,
+      "suite": 117741555059,
+      "name": "docker-build-scan",
+      "conclusion": "success"
+    },
+    {
+      "id": 132081516039,
+      "suite": 117741555059,
+      "name": "Publish Trivy SARIF",
+      "conclusion": "success"
+    },
+    {
+      "id": 132082138987,
+      "suite": 117741555460,
+      "name": "frontend-required",
+      "conclusion": "success"
+    },
+    {
+      "id": 132082143934,
+      "suite": 117741555460,
+      "name": "Playwright E2E smoke tests",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132083726569,
+      "suite": 117741555158,
+      "name": "tests",
+      "conclusion": "success"
+    },
+    {
+      "id": 132083788043,
+      "suite": 117741555158,
+      "name": "quality-gate",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084041530,
+      "suite": 117744345068,
+      "name": "Publish Guard and Fork Canary",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084041576,
+      "suite": 117744344848,
+      "name": "Backend smoke test without a Repository_Management checkout",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084041660,
+      "suite": 117744344808,
+      "name": "api-contract-regeneration",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084042632,
+      "suite": 117744345576,
+      "name": "detect-secrets (baseline diff)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084042848,
+      "suite": 117744345576,
+      "name": "gitleaks (full history scan)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084042929,
+      "suite": 117744345821,
+      "name": "Validate Architecture Map Contract",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084043845,
+      "suite": 117744345535,
+      "name": "Decide Docker validation scope",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084044307,
+      "suite": 117744345188,
+      "name": "Determine frontend validation scope",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084044564,
+      "suite": 117744345576,
+      "name": "pr-guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084046117,
+      "suite": 117744345535,
+      "name": "pr-guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084046135,
+      "suite": 117744347316,
+      "name": "Select reversible CI runner",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084046143,
+      "suite": 117744345535,
+      "name": "Merge queue ref guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084048685,
+      "suite": 117744347316,
+      "name": "pr-guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084092794,
+      "suite": 117744345535,
+      "name": "Build and scan image",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084101868,
+      "suite": 117744345188,
+      "name": "pr-guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084103362,
+      "suite": 117744347316,
+      "name": "Decide CI tier",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084106004,
+      "suite": 117744347316,
+      "name": "Push hygiene guard",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084106294,
+      "suite": 117744347316,
+      "name": "PR size advisory (CI mirror,",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084109934,
+      "suite": 117744345188,
+      "name": "TypeScript typecheck (tsc)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084109976,
+      "suite": 117744345188,
+      "name": "Vitest + Coverage",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084110049,
+      "suite": 117744345188,
+      "name": "Frontend perf budget (real bundle)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084110054,
+      "suite": 117744345188,
+      "name": "Staff Console e2e (fake providers)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084173743,
+      "suite": 117744347316,
+      "name": "ci-health-check",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084248693,
+      "suite": 117744347316,
+      "name": "tests",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084249963,
+      "suite": 117744347316,
+      "name": "security-scan",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084250046,
+      "suite": 117744347316,
+      "name": "tests",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084250768,
+      "suite": 117744347316,
+      "name": "lint",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084301900,
+      "suite": 117744347316,
+      "name": "quality-gate",
+      "conclusion": "success"
+    },
+    {
+      "id": 132084399768,
+      "suite": 117744621287,
+      "name": "Wait for CI gate (cancellable; newer candidate supersedes)",
+      "conclusion": "cancelled"
+    },
+    {
+      "id": 132084402045,
+      "suite": 117744621287,
+      "name": "Publish dashboard release (manual dispatch)",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132084989542,
+      "suite": 117745097307,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132085008668,
+      "suite": 117744345535,
+      "name": "Publish Trivy SARIF",
+      "conclusion": "success"
+    },
+    {
+      "id": 132085008765,
+      "suite": 117744345535,
+      "name": "docker-build-scan",
+      "conclusion": "success"
+    },
+    {
+      "id": 132085956473,
+      "suite": 117744345188,
+      "name": "Playwright E2E smoke tests",
+      "conclusion": "success"
+    },
+    {
+      "id": 132086124021,
+      "suite": 117746001012,
+      "name": "Wait for CI gate (cancellable; newer candidate supersedes)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132086126272,
+      "suite": 117746001012,
+      "name": "Publish dashboard release (manual dispatch)",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132086273703,
+      "suite": 117744621287,
+      "name": "Publish dashboard release when CI gate is green",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132086378046,
+      "suite": 117746001012,
+      "name": "Publish dashboard release when CI gate is green",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132087120600,
+      "suite": 117746788701,
+      "name": "slo",
+      "conclusion": "success"
+    },
+    {
+      "id": 132087565212,
+      "suite": 117744345188,
+      "name": "frontend-required",
+      "conclusion": "success"
+    },
+    {
+      "id": 132087668578,
+      "suite": 117747221804,
+      "name": "Wait for CI gate (cancellable; newer candidate supersedes)",
+      "conclusion": "success"
+    },
+    {
+      "id": 132087671229,
+      "suite": 117747221804,
+      "name": "Publish dashboard release (manual dispatch)",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132087791016,
+      "suite": 117747221804,
+      "name": "Publish dashboard release when CI gate is green",
+      "conclusion": "skipped"
+    },
+    {
+      "id": 132089829916,
+      "suite": 117748923988,
+      "name": "refresh",
+      "conclusion": "success"
+    },
+    {
+      "id": 132092188219,
+      "suite": 117750779811,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132093388925,
+      "suite": 117751723166,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132101876701,
+      "suite": 117758490969,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132104480869,
+      "suite": 117760585303,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132104553013,
+      "suite": 117760644865,
+      "name": "slo",
+      "conclusion": "success"
+    },
+    {
+      "id": 132107704450,
+      "suite": 117763126619,
+      "name": "refresh",
+      "conclusion": "success"
+    },
+    {
+      "id": 132110005501,
+      "suite": 117764908061,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132112783290,
+      "suite": 117767087330,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132114289043,
+      "suite": 117768280796,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132118368211,
+      "suite": 117771528631,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132119939926,
+      "suite": 117772767374,
+      "name": "slo",
+      "conclusion": "failure"
+    },
+    {
+      "id": 132122764404,
+      "suite": 117774993595,
+      "name": "refresh",
+      "conclusion": "success"
+    },
+    {
+      "id": 132125133628,
+      "suite": 117776862582,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132126300321,
+      "suite": 117777805088,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132134505677,
+      "suite": 117784352512,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132137339784,
+      "suite": 117786637803,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132137521231,
+      "suite": 117786786448,
+      "name": "slo",
+      "conclusion": "failure"
+    },
+    {
+      "id": 132141348162,
+      "suite": 117789817483,
+      "name": "refresh",
+      "conclusion": "success"
+    },
+    {
+      "id": 132143128063,
+      "suite": 117791216142,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132145582780,
+      "suite": 117793139895,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132147167418,
+      "suite": 117794380850,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132150460786,
+      "suite": 117796965505,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132152424165,
+      "suite": 117798511982,
+      "name": "slo",
+      "conclusion": "failure"
+    },
+    {
+      "id": 132153071528,
+      "suite": 117799033061,
+      "name": "reconcile",
+      "conclusion": "success"
+    },
+    {
+      "id": 132155008533,
+      "suite": 117800542732,
+      "name": "refresh",
+      "conclusion": "success"
+    },
+    {
+      "id": 132157224434,
+      "suite": 117802282790,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132158508018,
+      "suite": 117803291792,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132166458113,
+      "suite": 117809497899,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132168977285,
+      "suite": 117811475173,
+      "name": "slo",
+      "conclusion": "failure"
+    },
+    {
+      "id": 132169010225,
+      "suite": 117811503403,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132171797897,
+      "suite": 117813672947,
+      "name": "refresh",
+      "conclusion": "success"
+    },
+    {
+      "id": 132174251273,
+      "suite": 117815586373,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132176927591,
+      "suite": 117817642177,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132178253623,
+      "suite": 117818679042,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132181928062,
+      "suite": 117821529968,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132183772988,
+      "suite": 117822975443,
+      "name": "slo",
+      "conclusion": "failure"
+    },
+    {
+      "id": 132186139252,
+      "suite": 117824831569,
+      "name": "refresh",
+      "conclusion": "success"
+    },
+    {
+      "id": 132188004386,
+      "suite": 117826289200,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132189587254,
+      "suite": 117827517723,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132196987794,
+      "suite": 117833297324,
+      "name": "reap",
+      "conclusion": "success"
+    },
+    {
+      "id": 132199178190,
+      "suite": 117835031689,
+      "name": "shepherd",
+      "conclusion": "success"
+    },
+    {
+      "id": 132199254496,
+      "suite": 117835091067,
+      "name": "slo",
+      "conclusion": "failure"
+    }
+  ]
+}

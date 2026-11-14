@@ -48,21 +48,21 @@ def test_ci_gate_requires_completed_success() -> None:
     assert "failed" in detail
 
 
-def test_ci_gate_rejects_skipped_cancelled_and_duplicate_names() -> None:
+def test_ci_gate_rejects_skipped_required_cancelled_and_failed_names() -> None:
     skipped_only = [
-        {"head_sha": _SHA, "name": "guard", "status": "completed", "conclusion": "skipped"},
+        {"head_sha": _SHA, "name": "tests", "status": "completed", "conclusion": "skipped"},
     ]
-    ok, detail = ci_gate_for_commit(skipped_only, _SHA, required_contexts=())
+    ok, detail = ci_gate_for_commit(skipped_only, _SHA, required_contexts=("tests",))
     assert ok is False
-    assert "guard" in detail
+    assert "tests" in detail
 
+    # #4419: a skipped sibling carries no verdict, so the successful run decides.
     tier_gated_with_success = [
         {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "skipped"},
         {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "success"},
     ]
-    ok, detail = ci_gate_for_commit(tier_gated_with_success, _SHA, required_contexts=())
-    assert ok is False
-    assert "lint" in detail
+    ok, detail = ci_gate_for_commit(tier_gated_with_success, _SHA, required_contexts=("lint",))
+    assert ok is True, detail
 
     cancelled_only = [
         {"head_sha": _SHA, "name": "lint", "status": "completed", "conclusion": "cancelled"},
@@ -82,7 +82,7 @@ def test_ci_gate_rejects_skipped_cancelled_and_duplicate_names() -> None:
     neutral_only = [
         {"head_sha": _SHA, "name": "note", "status": "completed", "conclusion": "neutral"},
     ]
-    ok, _ = ci_gate_for_commit(neutral_only, _SHA, required_contexts=())
+    ok, _ = ci_gate_for_commit(neutral_only, _SHA, required_contexts=("note",))
     assert ok is False
 
 

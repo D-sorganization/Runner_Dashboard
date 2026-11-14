@@ -81,9 +81,12 @@ def ci_gate_for_commit(
     """Return (passed, detail).
 
     Pre: ``check_runs`` is a list of GitHub check-run dicts; ``expected_sha`` is a git commit id.
-    Post: when passed, every observed check name for that sha is successful (skipped/cancelled fail
-    closed except the documented skip allowlist), duplicate names cannot satisfy a context, every
-    required branch-protection context is present with success, and no checks are still pending.
+    Post: when passed, no checks are still pending; for every observed check name the latest
+    attempt of each (app, check suite) is counted and none of them failed (a superseded attempt
+    does not block; a newer failure does); every required branch-protection context is present
+    with a success, or with a skip that ``SKIPPED_CONCLUSION_ALLOWLIST`` names. A name that is
+    not a required context passes when it only skipped; cancelled-only and neutral-only names
+    fail (#4419, #4425, board ruling C1 of 2026-11-13).
     """
     if not isinstance(check_runs, list):
         return False, "check_runs must be a list"
@@ -125,7 +128,10 @@ def ci_gate_for_commit(
         names = ", ".join(missing_required[:5])
         return False, f"required checks missing: {names}"
 
-    failing_names = sorted(name for name, runs in by_name.items() if not check_name_passes(runs))
+    required_names = frozenset(blocking_required)
+    failing_names = sorted(
+        name for name, runs in by_name.items() if not check_name_passes(runs, required=name in required_names)
+    )
     if failing_names:
         names = ", ".join(failing_names[:5])
         return False, f"checks failed: {names}"

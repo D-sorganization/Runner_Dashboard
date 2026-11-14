@@ -331,7 +331,13 @@ def test_parallel_same_suite_checks_allow_nonmonotonic_start_times(reverse: bool
 
     fetched = _fetch(lambda _: {"total_count": 2, "check_runs": checks}, B79_SHA)
 
-    assert fetched == [newer_id]
+    # The skip carries no verdict, so the success still decides "tests" (#4419, review of
+    # PR #4438): keeping only the newest record would make a green required check look skipped.
+    assert fetched == [earlier_id]
+
+    # Two verdicts: the newer id decides although it started (and finished) first.
+    newer_id["conclusion"] = "failure"
+    assert _fetch(lambda _: {"total_count": 2, "check_runs": checks}, B79_SHA) == [newer_id]
 
 
 def test_raw_check_cap_is_enforced_before_attempt_normalization() -> None:

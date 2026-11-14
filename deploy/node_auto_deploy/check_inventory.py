@@ -10,6 +10,7 @@ from node_auto_deploy.check_runs import (
     FAILING_CONCLUSIONS,
     PASSING_CONCLUSIONS,
     PENDING_STATUSES,
+    latest_attempts,
     normalize_commit_sha,
     validate_check_run_record,
 )
@@ -44,7 +45,13 @@ def _started_at(value: Any) -> datetime | None:
 
 
 def normalize_latest_check_runs(checks: list[dict[str, Any]], expected_sha: str) -> list[dict[str, Any]]:
-    """Keep each app/suite/name's newest CheckRun; do not invent run_attempt."""
+    """Keep each app/suite/name's deciding CheckRun; do not invent run_attempt.
+
+    The deciding run is the one ``check_runs.latest_attempts`` picks, so this reduction
+    and the gate share one policy (#4419): a rerun still in progress is kept and the gate
+    waits for it; otherwise the newest attempt that passed or failed is kept, and a later
+    attempt that skipped or was cancelled or neutral does not hide it.
+    """
     sha = normalize_commit_sha(expected_sha)
     if sha is None:
         raise CheckInventoryUnavailable("expected check inventory commit is invalid")
@@ -80,15 +87,18 @@ def normalize_latest_check_runs(checks: list[dict[str, Any]], expected_sha: str)
 
     latest: list[dict[str, Any]] = []
     for attempts in groups.values():
-        attempts.sort(key=lambda item: item[0])
         # IDs identify creation order; start timestamps from parallel checks
         # can legitimately be out of order within one suite/name group.
-        latest.append(attempts[-1][1])
+        newest = max(attempts, key=lambda item: item[0])[1]
+        if newest["status"] != "completed":
+            latest.append(newest)
+            continue
+        latest.extend(latest_attempts([record for _, record in attempts if record["status"] == "completed"]))
     return latest
 
 
 def fetch_commit_checks(get: Callable[[str], Any], repo: str, sha: str) -> list[dict[str, Any]]:
-    """Fetch all check-run attempts, then retain the newest per app/suite/name."""
+    """Fetch all check-run attempts, then retain the deciding one per app/suite/name."""
     checks: list[dict[str, Any]] = []
     seen: set[int] = set()
     expected_total: int | None = None
