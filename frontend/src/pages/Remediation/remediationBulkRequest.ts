@@ -7,7 +7,7 @@
  * `force` and `approved_by` semantics.
  */
 
-import { ApiClientError } from "../../lib/api";
+import { ApiClientError, formatApiErrorDetail } from "../../lib/api";
 import { submitStaffRequest, type StaffRequestResponse, type WorkRequest } from "../Staff/staffApi";
 
 export interface BulkTargetItem {
@@ -188,7 +188,12 @@ export async function dispatchBulkByRepo(
       const rejected = new Set(((resp.result as BulkResultShape | undefined)?.rejected ?? []).map((r) => r.number));
       failed.push(...inRepo.filter((t) => rejected.has(t.number)));
     } catch (err) {
-      const text = err instanceof ApiClientError ? err.detail : err instanceof Error ? err.message : String(err);
+      const text =
+        err instanceof ApiClientError
+          ? formatApiErrorDetail(err.detail)
+          : err instanceof Error
+            ? err.message
+            : String(err);
       parts.push({ repo, outcome: { type: "error", text } });
       failed.push(...inRepo);
     }

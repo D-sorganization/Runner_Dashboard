@@ -80,6 +80,29 @@ describe("api client", () => {
     expect((err as ApiClientError).detail).toBe("Not found");
   });
 
+  it("throws ApiClientError with nested FastAPI detail message", async () => {
+    mockFetch.mockResolvedValue(
+      makeResponse(
+        {
+          detail: {
+            code: "queued_overlapping_paths",
+            message: "waiting for active session PR to merge or close",
+          },
+        },
+        409,
+      ),
+    );
+
+    const err = await api.runners.list().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ApiClientError);
+    expect((err as ApiClientError).status).toBe(409);
+    expect((err as ApiClientError).detail).toEqual({
+      code: "queued_overlapping_paths",
+      message: "waiting for active session PR to merge or close",
+    });
+    expect((err as ApiClientError).message).toContain("waiting for active session PR to merge or close");
+  });
+
   it("throws ApiClientError with status on non-JSON 5xx", async () => {
     mockFetch.mockResolvedValueOnce(new Response("Internal Server Error", { status: 500 }));
 

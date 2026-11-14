@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -123,6 +124,59 @@ def schema_path() -> Path:
 # The built-in free-form role; with no repository it has nothing to open a PR against.
 AD_HOC_ROLE = "ad-hoc"
 
+# Roles whose YAML ships in this repo's ``staff/roles/`` and overrides the RM checkout
+# (e.g. code-reviewer read-only overlap exemption until RM merges the same flags).
+_BUNDLED_ROLE_OVERRIDE_NAMES: frozenset[str] = frozenset({"code-reviewer"})
+_BUNDLED_PERMISSION_KEYS: tuple[str, ...] = ("code_read_only", "occupies_paths")
+
+
+class _UnsetDirectoryType:
+    """Sentinel for ``load_roles()`` default (apply bundled overrides)."""
+
+
+_UNSET_DIRECTORY = _UnsetDirectoryType()
+
+
+def _bundled_roles_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "staff" / "roles"
+
+
+def _bundled_roles_signature() -> tuple[str, tuple[tuple[str, int], ...]]:
+    bundled = _bundled_roles_dir()
+    if not bundled.is_dir():
+        return ("", ())
+    stats: list[tuple[str, int]] = []
+    for path in sorted(bundled.glob("*.yml")) + sorted(bundled.glob("*.yaml")):
+        try:
+            stats.append((path.name, path.stat().st_mtime_ns))
+        except OSError:
+            stats.append((path.name, -1))
+    return (str(bundled.resolve()), tuple(stats))
+
+
+def _apply_bundled_role_overrides(roles: dict[str, RoleSpec]) -> None:
+    """Fill missing overlap / read-only permission flags from bundled role YAML."""
+    bundled = _bundled_roles_dir()
+    if not bundled.is_dir():
+        return
+    for name in _BUNDLED_ROLE_OVERRIDE_NAMES:
+        for ext in (".yml", ".yaml"):
+            path = bundled / f"{name}{ext}"
+            if not path.is_file():
+                continue
+            bundled_spec = read_and_parse_role_file(path)
+            existing = roles.get(name)
+            if existing is None:
+                roles[name] = bundled_spec
+                break
+            merged_permissions = dict(existing.permissions)
+            for key in _BUNDLED_PERMISSION_KEYS:
+                if key not in merged_permissions and key in bundled_spec.permissions:
+                    merged_permissions[key] = bundled_spec.permissions[key]
+            roles[name] = replace(existing, permissions=merged_permissions)
+            break
+
+
 _FALLBACK_ROLES: tuple[dict[str, Any], ...] = (
     {
         "name": AD_HOC_ROLE,
@@ -157,21 +211,29 @@ def clear_roles_cache() -> None:
         _CACHE_ERRORS = {}
 
 
-def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
+def load_roles(directory: Path | None | _UnsetDirectoryType = _UNSET_DIRECTORY) -> dict[str, RoleSpec]:
     """Load every role in ``directory`` with an mtime-keyed cache.
 
     Schema errors and broken files are surfaced in the returned dictionary
     as invalid roles (dispatchable=False, valid=False, errors=[...]) instead
     of being silently dropped.
     """
-    directory = directory if directory is not None else roles_dir()
-    if directory is None:
+    apply_bundled_overrides = directory is _UNSET_DIRECTORY
+    if directory is _UNSET_DIRECTORY:
+        resolved_directory: Path | None = roles_dir()
+    elif isinstance(directory, Path) or directory is None:
+        resolved_directory = directory
+    else:
+        raise AssertionError("unreachable load_roles directory sentinel")
+    bundled_sig = _bundled_roles_signature()
+    if resolved_directory is None:
         roles: dict[str, RoleSpec] = {}
         for raw in _FALLBACK_ROLES:
             roles.setdefault(raw["name"], parse_role(raw, "<builtin>"))
+        _apply_bundled_role_overrides(roles)
         return roles
 
-    files = sorted(directory.glob("*.yml")) + sorted(directory.glob("*.yaml"))
+    files = sorted(resolved_directory.glob("*.yml")) + sorted(resolved_directory.glob("*.yaml"))
     file_stats: list[tuple[str, int]] = []
     for p in files:
         try:
@@ -180,9 +242,9 @@ def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
             file_stats.append((p.name, -1))
     from staff.role_avatar_paths import avatars_dir_mtime_sig, staff_avatars_dir_for_roles
 
-    avatars_dir = staff_avatars_dir_for_roles(directory)
+    avatars_dir = staff_avatars_dir_for_roles(resolved_directory)
     avatars_sig = avatars_dir_mtime_sig(avatars_dir)
-    dir_sig = (str(directory.resolve()), tuple(file_stats), avatars_sig)
+    dir_sig = (str(resolved_directory.resolve()), tuple(file_stats), avatars_sig, bundled_sig)
 
     global _CACHE_DIR_SIG, _CACHE_ROLES, _CACHE_ERRORS
     with _CACHE_LOCK:
@@ -207,13 +269,16 @@ def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
         for raw in _FALLBACK_ROLES:
             new_roles.setdefault(raw["name"], parse_role(raw, "<builtin>"))
 
+        if apply_bundled_overrides:
+            _apply_bundled_role_overrides(new_roles)
+
         _CACHE_DIR_SIG = dir_sig
         _CACHE_ROLES = new_roles
         _CACHE_ERRORS = new_errors
         return dict(_CACHE_ROLES)
 
 
-def role_validation_errors(directory: Path | None = None) -> dict[str, list[str]]:
+def role_validation_errors(directory: Path | None | _UnsetDirectoryType = _UNSET_DIRECTORY) -> dict[str, list[str]]:
     """Return map of file name -> list of schema validation errors."""
     load_roles(directory)
     with _CACHE_LOCK:
