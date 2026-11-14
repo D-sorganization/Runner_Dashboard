@@ -21,7 +21,7 @@ export async function fetchKanbanBoard(
   repo: string,
   signal?: AbortSignal,
 ): Promise<{ data: KanbanGithubBoardResponse; usedFixture: boolean }> {
-  const path = `/api/kanban/github${qs({ owner, repo })}`;
+  const path = `/api/kanban/github` + qs({ owner, repo });
   try {
     const data = await apiRequest<KanbanGithubBoardResponse>(path, { signal });
     return { data, usedFixture: Boolean(data.fixture) };
