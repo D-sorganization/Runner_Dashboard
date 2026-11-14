@@ -65,9 +65,10 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
     store.append_event(run_id, "lease", f"check_agent_claim rc={res.rc}: {res.output[:300]}")
     check = res.json()
     if _blocks_on_claim_check(run_id, res.output, check, agent=agent, session=session):
-        store.update_run(
+        transition_to(
+            store,
             run_id,
-            status="blocked",
+            RunStatus.BLOCKED,
             failure_class="lease_blocked",
             ended_at=_now(),
             error="issue claim held by another agent",
@@ -82,9 +83,10 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
     store.append_event(run_id, "lease", f"post_agent_lease rc={res.rc}: {res.output[:300]}")
     lease_payload = res.json() or {}
     if res.rc != 0 or not lease_payload.get("ok"):
-        store.update_run(
+        transition_to(
+            store,
             run_id,
-            status="blocked",
+            RunStatus.BLOCKED,
             failure_class="lease_blocked",
             ended_at=_now(),
             error="post_agent_lease failed",

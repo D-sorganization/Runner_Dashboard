@@ -345,7 +345,16 @@ class FollowupEngine:
         runner = self._runner()
         if run.status != "failed":
             runner.cancel(run.id)
-            self.run_store.update_run(run.id, status="failed", failure_class="stalled", ended_at=now_iso)
+            from staff.run_status import RunStatus, transition
+
+            transition(
+                self.run_store,
+                run.id,
+                RunStatus(run.status),
+                RunStatus.FAILED,
+                failure_class="stalled",
+                ended_at=now_iso,
+            )
             self.run_store.append_event(run.id, "stalled", "reconciled by Barb's follow-up before a retry")
         decision = launch_retry(
             runner, run, source="followup", holds=self._holds(), allow_classes=frozenset({"stalled"})

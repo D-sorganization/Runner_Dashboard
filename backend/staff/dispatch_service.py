@@ -19,6 +19,7 @@ from staff.audit import AuditError, record_audit
 from staff.barb_lease_fence import BarbClaim, barb_write_fence, is_barb_seat
 from staff.budget import BudgetGuard
 from staff.rate_limit import check_rate_limit
+from staff.run_status import RunStatus, transition
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import _now
 
@@ -550,7 +551,15 @@ async def dispatch_staff_run(
 def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, audit_ctx: dict[str, Any]) -> None:
     """Leave an admitted run whose worker never started visibly ``failed`` (#1796)."""
     error = f"worker did not start: {exc}"
-    runner.store.update_run(run_id, status="failed", error=error, failure_class="launch_failed", ended_at=_now())
+    transition(
+        runner.store,
+        run_id,
+        RunStatus.QUEUED,
+        RunStatus.FAILED,
+        error=error,
+        failure_class="launch_failed",
+        ended_at=_now(),
+    )
     claim_guard.release_claim(run_id, "failed")
     runner.store.append_event(run_id, "failed", error)
     record_audit(action="dispatch", **audit_ctx, outcome="launch_failed", detail={"error": str(exc)}, fail_closed=False)
