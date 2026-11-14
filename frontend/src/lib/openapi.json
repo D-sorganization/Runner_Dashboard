@@ -31847,6 +31847,57 @@
         "tags": ["staff-export"]
       }
     },
+    "/api/v1/staff/threads/{thread_id}/loop-guard/reset": {
+      "post": {
+        "description": "Reset loop-guard pause state for a thread (operators or Barb seats only).",
+        "operationId": "reset_thread_loop_guard_api_v1_staff_threads__thread_id__loop_guard_reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reset Thread Loop Guard Api V1 Staff Threads  Thread Id  Loop Guard Reset Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Reset Thread Loop Guard",
+        "tags": ["staff-threads"]
+      }
+    },
     "/api/v1/staff/threads/{thread_id}/messages": {
       "post": {
         "description": "Post a user message to a thread; returns 202 with message and reply placeholder.",

@@ -100,9 +100,11 @@ export function toThreadContext(
   runs: RunRecord[] | undefined,
   workItems: WorkItemRecord[] | undefined,
   sources: { runs: SourceState; work_items: SourceState },
+  threadMeta?: Record<string, unknown>,
 ): ThreadContextData {
   return {
     thread_id: threadId,
+    loop_guard_paused: Boolean(threadMeta?.loop_guard_paused),
     linked_runs: (runs ?? []).filter((r) => String(r.thread_id ?? "") === threadId).map(toRunSummary),
     linked_work_items: (workItems ?? []).map(toWorkItemSummary),
     sources,
