@@ -2996,6 +2996,10 @@ async def _startup() -> None:
     # Issue #1169: Fail fast if an active machine or pool has invalid configuration
     assert_valid_active_registry(_startup_reg)
 
+    from host_metrics_cache import warn_host_metrics_cache_at_startup
+
+    warn_host_metrics_cache_at_startup()
+
     # Wire injected dependencies for extracted routers (issue #360)
     _repos_router.set_dependencies(
         cache_get=_cache_get,
