@@ -70,6 +70,41 @@ export class ApiClientError extends Error {
   }
 }
 
+/** FastAPI often returns ``detail`` as a dict (e.g. staff dispatch 409 with ``message``). */
+export function formatApiErrorDetail(detail: unknown): string {
+  if (typeof detail === "string") {
+    return detail;
+  }
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item && typeof (item as { msg: unknown }).msg === "string") {
+          return (item as { msg: string }).msg;
+        }
+        return JSON.stringify(item);
+      })
+      .join("; ");
+  }
+  if (detail && typeof detail === "object") {
+    const obj = detail as { message?: unknown; reason?: unknown; code?: unknown };
+    if (typeof obj.message === "string") {
+      return obj.message;
+    }
+    if (typeof obj.reason === "string") {
+      return obj.reason;
+    }
+    if (typeof obj.code === "string") {
+      return obj.code;
+    }
+    try {
+      return JSON.stringify(detail);
+    } catch {
+      return "Request failed";
+    }
+  }
+  return "Request failed";
+}
+
 // ── Base fetch helper ─────────────────────────────────────────────────────────
 
 interface FetchOptions {
@@ -115,8 +150,8 @@ async function request<T>(
       const errBody = (await resp.json()) as ApiError & { error?: { message?: string } };
       if (errBody?.error?.message) {
         detail = errBody.error.message;
-      } else if (errBody?.detail) {
-        detail = errBody.detail;
+      } else if (errBody?.detail !== undefined && errBody?.detail !== null) {
+        detail = formatApiErrorDetail(errBody.detail);
       }
     } catch {
       // Non-JSON error body — use status text

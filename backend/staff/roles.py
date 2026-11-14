@@ -123,6 +123,40 @@ def schema_path() -> Path:
 # The built-in free-form role; with no repository it has nothing to open a PR against.
 AD_HOC_ROLE = "ad-hoc"
 
+# Roles whose YAML ships in this repo's ``staff/roles/`` and overrides the RM checkout
+# (e.g. code-reviewer read-only overlap exemption until RM merges the same flags).
+_BUNDLED_ROLE_OVERRIDE_NAMES: frozenset[str] = frozenset({"code-reviewer"})
+
+
+def _bundled_roles_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "staff" / "roles"
+
+
+def _bundled_roles_signature() -> tuple[str, tuple[tuple[str, int], ...]]:
+    bundled = _bundled_roles_dir()
+    if not bundled.is_dir():
+        return ("", ())
+    stats: list[tuple[str, int]] = []
+    for path in sorted(bundled.glob("*.yml")) + sorted(bundled.glob("*.yaml")):
+        try:
+            stats.append((path.name, path.stat().st_mtime_ns))
+        except OSError:
+            stats.append((path.name, -1))
+    return (str(bundled.resolve()), tuple(stats))
+
+
+def _apply_bundled_role_overrides(roles: dict[str, RoleSpec]) -> None:
+    bundled = _bundled_roles_dir()
+    if not bundled.is_dir():
+        return
+    for name in _BUNDLED_ROLE_OVERRIDE_NAMES:
+        for ext in (".yml", ".yaml"):
+            path = bundled / f"{name}{ext}"
+            if path.is_file():
+                roles[name] = read_and_parse_role_file(path)
+                break
+
+
 _FALLBACK_ROLES: tuple[dict[str, Any], ...] = (
     {
         "name": AD_HOC_ROLE,
@@ -165,10 +199,12 @@ def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
     of being silently dropped.
     """
     directory = directory if directory is not None else roles_dir()
+    bundled_sig = _bundled_roles_signature()
     if directory is None:
         roles: dict[str, RoleSpec] = {}
         for raw in _FALLBACK_ROLES:
             roles.setdefault(raw["name"], parse_role(raw, "<builtin>"))
+        _apply_bundled_role_overrides(roles)
         return roles
 
     files = sorted(directory.glob("*.yml")) + sorted(directory.glob("*.yaml"))
@@ -182,7 +218,7 @@ def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
 
     avatars_dir = staff_avatars_dir_for_roles(directory)
     avatars_sig = avatars_dir_mtime_sig(avatars_dir)
-    dir_sig = (str(directory.resolve()), tuple(file_stats), avatars_sig)
+    dir_sig = (str(directory.resolve()), tuple(file_stats), avatars_sig, bundled_sig)
 
     global _CACHE_DIR_SIG, _CACHE_ROLES, _CACHE_ERRORS
     with _CACHE_LOCK:
@@ -206,6 +242,8 @@ def load_roles(directory: Path | None = None) -> dict[str, RoleSpec]:
 
         for raw in _FALLBACK_ROLES:
             new_roles.setdefault(raw["name"], parse_role(raw, "<builtin>"))
+
+        _apply_bundled_role_overrides(new_roles)
 
         _CACHE_DIR_SIG = dir_sig
         _CACHE_ROLES = new_roles
