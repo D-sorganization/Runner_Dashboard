@@ -16,6 +16,7 @@ from typing import Any
 
 import barb_backlog_push_lib as lib
 import barb_panel_relay as panel
+from pid_probe import pid_alive
 
 try:
     import psutil  # type: ignore[import-untyped]
@@ -81,17 +82,13 @@ def _pid_identity_matches(pid: int, recorded_start_time_ticks: int | None, recor
     """Verify that a pid matches the recorded process identity (start_time_ticks and session).
 
     Returns True only if:
-    - The process is alive (os.kill(pid, 0) succeeds)
+    - The process is alive (pid_probe.pid_alive)
     - The start time (in clock ticks) matches the recorded value (if recorded)
     - The session token is provided (legacy pid files without session are treated as not matching)
 
     This prevents signalling an unrelated process that reused a recycled PID after reboot.
     """
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except OSError:
+    if not pid_alive(pid):
         return False
 
     if recorded_session is None:
@@ -131,13 +128,7 @@ def _read_pid_record(pidfile: Path) -> tuple[int, int | None, str | None]:
 
 
 def _pid_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
+    return pid_alive(pid)
 
 
 def _active_sessions(active: dict[str, Any]) -> list[str]:

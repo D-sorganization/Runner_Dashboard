@@ -18,6 +18,13 @@ import time
 from pathlib import Path
 from typing import Any
 
+# pid_probe lives one directory up (scripts/); this file runs as a standalone script.
+_SCRIPTS_DIR = str(Path(__file__).resolve().parents[1])
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, _SCRIPTS_DIR)
+
+from pid_probe import pid_alive  # noqa: E402
+
 _SIGKILL = getattr(signal, "SIGKILL", 9)
 
 _POOL_CONTROLLER_IMPORTS: tuple[Any, Any, Any, Any] | None = None
@@ -65,11 +72,7 @@ def _is_active_process(pid: int) -> bool:
     """Return True if pid is positive and currently alive."""
     if pid <= 1:
         return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
+    return bool(pid_alive(pid))
 
 
 def _get_process_cmdline(pid: int) -> list[str] | None:
