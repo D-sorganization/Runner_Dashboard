@@ -74,6 +74,20 @@ class RoleSpec:
         return self.permissions.get("code_read_only") is True
 
     @property
+    def occupies_paths(self) -> bool:
+        """Whether dispatch should acquire and enforce path-overlap for this role.
+
+        Explicit ``permissions.occupies_paths`` wins. Otherwise ``code_read_only`` roles
+        do not occupy paths (reviews and scouts may overlap implementation work).
+        """
+        perms = self.permissions
+        if perms.get("occupies_paths") is False:
+            return False
+        if perms.get("occupies_paths") is True:
+            return True
+        return not self.code_read_only
+
+    @property
     def library_read(self) -> bool:
         """Mints the ``library.read`` token scope (explicit ``permissions.library_read``; #2623)."""
         return self.permissions.get("library_read") is True
