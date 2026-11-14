@@ -223,13 +223,16 @@ export function useStaffConsole({
       lastRestoredPreferred.current = preferredRoleThreadId;
       return;
     }
-    const preferredChanged = lastRestoredPreferred.current !== preferredRoleThreadId;
+    const previousPreferred = lastRestoredPreferred.current;
+    const preferredChanged = previousPreferred !== preferredRoleThreadId;
     lastRestoredPreferred.current = preferredRoleThreadId;
     const resyncPreferred = Boolean(
       preferredChanged &&
       preferredRoleThreadId &&
-      activeThreadId &&
-      activeThreadId !== preferredRoleThreadId,
+      (
+        (activeThreadId && activeThreadId !== preferredRoleThreadId) ||
+        (!activeThreadId && previousPreferred !== undefined)
+      ),
     );
     let cancelled = false;
     const revision = beginSelection("restore", initialRole);
@@ -250,7 +253,13 @@ export function useStaffConsole({
         initialRoleThreads.current.set(restoreKey, request);
       }
     }
-    if (!resyncPreferred) setOpeningRole(initialRole);
+    if (resyncPreferred) {
+      // A peer console may have updated the URL while this restore was still
+      // listing threads; do not keep the sidebar composer locked on stale state.
+      setOpeningRole(null);
+    } else {
+      setOpeningRole(initialRole);
+    }
     request
       .then((threads) => {
         if (cancelled || !isSelectionCurrent(revision)) return;
@@ -271,7 +280,7 @@ export function useStaffConsole({
       });
     return () => {
       cancelled = true;
-      if (!resyncPreferred && isSelectionCurrent(revision)) setOpeningRole(null);
+      if (!resyncPreferred) setOpeningRole(null);
     };
   }, [
     restoreInitialRoleThread,
