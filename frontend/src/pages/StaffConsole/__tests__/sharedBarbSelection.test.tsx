@@ -173,7 +173,7 @@ it("central New conversation refreshes the sidebar's authorized list for the new
   await waitFor(() =>
     expect(new URLSearchParams(window.location.search).get("thread")).toBe("b"),
   );
-  await waitFor(() => expect(api.fetchThreads).toHaveBeenCalled());
+  await waitFor(() => expect(api.fetchThreads.mock.calls.length).toBeGreaterThanOrEqual(2));
   fireEvent.change(
     sidebar.getByRole("textbox", { name: /staff conversation input/i }),
     { target: { value: "new mission" } },

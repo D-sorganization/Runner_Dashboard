@@ -159,6 +159,7 @@ export function useStaffConsole({
   const [openingRole, setOpeningRole] = useState<string | null>(() =>
     restoreInitialRoleThread && initialRole && !initialThread && !initialThreadId ? initialRole : null,
   );
+  const [preferredRestoreRetry, setPreferredRestoreRetry] = useState(0);
   const [history, setHistory] = useState<ThreadMessage[]>(initialMessages);
   const [error, setError] = useState<ConsoleError | null>(null);
 
@@ -223,10 +224,7 @@ export function useStaffConsole({
       lastRestoredPreferred.current = preferredRoleThreadId;
       return;
     }
-    const preferredChanged = lastRestoredPreferred.current !== preferredRoleThreadId;
-    lastRestoredPreferred.current = preferredRoleThreadId;
     const resyncPreferred = Boolean(
-      preferredChanged &&
       preferredRoleThreadId &&
       activeThreadId &&
       activeThreadId !== preferredRoleThreadId,
@@ -238,6 +236,9 @@ export function useStaffConsole({
     const restoreKey = JSON.stringify([initialRole, preferredRoleThreadId ?? null]);
     let request: Promise<ThreadInfo[]>;
     if (resyncPreferred) {
+      // Another mounted console may have changed the URL while a first-open restore
+      // was still in flight; do not keep that stale opening lock on the composer.
+      setOpeningRole(null);
       request = threadApi.listThreads(initialRole);
     } else {
       const inflight = initialRoleThreads.current.get(restoreKey);
@@ -255,13 +256,27 @@ export function useStaffConsole({
       .then((threads) => {
         if (cancelled || !isSelectionCurrent(revision)) return;
         const roleThreads = listRoleThreads(threads, initialRole);
-        const thread = roleThreads.find((candidate) => candidate.id === preferredRoleThreadId)
-          ?? pickRoleThread(roleThreads, initialRole);
-        if (thread) {
-          setHistory(NO_MESSAGES);
-          commitThread(thread, "restore");
-          setError(null);
+        let thread: ThreadInfo | null;
+        if (preferredRoleThreadId) {
+          thread = roleThreads.find((candidate) => candidate.id === preferredRoleThreadId) ?? null;
+          if (!thread) {
+            if (threads.some((candidate) => candidate.id === preferredRoleThreadId)) {
+              thread = pickRoleThread(roleThreads, initialRole);
+            } else {
+              window.setTimeout(() => setPreferredRestoreRetry((attempt) => attempt + 1), 0);
+              return;
+            }
+          }
+        } else {
+          thread = pickRoleThread(roleThreads, initialRole);
         }
+        if (!thread) {
+          return;
+        }
+        setHistory(NO_MESSAGES);
+        commitThread(thread, "restore");
+        lastRestoredPreferred.current = preferredRoleThreadId ?? thread.id;
+        setError(null);
       })
       .catch((err: unknown) => {
         if (!cancelled && isSelectionCurrent(revision)) report("thread", err);
@@ -271,7 +286,7 @@ export function useStaffConsole({
       });
     return () => {
       cancelled = true;
-      if (!resyncPreferred && isSelectionCurrent(revision)) setOpeningRole(null);
+      setOpeningRole(null);
     };
   }, [
     restoreInitialRoleThread,
@@ -279,6 +294,7 @@ export function useStaffConsole({
     initialThread,
     initialThreadId,
     preferredRoleThreadId,
+    preferredRestoreRetry,
     threadApi,
     beginSelection,
     isSelectionCurrent,
