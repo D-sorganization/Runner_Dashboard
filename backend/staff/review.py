@@ -625,16 +625,12 @@ def finalize_code_reviewer_run(
             error=review_verdict.error or "Malformed review verdict line",
             remediation="Review completed with a malformed STAFF_RESULT line.",
         )
-    if (
-        review_verdict.status == "succeeded"
-        and review_verdict.verdict == "approve"
-        and expected_pr_number is not None
-    ):
+    if review_verdict.status == "succeeded" and review_verdict.verdict == "approve" and expected_pr_number is not None:
+        from coordination.merge_shepherd_exact_head import head_sha_matches  # noqa: PLC0415
         from staff.independent_exact_head_verdict import (  # noqa: PLC0415
             VerdictPostError,
             fetch_pull_head_sha,
         )
-        from coordination.merge_shepherd_exact_head import head_sha_matches  # noqa: PLC0415
         from staff.staff_github_pr_review import (  # noqa: PLC0415
             build_advisory_approve_review_body,
             ensure_runner_dashboard_formal_approve,
@@ -647,10 +643,7 @@ def finalize_code_reviewer_run(
                     status="failed",
                     failure_class="invalid_output",
                     retryable=False,
-                    error=(
-                        f"STAFF_RESULT head @{review_verdict.head_sha} does not match "
-                        f"the PR head @{head_sha}"
-                    ),
+                    error=(f"STAFF_RESULT head @{review_verdict.head_sha} does not match the PR head @{head_sha}"),
                     remediation="STAFF_RESULT must name this run's PR and current head SHA.",
                 )
             body = build_advisory_approve_review_body(pr_number=expected_pr_number, head_sha=head_sha)

@@ -43,20 +43,28 @@ for key in list(sys.modules):
     if key == "shared_scripts" or key.startswith("shared_scripts."):
         del sys.modules[key]
 
+from unittest.mock import patch
+
 from staff.review import finalize_code_reviewer_run
 
-out = finalize_code_reviewer_run(
-    status="succeeded",
-    failure_class="",
-    retryable=False,
-    error="",
-    remediation="",
-    result_line="STAFF_RESULT: review approve #1",
-    same_provider=False,
-    repo="Tools",
-    reviewer_model="codex",
-    expected_pr_number=1,
-)
+_HEAD = "c" * 40
+with patch(
+    "staff.independent_exact_head_verdict.fetch_pull_head_sha",
+    return_value=_HEAD,
+):
+    with patch("staff.staff_github_pr_review.ensure_runner_dashboard_formal_approve"):
+        out = finalize_code_reviewer_run(
+            status="succeeded",
+            failure_class="",
+            retryable=False,
+            error="",
+            remediation="",
+            result_line="STAFF_RESULT: review approve #1",
+            same_provider=False,
+            repo="Tools",
+            reviewer_model="codex",
+            expected_pr_number=1,
+        )
 if out.status != "succeeded":
     raise SystemExit(f"unexpected outcome status={out.status!r}")
 if "shared_scripts" in sys.modules:
