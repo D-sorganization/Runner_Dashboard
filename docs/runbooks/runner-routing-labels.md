@@ -126,6 +126,22 @@ Expected behavior:
 - Workflows still on neutral `d-sorg-fleet` show up as migration
   recommendations, not failures.
 
+## Desk-neutral offload (governance → bulk)
+
+As of 2026-11-14, lightweight governance and check jobs must not fall back to
+bare `d-sorg-fleet` on private fleet runs. Pin them to `d-sorg-fleet-bulk` (full
+`[self-hosted, Linux, X64, d-sorg-fleet-bulk]` tuple when the job is
+label-static, or `|| 'd-sorg-fleet-bulk'` at the end of the hosted/fleet
+expression). The reusable PR freshness guard (`pr-guard`) is the canonical
+example. DeskComputer advertises the neutral `d-sorg-fleet` label with a
+six-runner cap (daytime target three); bulk runners on other hosts take this
+traffic instead.
+
+Hosted fallbacks (`CI_PR_RUNNER_MODE`, `CI_QUEUE_RUNNER_MODE`, fork PRs) are
+unchanged — see `docs/runner-labels.md` (H-06 context).
+
+Contract tests: `tests/test_bulk_governance_runner_labels.py`.
+
 ## Immediate Workflow Guidance
 
 - `docker-build.yml` is the canonical `docker` workflow and must not move to
