@@ -10,9 +10,8 @@ from dataclasses import MISSING, dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, Mock
 
-from staff.model_tiers import validate_role_tier
-
 from staff import consolidation
+from staff.model_tiers import validate_role_tier
 
 if TYPE_CHECKING:
     from staff.dispatch_bundle import DispatchBundle

@@ -21,7 +21,6 @@ from staff.presentation_prefs import (
     get_presentation_prefs_store,
 )
 from staff.role_avatar_paths import staff_avatars_dir, validate_avatar_yaml_path
-
 from staff.roles import load_roles
 
 router = APIRouter(tags=["staff-avatars"])

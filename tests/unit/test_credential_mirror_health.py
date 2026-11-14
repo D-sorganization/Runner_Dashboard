@@ -54,18 +54,6 @@ def test_probe_includes_mirror_audit_in_provider_auth(tmp_path: Path, monkeypatc
         "staff.credential_mirror_health._SYNC_SCRIPT",
         Path(__file__).resolve().parents[2] / "deploy" / "sync_provider_credentials.py",
     )
-    # #4393: the audit walks /mnt/c/Users on a WSL host and compared the fixture
-    # with the operator's real Windows credential copies. Audit the fake home only.
-    import staff.credential_mirror_health as mirror_health
-
-    load_sync_module = mirror_health._load_sync_module
-
-    def load_sync_module_without_windows_homes():  # noqa: ANN202
-        sync_mod = load_sync_module()
-        sync_mod.discover_windows_homes = lambda *_a, **_k: []
-        return sync_mod
-
-    monkeypatch.setattr(mirror_health, "_load_sync_module", load_sync_module_without_windows_homes)
 
     with patch("staff.provider_auth_preflight.provider_oauth_session_alive", return_value=(True, "ok")):
         report = preflight.probe_local_provider_auth("Desk")

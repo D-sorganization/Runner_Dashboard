@@ -21,7 +21,6 @@ from staff.host_settings_contract import (
     resolve_role_leader,
 )
 from staff.host_settings_service import HostSettingsError, apply_host_settings_update
-
 from staff.roles import load_roles
 
 log = logging.getLogger("dashboard.staff.host_settings")

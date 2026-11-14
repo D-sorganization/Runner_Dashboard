@@ -159,7 +159,6 @@ def _default_origin_epoch_lookup(scope: str, origin_node: str) -> int | None:
     try:
         import httpx
         from dashboard_config import HOSTNAME  # noqa: PLC0415
-
         from staff import fleet as staff_fleet  # noqa: PLC0415
 
         want = origin_node.strip()

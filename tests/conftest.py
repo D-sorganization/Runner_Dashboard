@@ -62,24 +62,6 @@ if repo_root_str not in sys.path:
 
 from tests.real_subprocess_popen import REAL_SUBPROCESS_POPEN  # noqa: E402
 
-# #4393: on an operator host ``~/.config/runner-dashboard/machine_registry.yml``
-# holds live topology, and the first test that imports ``server`` derived its
-# role and hub URL from it. Point the "local operator config" slot at a missing
-# file in this session's config dir before any other backend import, so the
-# suite resolves the shipped stub exactly as CI does. Tests of the lookup order
-# monkeypatch ``LOCAL_REGISTRY_PATH`` / ``MACHINE_REGISTRY_PATH`` themselves.
-os.environ.pop("MACHINE_REGISTRY_PATH", None)
-# #4393: ``deploy/fleet-gh/gh_app_credential.py`` copies ``~/.config/runner-dashboard/env``
-# into ``os.environ`` when a test reaches its minter; on an operator host that leaked
-# the node's real settings (``STAFF_REPOS_ROOT``, GitHub App config) into every later test.
-os.environ["FLEET_GH_ENV_FILE"] = str(Path(_test_config_dir.name) / "fleet-gh-env")
-try:
-    import machine_registry as _machine_registry  # noqa: E402
-except ImportError:  # backend not importable in some lanes
-    pass
-else:
-    _machine_registry.LOCAL_REGISTRY_PATH = Path(_test_config_dir.name) / "machine_registry.yml"
-
 # Fleet API clients (#1228) are stdlib scripts, imported by module name in tests/clients.
 clients_dir = str(REPO_ROOT / "clients" / "fleet")
 if clients_dir not in sys.path:
@@ -262,35 +244,15 @@ _GITHUB_CREDENTIAL_ENV = (
 )
 
 
-@pytest.fixture(scope="session")
-def _failing_gh_stub_dir(tmp_path_factory):
-    """A directory holding a ``gh`` that always fails without touching the network (#4393)."""
-    stub_dir = tmp_path_factory.mktemp("gh-stub")
-    posix_stub = stub_dir / "gh"
-    posix_stub.write_text("#!/bin/sh\necho 'gh is stubbed out in tests (#4393)' >&2\nexit 1\n", encoding="utf-8")
-    posix_stub.chmod(0o755)
-    (stub_dir / "gh.cmd").write_text(
-        "@echo off\r\necho gh is stubbed out in tests (#4393) 1>&2\r\nexit /b 1\r\n", encoding="utf-8", newline=""
-    )
-    return stub_dir
-
-
 @pytest.fixture(autouse=True)
-def _no_real_github_credentials(tmp_path, monkeypatch, _failing_gh_stub_dir):
+def _no_real_github_credentials(tmp_path, monkeypatch):
     """Tests never hold a real GitHub credential (#1528).
 
     With a developer's token or ``gh auth`` login visible, code-request tests
     created real issues via ``gh_utils.gh_api_write``. Every credential env var is
     removed, the ``gh`` CLI gets an empty per-test config dir, and ``gh_client``'s
     cached token is cleared. A test that needs a token sets a fake one itself.
-
-    #4393: scrubbing env is not enough where ``gh`` is a wrapper that
-    authenticates by itself (the fleet App wrapper): the ``gh api`` fallbacks in
-    ``gh_utils`` and ``staff.claim_guard`` then read live issues and PRs. A
-    failing stub goes first on PATH; a test's own fake ``gh`` is prepended
-    later, so it still wins.
     """
-    monkeypatch.setenv("PATH", os.pathsep.join([str(_failing_gh_stub_dir), os.environ.get("PATH", "")]))
     try:
         import gh_client  # noqa: PLC0415
     except ImportError:

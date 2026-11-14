@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import TypedDict
 
 import provider_switch
+from staff import cli_version, workspace
+from staff import quota as quota_mod
 from staff.adapters import ProviderAdapter
 from staff.anthropic_api_budget import PROVIDER_ID as ANTHROPIC_API_PROVIDER_ID
 from staff.cloud_dispatch import scrub_api_key_env
@@ -21,6 +23,7 @@ from staff.disk_floor_shared import staff_disk_floor_breach_reason
 from staff.github_run_env import prepare_staff_run_github_env
 from staff.plan import RunPlan, RunRequest
 from staff.redaction import redact_sensitive_content
+from staff.roles import RoleSpec
 from staff.runner_ops_worktree_bootstrap import (  # noqa: F401  re-exported for existing importers (#3913)
     _PYTHON_VERSION_SNIPPET,
     _SUBMODULE_ATTEMPTS,
@@ -41,10 +44,6 @@ from staff.runner_stream import (  # noqa: F401  re-exported for existing import
 )
 from staff.store import RunRecord, RunStore, _now
 from staff.tokens import mint_run_token
-
-from staff import cli_version, workspace
-from staff import quota as quota_mod
-from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.runner_ops")
 
@@ -396,9 +395,8 @@ def apply_code_reviewer_post_classification(
     result_line: str,
     transcript: Path,
 ) -> tuple[str, str, bool, str, str]:
-    from staff.verification import _target_pr_number
-
     from staff import review
+    from staff.verification import _target_pr_number
 
     return review.maybe_finalize_code_reviewer_run(
         role=rec.role,

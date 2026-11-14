@@ -20,10 +20,9 @@ from staff.conversations import (
     MessageRecord,
     get_conversation_store,
 )
+from staff.roles import RoleSpec
 from staff.thread_bus import get_thread_bus
 from staff.work_items import WorkItemStore, get_work_item_store
-
-from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.availability")
 

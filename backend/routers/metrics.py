@@ -34,12 +34,11 @@ def collect_metrics_snapshot() -> dict[str, Any]:
     from cache_utils import cache_get  # noqa: PLC0415
     from fleet_status_cache import fleet_status_cache_key  # noqa: PLC0415
     from machine_registry import load_machine_registry  # noqa: PLC0415
+    from staff import fleet as staff_fleet  # noqa: PLC0415
     from staff.classifier import format_attention_items  # noqa: PLC0415
     from staff.exclusions import active_exclusions  # noqa: PLC0415
     from staff.holds import holds_metrics_snapshot  # noqa: PLC0415
     from staff.runner import get_runner  # noqa: PLC0415
-
-    from staff import fleet as staff_fleet  # noqa: PLC0415
 
     runner = get_runner()
     board = staff_fleet.local_board(runner)

@@ -15,10 +15,9 @@ import logging
 import os
 from typing import Any
 
+from staff import outcomes
 from staff.report_cards import build_report_cards, infer_complexity_tier
 from staff.store import RunRecord, RunStore
-
-from staff import outcomes
 
 log = logging.getLogger("dashboard.staff.routing_shadow")
 

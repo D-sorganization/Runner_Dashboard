@@ -16,7 +16,6 @@ from machine_registry import (
 )
 from security import validate_repo_slug
 from staff.github_run_env import StaffGithubToken, mint_staff_run_github_token_local
-
 from staff.roles import RoleSpec, load_roles
 
 log = logging.getLogger("dashboard.staff.fleet_run_token")

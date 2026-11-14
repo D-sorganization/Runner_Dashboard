@@ -32,12 +32,11 @@ from memory.service_guard import enforce_memory_append, enforce_session_digest_a
 from memory.store import AssistantMemoryStore, get_memory_store, new_entry_id
 from priorities.directives import get_directives
 from routers.staff_schedule import current_holds
+from staff import store as run_stores
 from staff.barb_lease_fence import is_barb_seat
 from staff.lesson_locator import locate_lesson_evidence, verify_lesson_evidence
 from staff.lesson_provenance import authenticated_lesson_run, completed_run_for_review
 from staff.store import _now  # noqa: PLC2701
-
-from staff import store as run_stores
 
 
 def _redact_body(body: dict[str, Any]) -> dict[str, Any]:

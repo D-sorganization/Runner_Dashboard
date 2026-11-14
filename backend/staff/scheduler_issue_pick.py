@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import Any
 
 from coordination import claims as coordination_claims
-
 from staff import claim_guard
 from staff.roles import RoleSpec
 

@@ -28,14 +28,13 @@ import httpx
 from dashboard_config import FLEET_NODES, HOSTNAME, RUNNER_ALIASES
 from fleet_autoconfig import derive_fleet_nodes_from_registry
 from machine_registry import load_machine_registry
+from staff import liveness as staff_liveness
 from staff.adapters import available_providers, chat_only_providers
 from staff.barb_lease_fence import BarbClaim
 from staff.liveness import _parse_iso
 from staff.rm_sync import source_status
 from staff.store import ACTIVE_STATUSES
 from staff.usage import today_iso
-
-from staff import liveness as staff_liveness
 
 log = logging.getLogger("dashboard.staff.fleet")
 

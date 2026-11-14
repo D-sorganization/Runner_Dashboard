@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, format_caller, require_scope
 from middleware import WEBHOOK_MAX_BODY_SIZE, limit_body_size
 from routers.staff_outcomes import compute_report_cards_payload
+from staff import quota, usage, usage_snapshot
 from staff.adapters import ADAPTERS
 from staff.models import (
     StaffPricingResponse,
@@ -38,8 +39,6 @@ from staff.models_insights import StaffBeanCounterResponse, StaffReportCardsResp
 from staff.pricing import price_table_rows
 from staff.runner import get_runner
 from staff.store import USAGE_GROUPS
-
-from staff import quota, usage, usage_snapshot
 
 log = logging.getLogger("dashboard.staff.usage")
 router = APIRouter(prefix="/api/staff", tags=["staff"])

@@ -20,10 +20,9 @@ from staff.rm_directives import DirectivesReconcileError, reconcile_directives_f
 from staff.rm_mail_policy import refresh_mail_policy_cache
 from staff.rm_reconcile import HoldReconcileError, format_hold_reconcile_diff, reconcile_holds_for_roles_dir
 from staff.rm_sync_quarantine import quarantine_dirty_worktree
+from staff.roles import role_validation_errors, roles_dir
 from staff.store import _config_dir
 from staff.workspace import is_standalone_mode
-
-from staff.roles import role_validation_errors, roles_dir
 
 log = logging.getLogger("dashboard.staff.rm_sync")
 INTERVAL_SECONDS = 15 * 60

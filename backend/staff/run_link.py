@@ -11,6 +11,7 @@ import logging
 import threading
 from typing import Any
 
+from staff import claim_guard
 from staff.barb_fence import FencedAuthorityError
 from staff.barb_runtime import enqueue_run_card, get_authority_config, relay_payload
 from staff.barb_versions import ApplyOutcome, ApplyResult
@@ -20,8 +21,6 @@ from staff.conversations import get_conversation_store
 from staff.plan import RunRequest
 from staff.store import RunRecord
 from staff.thread_bus import get_thread_bus
-
-from staff import claim_guard
 
 log = logging.getLogger("dashboard.staff.run_link")
 
@@ -331,10 +330,9 @@ def handle_run_status_change(
     relay_fn: Any = None,
 ) -> MessageRecord | None:
     """Handler called on run transition (queued, running, needs_input, succeeded, failed)."""
-    from dispatch_queue_link import release_run_session, touch_run_session  # noqa: PLC0415
-
-    touch_run_session(run.id)
     if status in claim_guard.TERMINAL_STATUSES:
+        from dispatch_queue_link import release_run_session  # noqa: PLC0415
+
         release_run_session(run.id, outcome=status)
     if status in claim_guard.TERMINAL_STATUSES and run.target_kind == "issue":
         # Drop the claim label this run applied (#2562); off-thread so a slow `gh` never delays the status change.

@@ -15,10 +15,9 @@ from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any
 
+from staff import cartographer_persona, persona_fallback_lease
 from staff.barb_continuity import BarbContinuityStore
 from staff.role_capsule import RoleCapsuleStore
-
-from staff import cartographer_persona, persona_fallback_lease
 
 log = logging.getLogger("dashboard.staff.scheduler")
 

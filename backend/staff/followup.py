@@ -23,6 +23,7 @@ from staff.conversation_models import ActionProposalRecord
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.decision_sla import apply_decision_defaults, overdue_decisions
 from staff.followup_ledger import FollowupLedger, LedgerRecord, SweepBacklog, stamp
+from staff.roles import load_roles
 from staff.store import RunRecord, RunStore, get_run_store
 from staff.work_items import (
     TERMINAL_STATES,
@@ -31,8 +32,6 @@ from staff.work_items import (
     active_cursor,
     get_work_item_store,
 )
-
-from staff.roles import load_roles
 
 log = logging.getLogger("dashboard.staff.followup")
 DEFAULT_SWEEP_INTERVAL_SECONDS = int(os.environ.get("BARB_SWEEP_INTERVAL_SECONDS", "300"))

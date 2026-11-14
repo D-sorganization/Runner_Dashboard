@@ -18,11 +18,10 @@ if TYPE_CHECKING:
 
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.loop_guard import HandoffHopCapExceededError
+from staff.roles import load_roles
 from staff.router import BarbRouter
 from staff.router_models import HandoffResult, RoutingDecision
 from staff.thread_bus import ThreadEventBus, get_thread_bus
-
-from staff.roles import load_roles
 
 log = logging.getLogger("dashboard")
 

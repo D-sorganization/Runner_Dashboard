@@ -14,7 +14,6 @@ from pathlib import Path
 
 from staff.audit import record_audit
 from staff.holds import Hold, HoldsList, _seed_key, seed_from_roles
-
 from staff.roles import RoleSpec, load_roles, role_validation_errors, roles_dir
 
 

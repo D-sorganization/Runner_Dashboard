@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import provider_switch
+from staff import cli_projects
 from staff.adapter_policies import ChatReadOnlyUnsupportedError
 from staff.adapters import get_adapter
 from staff.barb_continuity import get_barb_continuity_store
@@ -47,8 +48,6 @@ from staff.panel_scratch import prepare_panel_turn_scratch, remove_panel_turn_sc
 from staff.panel_subscription_policy import check_provider_subscription
 from staff.seat_fallback import FallbackStep, run_turn_with_fallback
 from staff.thread_bus import get_thread_bus
-
-from staff import cli_projects
 
 log = logging.getLogger("dashboard.staff.panel")
 

@@ -13,7 +13,6 @@ from pathlib import Path
 from knowledge_pack import KnowledgePack
 from staff.codebase_freshness import snapshot_is_stale
 from staff.knowledge_refresh import get_knowledge_dir, pack_is_stale, resolve_pack_roots
-
 from staff.roles import RoleSpec
 
 __all__ = ["build_knowledge_turn_block"]

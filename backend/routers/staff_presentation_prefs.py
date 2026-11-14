@@ -15,7 +15,6 @@ from staff.presentation_prefs import (
     PreferencesValidationError,
     get_presentation_prefs_store,
 )
-
 from staff.roles import load_roles
 
 router = APIRouter(prefix="/api/v1/staff/presentation-prefs", tags=["staff-presentation-prefs"])

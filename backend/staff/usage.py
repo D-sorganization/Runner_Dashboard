@@ -21,12 +21,11 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from coordination.rm_scripts import python_for_rm
+from staff import workspace
 from staff.budget import day_start_iso
 from staff.pricing import estimate_cost
 from staff.schedule import DEFAULT_TZ
 from staff.store import USAGE_GROUPS, RunStore
-
-from staff import workspace
 
 log = logging.getLogger("dashboard.staff.usage")
 

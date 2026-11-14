@@ -13,11 +13,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 SCOPE_LIB = REPO_ROOT / "deploy" / "setup-systemd-scope.sh"
 SETUP_SH = REPO_ROOT / "deploy" / "setup.sh"
 
-# #4393: the lib hard-codes /etc/systemd/system/runner-dashboard.service, so a host
-# with the system unit installed looked like "both scopes". Redefine the lookup
-# after ``source`` so each test owns the system-unit path (absent under HOME).
-NO_HOST_SYSTEM_UNIT = "system_dashboard_unit_path() { printf '%s/etc/runner-dashboard.service' \"${HOME}\"; }"
-
 
 @pytest.mark.skipif(BASH is None, reason="bash not available")
 def test_resolve_scope_uses_user_when_user_unit_present(tmp_path: Path) -> None:
@@ -28,7 +23,6 @@ def test_resolve_scope_uses_user_when_user_unit_present(tmp_path: Path) -> None:
 set -euo pipefail
 export HOME={as_bash_path(tmp_path)}
 source {as_bash_path(SCOPE_LIB)}
-{NO_HOST_SYSTEM_UNIT}
 resolve_systemd_dashboard_scope "" ""
 printf '%s' "$SYSTEMD_DASHBOARD_SCOPE"
 """
@@ -52,7 +46,6 @@ def test_system_service_flag_rejects_existing_user_unit(tmp_path: Path) -> None:
 set -euo pipefail
 export HOME={as_bash_path(tmp_path)}
 source {as_bash_path(SCOPE_LIB)}
-{NO_HOST_SYSTEM_UNIT}
 if resolve_systemd_dashboard_scope "" "1"; then
   exit 0
 fi

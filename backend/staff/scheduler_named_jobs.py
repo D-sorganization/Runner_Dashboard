@@ -15,11 +15,10 @@ from datetime import datetime
 from typing import Any
 
 from staff.exclusions import ExclusionsList
+from staff.roles import RoleSpec
 from staff.scheduler_issue_pick import ISSUE_REMEDIATOR_ROLE, pick_issue_target
 from staff.scheduler_missed_runs import record_scheduled_skip
 from staff.scheduler_startup import skip_due_slot_during_startup
-
-from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.scheduler")
 

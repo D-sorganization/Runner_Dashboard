@@ -16,7 +16,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-
 from staff import fleet as staff_fleet
 
 log = logging.getLogger("dashboard.staff.remote_runs")

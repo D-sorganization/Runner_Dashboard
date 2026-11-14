@@ -27,8 +27,6 @@ def test_role_spec_code_read_only_is_explicit_opt_in() -> None:
         return RoleSpec(name="r", title="R", permissions=dict(perms))
 
     assert role(code_read_only=True, push_branch=False, open_pr=False).code_read_only is True
-    assert role(code_read_only=True).occupies_paths is False
-    assert role(occupies_paths=False).occupies_paths is False
     # Not derived: code-reviewer / maintenance push nothing yet still write reviews or call write APIs.
     assert role(push_branch=False, open_pr=False).code_read_only is False
     assert role().code_read_only is False

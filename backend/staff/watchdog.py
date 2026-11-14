@@ -238,9 +238,6 @@ class StaffWatchdog:
         )
         try:
             self.store.append_event(self.run_id, "heartbeat", payload)
-            from dispatch_queue_link import touch_run_session  # noqa: PLC0415
-
-            touch_run_session(self.run_id)
         except Exception as exc:  # noqa: BLE001
             log.warning("Failed to record heartbeat event for run %s: %s", self.run_id, exc)
 

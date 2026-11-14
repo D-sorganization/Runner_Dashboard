@@ -15,7 +15,6 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, principal_has_scope, require_fleet_peer, require_scope
 from pydantic import BaseModel, Field
-
 from staff import friction_store as store
 
 router = APIRouter(prefix="/api/v1/fleet", tags=["fleet-friction"])

@@ -12,7 +12,6 @@ from staff.thread_bus import get_thread_bus
 if TYPE_CHECKING:
     from staff.chat import ChatTurnResult
     from staff.conversations import ConversationStore
-
     from staff.roles import RoleSpec
 
 

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -62,9 +61,7 @@ TABLE = [
 def test_evaluate_table(prev: RepoSnapshot | None, cur: RepoSnapshot, expect: tuple[str, str] | None) -> None:
     thresholds = WatchThresholds(queue_age_seconds=600, storm_count=3, storm_window_seconds=900)
     previous = {REPO: prev} if prev is not None else None
-    # #4393: the storm rows are relative to the collection-time NOW; evaluating at the
-    # wall clock dropped them out of the window when the test ran >~870 s after collection.
-    out = evaluate(previous, {REPO: cur}, thresholds, now=datetime.fromtimestamp(NOW, UTC))
+    out = evaluate(previous, {REPO: cur}, thresholds)
     if expect is None:
         assert out == []
     else:

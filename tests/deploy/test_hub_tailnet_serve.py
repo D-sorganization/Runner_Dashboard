@@ -68,14 +68,17 @@ def test_status_proxies_loopback_upstream() -> None:
 
 
 @pytest.mark.unit
-def test_diagnose_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_diagnose_cli(tmp_path: Path) -> None:
     env_file = tmp_path / "env"
     env_file.write_text("DASHBOARD_LOOPBACK_AUTH=1\nDASHBOARD_HOST=127.0.0.1\n", encoding="utf-8")
-    # #4393: the CLI detects WSL from /proc/version, so a subprocess reported
-    # manage=False on a WSL host. Run the CLI in-process on a pinned native platform.
-    monkeypatch.setattr(mod, "is_wsl_environment", lambda: False)
-    assert mod._cli(["diagnose", "--env-file", str(env_file), "--port", "8321"]) == 0
-    payload = json.loads(capsys.readouterr().out)
+    proc = subprocess.run(
+        [sys.executable, str(SCRIPT), "diagnose", "--env-file", str(env_file), "--port", "8321"],
+        check=True,
+        capture_output=True,
+        text=True,
+        cwd=str(REPO),
+    )
+    payload = json.loads(proc.stdout)
     assert payload["manage"] is True
     assert payload["upstream"] == "http://127.0.0.1:8321"
 

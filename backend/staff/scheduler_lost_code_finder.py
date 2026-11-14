@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from staff import persona_fallback_lease
 from staff.barb_continuity import BarbContinuityStore
 from staff.lost_code_finder_pilot import ROLE, WEEKLY_JOB
-
-from staff import persona_fallback_lease
 
 
 def fire_guard(

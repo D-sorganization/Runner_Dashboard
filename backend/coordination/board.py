@@ -36,7 +36,6 @@ from coordination.board_pagination import (
     paginate_board_comments,
 )
 from coordination.rm_scripts import ScriptResult, run_module
-
 from staff.roles import load_roles
 
 CACHE_SECONDS = 60.0

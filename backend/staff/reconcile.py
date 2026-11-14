@@ -29,6 +29,8 @@ except ImportError:  # pragma: no cover
     psutil = None  # type: ignore[assignment]
 
 from fleet_events import EventStore, FleetEvent, get_event_store
+from staff import cli_projects, workspace
+from staff import lease as lease_mod
 from staff.audit import record_audit
 from staff.conversation_models import ActionProposalRecord
 from staff.conversations import ConversationStore, get_conversation_store
@@ -36,9 +38,6 @@ from staff.runner import StaffRunner
 from staff.store import RunRecord, RunStore, _now
 from staff.tokens import revoke_run_token
 from staff.watchdog import terminate_process_group
-
-from staff import cli_projects, workspace
-from staff import lease as lease_mod
 
 log = logging.getLogger("dashboard.staff.reconcile")
 

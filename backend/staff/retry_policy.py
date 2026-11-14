@@ -10,9 +10,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from staff.budget import BudgetGuard
-    from staff.store import RunRecord
-
     from staff.roles import RoleSpec
+    from staff.store import RunRecord
 
 RETRYABLE_FAILURE_CLASSES = frozenset(
     {

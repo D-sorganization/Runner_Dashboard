@@ -5,8 +5,6 @@ Mounted under ``/api/v1/staff``:
   GET  /barb/continuity         Scoped leases, turnover log, compliance status & task inventory
   POST /barb/leases/checkout    Check out a scoped Barb sub-role (e.g. barb:front-door)
   POST /barb/leases/heartbeat   Extend the caller's own live lease (holder bound to caller)
-  POST /barb/leases/renew       One-call renew or re-acquire without an epoch token
-  POST /barb/leases/handoff     Atomic turnover plus release, transfer, or takeover
   POST /barb/leases/release     Release a scoped Barb lease (enforces turnover compliance)
   GET  /barb/turnover           List turnover log entries
   POST /barb/turnover           Append a shift turnover log entry
@@ -28,11 +26,7 @@ import orchestration_audit as _audit
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from identity import Principal, format_caller, principal_has_scope, require_scope
 from pydantic import BaseModel, Field
-from staff.barb_continuity import (
-    MAX_LEASE_TTL_SECONDS,
-    classify_task_surface,
-    get_barb_continuity_store,
-)
+from staff.barb_continuity import classify_task_surface, get_barb_continuity_store
 from staff.barb_lease_fence import barb_write_fence, claim_for_write, is_barb_seat
 from staff.barb_runtime import barb_status
 from staff.runner import get_runner
@@ -40,9 +34,7 @@ from staff.runner import get_runner
 router = APIRouter(tags=["staff-barb"])
 
 
-# Mirrors the store clamp; larger requests are rejected, not silently shortened.
-MAX_LEASE_TTL_SEC = MAX_LEASE_TTL_SECONDS
-DEFAULT_LEASE_TTL_SEC = 14400
+MAX_LEASE_TTL_SEC = 14400  # mirrors the store clamp; larger requests are rejected, not silently shortened
 
 
 def bind_holder(caller: Principal, requested: str | None) -> str:
@@ -78,45 +70,17 @@ class BarbLeaseCheckoutRequest(BaseModel):
     holder: str | None = Field(default=None, max_length=128)
     persona: str = Field(default="rd-barb", max_length=64)
     machine: str = Field(default="", max_length=64)
-    ttl_sec: int = Field(default=DEFAULT_LEASE_TTL_SEC, ge=60, le=MAX_LEASE_TTL_SEC)
+    ttl_sec: int = Field(default=3600, ge=60, le=MAX_LEASE_TTL_SEC)
     summary: str = Field(default="", max_length=500)
     takeover: bool = False
     reason: str = Field(default="", max_length=500)
-
-
-class BarbLeaseRenewRequest(BaseModel):
-    scope: str = Field(default="barb:front-door", max_length=64)
-    holder: str | None = Field(default=None, max_length=128)
-    persona: str = Field(default="", max_length=64)
-    machine: str = Field(default="", max_length=64)
-    ttl_sec: int = Field(default=DEFAULT_LEASE_TTL_SEC, ge=60, le=MAX_LEASE_TTL_SEC)
-    summary: str | None = Field(default=None, max_length=500)
-
-
-class BarbLeaseHandoffRequest(BaseModel):
-    scope: str = Field(default="barb:front-door", max_length=64)
-    holder: str | None = Field(default=None, max_length=128)
-    persona: str = Field(default="rd-barb", max_length=64)
-    machine: str = Field(default="", max_length=64)
-    summary: str = Field(..., min_length=1, max_length=2000)
-    completed_items: list[str] = Field(default_factory=list)
-    in_progress_items: list[str] = Field(default_factory=list)
-    next_actions: list[str] = Field(default_factory=list)
-    blockers: list[str] = Field(default_factory=list)
-    mode: str = Field(default="", max_length=16)
-    takeover: bool = False
-    reason: str = Field(default="", max_length=500)
-    next_holder: str | None = Field(default=None, max_length=128)
-    next_persona: str = Field(default="", max_length=64)
-    next_machine: str = Field(default="", max_length=64)
-    ttl_sec: int = Field(default=DEFAULT_LEASE_TTL_SEC, ge=60, le=MAX_LEASE_TTL_SEC)
 
 
 class BarbLeaseHeartbeatRequest(BaseModel):
     scope: str = Field(..., min_length=1, max_length=64)
     epoch: int = Field(..., ge=1)
     holder: str | None = Field(default=None, max_length=128)
-    ttl_sec: int = Field(default=DEFAULT_LEASE_TTL_SEC, ge=60, le=MAX_LEASE_TTL_SEC)
+    ttl_sec: int = Field(default=3600, ge=60, le=MAX_LEASE_TTL_SEC)
 
 
 class BarbLeaseReleaseRequest(BaseModel):
@@ -197,12 +161,10 @@ async def get_barb_continuity(
 @router.get("/barb/leases", summary="List scoped Barb sub-role leases", include_in_schema=False)
 async def get_barb_leases(
     include_released: bool = Query(default=False),
-    include_expired: bool | None = Query(default=None),
     _caller: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     store = get_barb_continuity_store()
-    show_released = include_released or bool(include_expired)
-    leases = store.list_leases(include_expired=show_released)
+    leases = store.list_leases(include_expired=include_released)
     return {"machine": get_runner().machine, "count": len(leases), "leases": leases}
 
 
@@ -273,92 +235,6 @@ async def post_barb_lease_heartbeat(
     if not res["renewed"]:
         code = 403 if res["reason"] == "holder_mismatch" else 409
         raise HTTPException(status_code=code, detail=res)
-    return {"ok": True, **res}
-
-
-@router.post("/barb/leases/renew", summary="Renew or re-acquire a scoped Barb lease in one call")
-async def post_barb_lease_renew(
-    req: BarbLeaseRenewRequest,
-    _caller: Principal = Depends(require_scope("staff.dispatch")),
-) -> dict[str, Any]:
-    holder = bind_holder(_caller, req.holder)
-    with _invalid_lease_request_as_422():
-        res = get_barb_continuity_store().renew_lease(
-            scope=req.scope,
-            caller_id=_caller.id,
-            holder=holder,
-            persona=req.persona,
-            machine=req.machine or get_runner().machine,
-            summary=req.summary,
-            ttl_seconds=req.ttl_sec,
-        )
-    if not res["renewed"]:
-        raise HTTPException(status_code=409, detail=res)
-    return {"ok": True, **res}
-
-
-def _valid_handoff_target(holder: str) -> None:
-    text = holder.strip()
-    if not text or len(text) > 128 or any(ch.isspace() for ch in text):
-        raise HTTPException(status_code=422, detail={"error": "invalid_next_holder", "holder": holder})
-
-
-@router.post("/barb/leases/handoff", summary="Atomic Barb lease turnover, release, transfer, or takeover")
-async def post_barb_lease_handoff(
-    req: BarbLeaseHandoffRequest,
-    _caller: Principal = Depends(require_scope("staff.dispatch")),
-) -> dict[str, Any]:
-    holder = bind_holder(_caller, req.holder)
-    pull = req.takeover or req.mode.strip().lower() == "pull"
-    if pull:
-        if not (principal_has_scope(_caller, "staff.admin") or is_barb_seat(_caller)):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "error": "handoff_takeover_requires_barb_or_operator",
-                    "required_scope": "staff.admin or Barb seat",
-                },
-            )
-        if not req.reason.strip():
-            raise HTTPException(status_code=422, detail={"error": "takeover_reason_required"})
-    if req.next_holder:
-        _valid_handoff_target(req.next_holder)
-    with _invalid_lease_request_as_422():
-        res = get_barb_continuity_store().handoff_lease(
-            scope=req.scope,
-            author=holder,
-            persona=req.persona,
-            machine=req.machine or get_runner().machine,
-            summary=req.summary,
-            completed=req.completed_items,
-            in_progress=req.in_progress_items,
-            next_actions=req.next_actions,
-            blockers=req.blockers,
-            takeover=pull,
-            next_holder=req.next_holder.strip() if req.next_holder else None,
-            next_persona=req.next_persona,
-            next_machine=req.next_machine,
-            ttl_seconds=req.ttl_sec,
-        )
-    if not res.get("handoff"):
-        code = 403 if res.get("reason") == "holder_mismatch" else 409
-        raise HTTPException(status_code=code, detail=res)
-    if pull:
-        audit_row: dict[str, Any] = {
-            "orchestration_type": "barb_lease",
-            "action": "barb.lease.handoff_takeover",
-            "scope": req.scope,
-            "new_holder": holder,
-            "epoch": res["lease"]["epoch"],
-            "reason": req.reason.strip(),
-            "requested_by": _caller.id,
-            "caller": format_caller(_caller),
-            "turnover_author": res["turnover"]["author"],
-            "recorded_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-        }
-        if res.get("displaced_holder"):
-            audit_row["displaced_holder"] = res["displaced_holder"]
-        await _audit.append_orchestration_audit(audit_row)
     return {"ok": True, **res}
 
 

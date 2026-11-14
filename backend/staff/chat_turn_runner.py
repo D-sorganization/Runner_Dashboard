@@ -68,11 +68,10 @@ from staff.conversations import ConversationStore, get_conversation_store
 from staff.owner_requests import request_approves, run_for_requester
 from staff.proposal_cards import post_proposal
 from staff.reply_contract import ProposedAction, parse_reply
+from staff.roles import RoleSpec, load_roles
 from staff.standards_registry import load_fleet_standards
 from staff.thread_bus import get_thread_bus
 from staff.turn_prompt import compose_turn_prompt, context_section
-
-from staff.roles import RoleSpec, load_roles
 
 if TYPE_CHECKING:
     from identity import Principal

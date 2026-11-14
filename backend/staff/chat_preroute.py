@@ -24,10 +24,9 @@ from typing import Any
 
 from staff.conversation_models import MessageRecord, ThreadRecord
 from staff.conversations import ConversationStore
+from staff.roles import load_roles
 from staff.router import BarbRouter, route_deterministic
 from staff.router_models import RoutingDecision
-
-from staff.roles import load_roles
 
 log = logging.getLogger("dashboard.staff.chat_preroute")
 

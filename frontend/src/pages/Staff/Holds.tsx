@@ -73,16 +73,7 @@ export function Holds({ roles }: HoldsProps) {
     setHolds((prev) => [
       ...(prev ?? []),
       // Created from the Holds tab, so it is a schedule hold (blocks scheduling) — #1726.
-      {
-        id: newHoldId(),
-        text: "",
-        set_on: todayIso(),
-        lifted_when: "",
-        applies_to: [],
-        active: true,
-        kind: "schedule",
-        set_by: "",
-      },
+      { id: newHoldId(), text: "", set_on: todayIso(), lifted_when: "", applies_to: [], active: true, kind: "schedule" },
     ]);
     setDirty(true);
   };

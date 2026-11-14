@@ -67,10 +67,9 @@ def cursor_pre_launch_or_block(run_store: Any, plan: Any, rec: Any, wall_clock_t
     """
     if plan.provider != "cursor-agent":
         return True
+    from staff import claim_guard
     from staff.cloud_dispatch import targets_from_record
     from staff.store import _now
-
-    from staff import claim_guard
 
     issue_number, pr_number = targets_from_record(plan.target_kind, plan.target_ref)
     lease = pre_launch_lease_recheck(plan.repo, issue_number, pr_number, rec.id, wall_clock_timeout + 300.0)

@@ -11,14 +11,13 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from staff import quota as quota_mod
 from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ProviderAdapter
 from staff.redaction import redact_sensitive_content
+from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore
 from staff.watchdog import StaffWatchdog
-
-from staff import quota as quota_mod
-from staff.roles import RoleSpec
 
 if TYPE_CHECKING:
     from staff.runner_ops import ReadOnlyKwargs

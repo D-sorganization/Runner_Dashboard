@@ -138,10 +138,6 @@
           "type": "boolean",
           "description": "Opt-in: unattended runs are code-read-only (no edits, commits, pushes or PR/issue writes; read-only gh/git and the local dashboard API). Runner_Dashboard#1659."
         },
-        "occupies_paths": {
-          "type": "boolean",
-          "description": "When false, dispatch skips path-overlap session acquire and does not block other dispatches. Defaults to false when code_read_only is true."
-        },
         "fleet_actions": {
           "type": "array",
           "uniqueItems": true,

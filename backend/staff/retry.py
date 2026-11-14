@@ -36,9 +36,8 @@ from staff.runner_ops import can_run_unattended, read_only_kwargs
 if TYPE_CHECKING:
     from staff.holds import HoldsList
     from staff.plan import RunPlan
-    from staff.store import RunRecord
-
     from staff.roles import RoleSpec
+    from staff.store import RunRecord
 
 log = logging.getLogger("dashboard.staff.retry")
 

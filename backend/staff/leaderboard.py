@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from staff import outcomes
 from staff.outcomes import PrFact, PrKey
 from staff.report_cards import (
     MIN_CONFIDENT_SAMPLE,
@@ -13,8 +14,6 @@ from staff.report_cards import (
     wilson_ci_95,
 )
 from staff.store import RunRecord
-
-from staff import outcomes
 
 __all__ = [
     "MIN_CONFIDENT_SAMPLE",

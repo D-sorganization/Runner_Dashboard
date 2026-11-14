@@ -15,7 +15,6 @@ from github_app_auth import (
 )
 from security import validate_repo_slug
 from staff.git_identity import staff_git_identity_env
-
 from staff.roles import RoleSpec
 
 _CHILD_STRIP_KEYS = (

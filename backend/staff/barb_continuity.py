@@ -29,9 +29,7 @@ BARB_SCOPES: tuple[str, ...] = tuple(
     ).split()
 )
 BARB_PERSONAS: tuple[str, ...] = tuple("grok-barb codex-barb claude-barb agy-barb cursor-barb rd-barb".split())
-DEFAULT_LEASE_TTL_SECONDS = 14400
-MAX_LEASE_TTL_SECONDS = 86400
-AUTO_EXTEND_REMAINING_SEC = 3600
+DEFAULT_LEASE_TTL_SECONDS = 1800
 
 
 _SCHEMA = """
@@ -82,16 +80,6 @@ def _is_released(row: sqlite3.Row) -> bool:
     return bool(str(row["released_at"] or "").strip())
 
 
-def clamp_lease_ttl_seconds(ttl_seconds: int) -> int:
-    """Clamp requested lease TTL to the store's supported range."""
-    return max(60, min(int(ttl_seconds), MAX_LEASE_TTL_SECONDS))
-
-
-def _lease_expires_at(dt: datetime, ttl_seconds: int) -> str:
-    exp_dt = datetime.fromtimestamp(dt.timestamp() + clamp_lease_ttl_seconds(ttl_seconds), tz=UTC)
-    return _now_iso(exp_dt)
-
-
 class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
     """Thread-safe SQLite store for Multi-Barb leases, turnover log, and task inventory."""
 
@@ -128,7 +116,8 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
         now_s = _now_iso(dt)
-        exp_s = _lease_expires_at(dt, ttl_seconds)
+        exp_dt = datetime.fromtimestamp(dt.timestamp() + max(60, min(ttl_seconds, 14400)), tz=UTC)
+        exp_s = _now_iso(exp_dt)
         with self._lock, self._conn:
             cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
             if cur is not None:
@@ -173,7 +162,7 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
         now_s = _now_iso(dt)
-        exp_s = _lease_expires_at(dt, ttl_seconds)
+        exp_s = _now_iso(datetime.fromtimestamp(dt.timestamp() + max(60, min(ttl_seconds, 14400)), tz=UTC))
         with self._lock, self._conn:
             cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (scope,)).fetchone()
             if cur is None or _is_released(cur):
@@ -189,221 +178,6 @@ class BarbContinuityStore(BarbLeaseFenceMixin, BarbTaskInventoryMixin):
             )
             row = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (scope,)).fetchone()
         return {"renewed": True, "lease": self._row_to_lease(row, now_s)}
-
-    def renew_lease(
-        self,
-        *,
-        scope: str,
-        caller_id: str,
-        holder: str,
-        persona: str = "",
-        machine: str = "",
-        summary: str | None = None,
-        ttl_seconds: int = DEFAULT_LEASE_TTL_SECONDS,
-        now: datetime | None = None,
-    ) -> dict[str, Any]:
-        """Renew a live lease, or re-acquire when expired or vacant (no epoch required)."""
-        from staff.barb_lease_fence import _holder_bound_to  # noqa: PLC0415
-
-        norm_scope = normalize_scope(scope)
-        if not holder.strip():
-            raise ValueError("holder must not be empty")
-        dt = now if now is not None else datetime.now(UTC)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        now_s = _now_iso(dt)
-        exp_s = _lease_expires_at(dt, ttl_seconds)
-        with self._lock, self._conn:
-            cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
-            if cur is not None and not _is_released(cur) and str(cur["expires_at"]) > now_s:
-                seat_holder = str(cur["holder"])
-                if not _holder_bound_to(caller_id, seat_holder):
-                    return {
-                        "renewed": False,
-                        "reacquired": False,
-                        "conflict": True,
-                        "reason": "held_by_other",
-                        "lease": self._row_to_lease(cur, now_s),
-                    }
-                bump_epoch = seat_holder != holder
-                next_epoch = int(cur["epoch"]) + (1 if bump_epoch else 0)
-                row_persona = persona if persona else str(cur["persona"])
-                row_machine = machine if machine else str(cur["machine"])
-                row_summary = summary if summary is not None else str(cur["summary"])
-                self._conn.execute(
-                    "UPDATE barb_scoped_leases SET holder=?, persona=?, machine=?, epoch=?, "
-                    "heartbeat_at=?, expires_at=?, summary=?, released_at='' WHERE scope=?",
-                    (holder, row_persona, row_machine, next_epoch, now_s, exp_s, row_summary, norm_scope),
-                )
-                row = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
-                return {"renewed": True, "reacquired": False, "lease": self._row_to_lease(row, now_s)}
-            same_principal = cur is not None and _holder_bound_to(caller_id, str(cur["holder"]))
-            last_to = str(cur["last_turnover_id"]) if same_principal and cur is not None else ""
-            next_epoch = int(cur["epoch"]) + 1 if cur is not None else 1
-            acquired_at = str(cur["acquired_at"]) if same_principal and cur is not None else now_s
-            row_persona = persona or (str(cur["persona"]) if cur is not None else "")
-            row_machine = machine or (str(cur["machine"]) if cur is not None else "")
-            row_summary = summary if summary is not None else (str(cur["summary"]) if cur is not None else "")
-            if cur is not None:
-                self._conn.execute(
-                    "UPDATE barb_scoped_leases SET holder=?, persona=?, machine=?, epoch=?, "
-                    "acquired_at=?, heartbeat_at=?, expires_at=?, summary=?, last_turnover_id=?, released_at='' "
-                    "WHERE scope=?",
-                    (
-                        holder,
-                        row_persona,
-                        row_machine,
-                        next_epoch,
-                        acquired_at,
-                        now_s,
-                        exp_s,
-                        row_summary,
-                        last_to,
-                        norm_scope,
-                    ),
-                )
-            else:
-                self._conn.execute(
-                    "INSERT INTO barb_scoped_leases (scope, holder, persona, machine, epoch, "
-                    "acquired_at, heartbeat_at, expires_at, summary, last_turnover_id) "
-                    "VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, '')",
-                    (norm_scope, holder, row_persona, row_machine, now_s, now_s, exp_s, row_summary),
-                )
-            row = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
-        return {"renewed": True, "reacquired": True, "lease": self._row_to_lease(row, now_s)}
-
-    def handoff_lease(
-        self,
-        *,
-        scope: str,
-        author: str,
-        persona: str,
-        machine: str,
-        summary: str,
-        completed: list[str] | None = None,
-        in_progress: list[str] | None = None,
-        next_actions: list[str] | None = None,
-        blockers: list[str] | None = None,
-        takeover: bool = False,
-        next_holder: str | None = None,
-        next_persona: str = "",
-        next_machine: str = "",
-        ttl_seconds: int = DEFAULT_LEASE_TTL_SECONDS,
-        now: datetime | None = None,
-    ) -> dict[str, Any]:
-        """Atomic turnover log plus release, direct transfer, or contested takeover."""
-        norm_scope = normalize_scope(scope)
-        dt = now if now is not None else datetime.now(UTC)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
-        now_s = _now_iso(dt)
-        exp_s = _lease_expires_at(dt, ttl_seconds)
-        handoff_summary = summary if summary.startswith("BARB-HANDOFF") else f"BARB-HANDOFF: {summary.strip()}"
-        displaced_holder = ""
-        with self._lock, self._conn:
-            cur = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
-            if not takeover:
-                if cur is None or _is_released(cur) or str(cur["expires_at"]) <= now_s:
-                    lease = self._row_to_lease(cur, now_s) if cur is not None else None
-                    return {"handoff": False, "reason": "no_live_lease", "lease": lease}
-                seat_holder = str(cur["holder"])
-                if seat_holder != author:
-                    return {
-                        "handoff": False,
-                        "reason": "holder_mismatch",
-                        "lease": self._row_to_lease(cur, now_s),
-                    }
-                entry_id = self._insert_turnover(
-                    cur,
-                    scope=norm_scope,
-                    author=author,
-                    summary=handoff_summary,
-                    persona=persona,
-                    machine=machine,
-                    completed=completed,
-                    in_progress=in_progress,
-                    blockers=blockers,
-                    next_actions=next_actions,
-                    now_s=now_s,
-                )
-                if next_holder:
-                    dest_persona = next_persona or persona
-                    dest_machine = next_machine.strip()
-                    next_epoch = int(cur["epoch"]) + 1
-                    self._conn.execute(
-                        "UPDATE barb_scoped_leases SET holder=?, persona=?, machine=?, epoch=?, "
-                        "acquired_at=?, heartbeat_at=?, expires_at=?, last_turnover_id=?, released_at='' "
-                        "WHERE scope=?",
-                        (
-                            next_holder,
-                            dest_persona,
-                            dest_machine,
-                            next_epoch,
-                            now_s,
-                            now_s,
-                            exp_s,
-                            entry_id,
-                            norm_scope,
-                        ),
-                    )
-                    mode = "push_transfer"
-                else:
-                    self._conn.execute(
-                        "UPDATE barb_scoped_leases SET holder='', released_at=?, expires_at=? WHERE scope=?",
-                        (now_s, now_s, norm_scope),
-                    )
-                    mode = "push_release"
-            else:
-                if (
-                    cur is not None
-                    and not _is_released(cur)
-                    and str(cur["expires_at"]) > now_s
-                    and str(cur["holder"]).strip()
-                ):
-                    displaced_holder = str(cur["holder"])
-                entry_id = self._insert_turnover(
-                    cur,
-                    scope=norm_scope,
-                    author=author,
-                    summary=handoff_summary,
-                    persona=persona,
-                    machine=machine,
-                    completed=completed,
-                    in_progress=in_progress,
-                    blockers=blockers,
-                    next_actions=next_actions,
-                    now_s=now_s,
-                )
-                prev_turnover = str(cur["last_turnover_id"]) if cur is not None else ""
-                last_to = prev_turnover if prev_turnover.strip() else entry_id
-                if cur is not None:
-                    next_epoch = int(cur["epoch"]) + 1
-                    self._conn.execute(
-                        "UPDATE barb_scoped_leases SET holder=?, persona=?, machine=?, epoch=?, "
-                        "acquired_at=?, heartbeat_at=?, expires_at=?, summary=?, last_turnover_id=?, released_at='' "
-                        "WHERE scope=?",
-                        (author, persona, machine, next_epoch, now_s, now_s, exp_s, summary, last_to, norm_scope),
-                    )
-                else:
-                    self._conn.execute(
-                        "INSERT INTO barb_scoped_leases (scope, holder, persona, machine, epoch, "
-                        "acquired_at, heartbeat_at, expires_at, summary, last_turnover_id) "
-                        "VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?)",
-                        (norm_scope, author, persona, machine, now_s, now_s, exp_s, summary, entry_id),
-                    )
-                mode = "pull_takeover"
-            row = self._conn.execute("SELECT * FROM barb_scoped_leases WHERE scope = ?", (norm_scope,)).fetchone()
-            turnover_row = self._conn.execute("SELECT * FROM barb_turnover_log WHERE id = ?", (entry_id,)).fetchone()
-        out: dict[str, Any] = {
-            "handoff": True,
-            "mode": mode,
-            "turnover_id": entry_id,
-            "turnover": self._row_to_turnover(turnover_row),
-            "lease": self._row_to_lease(row, now_s),
-        }
-        if displaced_holder:
-            out["displaced_holder"] = displaced_holder
-        return out
 
     def release_lease(
         self,

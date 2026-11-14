@@ -11,12 +11,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 
+from staff import cartographer_persona
 from staff.barb_continuity import BarbContinuityStore
 from staff.scheduler_cartographer import fire_guard as cartographer_fire_guard
 from staff.scheduler_lost_code_finder import ROLE as LOST_CODE_FINDER_ROLE
 from staff.scheduler_lost_code_finder import fire_guard as lost_code_finder_fire_guard
-
-from staff import cartographer_persona
 
 
 def persona_fire_guard(

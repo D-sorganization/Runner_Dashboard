@@ -10,9 +10,8 @@ import asyncio
 import logging
 from typing import Any
 
-from staff.runner import get_runner
-
 from staff import fleet as staff_fleet
+from staff.runner import get_runner
 
 log = logging.getLogger("dashboard.coordination")
 

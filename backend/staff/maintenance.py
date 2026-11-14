@@ -21,6 +21,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from identity import format_caller
+from staff import maintenance_github
 from staff.audit import record_audit
 from staff.maintenance_policy import (
     MAINTENANCE_POLICY,
@@ -31,8 +32,6 @@ from staff.maintenance_policy import (
     requested_count,
 )
 from staff.maintenance_policy import MAX_BATCH_RUNNERS as MAX_BATCH_RUNNERS  # re-exported for callers
-
-from staff import maintenance_github
 
 if TYPE_CHECKING:
     from staff.actions import ActionContext, ActionRegistry, ActionResult

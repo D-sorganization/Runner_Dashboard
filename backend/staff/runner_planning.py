@@ -8,16 +8,15 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
+from staff import consolidation, workspace
+from staff import focus as focus_mod
+from staff import runner_ops as ops
 from staff.adapters import ProviderAdapter
 from staff.lessons import select_repo_lessons
 from staff.lifecycle_fence import assert_fence_consumed, resolve_pr_lifecycle
 from staff.plan import RunPlan, RunRequest
-from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP, estimate_tokens
-
-from staff import consolidation, workspace
-from staff import focus as focus_mod
-from staff import runner_ops as ops
 from staff.roles import RoleSpec
+from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP, estimate_tokens
 
 _SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
 

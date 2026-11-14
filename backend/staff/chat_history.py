@@ -12,7 +12,6 @@ from typing import Any
 
 from staff.conversations import ConversationStore
 from staff.reply_contract import get_chat_contract_text
-
 from staff.roles import RoleSpec
 
 DEFAULT_TOKEN_BUDGET = 4000

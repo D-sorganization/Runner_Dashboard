@@ -29,6 +29,7 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
+from staff.roles import AD_HOC_ROLE, load_roles
 from staff.verification_probe import GhCliPrProbe
 from staff.verification_types import (
     GH_TIMEOUT_SECONDS,
@@ -38,8 +39,6 @@ from staff.verification_types import (
     Verdict,
     ci_state,
 )
-
-from staff.roles import AD_HOC_ROLE, load_roles
 
 if TYPE_CHECKING:
     from staff.store import RunRecord, RunStore

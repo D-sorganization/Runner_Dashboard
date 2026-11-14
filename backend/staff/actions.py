@@ -33,9 +33,8 @@ from staff.approval_authority import (  # noqa: F401 - is_owner / is_proposal_ex
 from staff.conversation_models import ActionProposalRecord
 from staff.conversations import get_conversation_store
 from staff.maintenance import register_maintenance_actions
-from staff.work_request_executors import register_work_request_actions
-
 from staff.roles import RoleSpec, load_roles
+from staff.work_request_executors import register_work_request_actions
 
 if TYPE_CHECKING:
     from staff.audit import StaffAuditStore
