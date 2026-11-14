@@ -1,8 +1,7 @@
 """Contract: bulk-tier governance jobs must not use the Desk-neutral label.
 
 Owner ruling 2026-11-14: lightweight checks (pr-guard, spec/title/phantom guards,
-secret scans, merge-queue hygiene) route to ``d-sorg-fleet-bulk``, not the
-``d-sorg-fleet`` label carried on DeskComputer (6-runner cap; daytime target 3).
+secret scans, merge-queue hygiene) route to ``d-sorg-fleet-bulk``, not the neutral ``d-sorg-fleet`` hub pool label.
 """
 
 from __future__ import annotations

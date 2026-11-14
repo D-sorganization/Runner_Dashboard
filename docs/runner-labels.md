@@ -58,9 +58,9 @@ Lightweight governance jobs — including the reusable **pr-guard** (
 `reusable-pr-freshness-guard.yml`), spec/title/phantom guards, secret scans, and
 merge-queue ref hygiene — must use this label (or the equivalent
 `|| 'd-sorg-fleet-bulk'` self-hosted fallback expression), not the neutral
-`d-sorg-fleet` label advertised on DeskComputer. DeskComputer is capped at six
-runners with a daytime target of three; bulk-tier runners absorb governance load
-so heavy PR CI stays off that pool.
+`d-sorg-fleet` label on the hub's capped runner pool (six runners; daytime
+target three). Bulk-tier runners on other hosts absorb governance load so heavy
+PR CI stays off that pool.
 
 For fork PRs and go-public hosted paths, `CI_PR_RUNNER_MODE=hosted` and related
 variables continue to route the same jobs to `ubuntu-latest` (H-06 hosted

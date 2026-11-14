@@ -102,7 +102,7 @@ def test_pull_request_jobs_never_need_queue_entry_alive_job(name: str) -> None:
 
 
 _GO_PUBLIC_RUNS_ON = (
-    "${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet' }}"
+    "${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || 'd-sorg-fleet-bulk' }}"
 )
 
 
