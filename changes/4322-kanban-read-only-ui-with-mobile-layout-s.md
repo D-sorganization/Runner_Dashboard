@@ -1,4 +1,4 @@
 ---
 issue: 4322
-summary: "Kanban read-only UI with mobile layout, source links, and fixture fallback until ingestion merges"
+summary: "Kanban read-only UI with mobile layout, source links, and fixture fallback until ingestion merges; overlap sessions skip idle TTL when bound-run liveness is unknown or active"
 ---

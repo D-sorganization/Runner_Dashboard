@@ -140,6 +140,38 @@ def test_expire_keeps_session_when_bound_run_liveness_unknown() -> None:
     assert any(s.session_id == session_id for s in dispatch_queue_manager.get_active_sessions())
 
 
+def test_expire_keeps_bound_session_on_idle_ttl_when_liveness_unknown() -> None:
+    """Regression: bound runs with unknown liveness must not be idle-expired (#4352)."""
+    session_id = uuid4().hex
+    stale = (datetime.now(UTC) - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    dispatch_queue_manager._active_sessions[session_id] = ActiveSession(
+        session_id=session_id,
+        repository="Runner_Dashboard",
+        number=None,
+        declared_paths=["backend/a.py"],
+        tier="cli",
+        model="sonnet",
+        role="ad-hoc",
+        occupies_paths=True,
+        run_id="run-store-miss",
+        last_activity_at=stale,
+        dispatched_at=stale,
+    )
+    bind_run_session("run-store-miss", session_id)
+
+    def live(_run_id: str) -> bool | None:
+        return None
+
+    ttl = session_idle_ttl_seconds()
+    released = dispatch_queue_manager.expire_stale_sessions(
+        now=datetime.now(UTC),
+        ttl_seconds=ttl,
+        run_live=live,
+    )
+    assert released == []
+    assert any(s.session_id == session_id for s in dispatch_queue_manager.get_active_sessions())
+
+
 def test_expire_releases_session_when_bound_run_is_terminal() -> None:
     session_id = uuid4().hex
     dispatch_queue_manager._active_sessions[session_id] = ActiveSession(
