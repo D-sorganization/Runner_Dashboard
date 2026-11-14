@@ -114,6 +114,32 @@ def test_idle_expiry_releases_unbound_stale_session() -> None:
     assert dispatch_queue_manager.get_active_sessions() == []
 
 
+def test_expire_keeps_session_when_bound_run_liveness_unknown() -> None:
+    session_id = uuid4().hex
+    recent = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    dispatch_queue_manager._active_sessions[session_id] = ActiveSession(
+        session_id=session_id,
+        repository="Runner_Dashboard",
+        number=None,
+        declared_paths=["*"],
+        tier="cli",
+        model="sonnet",
+        role="ad-hoc",
+        occupies_paths=True,
+        run_id="run-missing",
+        last_activity_at=recent,
+        dispatched_at=recent,
+    )
+    bind_run_session("run-missing", session_id)
+
+    def live(run_id: str) -> bool | None:
+        return None if run_id == "run-missing" else True
+
+    released = dispatch_queue_manager.expire_stale_sessions(run_live=live, ttl_seconds=60 * 60)
+    assert released == []
+    assert any(s.session_id == session_id for s in dispatch_queue_manager.get_active_sessions())
+
+
 def test_expire_releases_session_when_bound_run_is_terminal() -> None:
     session_id = uuid4().hex
     dispatch_queue_manager._active_sessions[session_id] = ActiveSession(

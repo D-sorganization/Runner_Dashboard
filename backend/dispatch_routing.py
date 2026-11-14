@@ -381,8 +381,7 @@ class DispatchQueueManager:
                 live = run_live(session.run_id)
                 if live is False:
                     reason = "bound_run_terminal"
-                elif live is None:
-                    reason = "bound_run_unknown"
+                # Unknown liveness (None) or probe errors: keep the overlap session; idle TTL still applies.
             last = parse_github_ts(session.last_activity_at) or parse_github_ts(session.dispatched_at)
             if reason is None and last is not None and (clock - last).total_seconds() > ttl:
                 reason = "idle_ttl_exceeded"
