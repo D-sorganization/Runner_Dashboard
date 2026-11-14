@@ -84,7 +84,7 @@ async def test_fleet_status_queries_peer_pools_concurrently(monkeypatch: pytest.
     async def _metrics() -> dict:
         return {"hostname": "local"}
 
-    monkeypatch.setattr(fleet, "get_system_metrics_snapshot", _metrics)
+    monkeypatch.setattr(fleet, "local_system_metrics_snapshot", _metrics)
     monkeypatch.setattr(fleet, "load_machine_registry", lambda: {})
     monkeypatch.setattr(
         fleet,

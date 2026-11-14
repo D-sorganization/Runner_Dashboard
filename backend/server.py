@@ -232,7 +232,6 @@ from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
 )
-from system_utils import get_system_metrics_snapshot  # noqa: E402
 from workflows.run_enrichment import (  # noqa: E402
     _get_recent_org_repos,
 )
@@ -2828,7 +2827,7 @@ _orchestration_router.set_dependencies(
     write_runner_schedule_config=_write_runner_schedule_config,
     runner_scheduler_apply_command=_runner_scheduler_apply_command,
     run_cmd=run_cmd,
-    get_system_metrics_snapshot=get_system_metrics_snapshot,
+    get_system_metrics_snapshot=_system_router.local_system_metrics_snapshot,
     runner_scheduler_bin=RUNNER_SCHEDULER_BIN,
     runner_schedule_config=RUNNER_SCHEDULE_CONFIG,
     runner_scheduler_state=RUNNER_SCHEDULER_STATE,

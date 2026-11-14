@@ -57,7 +57,7 @@ async def test_slow_peer_does_not_exceed_probe_wall_clock(monkeypatch: pytest.Mo
     async def _metrics() -> dict:
         return {"hostname": "local"}
 
-    monkeypatch.setattr(fleet, "get_system_metrics_snapshot", _metrics)
+    monkeypatch.setattr(fleet, "local_system_metrics_snapshot", _metrics)
 
     from fastapi import Response
 
