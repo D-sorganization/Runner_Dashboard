@@ -22,8 +22,9 @@ import logging
 import os
 import shutil
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Final, Literal, Protocol, runtime_checkable
+from typing import Final, Literal, Protocol, runtime_checkable
 
 from readiness_budget import bounded_checks, subprocess_output
 from runner_busy_lock import RunnerBusyLockProbe

@@ -41,8 +41,10 @@ def test_install_dashboard_artifact_chmods_host_metrics_probe() -> None:
 
 
 def test_setup_sh_installs_host_metrics_probe_timer() -> None:
-  src = (DEPLOY / "setup.sh").read_text(encoding="utf-8")
-  assert "install-host-metrics-probe.sh" in src
+  setup = (DEPLOY / "setup.sh").read_text(encoding="utf-8")
+  helper = (DEPLOY / "setup-host-metrics-probe.sh").read_text(encoding="utf-8")
+  assert "setup_install_host_metrics_probe" in setup
+  assert "install-host-metrics-probe.sh" in helper
 
 
 def test_installer_does_not_require_execute_bit_before_install() -> None:
