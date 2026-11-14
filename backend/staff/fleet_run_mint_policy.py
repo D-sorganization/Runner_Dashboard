@@ -7,9 +7,10 @@ import logging
 from fastapi import HTTPException
 from identity import Principal, principal_has_scope
 from staff.adapters import ADAPTERS
-from staff.roles import RoleSpec, load_roles
 from staff.store import ACTIVE_STATUSES, RunRecord
 from staff.tokens import is_active_run_principal
+
+from staff.roles import RoleSpec, load_roles
 
 log = logging.getLogger("dashboard.staff.fleet_run_mint")
 
