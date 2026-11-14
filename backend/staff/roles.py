@@ -128,7 +128,13 @@ AD_HOC_ROLE = "ad-hoc"
 # (e.g. code-reviewer read-only overlap exemption until RM merges the same flags).
 _BUNDLED_ROLE_OVERRIDE_NAMES: frozenset[str] = frozenset({"code-reviewer"})
 _BUNDLED_PERMISSION_KEYS: tuple[str, ...] = ("code_read_only", "occupies_paths")
-_UNSET_DIRECTORY: object = object()
+
+
+class _UnsetDirectoryType:
+    """Sentinel for ``load_roles()`` default (apply bundled overrides)."""
+
+
+_UNSET_DIRECTORY = _UnsetDirectoryType()
 
 
 def _bundled_roles_dir() -> Path:
@@ -205,7 +211,7 @@ def clear_roles_cache() -> None:
         _CACHE_ERRORS = {}
 
 
-def load_roles(directory: Path | None | object = _UNSET_DIRECTORY) -> dict[str, RoleSpec]:
+def load_roles(directory: Path | None | _UnsetDirectoryType = _UNSET_DIRECTORY) -> dict[str, RoleSpec]:
     """Load every role in ``directory`` with an mtime-keyed cache.
 
     Schema errors and broken files are surfaced in the returned dictionary
