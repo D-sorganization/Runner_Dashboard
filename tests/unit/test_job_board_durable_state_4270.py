@@ -9,6 +9,7 @@ the claim-state database and nothing else.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import threading
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -210,3 +211,55 @@ def test_lease_rows_round_trip_and_purge(tmp_path: Path) -> None:
 def test_the_job_board_keeps_no_fence_or_lease_table_in_process_memory() -> None:
     for module in (jobs_mod, job_board_lease):
         assert not hasattr(module, "_fences") and not hasattr(module, "_lease_state"), module.__name__
+
+
+class _CommitFailsOnce:
+    """A connection whose first ``COMMIT`` fails, as on a full disk."""
+
+    def __init__(self, db: sqlite3.Connection) -> None:
+        self._db = db
+        self.failed = False
+
+    def execute(self, sql: str, *args: Any) -> sqlite3.Cursor:
+        if sql == "COMMIT" and not self.failed:
+            self.failed = True
+            raise sqlite3.OperationalError("disk I/O error")
+        return self._db.execute(sql, *args)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._db, name)
+
+
+@pytest.mark.unit
+def test_a_failed_commit_is_rolled_back_and_the_store_keeps_working(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ClaimStateStore(tmp_path / "commit.sqlite3")
+    monkeypatch.setattr(store, "_db", _CommitFailsOnce(store._db))
+
+    with pytest.raises(sqlite3.OperationalError, match="disk I/O"):
+        store.mint_fence(REPO, 41)
+
+    assert store.current_fence(REPO, 41) == 0, "the failed mint left nothing behind"
+    assert store.mint_fence(REPO, 41) == 1, "the connection is not stuck inside the failed transaction"
+    assert store.try_acquire(REPO, 41, agent=AGENT, session=SESSION).acquired
+
+
+@pytest.mark.unit
+def test_a_store_error_on_one_swept_row_does_not_stop_the_others(
+    leases: FakeLeases, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _held_job(leases, 42, expires_in_minutes=-5)
+    _held_job(leases, 43, expires_in_minutes=-5)
+    leases.failing.add(42)
+
+    def locked(_self: ClaimStateStore, _row: JobLeaseRow) -> int:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(ClaimStateStore, "count_job_release_failure", locked)
+
+    result = jobs_mod.sweep_expired_job_claims()
+
+    assert result["released"] == 1 and leases.released == [43]
+    assert len(result["errors"]) == 1 and "Tools#42" in result["errors"][0]
+    assert _tracked() == {42}, "the row stays for the next sweep"

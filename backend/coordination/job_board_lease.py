@@ -108,44 +108,54 @@ def sweep_expired_job_claims(*, now: datetime | None = None) -> dict[str, Any]:
     failure counts are durable, so a restart neither hides a lease from the sweeper nor
     refills the retry budget (#4270 B-09).
     """
-    from coordination import jobs as jobs_mod
-
     moment = (now or datetime.now(UTC)).timestamp()
     store = claim_state_mod.get_store()
-    released = forgotten = dead_lettered = 0
+    counts: dict[str, int] = {}
     errors: list[str] = []
     for row in store.list_job_leases():
-        repo, issue, agent, session, fence = row.repo, row.issue, row.agent, row.session, row.fence
         if moment < row.expires_at:
             continue
         try:
-            jobs_mod.release_job(
-                repo,
-                issue,
-                agent=agent,
-                session=session,
-                fence=fence,
-                reason="agent_bus lease expired",
-            )
-            released += 1
-        except jobs_mod.StaleFenceError as exc:
-            store.forget_job_lease(row)
-            forgotten += 1
-            log.info("jobs: expiry sweep forgot %s#%s, no longer held by %s: %s", repo, issue, session, exc)
-        except Exception as exc:  # noqa: BLE001 — sweep continues on one failure
-            failures = store.count_job_release_failure(row)
-            if not failures:
-                log.info("jobs: expiry sweep failure for %s#%s is moot, the row was replaced: %s", repo, issue, exc)
-                continue
-            errors.append(f"{repo}#{issue}: {exc}")
-            if failures < MAX_JOB_RELEASE_ATTEMPTS:
-                log.warning("jobs: expiry sweep failed for %s#%s: %s", repo, issue, exc)
-                continue
-            store.forget_job_lease(row)
-            dead_lettered += 1
-            log.error(
-                "job-board sweeper dead-letter: giving up on %s#%s for session %s (agent %s) after %d failed "
-                "releases; the lease stays until its own expiry: %s",
-                repo, issue, session, agent, failures, exc,
-            )  # fmt: skip
-    return {"released": released, "errors": errors, "forgotten": forgotten, "dead_lettered": dead_lettered}
+            outcome, error = _settle_expired(store, row)
+        except Exception as exc:  # noqa: BLE001 — a store error on one row must not stop the sweep
+            outcome, error = "", f"{row.repo}#{row.issue}: {exc}"
+            log.warning("jobs: expiry sweep could not settle %s#%s: %s", row.repo, row.issue, exc)
+        counts[outcome] = counts.get(outcome, 0) + 1
+        if error:
+            errors.append(error)
+    return {
+        "released": counts.get("released", 0),
+        "errors": errors,
+        "forgotten": counts.get("forgotten", 0),
+        "dead_lettered": counts.get("dead_lettered", 0),
+    }
+
+
+def _settle_expired(store: Any, row: JobLeaseRow) -> tuple[str, str]:
+    """Settle one expired row; returns ``(outcome, error)``, either of which may be empty."""
+    from coordination import jobs as jobs_mod
+
+    repo, issue, agent, session, fence = row.repo, row.issue, row.agent, row.session, row.fence
+    try:
+        jobs_mod.release_job(repo, issue, agent=agent, session=session, fence=fence, reason="agent_bus lease expired")
+        return "released", ""
+    except jobs_mod.StaleFenceError as exc:
+        store.forget_job_lease(row)
+        log.info("jobs: expiry sweep forgot %s#%s, no longer held by %s: %s", repo, issue, session, exc)
+        return "forgotten", ""
+    except Exception as exc:  # noqa: BLE001 — a failed release is counted, not raised
+        failures = store.count_job_release_failure(row)
+        if not failures:
+            log.info("jobs: expiry sweep failure for %s#%s is moot, the row was replaced: %s", repo, issue, exc)
+            return "", ""
+        error = f"{repo}#{issue}: {exc}"
+        if failures < MAX_JOB_RELEASE_ATTEMPTS:
+            log.warning("jobs: expiry sweep failed for %s#%s: %s", repo, issue, exc)
+            return "", error
+        store.forget_job_lease(row)
+        log.error(
+            "job-board sweeper dead-letter: giving up on %s#%s for session %s (agent %s) after %d failed "
+            "releases; the lease stays until its own expiry: %s",
+            repo, issue, session, agent, failures, exc,
+        )  # fmt: skip
+        return "dead_lettered", error

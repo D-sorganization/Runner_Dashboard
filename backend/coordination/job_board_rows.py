@@ -77,10 +77,12 @@ class JobBoardRows:
             self._db.execute("BEGIN IMMEDIATE")
             try:
                 result = work()
+                self._db.execute("COMMIT")
             except Exception:
+                # A failed COMMIT leaves the transaction open; without the rollback every
+                # later BEGIN on this connection would fail.
                 self._db.execute("ROLLBACK")
                 raise
-            self._db.execute("COMMIT")
             return result
 
         with self._lock:

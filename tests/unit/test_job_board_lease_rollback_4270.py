@@ -7,6 +7,7 @@ posted the lease comment must be rolled back (label removed, retried, failure re
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -216,3 +217,44 @@ def test_heartbeat_failed_post_reports_and_keeps_the_existing_lease(
     assert jobs_mod._current_fence(REPO, issue) == claimed["fence"]
     row = claim_state_mod.get_store().read(REPO, issue)
     assert row is not None and (row.agent, row.session) == (AGENT, session)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("failing", ["_mint_fence", "remember_lease"])
+def test_job_claim_that_cannot_record_its_fence_or_lease_releases_the_lease(
+    rm: FakeRM, monkeypatch: pytest.MonkeyPatch, failing: str
+) -> None:
+    """#4270 B-09: the fence and lease row are database writes now; a failed one must not strand the RM lease."""
+    issue = 4308
+    session = f"{AGENT}-{issue}"
+    patch_gh_list_fetch(monkeypatch, _open_issue_fetch(issue))
+    rm.respond("post_agent_lease", lease_result())
+    rm.respond("release_agent_lease", release_result())
+    posted = {"n": 0}
+    real_post_lease = claims_mod.post_lease
+
+    def post_lease(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        posted["n"] += 1
+        return real_post_lease(*args, **kwargs)
+
+    def check(repo: str, number: int) -> dict[str, Any]:
+        if posted["n"] == 0:
+            return {"available": True, "held": False, "agent": "", "session": "", "reason": ""}
+        return {"available": True, "held": True, "agent": AGENT, "session": session, "reason": "active lease"}
+
+    def locked(*_args: Any, **_kwargs: Any) -> None:
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(claims_mod, "post_lease", post_lease)
+    monkeypatch.setattr(claims_mod, "check", check)
+    target = jobs_mod if failing == "_mint_fence" else jobs_mod.job_board_lease
+    monkeypatch.setattr(target, failing, locked)
+
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        _claim(issue)
+
+    releases = _releases(rm)
+    assert len(releases) == 1, "the lease this call posted is released"
+    assert releases[0][releases[0].index("--session") + 1] == session
+    assert _lease_row(issue) is None
+    assert claim_state_mod.get_store().read(REPO, issue) is None
