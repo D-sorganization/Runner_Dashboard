@@ -377,14 +377,16 @@ class DispatchQueueManager:
             if session.status != "active" or not session.occupies_paths:
                 continue
             reason: str | None = None
+            skip_idle_ttl = False
             if session.run_id and run_live is not None:
                 live = run_live(session.run_id)
                 if live is False:
                     reason = "bound_run_terminal"
-                elif live is None:
-                    reason = "bound_run_unknown"
+                else:
+                    # None = store miss / probe error; True = run still active — keep overlap lock.
+                    skip_idle_ttl = True
             last = parse_github_ts(session.last_activity_at) or parse_github_ts(session.dispatched_at)
-            if reason is None and last is not None and (clock - last).total_seconds() > ttl:
+            if reason is None and not skip_idle_ttl and last is not None and (clock - last).total_seconds() > ttl:
                 reason = "idle_ttl_exceeded"
             if reason:
                 log.info(

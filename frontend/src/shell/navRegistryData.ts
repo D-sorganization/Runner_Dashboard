@@ -31,6 +31,7 @@ import {
   RepoIcon,
   UsersIcon,
   BrainIcon,
+  KanbanIcon,
   ShieldIcon,
 } from "./navIcons";
 
@@ -142,6 +143,17 @@ export const NAV_ITEMS: readonly NavItem[] = [
     frequent: true,
     mobilePrimary: true,
     mobileDrawer: false,
+  },
+  {
+    id: "kanban",
+    label: "Kanban",
+    group: "work",
+    Icon: KanbanIcon,
+    tooltip: "Read-only kanban of fleet work items with GitHub, claim, and run source links.",
+    tabId: "kanban",
+    frequent: false,
+    mobilePrimary: false,
+    mobileDrawer: true,
   },
   {
     id: "remediation",

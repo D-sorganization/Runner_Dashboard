@@ -95,6 +95,8 @@ describe("SC-D2: Secondary pages live under their area prefix", () => {
     expect(pathnameToTabId("/work/remediation")).toBe("remediation");
     expect(tabIdToPath("workflows")).toBe("/work/workflows");
     expect(pathnameToTabId("/work/workflows")).toBe("workflows");
+    expect(tabIdToPath("kanban")).toBe("/work/kanban");
+    expect(pathnameToTabId("/work/kanban")).toBe("kanban");
   });
 
   it("maps secondary staff pages under /staff/*", () => {
