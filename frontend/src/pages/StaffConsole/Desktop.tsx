@@ -73,7 +73,7 @@ export function StaffConsoleDesktop({
   const rosterError = sc.error?.kind === "roster" ? sc.error.message : null;
   // Readiness comes only from the backend's providers and schedule reports (#1804).
   const readiness = useRosterReadiness(roles);
-  const context = useRoleContext(currentRole, activeThread?.id);
+  const context = useRoleContext(currentRole, activeThread?.id, activeThread?.meta);
 
   // The address names the open conversation, so a reload or shared link reopens it (#1783).
   // replaceState, not push: switching threads should not flood the back stack.

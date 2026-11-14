@@ -88,7 +88,10 @@ describe("ContextPage", () => {
   });
 
   it("renders lesson queue with provenance, expiration, quarantine, and NEVER shows barb-only entries", () => {
-    render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-22T12:00:00Z"));
+    try {
+      render(<ContextPage pack={samplePack} lessons={sampleLessons} runs={sampleRuns} />);
     expect(screen.queryByText("Internal Barb credential hint")).not.toBeInTheDocument();
     expect(screen.queryByText("mem_05_barb")).not.toBeInTheDocument();
     expect(screen.getByTestId("count-proposed")).toHaveTextContent("1");
@@ -99,7 +102,10 @@ describe("ContextPage", () => {
     expect(screen.getByText("staff:fleet-swe:run-101")).toBeInTheDocument();
     expect(screen.getByText("run-101")).toBeInTheDocument();
     expect(screen.getByText(/Direct contradiction with FLEET.md/i)).toBeInTheDocument();
-    expect(screen.getByText("Legacy test harness argument").closest("tr")).toHaveTextContent("Expired");
+      expect(screen.getByText("Legacy test harness argument").closest("tr")).toHaveTextContent("Expired");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps full-prompt estimates out of the context cap and reports partial coverage", () => {

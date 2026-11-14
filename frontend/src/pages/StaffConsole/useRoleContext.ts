@@ -64,6 +64,7 @@ function scheduleDisabledReason(role: StaffRoleItem, state: SourceState, enabled
 export function useRoleContext(
   role: StaffRoleItem,
   threadId?: string | null,
+  threadMeta?: Record<string, unknown>,
 ): Required<
   Pick<
     ContextPaneProps,
@@ -94,10 +95,16 @@ export function useRoleContext(
     },
   });
   const threadContext = threadId
-    ? toThreadContext(threadId, runs.data?.runs, threadWorkItems.data?.work_items, {
-        runs: sourceState(runs),
-        work_items: sourceState(threadWorkItems),
-      })
+    ? toThreadContext(
+        threadId,
+        runs.data?.runs,
+        threadWorkItems.data?.work_items,
+        {
+          runs: sourceState(runs),
+          work_items: sourceState(threadWorkItems),
+        },
+        threadMeta,
+      )
     : null;
 
   // Persist, then re-read the schedule. A refusal (e.g. 403 without staff.holds.write)
