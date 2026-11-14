@@ -101,13 +101,21 @@ export async function throwIfHttpError(response: Response, fallback: string): Pr
   throw new Error(detail);
 }
 
+/** How many failed requests keep their key; the oldest is forgotten first. */
+const MAX_REMEMBERED_FAILURES = 16;
+
 export function useSubmit<T = void>(): UseSubmitResult<T> {
   const [state, dispatch] = useReducer(reduceSubmit<T>, { status: "idle" });
   const inFlightRef = useRef(false);
   const intentRef = useRef<string | undefined>(undefined);
+  // Keys of requests that failed, by intent. A failure may mean the server did the
+  // work, so sending the same request again must reuse its key even when another
+  // request was sent in between.
+  const failedKeysRef = useRef(new Map<string, string>());
 
   const reset = useCallback(() => {
     inFlightRef.current = false;
+    failedKeysRef.current.clear();
     dispatch({ type: "reset" });
   }, []);
 
@@ -117,9 +125,11 @@ export function useSubmit<T = void>(): UseSubmitResult<T> {
         return;
       }
 
-      const sameIntent = intentRef.current === intent;
+      const failedKeys = failedKeysRef.current;
+      const retryOfLast = state.status === "failed" && intentRef.current === intent;
       const idempotencyKey =
-        state.status === "failed" && sameIntent ? state.idempotencyKey : generateIdempotencyKey();
+        (intent !== undefined ? failedKeys.get(intent) : undefined) ??
+        (retryOfLast ? state.idempotencyKey : generateIdempotencyKey());
       intentRef.current = intent;
 
       inFlightRef.current = true;
@@ -128,9 +138,17 @@ export function useSubmit<T = void>(): UseSubmitResult<T> {
       const controller = new AbortController();
       executor({ idempotencyKey, signal: controller.signal })
         .then((value) => {
+          if (intent !== undefined) failedKeys.delete(intent);
           dispatch({ type: "succeeded", idempotencyKey, value });
         })
         .catch((err: unknown) => {
+          if (intent !== undefined) {
+            failedKeys.delete(intent);
+            failedKeys.set(intent, idempotencyKey);
+            if (failedKeys.size > MAX_REMEMBERED_FAILURES) {
+              failedKeys.delete(failedKeys.keys().next().value as string);
+            }
+          }
           dispatch({ type: "failed", idempotencyKey, error: errorMessage(err) });
         })
         .finally(() => {
