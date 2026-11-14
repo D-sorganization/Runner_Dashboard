@@ -207,5 +207,47 @@ describe("FleetOrchestrationPage", () => {
       fireEvent.click(screen.getByRole("button", { name: /^Deploy$/i }));
       expect(await screen.findByRole("alert")).toHaveTextContent(/deploy failed/i);
     });
+
+    it("retry after HTTP 500 reuses the Idempotency-Key", async () => {
+      const keys: string[] = [];
+      const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+        if (url === "/api/fleet/orchestration") {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve({
+                machines: [{ name: "node-a", display_name: "node-a", online: true }],
+                audit_log: [{ orchestration_type: "fleet_deploy", deploy_action: "restart_runner" }],
+              }),
+          } as Response);
+        }
+        if (url === "/api/fleet/orchestration/deploy" && init?.method === "POST") {
+          keys.push(new Headers(init.headers).get("Idempotency-Key") ?? "");
+          const failed = keys.length === 1;
+          return Promise.resolve({
+            ok: !failed,
+            status: failed ? 500 : 200,
+            json: () => Promise.resolve(failed ? { detail: "deploy failed" } : { message: "deployed" }),
+          } as Response);
+        }
+        return Promise.reject(new Error("unexpected"));
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      render(<FleetOrchestrationPage />);
+      await screen.findByText("fleet_deploy");
+      fireEvent.change(screen.getAllByRole("combobox")[0], { target: { value: "node-a" } });
+      fireEvent.click(
+        screen.getByLabelText("I confirm this action against the selected machine"),
+      );
+      fireEvent.click(screen.getByRole("button", { name: /^Deploy$/i }));
+      expect(await screen.findByRole("alert")).toHaveTextContent(/deploy failed/i);
+
+      fireEvent.click(screen.getByRole("button", { name: /^Deploy$/i }));
+
+      await waitFor(() => expect(keys).toHaveLength(2));
+      expect(keys[0]).toBeTruthy();
+      expect(keys[1]).toBe(keys[0]);
+    });
   });
 });
