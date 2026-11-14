@@ -70,8 +70,6 @@ def cursor_pre_launch_or_block(run_store: Any, plan: Any, rec: Any, wall_clock_t
     from staff.cloud_dispatch import targets_from_record
     from staff.store import _now
 
-    from staff import claim_guard
-
     issue_number, pr_number = targets_from_record(plan.target_kind, plan.target_ref)
     lease = pre_launch_lease_recheck(plan.repo, issue_number, pr_number, rec.id, wall_clock_timeout + 300.0)
     if lease is None:
@@ -85,7 +83,6 @@ def cursor_pre_launch_or_block(run_store: Any, plan: Any, rec: Any, wall_clock_t
             ended_at=_now(),
             error="cursor dispatch path lease held by another run",
         )
-        claim_guard.release_claim(rec.id, "blocked")
         run_store.append_event(rec.id, "blocked", "pre-launch path-lease re-check: scope already leased")
         return False
     _active_leases[rec.id] = (lease, issue_number, pr_number)

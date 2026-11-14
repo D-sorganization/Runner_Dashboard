@@ -88,6 +88,7 @@ PINNED_CARD_STATUS_MAP: dict[str, str] = {
     "succeeded": "completed",
     "failed": "failed",
     "cancelled": "cancelled",
+    "blocked": "failed",  # PR 3: a blocked run's card no longer falls back to ``running``
 }
 
 PINNED_CLAIM_GUARD_TERMINAL: frozenset[str] = frozenset({"succeeded", "failed", "cancelled", "blocked"})
@@ -111,12 +112,12 @@ PINNED_OUTCOME_BUCKETS: tuple[str, ...] = (
     "in_flight",
 )
 
-# handle_run_status_change calls in staff.runner.StaffRunner (worker / admit / cancel).
+# handle_run_status_change calls in staff.runner.StaffRunner (worker / admit). Terminal
+# statuses are notified by ``run_status.transition()`` since PR 3, so ``cancelled`` left.
 PINNED_RUNNER_HANDLE_STATUSES: tuple[str, ...] = (
     "queued",
     "preparing",
     "running",
-    "cancelled",
 )
 
 
@@ -268,9 +269,9 @@ def test_unconditional_update_run_allows_cancelled_to_running(tmp_path: Path) ->
         store.close()
 
 
-def test_card_run_maps_blocked_to_running_on_console() -> None:
+def test_card_run_maps_blocked_to_failed_on_console() -> None:
     run = RunRecord("r1", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p")
-    assert card_run(run, "blocked")["status"] == "running"
+    assert card_run(run, "blocked")["status"] == "failed"
 
 
 def test_runner_worker_handle_run_status_literals_are_pinned() -> None:

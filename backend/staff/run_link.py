@@ -34,6 +34,7 @@ _CARD_STATUS = {
     "succeeded": "completed",
     "failed": "failed",
     "cancelled": "cancelled",
+    "blocked": "failed",  # never started or out of providers; the card has no ``blocked`` state
 }
 
 
@@ -94,8 +95,8 @@ def format_run_card_body(
     elif status == "succeeded":
         res = summary or run.outcome or "Completed successfully."
         lines.append(f"\n✅ **Result**: {res}")
-    elif status == "failed":
-        err_msg = run.error or "Run failed."
+    elif status in ("failed", "blocked"):
+        err_msg = run.error or ("Run blocked." if status == "blocked" else "Run failed.")
         cls_msg = f" [{run.failure_class}]" if run.failure_class else ""
         lines.append(f"\n❌ **Error**{cls_msg}: {err_msg}")
         if run.remediation:

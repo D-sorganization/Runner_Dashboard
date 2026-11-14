@@ -582,6 +582,5 @@ def _record_launch_failure(runner: StaffRunner, run_id: str, exc: Exception, aud
         failure_class="launch_failed",
         ended_at=_now(),
     )
-    claim_guard.release_claim(run_id, "failed")
     runner.store.append_event(run_id, "failed", error)
     record_audit(action="dispatch", **audit_ctx, outcome="launch_failed", detail={"error": str(exc)}, fail_closed=False)

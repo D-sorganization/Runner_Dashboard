@@ -82,6 +82,7 @@ def finish_run_after_execution(
         store,
         rec.id,
         RunStatus(status),
+        notify_terminal=False,  # emitted below, once verification has recorded the artifact
         failure_class=failure_class,
         retryable=retryable,
         remediation=remediation,
