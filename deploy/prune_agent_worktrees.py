@@ -16,6 +16,7 @@ if str(_REPO_ROOT / "backend") not in sys.path:
 
 from agent_worktree_hygiene import (  # noqa: E402
     DEFAULT_MIN_AGE_HOURS,
+    DEFAULT_PROTECTED_REPOS,
     DEFAULT_PROTECTED_WORKTREES,
     discover_repo_checkouts,
     plan_agent_worktree_prune,
@@ -47,6 +48,12 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="Extra protected worktree basename tokens (repeatable).",
     )
+    parser.add_argument(
+        "--protect-repo",
+        action="append",
+        default=[],
+        help="Extra repo whose worktrees are never removed (repeatable; adds to the built-in private repos).",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     apply = bool(args.apply)
@@ -60,6 +67,7 @@ def main(argv: list[str] | None = None) -> int:
         apply=apply,
         min_age_hours=float(args.min_age_hours),
         protected=protected,
+        protected_repos=DEFAULT_PROTECTED_REPOS + tuple(args.protect_repo),
     )
     sys.stdout.write(json.dumps(report, indent=2) + "\n")
     return 0
