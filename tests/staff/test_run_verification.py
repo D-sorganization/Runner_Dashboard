@@ -359,7 +359,24 @@ def test_unset_verify_mode_enforces_failed_verification_and_report_requires_opt_
     assert verdict is not None and verdict.verification == "failed"
     enforced_rec = store.get_run("run_default_enforce")
     assert enforced_rec is not None
-    assert (enforced_rec.status, enforced_rec.failure_class) == ("failed", v.UNVERIFIED_OUTPUT)
+    assert (enforced_rec.status, enforced_rec.verification, enforced_rec.failure_class) == (
+        "succeeded",
+        "failed",
+        "",
+    )
+    pre_status, pre_fc, _, pre_err, _, _ = v.apply_enforce_before_terminal(
+        _rec(id="run_default_enforce", status="running"),
+        classified_status="succeeded",
+        failure_class="",
+        retryable=False,
+        error="",
+        remediation="",
+        opens_pr=True,
+        probe=FakeProbe(v.PullRequest(9, "closed", "green")),
+        mode="enforce",
+        now=NOW,
+    )
+    assert (pre_status, pre_fc, pre_err) == ("failed", v.UNVERIFIED_OUTPUT, verdict.detail)
 
     monkeypatch.setenv(v.MODE_ENV, "report")
     store.create_run(_rec(id="run_opt_in_report"))
@@ -401,12 +418,12 @@ FAILED = v.Verdict("failed", "no PR", None)
     ("mode", "verdict", "status_change"),
     [
         ("report", FAILED, False),
-        ("enforce", FAILED, True),
+        ("enforce", FAILED, False),
         ("enforce", v.Verdict("unverified", "CI pending", 4), False),
         ("enforce", v.Verdict("verified", "green", 4), False),
     ],
 )
-def test_only_enforce_turns_a_failed_verdict_into_a_failed_run(
+def test_updates_for_never_mutates_terminal_status(
     mode: str, verdict: v.Verdict, status_change: bool
 ) -> None:
     updates = v.updates_for(_rec(), verdict, mode)
@@ -414,11 +431,30 @@ def test_only_enforce_turns_a_failed_verdict_into_a_failed_run(
     assert updates["verification"] == verdict.verification
     assert updates["verification_detail"] == verdict.detail
     assert updates["pr_number"] == verdict.pr_number
-    if status_change:
-        assert (updates["status"], updates["failure_class"]) == ("failed", v.UNVERIFIED_OUTPUT)
-        assert updates["error"] == verdict.detail
-    else:
-        assert "status" not in updates and "failure_class" not in updates
+    assert "status" not in updates
+    assert status_change is False
+
+
+@pytest.mark.unit
+def test_apply_enforce_before_terminal_folds_failed_verdict_into_status() -> None:
+    rec = _rec(status="running")
+    verdict = v.Verdict("failed", "no pull request found", None)
+    probe = FakeProbe(pr=None, remote_ahead_by=1)
+    status, failure_class, retryable, error, remediation, evaluation = v.apply_enforce_before_terminal(
+        rec,
+        classified_status="succeeded",
+        failure_class="",
+        retryable=False,
+        error="",
+        remediation="",
+        opens_pr=True,
+        probe=probe,
+        mode="enforce",
+        now=NOW,
+    )
+    assert evaluation is not None and evaluation.verification == "failed"
+    assert (status, failure_class, retryable) == ("failed", v.UNVERIFIED_OUTPUT, False)
+    assert error == evaluation.detail
 
 
 def test_enforce_never_touches_a_run_that_did_not_succeed() -> None:

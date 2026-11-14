@@ -32,6 +32,7 @@ from fleet_events import EventStore, FleetEvent, get_event_store
 from staff.audit import record_audit
 from staff.conversation_models import ActionProposalRecord
 from staff.conversations import ConversationStore, get_conversation_store
+from staff.run_status import RunStatus, transition
 from staff.runner import StaffRunner
 from staff.store import RunRecord, RunStore, _now
 from staff.tokens import revoke_run_token
@@ -441,9 +442,11 @@ def reconcile_orphaned_runs(
             if preserved_path
             else "orphaned by dashboard restart"
         )
-        store.update_run(
+        transition(
+            store,
             rec.id,
-            status="failed",
+            RunStatus(rec.status),
+            RunStatus.FAILED,
             failure_class="orphaned",
             retryable=False,
             remediation=f"Run was orphaned across dashboard restart on node {runner.machine}; inspect worktree.",

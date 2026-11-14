@@ -61,14 +61,14 @@ def handle_post_execution_retry(
     # If this attempt succeeded and it was a retry attempt:
     if latest.status == "succeeded":
         if latest.retry_of:
+            root_id = latest.retry_of
             store.update_run(
-                latest.retry_of,
-                status="succeeded",
+                root_id,
                 ended_at=latest.ended_at,
                 outcome=latest.outcome,
                 error="",
             )
-            store.append_event(latest.retry_of, "retry_success", f"attempt {latest.attempt} succeeded")
+            store.append_event(root_id, "retry_success", f"attempt {latest.attempt} succeeded")
         return False
 
     if latest.status != "failed" or rec.id in runner._cancel_flags:
