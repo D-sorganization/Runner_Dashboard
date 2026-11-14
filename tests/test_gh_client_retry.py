@@ -277,3 +277,135 @@ def test_gh_client_error_default_metadata():
     err = gh_client.GhClientError("some error")
     assert err.kind == "unknown"
     assert err.attempts == 0
+
+
+@pytest.mark.asyncio
+async def test_post_502_not_retried():
+    """POST with 502 should be attempted exactly once (not retried)."""
+    import gh_client
+
+    call_count = 0
+    fail_resp = MagicMock()
+    fail_resp.status_code = 502
+    fail_resp.text = "bad gateway"
+
+    async def side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return fail_resp
+
+    mock_client = AsyncMock()
+    mock_client.request = side_effect
+
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(gh_client.GhClientError):
+            await gh_client._request("POST", "/test", json={"key": "value"})
+
+    assert call_count == 1, f"Expected POST 502 to be called exactly once, but was called {call_count} times"
+
+
+@pytest.mark.asyncio
+async def test_get_502_retried():
+    """GET with 502 should be retried."""
+    import gh_client
+
+    call_count = 0
+    fail_resp = MagicMock()
+    fail_resp.status_code = 502
+    fail_resp.text = "bad gateway"
+
+    ok_resp = MagicMock()
+    ok_resp.status_code = 200
+    ok_resp.json.return_value = {"data": "ok"}
+
+    async def side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return fail_resp
+        return ok_resp
+
+    mock_client = AsyncMock()
+    mock_client.request = side_effect
+
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
+        result = await gh_client._request("GET", "/test")
+
+    assert result.status_code == 200
+    assert call_count == 2, f"Expected GET 502 to be retried, but was called {call_count} times"
+
+
+@pytest.mark.asyncio
+async def test_post_connect_error_with_idempotent_retries():
+    """POST with idempotent=True should retry on connect error."""
+    import gh_client
+
+    call_count = 0
+    ok_resp = MagicMock()
+    ok_resp.status_code = 200
+    ok_resp.json.return_value = {"created": True}
+
+    async def side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise httpx.ConnectError("connection refused")
+        return ok_resp
+
+    mock_client = AsyncMock()
+    mock_client.request = side_effect
+
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
+        result = await gh_client._request("POST", "/test", json={"key": "value"}, idempotent=True)
+
+    assert result.status_code == 200
+    assert call_count == 2, f"Expected POST connect error with idempotent=True to be retried, got {call_count} calls"
+
+
+@pytest.mark.asyncio
+async def test_post_connect_error_without_idempotent_not_retried():
+    """POST with ConnectError (without idempotent=True) should not be retried."""
+    import gh_client
+
+    call_count = 0
+
+    async def side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        raise httpx.ConnectError("connection refused")
+
+    mock_client = AsyncMock()
+    mock_client.request = side_effect
+
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(gh_client.GhClientError):
+            await gh_client._request("POST", "/test", json={"key": "value"})
+
+    assert call_count == 1, f"Expected POST connect error without idempotent to be called once, got {call_count} calls"
+
+
+@pytest.mark.asyncio
+async def test_post_429_surfaces_retry_after():
+    """POST with 429 should surface Retry-After instead of retrying."""
+    import gh_client
+
+    call_count = 0
+    rate_resp = MagicMock()
+    rate_resp.status_code = 429
+    rate_resp.headers = {"Retry-After": "30"}
+    rate_resp.text = "rate limited"
+
+    async def side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return rate_resp
+
+    mock_client = AsyncMock()
+    mock_client.request = side_effect
+
+    with patch("gh_client._get_client", return_value=mock_client), patch("asyncio.sleep", new_callable=AsyncMock):
+        with pytest.raises(gh_client.GhRateLimited) as exc_info:
+            await gh_client._request("POST", "/test", json={"key": "value"})
+
+    assert call_count == 1, f"Expected POST 429 to be called once, but was called {call_count} times"
+    assert exc_info.value.retry_after_seconds == 30

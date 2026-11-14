@@ -83,12 +83,49 @@ def test_live_lock_is_not_reclaimed(tmp_path: Path, monkeypatch) -> None:
     assert raised
 
 
-def test_lock_is_stale_when_ttl_elapsed() -> None:
+def test_lock_not_stale_when_started_at_past_ttl_but_owner_alive(tmp_path: Path, monkeypatch) -> None:
+    """Regression #4277: merged #4369 reclaimed locks on ``started_at`` age even when pid lived."""
+    proc = tmp_path / "proc" / "42"
+    proc.mkdir(parents=True)
+    monkeypatch.setenv("PROC_ROOT", str(tmp_path / "proc"))
     clock = lambda: 100.0  # noqa: E731
-    body = format_lock_body(pid=1, started_at=10.0, host="node-a")
-    assert lock_is_stale(body, host="node-a", clock=clock, ttl_seconds=60)
-    body = format_lock_body(pid=1, started_at=50.0, host="node-a")
-    assert not lock_is_stale(body, host="node-a", clock=clock, ttl_seconds=60)
+    body = format_lock_body(pid=42, started_at=10.0, host="node-a")
+    assert not lock_is_stale(
+        body,
+        host="node-a",
+        proc_root=tmp_path / "proc",
+        clock=clock,
+        ttl_seconds=60,
+    )
+
+
+def test_lock_stale_when_heartbeat_at_past_ttl_even_if_owner_alive(tmp_path: Path, monkeypatch) -> None:
+    proc = tmp_path / "proc" / "42"
+    proc.mkdir(parents=True)
+    monkeypatch.setenv("PROC_ROOT", str(tmp_path / "proc"))
+    clock = lambda: 100.0  # noqa: E731
+    body = format_lock_body(pid=42, started_at=10.0, host="node-a") + "heartbeat_at=20.0\n"
+    assert lock_is_stale(
+        body,
+        host="node-a",
+        proc_root=tmp_path / "proc",
+        clock=clock,
+        ttl_seconds=60,
+    )
+
+
+def test_legacy_lock_without_pid_stale_by_mtime(tmp_path: Path) -> None:
+    lock = tmp_path / ".node-auto-deploy.lock"
+    lock.write_text("host=node-a\n", encoding="ascii")
+    old = 1_000.0
+    os.utime(lock, (old, old))
+    assert lock_is_stale(
+        lock.read_text(encoding="ascii"),
+        lock_path=lock,
+        host="node-a",
+        clock=lambda: old + 120.0,
+        ttl_seconds=60,
+    )
 
 
 def test_try_reclaim_stale_lock_removes_dead_owner_file(tmp_path: Path) -> None:

@@ -255,6 +255,8 @@
               "agent_bus",
               "recorder",
               "desktop_adapter",
+              "claude_desktop_adapter",
+              "codex_desktop_adapter",
               "checkin",
               "job_board",
               "github"
@@ -1048,6 +1050,11 @@
       "CIFixDispatchRequest": {
         "description": "Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).",
         "properties": {
+          "allow_strong_escalation": {
+            "default": false,
+            "title": "Allow Strong Escalation",
+            "type": "boolean"
+          },
           "attempt_number": {
             "anyOf": [
               {
@@ -1124,6 +1131,12 @@
             "default": false,
             "title": "From Queue",
             "type": "boolean"
+          },
+          "head_sha": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Head Sha",
+            "type": "string"
           },
           "kind": {
             "default": "ci_failure",
@@ -10014,6 +10027,32 @@
           }
         ],
         "summary": "Undrain Endpoint"
+      }
+    },
+    "/api/admin/agent-principals/reload": {
+      "post": {
+        "description": "Ingest new agent principals and token files without a hub restart; admin only, ids only (#4256).",
+        "operationId": "reload_agent_principals_route_api_admin_agent_principals_reload_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Reload Agent Principals Route",
+        "tags": ["admin"]
       }
     },
     "/api/admin/principals": {
@@ -24962,6 +25001,7 @@
     },
     "/api/v1/memory/context-pack": {
       "get": {
+        "description": "Return a scoped memory snapshot. Deprecated for Barb session startup \u2014 use Barb continuity + priorities/holds.",
         "operationId": "get_context_pack_api_v1_memory_context_pack_get",
         "responses": {
           "200": {

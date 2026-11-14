@@ -35,7 +35,7 @@ runs:
         fi
 
         TITLE=$(gh pr view "$PR" --repo "$REPO" --json title --jq .title)
-        if echo "$TITLE" | grep -qiE '^feat[(:]|Implement|System|Engine|Framework'; then
+        if echo "$TITLE" | python3 scripts/phantom_guard_title.py; then
           PR_FILES=$(gh pr diff "$PR" --repo "$REPO" --name-only)
           CODE=$(echo "$PR_FILES" | grep -cE '^(backend/|frontend/src/|src/|rust_core/|api/)' || true)
           if [ "${CODE:-0}" -lt 1 ]; then

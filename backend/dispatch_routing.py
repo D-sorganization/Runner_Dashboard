@@ -419,6 +419,11 @@ class DispatchQueueManager:
             all_dequeued.extend(self.release_session(sid, outcome=outcome))
         return all_dequeued
 
+    def reset_state_for_tests(self) -> None:
+        """Clear active sessions and queued items (pytest isolation only)."""
+        self._active_sessions.clear()
+        self._queued_items.clear()
+
 
 # Global singleton instance for dashboard process
 dispatch_queue_manager = DispatchQueueManager()

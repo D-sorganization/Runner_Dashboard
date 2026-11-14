@@ -621,16 +621,6 @@ def _antigravity_login_present() -> bool:
     )
 
 
-def _antigravity_quota_status() -> tuple[bool, str]:
-    """Check quota headroom for antigravity."""
-    try:
-        from staff import quota as quota_mod
-
-        return quota_mod.headroom("antigravity", 100.0)
-    except Exception:  # noqa: BLE001
-        return True, ""
-
-
 def _probe_antigravity_cli() -> dict[str, Any]:
     """Probe Antigravity (agy) CLI presence, authentication, and quota."""
     from staff.cli_oauth_session import antigravity_oauth_session_alive  # noqa: PLC0415
@@ -640,7 +630,9 @@ def _probe_antigravity_cli() -> dict[str, Any]:
     login_present = _antigravity_login_present()
     oauth_alive, oauth_detail = antigravity_oauth_session_alive(agy_binary)
     authenticated = bool(login_present and oauth_alive)
-    quota_available, quota_detail = _antigravity_quota_status()
+    from staff.quota_reader import credential_probe_quota  # noqa: PLC0415
+
+    quota_status, quota_blocked, quota_detail = credential_probe_quota("antigravity")
 
     if not installed:
         status, detail = "not_installed", "agy not found on PATH"
@@ -649,18 +641,20 @@ def _probe_antigravity_cli() -> dict[str, Any]:
             status, detail = "missing_key", oauth_detail or "OAuth session expired; run `agy auth login`"
         else:
             status, detail = "missing_key", "not signed in: run `agy` or `agy auth login`"
-    elif not quota_available:
+    elif quota_blocked is True:
         status, detail = "quota_exhausted", quota_detail or "antigravity quota exhausted"
     else:
         status, detail = "ready", "Ready"
 
-    usable = installed and authenticated and quota_available
+    quota_available = None if quota_status == "unknown" else quota_blocked is not True
+    usable = installed and authenticated and (quota_blocked is not True)
     return {
         "id": "antigravity",
         "label": "Antigravity CLI",
         "icon": "google",
         "installed": installed,
         "authenticated": authenticated,
+        "quota_status": quota_status,
         "quota_available": quota_available,
         "reachable": usable,
         "usable": usable,

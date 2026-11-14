@@ -1,5 +1,9 @@
 # Barb Exchange Repo
 
+> **Note (2026-11-12):** Agent session startup no longer uses the hub `context-pack` or shared-memory digest
+> bank. Barb continuity plus priorities/holds is canonical on the hub. The exchange `context-pack/latest.json`
+> snapshot path below is legacy for the proposed Claude planner bridge only.
+
 The Claude planner runs in Anthropic's cloud and cannot reach the hub, which is tailnet-only
 ([ADR 0007](../adr/0007-agent-client-ingress-local-only.md)). The two sides meet in a private GitHub repo instead.
 The repo name is configuration, never hard-coded. Today it is `D-sorganization/Barbara`.

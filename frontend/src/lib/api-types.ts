@@ -70,6 +70,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/agent-principals/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reload Agent Principals Route
+         * @description Ingest new agent principals and token files without a hub restart; admin only, ids only (#4256).
+         */
+        post: operations["reload_agent_principals_route_api_admin_agent_principals_reload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/principals": {
         parameters: {
             query?: never;
@@ -6401,7 +6421,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Context Pack */
+        /**
+         * Get Context Pack
+         * @description Return a scoped memory snapshot. Deprecated for Barb session startup — use Barb continuity + priorities/holds.
+         */
         get: operations["get_context_pack_api_v1_memory_context_pack_get"];
         put?: never;
         post?: never;
@@ -9371,7 +9394,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "checkin" | "job_board" | "github";
+            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "claude_desktop_adapter" | "codex_desktop_adapter" | "checkin" | "job_board" | "github";
             /**
              * Ts
              * Format: date-time
@@ -9750,6 +9773,11 @@ export interface components {
          * @description Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).
          */
         CIFixDispatchRequest: {
+            /**
+             * Allow Strong Escalation
+             * @default false
+             */
+            allow_strong_escalation: boolean;
             /** Attempt Number */
             attempt_number?: number | null;
             /**
@@ -9770,6 +9798,11 @@ export interface components {
              * @default false
              */
             from_queue: boolean;
+            /**
+             * Head Sha
+             * @default
+             */
+            head_sha: string;
             /**
              * Kind
              * @default ci_failure
@@ -14045,6 +14078,26 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    reload_agent_principals_route_api_admin_agent_principals_reload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };

@@ -15,6 +15,7 @@ from typing import Any
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
+from coordination import claim_state as claim_state_mod
 from coordination import claims as claims_mod
 from coordination import gh_cli, job_board_lease
 from coordination.board import RMScriptError
@@ -331,40 +332,53 @@ def claim_job(
         aging_block = claim_blocked_by_aging_prs(agent, claim_repo=repo, fetch=claims_mod.evidence_fetch)
         if aging_block is not None:
             raise claims_mod.AgingPrBlockedError(aging_block)
-        posted = claims_mod.post_lease(repo, issue, agent, session, intent, ttl_hours=ttl_hours)
-        after = claims_mod.check(repo, issue)
-        if not after["available"]:
-            raise RMScriptError(f"check_agent_claim unavailable after post_agent_lease: {after['reason']}")
-        owned = bool(after["held"]) and claims_mod._is_own(after, agent, session)
-        if after["held"] and not owned:
-            try:
-                claims_mod.release(
-                    repo,
-                    issue,
+        cas = claim_state_mod.acquire_compare_and_set(repo, issue, agent=agent, session=session)
+        if not cas.acquired:
+            raise claims_mod.ClaimHeldError(claim_state_mod.holder_status_from_row(repo, issue, cas))
+        try:
+            posted = claims_mod.post_lease(
+                repo, issue, agent, session, intent, ttl_hours=ttl_hours, rollback_orphan_label=True
+            )
+        except Exception:
+            claim_state_mod.get_store().abandon_acquire(repo, issue, agent=agent, session=session)
+            raise
+        try:
+            after = claims_mod.check(repo, issue)
+            if not after["available"]:
+                raise RMScriptError(f"check_agent_claim unavailable after post_agent_lease: {after['reason']}")
+            owned = bool(after["held"]) and claims_mod._is_own(after, agent, session)
+            if after["held"] and not owned:
+                try:
+                    claims_mod.release(
+                        repo,
+                        issue,
+                        agent=agent,
+                        session=session,
+                        reason="race loser",
+                        holder_principal=holder_principal,
+                    )
+                except Exception:  # noqa: BLE001 — best-effort rollback; caller still gets 409
+                    log.warning("jobs: race rollback release failed for %s#%s", repo, issue, exc_info=True)
+                # fmt: off
+                record_job_claim_activity(
+                    kind="conflict",
+                    repo=repo,
+                    issue=issue,
                     agent=agent,
                     session=session,
-                    reason="race loser",
                     holder_principal=holder_principal,
+                    extra={"reason": "race loser"},
                 )
-            except Exception:  # noqa: BLE001 — best-effort rollback; caller still gets 409
-                log.warning("jobs: race rollback release failed for %s#%s", repo, issue, exc_info=True)
-            # fmt: off
-            record_job_claim_activity(
-                kind="conflict",
-                repo=repo,
-                issue=issue,
-                agent=agent,
-                session=session,
-                holder_principal=holder_principal,
-                extra={"reason": "race loser"},
-            )
-            # fmt: on
-            raise claims_mod.ClaimHeldError(after)
-        if not owned:
-            raise RMScriptError(
-                f"check_agent_claim could not verify the posted lease for {repo}#{issue} "
-                f"(held={after['held']!r}); treating the claim as unverified, not successful"
-            )
+                # fmt: on
+                raise claims_mod.ClaimHeldError(after)
+            if not owned:
+                raise RMScriptError(
+                    f"check_agent_claim could not verify the posted lease for {repo}#{issue} "
+                    f"(held={after['held']!r}); treating the claim as unverified, not successful"
+                )
+        except Exception:
+            claim_state_mod.get_store().abandon_acquire(repo, issue, agent=agent, session=session)
+            raise
         fence = _mint_fence(repo, issue)
         lease = posted["result"]
         receipt = str(lease.get("receipt") or "")

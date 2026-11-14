@@ -90,6 +90,19 @@ def _isolated_provider_cooldown_file(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _isolated_dispatch_overlap_queue():
+    """Prevent path-overlap dispatch sessions from leaking across tests (#4272)."""
+    try:
+        from dispatch_queue_link import reset_dispatch_queue_link_state
+    except ImportError:
+        yield
+        return
+    reset_dispatch_queue_link_state()
+    yield
+    reset_dispatch_queue_link_state()
+
+
+@pytest.fixture(autouse=True)
 def _no_real_provider_cli(monkeypatch):
     """Provider CLIs are never launched by tests; provider fixtures use fakes."""
     provider_names = {"codex", "claude", "agy", "antigravity"}

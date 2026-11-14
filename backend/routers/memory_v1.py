@@ -52,6 +52,7 @@ async def get_context_pack(
     request: Request,
     reader: Principal = Depends(require_scope("memory.read")),
 ) -> dict:
+    """Return a scoped memory snapshot. Deprecated for Barb session startup — use Barb continuity + priorities/holds."""
     qp = request.query_params
     return build_context_pack(
         reader, repo=qp.get("repo"), scope=qp.get("scope"), data_class=qp.get("data_class")

@@ -53,9 +53,8 @@ PRAGMATIC_PROGRAMMER_SCHEDULE_ENTRIES: Mapping[str, str] = {
 # per-step override) -- preserved as-is rather than the 4-step chain with model overrides
 # used by the invented personas, which do not have a prior real role file to match.
 PRAGMATIC_PROGRAMMER_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
-    FailoverStep("claude", None),
-    FailoverStep("codex", None),
-    FailoverStep("antigravity", None),
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("codex", "gpt-6.1-sol"),
     FailoverStep("cursor-agent", None),
 )
 
@@ -81,7 +80,7 @@ def pragmatic_programmer_role_data() -> dict[str, Any]:
             "skim. Schedule: 0 13 * * 5 (weekly_review, Friday 1 PM) in America/Los_Angeles. Reports "
             "to Barb in the interim, and to Board-Secretary for the Friday packet once the Board meets."
         ),
-        "providers": ["claude", "codex", "antigravity", "cursor-agent"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "default",
         "schedule": "0 13 * * 5",
         "window": None,

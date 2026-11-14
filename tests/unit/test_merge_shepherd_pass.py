@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from coordination.merge_shepherd_exact_head import HeadReviewPass
@@ -12,6 +14,7 @@ from coordination.merge_shepherd_pass import (
     graphql_nodes,
     holds_gate_failed_payload,
     hub_hold_blocks_pr,
+    is_repo_access_error,
     load_skip_list,
     plan_repo_pass,
     pre_filter_skip_reason,
@@ -20,6 +23,7 @@ from coordination.merge_shepherd_pass import (
     resolve_merge_shepherd_review_store,
     run_merge_shepherd_pass,
     stitch_armed_pull_request_pages,
+    summary_to_json,
 )
 from staff.store import RunRecord, RunStore
 
@@ -29,7 +33,9 @@ def _review_pass(pr: int, head: str) -> HeadReviewPass:
         pr=pr,
         head_sha=head,
         verdict="approve",
-        recorded_at="2026-11-10T12:00:00+00:00",
+        # #4414: a fixed date aged past the 72 h review-pass window on 2026-11-13 and the
+        # planner stopped arming; a pass is "recorded now" whenever the test runs.
+        recorded_at=datetime.now(UTC).isoformat(),
     )
 
 
@@ -466,3 +472,80 @@ def test_run_pass_is_dry_when_not_live():
     summary = run_merge_shepherd_pass(config=PassConfig(live=False), fetch_graphql=fake_graphql)
     assert len(summary.repos) == 6
     assert summary.armed == []
+
+
+# Captured from scheduled run 43363423325 (2026-11-13): gh exits non-zero with one
+# denial line per open PR node when the App token cannot read a non-public repo.
+_REAL_ACCESS_DENIED = "gh: Resource not accessible by integration" + ("\nResource not accessible by integration" * 11)
+_EMPTY_REPO_PAYLOAD = {
+    "repository": {
+        "mergeQueue": {"entries": {"totalCount": 0}},
+        "armedPullRequests": {"totalCount": 0, "nodes": []},
+        "pullRequests": {"nodes": []},
+    }
+}
+
+
+def _fetch_failing_for(failures: dict[str, str]):
+    def fetch(owner: str, name: str):
+        message = failures.get(name)
+        if message is not None:
+            raise OSError(message)
+        return _EMPTY_REPO_PAYLOAD
+
+    return fetch
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        (_REAL_ACCESS_DENIED, True),
+        ("gh: Resource not accessible by integration", True),
+        ("gh: Could not resolve to a Repository with the name 'D-sorganization/Tools_Private'.", True),
+        ("", False),
+        ("graphql failed", False),
+        ("gh: HTTP 401: Bad credentials (https://api.github.com/graphql)", False),
+        ("gh: API rate limit exceeded for installation ID 1.", False),
+        ("gh: Resource not accessible by integration\nSomething went wrong while executing your query.", False),
+        ("armed_pull_requests_pagination_incomplete:missing_end_cursor", False),
+    ],
+)
+def test_is_repo_access_error_is_narrow(message: str, expected: bool) -> None:
+    assert is_repo_access_error(message) is expected
+
+
+def test_run_pass_skips_inaccessible_repo_with_warning(caplog: pytest.LogCaptureFixture) -> None:
+    fetch = _fetch_failing_for({"Repository_Management": _REAL_ACCESS_DENIED})
+    with caplog.at_level("WARNING"):
+        summary = run_merge_shepherd_pass(config=PassConfig(live=False), fetch_graphql=fetch)
+
+    assert summary.errors == []
+    assert summary.inaccessible_repos == [
+        {
+            "repo": "D-sorganization/Repository_Management",
+            "reason": "Resource not accessible by integration",
+        }
+    ]
+    assert len(summary.repos) == 5
+    assert "D-sorganization/Repository_Management" not in [row["repo"] for row in summary.repos]
+    assert "D-sorganization/Repository_Management" in caplog.text
+    assert summary_to_json(summary)["inaccessible_repos"] == summary.inaccessible_repos
+
+
+def test_run_pass_keeps_real_fetch_errors_fatal() -> None:
+    fetch = _fetch_failing_for({"UpstreamDrift": "gh: HTTP 502: Bad Gateway"})
+    summary = run_merge_shepherd_pass(config=PassConfig(live=False), fetch_graphql=fetch)
+
+    assert summary.errors == ["D-sorganization/UpstreamDrift: gh: HTTP 502: Bad Gateway"]
+    assert summary.inaccessible_repos == []
+
+
+def test_run_pass_fails_when_every_repo_is_inaccessible() -> None:
+    def fetch(owner: str, name: str):
+        raise OSError(_REAL_ACCESS_DENIED)
+
+    summary = run_merge_shepherd_pass(config=PassConfig(live=False), fetch_graphql=fetch)
+
+    assert summary.repos == []
+    assert len(summary.inaccessible_repos) == 6
+    assert summary.errors == ["all_repos_inaccessible:6"]
