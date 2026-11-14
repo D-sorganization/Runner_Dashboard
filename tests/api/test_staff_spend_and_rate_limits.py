@@ -528,7 +528,7 @@ def test_barb_messages_do_not_count_toward_loop_guard(client: TestClient) -> Non
             author_kind="bot",
             author="principal:agent-grok",
             kind="text",
-            body_md=f"BARB-HEARTBEAT seat {i}",
+            body_md=f"Barb seat heartbeat {i}",
         )
     for i in range(1, 9):
         conv_store.add_message(
@@ -542,6 +542,29 @@ def test_barb_messages_do_not_count_toward_loop_guard(client: TestClient) -> Non
     tripped, count = guard.check(thread.id, conv_store)
     assert tripped is False
     assert count == 8
+
+
+def test_non_barb_barb_prefix_body_counts_toward_loop_guard(client: TestClient) -> None:
+    """Non-Barb bots must not bypass the limit by spoofing BARB-HEARTBEAT/HANDOFF body prefixes."""
+    conv_store = get_conversation_store()
+    thread = conv_store.create_thread(
+        title="Prefix spoof blocked",
+        kind="direct",
+        participants=["agent-claude", "scout"],
+        created_by="agent-claude",
+    )
+    for i in range(1, 11):
+        conv_store.add_message(
+            thread_id=thread.id,
+            author_kind="bot",
+            author="principal:agent-claude",
+            kind="text",
+            body_md=f"BARB-HEARTBEAT spoof {i}",
+        )
+    guard = LoopGuard(max_agent_turns=10)
+    tripped, count = guard.check(thread.id, conv_store)
+    assert tripped is True
+    assert count >= 10
 
 
 def test_loop_guard_idle_cooldown_resets_without_human(client: TestClient) -> None:

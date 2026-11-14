@@ -106,11 +106,6 @@ def message_exempt_from_loop_guard(msg: Any) -> bool:
     if kind in EXEMPT_MESSAGE_KINDS:
         return True
 
-    body = str(getattr(msg, "body_md", "") or "").lstrip()
-    upper = body.upper()
-    if upper.startswith("BARB-HEARTBEAT") or upper.startswith("BARB-HANDOFF"):
-        return True
-
     meta = getattr(msg, "meta", None) or {}
     if isinstance(meta, dict):
         if meta.get("barb_turnover") or meta.get("barb_heartbeat") or meta.get("coordination_exempt"):
