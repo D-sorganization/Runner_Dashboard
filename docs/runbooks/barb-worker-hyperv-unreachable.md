@@ -4,13 +4,13 @@ Barb lane users (`barb-grok`, `barb-dots`, `barb-duet`) run on a dedicated **Ubu
 
 ## Detection
 
-| Signal | Where | Meaning |
-| ------ | ----- | ------- |
-| `machines_offline` includes barb-worker | `GET /api/staff/summary` | Hub fleet board has not recently seen the worker’s dashboard peer (if registered) or health fan-out failed |
-| `livez=fail` / `staff_summary=fail` | On VM: `sudo bash scripts/barb-worker/bootstrap.sh verify` | Token, proxy, or hub URL broken on the guest |
-| Tailscale `offline` for the VM | `tailscale status` on hub or admin workstation | Guest lost tailnet (sleep, snapshot revert, or Tailscale service stopped) |
-| Hyper-V state not **Running** | Host: `Get-VM` / Hyper-V Manager | Guest powered off, checkpoint restore pending, or host reboot |
-| Lane units inactive | On VM: `systemctl --user status barb-lane.service` (per lane user) | Bootstrap not run, linger disabled, or crash loop |
+| Signal                                  | Where                                                              | Meaning                                                                                                    |
+| --------------------------------------- | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `machines_offline` includes barb-worker | `GET /api/staff/summary`                                           | Hub fleet board has not recently seen the worker’s dashboard peer (if registered) or health fan-out failed |
+| `livez=fail` / `staff_summary=fail`     | On VM: `sudo bash scripts/barb-worker/bootstrap.sh verify`         | Token, proxy, or hub URL broken on the guest                                                               |
+| Tailscale `offline` for the VM          | `tailscale status` on hub or admin workstation                     | Guest lost tailnet (sleep, snapshot revert, or Tailscale service stopped)                                  |
+| Hyper-V state not **Running**           | Host: `Get-VM` / Hyper-V Manager                                   | Guest powered off, checkpoint restore pending, or host reboot                                              |
+| Lane units inactive                     | On VM: `systemctl --user status barb-lane.service` (per lane user) | Bootstrap not run, linger disabled, or crash loop                                                          |
 
 Hub operators should **not** SSH with embedded passwords in tickets; use Tailscale SSH or the host console if tailnet is down.
 

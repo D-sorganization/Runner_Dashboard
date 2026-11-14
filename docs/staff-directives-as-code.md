@@ -6,10 +6,10 @@ dashboard state by the same RM role-sync timer that fast-forwards
 
 ## Source file
 
-| Field    | Location                                      |
-| -------- | --------------------------------------------- |
-| YAML     | `staff/directives.yml` under `STAFF_RM_ROOT`  |
-| Persisted| `staff_directives.json` (`STAFF_DIRECTIVES_FILE`) |
+| Field     | Location                                          |
+| --------- | ------------------------------------------------- |
+| YAML      | `staff/directives.yml` under `STAFF_RM_ROOT`      |
+| Persisted | `staff_directives.json` (`STAFF_DIRECTIVES_FILE`) |
 
 Example:
 

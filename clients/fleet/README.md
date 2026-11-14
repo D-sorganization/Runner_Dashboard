@@ -3,13 +3,13 @@
 These are stdlib-only clients (Python 3.10 or newer, no dependencies) for the Runner
 Dashboard Fleet API: staff, coordination and priorities (epic #1192, #1228).
 
-| File              | What it is                                                                           |
-| ----------------- | ------------------------------------------------------------------------------------ |
-| `fleet_client.py` | `FleetClient`: one validated method per endpoint; raises `FleetAPIError`.            |
-| `fleet_tools.py`  | The command table (method, JSON Schema, CLI name, MCP tool name) shared by both.     |
-| `fleetctl.py`       | The CLI. Prints JSON; exits 0 on success, 1 on an API error, 2 on bad arguments.                                       |
-| `fleet_mcp.py`      | MCP stdio server (JSON-RPC 2.0, protocol `2025-06-18`); tool list in [MCP tool inventory](#mcp-tool-inventory) below.  |
-| `rd_threads_mcp.py` | Thin stdio MCP (`scripts/rd_threads_mcp.py`) with four thread envelope tools; inventory in the same section.           |
+| File                | What it is                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `fleet_client.py`   | `FleetClient`: one validated method per endpoint; raises `FleetAPIError`.                                             |
+| `fleet_tools.py`    | The command table (method, JSON Schema, CLI name, MCP tool name) shared by both.                                      |
+| `fleetctl.py`       | The CLI. Prints JSON; exits 0 on success, 1 on an API error, 2 on bad arguments.                                      |
+| `fleet_mcp.py`      | MCP stdio server (JSON-RPC 2.0, protocol `2025-06-18`); tool list in [MCP tool inventory](#mcp-tool-inventory) below. |
+| `rd_threads_mcp.py` | Thin stdio MCP (`scripts/rd_threads_mcp.py`) with four thread envelope tools; inventory in the same section.          |
 
 ```bash
 export FLEET_API_URL=http://hub-a:8321 FLEET_API_TOKEN=svc_... FLEET_AGENT=claude

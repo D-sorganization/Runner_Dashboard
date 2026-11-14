@@ -181,7 +181,6 @@ Body `{repo, issue, agent?, session, reason}` → RM `release_agent_lease` →
 → 200 with `warnings`; nothing posted (e.g. RM "Release requires the current lease's exact agent and session")
 → 502 with RM's errors.
 
-
 ### `GET /api/coordination/jobs?repo=&limit=&include_excluded=`
 
 Fleet Job Board S1+S2 (epic #2781, issues #2782/#2783), read-only: open issues (`repo` optional,

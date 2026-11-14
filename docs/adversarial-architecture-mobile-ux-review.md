@@ -121,14 +121,14 @@ The shared-memory bridge requires the caller's `memory.read`, uses a separate re
 
 ## Cross-cutting threat scenarios
 
-| Scenario | Existing boundary | Residual check |
-| --- | --- | --- |
-| Forged Tailscale identity header | Raw transport peer and allowed-login checks in `tailnet_identity.py` | Test the deployed proxy chain on real phone and direct-tailnet traffic; source tests cannot prove its headers/configuration. |
-| Lost or duplicated push | Provider response handling, quiet hours, stale-subscription purge | Durable outbox, retry/idempotency, receipt, and lock-screen minimization for critical events. |
-| Prompt injection in memory or Markdown | Shared context is marked untrusted; exporter fences text and allow-lists fields | Verify every consuming prompt and UI preserves the data boundary; generated content never becomes an instruction source. |
-| Stale or forked authority | Lesson review has status transitions; digest idempotency is transactional | Generic supersession race and offline/failover freshness need explicit conflict states. |
-| Private-data spill to shared systems | Private Mode threat model names logs, transcripts, panels, boards, metrics, CI, and artifacts | Prove all sinks enforce classification before enabling the flag. |
-| Stale health shown as live | Readiness and context-health probes exist | Carry sample time and source through aggregation; test stale, partial, and recovery states. |
+| Scenario                               | Existing boundary                                                                             | Residual check                                                                                                               |
+| -------------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Forged Tailscale identity header       | Raw transport peer and allowed-login checks in `tailnet_identity.py`                          | Test the deployed proxy chain on real phone and direct-tailnet traffic; source tests cannot prove its headers/configuration. |
+| Lost or duplicated push                | Provider response handling, quiet hours, stale-subscription purge                             | Durable outbox, retry/idempotency, receipt, and lock-screen minimization for critical events.                                |
+| Prompt injection in memory or Markdown | Shared context is marked untrusted; exporter fences text and allow-lists fields               | Verify every consuming prompt and UI preserves the data boundary; generated content never becomes an instruction source.     |
+| Stale or forked authority              | Lesson review has status transitions; digest idempotency is transactional                     | Generic supersession race and offline/failover freshness need explicit conflict states.                                      |
+| Private-data spill to shared systems   | Private Mode threat model names logs, transcripts, panels, boards, metrics, CI, and artifacts | Prove all sinks enforce classification before enabling the flag.                                                             |
+| Stale health shown as live             | Readiness and context-health probes exist                                                     | Carry sample time and source through aggregation; test stale, partial, and recovery states.                                  |
 
 ## Prioritized follow-up and measurable gates
 
