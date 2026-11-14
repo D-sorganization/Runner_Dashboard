@@ -2678,21 +2678,6 @@
       },
       "FleetRunTokenRequest": {
         "properties": {
-          "repositories": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 8,
-            "minItems": 1,
-            "title": "Repositories",
-            "type": "array"
-          },
-          "role": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Role",
-            "type": "string"
-          },
           "run_id": {
             "maxLength": 80,
             "minLength": 1,
@@ -2700,7 +2685,7 @@
             "type": "string"
           }
         },
-        "required": ["run_id", "role", "repositories"],
+        "required": ["run_id"],
         "title": "FleetRunTokenRequest",
         "type": "object"
       },
@@ -6389,12 +6374,6 @@
       },
       "RunJwtRequest": {
         "properties": {
-          "principal_id": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Principal Id",
-            "type": "string"
-          },
           "run_id": {
             "maxLength": 80,
             "minLength": 1,
@@ -6402,7 +6381,7 @@
             "type": "string"
           }
         },
-        "required": ["run_id", "principal_id"],
+        "required": ["run_id"],
         "title": "RunJwtRequest",
         "type": "object"
       },

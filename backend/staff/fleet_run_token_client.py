@@ -30,12 +30,11 @@ def mint_staff_run_github_token_via_hub(role_name: str, repo: str, run_id: str) 
     if not rid:
         raise RuntimeError("run_id is required to mint a staff GitHub token via the hub")
 
-    repositories = [repo] if str(repo or "").strip() else []
     url = f"{hub}/api/fleet/run-token"
     try:
         resp = httpx.post(
             url,
-            json={"run_id": rid, "role": role_name, "repositories": repositories},
+            json={"run_id": rid},
             headers={
                 "Authorization": f"Bearer {fleet}",
                 "X-Requested-With": "XMLHttpRequest",

@@ -34,6 +34,21 @@ def _role(repos: tuple[str, ...] = ("Runner_Dashboard",)) -> RoleSpec:
     )
 
 
+def _active_rec(run_id: str, *, repo: str = "Runner_Dashboard", role: str = "maintenance") -> RunRecord:
+    return RunRecord(
+        id=run_id,
+        role=role,
+        provider="claude",
+        model=None,
+        machine="local",
+        repo=repo,
+        target_kind="prompt",
+        target_ref="",
+        prompt="t",
+        status="running",
+    )
+
+
 def _hub_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HUB_FLEET_TOKEN", _FLEET_SECRET)
     monkeypatch.setenv("MACHINE_ROLE", "hub")
@@ -56,7 +71,7 @@ def test_fleet_run_token_requires_fleet_bearer(client: TestClient, monkeypatch: 
     _hub_env(monkeypatch)  # noqa: ARG001 — fixture side effect
     resp = client.post(
         "/api/fleet/run-token",
-        json={"run_id": "run-1", "role": "maintenance", "repositories": ["Runner_Dashboard"]},
+        json={"run_id": "run-1"},
         headers=_XHR,
     )
     assert resp.status_code == 401
@@ -66,7 +81,7 @@ def test_fleet_run_token_rejects_invalid_bearer(client: TestClient, monkeypatch:
     _hub_env(monkeypatch)
     resp = client.post(
         "/api/fleet/run-token",
-        json={"run_id": "run-1", "role": "maintenance", "repositories": ["Runner_Dashboard"]},
+        json={"run_id": "run-1"},
         headers={"Authorization": "Bearer wrong", **_XHR},
     )
     assert resp.status_code == 401
@@ -74,36 +89,45 @@ def test_fleet_run_token_rejects_invalid_bearer(client: TestClient, monkeypatch:
 
 def test_fleet_run_token_rejects_unregistered_node_header(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     _hub_env(monkeypatch)
+    role = _role()
     with patch(
         "staff.fleet_run_token_service.assert_registered_fleet_node",
         side_effect=__import__("fastapi").HTTPException(status_code=403, detail="unregistered fleet node"),
     ):
-        resp = client.post(
-            "/api/fleet/run-token",
-            json={"run_id": "run-1", "role": "maintenance", "repositories": ["Runner_Dashboard"]},
-            headers={
-                "Authorization": f"Bearer {_FLEET_SECRET}",
-                "X-Fleet-Node": "unknown-node",
-                **_XHR,
-            },
-        )
+        with patch("staff.fleet_run_mint_policy.load_roles", return_value={"maintenance": role}):
+            with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
+                with patch("routers.fleet_run_token.load_active_run_for_mint", return_value=_active_rec("run-1")):
+                    resp = client.post(
+                        "/api/fleet/run-token",
+                        json={"run_id": "run-1"},
+                        headers={
+                            "Authorization": f"Bearer {_FLEET_SECRET}",
+                            "X-Fleet-Node": "unknown-node",
+                            **_XHR,
+                        },
+                    )
     assert resp.status_code == 403
 
 
 def test_fleet_run_token_rejects_repo_outside_role_scope(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     _hub_env(monkeypatch)
     role = _role(repos=("Runner_Dashboard",))
-    with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
-        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
-            resp = client.post(
-                "/api/fleet/run-token",
-                json={"run_id": "run-1", "role": "maintenance", "repositories": ["Other_Repo"]},
-                headers={
-                    "Authorization": f"Bearer {_FLEET_SECRET}",
-                    "X-Fleet-Node": "node-c",
-                    **_XHR,
-                },
-            )
+    with patch("staff.fleet_run_mint_policy.load_roles", return_value={"maintenance": role}):
+        with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
+            with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
+                with patch(
+                    "routers.fleet_run_token.load_active_run_for_mint",
+                    return_value=_active_rec("run-1", repo="Other_Repo"),
+                ):
+                    resp = client.post(
+                        "/api/fleet/run-token",
+                        json={"run_id": "run-1"},
+                        headers={
+                            "Authorization": f"Bearer {_FLEET_SECRET}",
+                            "X-Fleet-Node": "node-c",
+                            **_XHR,
+                        },
+                    )
     assert resp.status_code == 403
 
 
@@ -111,18 +135,23 @@ def test_fleet_run_token_mints_on_hub(client: TestClient, monkeypatch: pytest.Mo
     _hub_env(monkeypatch)
     fake = StaffGithubToken(token=_FAKE_GHS, expires_at=1_800_000_000.0, source="github_app")
     role = _role()
-    with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
-        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
-            with patch("staff.fleet_run_token_service.mint_staff_run_github_token_local", return_value=fake) as mint:
-                resp = client.post(
-                    "/api/fleet/run-token",
-                    json={"run_id": "run-node-c-1", "role": "maintenance", "repositories": ["Runner_Dashboard"]},
-                    headers={
-                        "Authorization": f"Bearer {_FLEET_SECRET}",
-                        "X-Fleet-Node": "node-c",
-                        **_XHR,
-                    },
-                )
+    with patch("staff.fleet_run_mint_policy.load_roles", return_value={"maintenance": role}):
+        with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
+            with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
+                with patch("staff.fleet_run_token_service.mint_staff_run_github_token_local", return_value=fake) as mint:
+                    with patch(
+                        "routers.fleet_run_token.load_active_run_for_mint",
+                        return_value=_active_rec("run-node-c-1"),
+                    ):
+                        resp = client.post(
+                            "/api/fleet/run-token",
+                            json={"run_id": "run-node-c-1"},
+                            headers={
+                                "Authorization": f"Bearer {_FLEET_SECRET}",
+                                "X-Fleet-Node": "node-c",
+                                **_XHR,
+                            },
+                        )
     assert resp.status_code == 200
     body = resp.json()
     assert body["token"] == _FAKE_GHS
@@ -138,20 +167,25 @@ def test_fleet_run_token_scopes_installation_token_to_bare_repo_name(
     from github_app_auth import InstallationToken
 
     role = _role()
-    with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
-        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
-            with patch("staff.github_run_env.github_app_auth_configured", return_value=True):
-                with patch("staff.github_run_env.mint_installation_access_token") as mint:
-                    mint.return_value = InstallationToken(token=_FAKE_GHS, expires_at=1_800_000_000.0)
-                    resp = client.post(
-                        "/api/fleet/run-token",
-                        json={"run_id": "run-node-c-scope", "role": "maintenance", "repositories": ["Runner_Dashboard"]},
-                        headers={
-                            "Authorization": f"Bearer {_FLEET_SECRET}",
-                            "X-Fleet-Node": "node-c",
-                            **_XHR,
-                        },
-                    )
+    with patch("staff.fleet_run_mint_policy.load_roles", return_value={"maintenance": role}):
+        with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
+            with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
+                with patch("staff.github_run_env.github_app_auth_configured", return_value=True):
+                    with patch("staff.github_run_env.mint_installation_access_token") as mint:
+                        mint.return_value = InstallationToken(token=_FAKE_GHS, expires_at=1_800_000_000.0)
+                        with patch(
+                            "routers.fleet_run_token.load_active_run_for_mint",
+                            return_value=_active_rec("run-node-c-scope"),
+                        ):
+                            resp = client.post(
+                                "/api/fleet/run-token",
+                                json={"run_id": "run-node-c-scope"},
+                                headers={
+                                    "Authorization": f"Bearer {_FLEET_SECRET}",
+                                    "X-Fleet-Node": "node-c",
+                                    **_XHR,
+                                },
+                            )
     assert resp.status_code == 200
     mint.assert_called_once()
     assert mint.call_args.kwargs["repositories"] == ["Runner_Dashboard"]
@@ -161,20 +195,25 @@ def test_fleet_run_token_rejects_empty_repository_scope_without_minting(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _hub_env(monkeypatch)
-    role = _role()
-    with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
-        with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
-            with patch("staff.fleet_run_token_service.mint_staff_run_github_token_local") as mint:
-                resp = client.post(
-                    "/api/fleet/run-token",
-                    json={"run_id": "run-node-c-empty-scope", "role": "maintenance", "repositories": []},
-                    headers={
-                        "Authorization": f"Bearer {_FLEET_SECRET}",
-                        "X-Fleet-Node": "node-c",
-                        **_XHR,
-                    },
-                )
-    assert resp.status_code == 422
+    role = _role(repos=())
+    with patch("staff.fleet_run_mint_policy.load_roles", return_value={"maintenance": role}):
+        with patch("staff.fleet_run_token_service.load_roles", return_value={"maintenance": role}):
+            with patch("staff.fleet_run_token_service.assert_registered_fleet_node", return_value="node-c"):
+                with patch("staff.fleet_run_token_service.mint_staff_run_github_token_local") as mint:
+                    with patch(
+                        "routers.fleet_run_token.load_active_run_for_mint",
+                        return_value=_active_rec("run-node-c-empty-scope"),
+                    ):
+                        resp = client.post(
+                            "/api/fleet/run-token",
+                            json={"run_id": "run-node-c-empty-scope"},
+                            headers={
+                                "Authorization": f"Bearer {_FLEET_SECRET}",
+                                "X-Fleet-Node": "node-c",
+                                **_XHR,
+                            },
+                        )
+    assert resp.status_code == 403
     mint.assert_not_called()
 
 
