@@ -3,7 +3,13 @@
   "_comment": "Shapes and placeholders only (issue #3080). Never add a real private value here; real names come from the private overlay via --extra-patterns.",
   "path_globs": {
     "confidential-doc": ["**/*CONFIDENTIAL*", "**/*confidential*"],
-    "key-material": ["**/*.pem", "**/*.p12", "**/*.pfx", "**/id_rsa*", "**/id_ed25519*"],
+    "key-material": [
+      "**/*.pem",
+      "**/*.p12",
+      "**/*.pfx",
+      "**/id_rsa*",
+      "**/id_ed25519*"
+    ],
     "env-file": ["**/.env", "**/.env.local", "**/.env.production"]
   },
   "content_patterns": {

@@ -12,11 +12,11 @@ citation success.
 
 ## Trusted evidence shape
 
-| Field | Requirement |
-|-------|-------------|
-| `source` | One of `github_actions_attestation`, `fleet_ci_receipt` |
-| `receipt_id` | Non-empty string identifying the attestation/run receipt |
-| `digest_sha256` | Lowercase 64-hex SHA-256 of the trusted receipt payload |
+| Field           | Requirement                                              |
+| --------------- | -------------------------------------------------------- |
+| `source`        | One of `github_actions_attestation`, `fleet_ci_receipt`  |
+| `receipt_id`    | Non-empty string identifying the attestation/run receipt |
+| `digest_sha256` | Lowercase 64-hex SHA-256 of the trusted receipt payload  |
 
 ## Verifier interface
 

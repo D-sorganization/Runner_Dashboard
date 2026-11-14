@@ -41,7 +41,13 @@
     "oss-scout": ["codex", "claude", "antigravity"],
     "tooling-scout": ["codex", "claude", "antigravity"]
   },
-  "unchanged_roles": ["barb", "bob", "fleet-dispatcher", "expert-panel", "rd-barb"],
+  "unchanged_roles": [
+    "barb",
+    "bob",
+    "fleet-dispatcher",
+    "expert-panel",
+    "rd-barb"
+  ],
   "antigravity_restricted_repo_bases": [
     "Gasification_Model",
     "Repository_Management",

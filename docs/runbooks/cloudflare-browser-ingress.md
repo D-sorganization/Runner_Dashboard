@@ -46,18 +46,18 @@ Do not treat a GitHub login or an arbitrary JWT `amr` claim as proof of a passke
 
 Run this matrix only after all code gates have merged and the external-ingress feature flag remains disabled until the full matrix is ready. Use a fresh browser session and redact cookies, tokens, identity values, and source IPs from saved logs.
 
-| Request path | Expected result |
-| --- | --- |
-| Owner opens `https://ops.d-sorganization.org` before Access login | Access challenge; no Dashboard content |
-| Owner completes Access WebAuthn MFA but lacks valid Dashboard OAuth session | Dashboard OAuth login; protected data remains unavailable |
-| Owner completes Access MFA and valid Dashboard OAuth | Only explicitly allowed human browser UI/read routes and chat streams succeed |
-| Non-owner identity | Access denies; no Dashboard details |
-| Missing, expired, or invalid Access assertion | Generic denial; no protected response |
-| External request with an agent or machine bearer token | Generic 403; structured server-side denial audit, no credential details |
-| Browser mutation without valid session-bound CSRF and exact external Origin | 403 |
-| Public request to a machine/admin route | Denied; local/tailnet caller retains its separate authorization path |
-| Request directly to hub-a from outside the host | No reachable origin; listener remains loopback-only |
-| Allowed staff thread/panel SSE stream | `text/event-stream`, `X-Accel-Buffering: no`, `Cache-Control: no-cache, no-transform`; events arrive incrementally |
+| Request path                                                                | Expected result                                                                                                    |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Owner opens `https://ops.d-sorganization.org` before Access login           | Access challenge; no Dashboard content                                                                             |
+| Owner completes Access WebAuthn MFA but lacks valid Dashboard OAuth session | Dashboard OAuth login; protected data remains unavailable                                                          |
+| Owner completes Access MFA and valid Dashboard OAuth                        | Only explicitly allowed human browser UI/read routes and chat streams succeed                                      |
+| Non-owner identity                                                          | Access denies; no Dashboard details                                                                                |
+| Missing, expired, or invalid Access assertion                               | Generic denial; no protected response                                                                              |
+| External request with an agent or machine bearer token                      | Generic 403; structured server-side denial audit, no credential details                                            |
+| Browser mutation without valid session-bound CSRF and exact external Origin | 403                                                                                                                |
+| Public request to a machine/admin route                                     | Denied; local/tailnet caller retains its separate authorization path                                               |
+| Request directly to hub-a from outside the host                             | No reachable origin; listener remains loopback-only                                                                |
+| Allowed staff thread/panel SSE stream                                       | `text/event-stream`, `X-Accel-Buffering: no`, `Cache-Control: no-cache, no-transform`; events arrive incrementally |
 
 For SSE, observe at least two events with timestamps while the connection stays open. Compare the public hostname response with the loopback response and confirm the edge does not cache or buffer the stream. Verify Access still authenticates the stream and no bearer-token path has been added. If the deployed route contract does not yet permit the tested browser request, that is a failed gate; do not widen the route to make this runbook pass.
 

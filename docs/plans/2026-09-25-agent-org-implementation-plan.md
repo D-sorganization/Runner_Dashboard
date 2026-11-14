@@ -120,11 +120,11 @@ WP-0.2 ─┼─► WP-1.1 ─► WP-1.2 ─► (owner reviews baseline) ─► 
 
 These are the live leases seen on the presence board at 2026-09-25 18:26 UTC.
 
-| Session                             | Issue / paths                                                                                        | Overlap with this plan                                                                                                                                               |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `claude-hub-a-20260925`      | #1340 (`backend/staff/routing_eval.py`, `frontend/src/pages/Staff/Board.tsx`); consolidated PR #1458 | #1340 merged (#1442), so the WP-0.1 collision is cleared. WP-0.1 should add its roster-resolution check next to the routing evaluation set rather than duplicate it. |
-| `claude-node-b-20260925-tracking` | #1345 shell (merged, #1449); now SC-G6 #1338 (retire Cline Launcher, `/api/agent-launcher`)          | None.                                                                                                                                                                |
-| CR-1 #1281, CR-2 #1282 (in review)  | `backend/code_requests/*`                                                                            | Phase 2 must rebase on them; no Phase 0/1 package touches `backend/code_requests/`.                                                                                  |
+| Session                            | Issue / paths                                                                                        | Overlap with this plan                                                                                                                                               |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `claude-hub-a-20260925`            | #1340 (`backend/staff/routing_eval.py`, `frontend/src/pages/Staff/Board.tsx`); consolidated PR #1458 | #1340 merged (#1442), so the WP-0.1 collision is cleared. WP-0.1 should add its roster-resolution check next to the routing evaluation set rather than duplicate it. |
+| `claude-node-b-20260925-tracking`  | #1345 shell (merged, #1449); now SC-G6 #1338 (retire Cline Launcher, `/api/agent-launcher`)          | None.                                                                                                                                                                |
+| CR-1 #1281, CR-2 #1282 (in review) | `backend/code_requests/*`                                                                            | Phase 2 must rebase on them; no Phase 0/1 package touches `backend/code_requests/`.                                                                                  |
 
 ## 6. Open Questions Sent to the Active Sessions
 

@@ -5,3 +5,9 @@ tests/contracts/maxwell_openapi.json
 # Machine-generated assessment output (A-O assessment JSON and `gh` issue dumps).
 docs/assessments/*.json
 docs/archive/**/assessments/*.json
+
+# Recorded test fixtures (captured API payloads, vendored skill files): kept
+# byte-for-byte as captured, so tests read exactly what the source produced (#4393).
+tests/fixtures/
+tests/deploy/fixtures/
+frontend/src/**/__fixtures__/

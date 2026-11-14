@@ -6,23 +6,23 @@ Read-only research explaining why self-hosted runners sat **30–54% idle** on *
 
 ## Executive summary
 
-| Question | Answer |
-| --- | --- |
-| Dominant stall class (Oct 2025 backlog) | **`label_mismatch`** — jobs requested labels no online runner carried |
-| Primary missing label | **`d-sorg-fleet-public-heavy`** (public-repo heavy CI jobs, #3084) |
-| Idle runners with standard fleet labels | Yes — **`d-sorg-fleet`** pool was online and idle while heavy jobs waited |
+| Question                                                    | Answer                                                                                                                       |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Dominant stall class (Oct 2025 backlog)                     | **`label_mismatch`** — jobs requested labels no online runner carried                                                        |
+| Primary missing label                                       | **`d-sorg-fleet-public-heavy`** (public-repo heavy CI jobs, #3084)                                                           |
+| Idle runners with standard fleet labels                     | Yes — **`d-sorg-fleet`** pool was online and idle while heavy jobs waited                                                    |
 | Does reserved merge-group runner routing help this backlog? | **No** — merge-group work used standard fleet labels; starvation was **`label_mismatch`** on **`d-sorg-fleet-public-heavy`** |
-| Policy change in the diagnostic PR? | **No** — instrumentation and docs only |
+| Policy change in the diagnostic PR?                         | **No** — instrumentation and docs only                                                                                       |
 
 ## Workflow and label sources (static)
 
 Heavy jobs that must stay self-hosted after the repo goes public are listed in `config/public_repo_heavy_jobs.json`:
 
-| Workflow | Job id | Required check name (approx.) | `runs-on` tail label |
-| --- | --- | --- | --- |
-| `frontend-tests.yml` | `playwright-e2e` | Playwright E2E smoke tests | `d-sorg-fleet-public-heavy` |
-| `frontend-tests.yml` | `staff-console-e2e` | Staff Console e2e (fake providers) | `d-sorg-fleet-public-heavy` |
-| `ci-auto-deploy-regression.yml` | `auto-deploy-regression` | Auto-deploy live regression | `d-sorg-fleet-public-heavy` |
+| Workflow                        | Job id                   | Required check name (approx.)      | `runs-on` tail label        |
+| ------------------------------- | ------------------------ | ---------------------------------- | --------------------------- |
+| `frontend-tests.yml`            | `playwright-e2e`         | Playwright E2E smoke tests         | `d-sorg-fleet-public-heavy` |
+| `frontend-tests.yml`            | `staff-console-e2e`      | Staff Console e2e (fake providers) | `d-sorg-fleet-public-heavy` |
+| `ci-auto-deploy-regression.yml` | `auto-deploy-regression` | Auto-deploy live regression        | `d-sorg-fleet-public-heavy` |
 
 Guardrails are enforced by `tests/test_public_repo_heavy_job_runner_split.py` (no silent flip to `ubuntu-latest` when public). Owner provisioning steps are documented in `docs/runner-labels.md` (scoped runner group + `ci-self-hosted-heavy-public` environment).
 
@@ -53,12 +53,12 @@ Partial runs also recorded **HTTP 403** on org runner-group reads for some integ
 
 ## Read-only diagnostics in this repo
 
-| Surface | Purpose |
-| --- | --- |
-| `python shared_scripts/queued_job_diagnostic.py --queued-jobs … --runners …` | Offline snapshot analysis (fixtures or owner-exported JSON) |
-| `GET /api/queue/diagnose` | Live sample of queued jobs + runner inventory; now includes **`wait_reason_classification`** (shared classifier) and **`workflow_label_policy`** (static public-heavy cross-check) |
-| `GET /api/runners/label-guidance` | Human-oriented label docs |
-| `GET /api/runners/groups/{label}` | Count runners registered with a label |
+| Surface                                                                      | Purpose                                                                                                                                                                            |
+| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `python shared_scripts/queued_job_diagnostic.py --queued-jobs … --runners …` | Offline snapshot analysis (fixtures or owner-exported JSON)                                                                                                                        |
+| `GET /api/queue/diagnose`                                                    | Live sample of queued jobs + runner inventory; now includes **`wait_reason_classification`** (shared classifier) and **`workflow_label_policy`** (static public-heavy cross-check) |
+| `GET /api/runners/label-guidance`                                            | Human-oriented label docs                                                                                                                                                          |
+| `GET /api/runners/groups/{label}`                                            | Count runners registered with a label                                                                                                                                              |
 
 Use `/api/queue/diagnose` during the next ≥50 queued-run event to refresh counts without mutating queue state.
 

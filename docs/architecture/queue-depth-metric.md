@@ -20,19 +20,19 @@ It counts **queued GitHub Actions workflow runs** for the `merge_group` event �
 - open agent dispatch slots,
 - coordination job-board rows,
 - org-wide `/api/queue` workflow backlog, or
-- merge-queue *entries* (PRs waiting to enter the queue).
+- merge-queue _entries_ (PRs waiting to enter the queue).
 
 That count is useful for **CI merge-queue saturation** but is a poor proxy for **RD agent/dispatch pressure**. The panel (Fable/Barb) reclassified W1b from a one-line fix to this design step because the metric measures a **different system’s queue** and calls it RD depth.
 
 ### Current consumers
 
-| Consumer | Field / usage | Notes |
-|----------|----------------|-------|
-| `coordination/overload.py` | `merge_queue_depth`, `queue_batching` | Drives DRAIN suggestions and batching hints |
-| `coordination/queue_batching.py` | `queue_depth` argument | Compares depth vs `max_merge` ruleset parameter |
-| `coordination/brief.py` | merge queue queued/in-progress (separate API) | Operator briefing text |
-| `dispatch_queue_delay.py` | `QueueDepthSnapshot` (`queued_runs`, `queued_jobs`, `queue_p95_seconds`) | Agent dispatch throttling (#2034); **already models two axes** |
-| `routers/queue.py` | org workflow run sample | Operator queue UI — different freshness contract |
+| Consumer                         | Field / usage                                                            | Notes                                                          |
+| -------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `coordination/overload.py`       | `merge_queue_depth`, `queue_batching`                                    | Drives DRAIN suggestions and batching hints                    |
+| `coordination/queue_batching.py` | `queue_depth` argument                                                   | Compares depth vs `max_merge` ruleset parameter                |
+| `coordination/brief.py`          | merge queue queued/in-progress (separate API)                            | Operator briefing text                                         |
+| `dispatch_queue_delay.py`        | `QueueDepthSnapshot` (`queued_runs`, `queued_jobs`, `queue_p95_seconds`) | Agent dispatch throttling (#2034); **already models two axes** |
+| `routers/queue.py`               | org workflow run sample                                                  | Operator queue UI — different freshness contract               |
 
 Implementations must not conflate these without renaming fields (breaking change — out of scope for the first implementation PR).
 
@@ -45,13 +45,13 @@ Implementations must not conflate these without renaming fields (breaking change
 
 ## Metric candidates (evaluated)
 
-| ID | Definition | Source | Pros | Cons |
-|----|------------|--------|------|------|
-| **M0 (legacy)** | Count of `merge_group` Actions runs with `status=queued` | GitHub REST (current) | Already implemented; matches merge-queue CI pressure | Not RD dispatch depth; run fan-out skews under matrix |
-| **M1** | Merge-queue **entries** waiting (PRs in queue) | GitHub GraphQL merge queue / ruleset APIs | Closer to “jobs waiting to merge” | Rate limits; not identical to queued *runs* |
-| **M2** | Org/org-repo **workflow runs** queued + in_progress (excl. policy filters) | `/api/queue` aggregation / `gh` list runs | Matches operator “queue stuck” runbook | Heavy; mixes unrelated workflows |
-| **M3** | **RD dispatch backlog** — count of active+queued staff/agent runs from coordination board | `coordination/staff_view` / job board | Aligns with agent pressure | Not repo-scoped today; needs definition of “counts toward depth” |
-| **M4** | **Claimed-but-not-finished jobs** on job board | SQLite job board store | True RD job queue | Requires schema contract; depends on lease/claim epic (#3877+) |
+| ID              | Definition                                                                                | Source                                    | Pros                                                 | Cons                                                             |
+| --------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------- | ---------------------------------------------------------------- |
+| **M0 (legacy)** | Count of `merge_group` Actions runs with `status=queued`                                  | GitHub REST (current)                     | Already implemented; matches merge-queue CI pressure | Not RD dispatch depth; run fan-out skews under matrix            |
+| **M1**          | Merge-queue **entries** waiting (PRs in queue)                                            | GitHub GraphQL merge queue / ruleset APIs | Closer to “jobs waiting to merge”                    | Rate limits; not identical to queued _runs_                      |
+| **M2**          | Org/org-repo **workflow runs** queued + in_progress (excl. policy filters)                | `/api/queue` aggregation / `gh` list runs | Matches operator “queue stuck” runbook               | Heavy; mixes unrelated workflows                                 |
+| **M3**          | **RD dispatch backlog** — count of active+queued staff/agent runs from coordination board | `coordination/staff_view` / job board     | Aligns with agent pressure                           | Not repo-scoped today; needs definition of “counts toward depth” |
+| **M4**          | **Claimed-but-not-finished jobs** on job board                                            | SQLite job board store                    | True RD job queue                                    | Requires schema contract; depends on lease/claim epic (#3877+)   |
 
 ## Recommended canonical metrics (v1)
 
@@ -76,11 +76,11 @@ Keep **`queue_p95_seconds`** from `dispatch_queue_delay.QueueDepthSnapshot` as t
 
 ## Overload behavior (target state for #3880)
 
-| Signal | Threshold owner | Action |
-|--------|-----------------|--------|
-| `github_merge_queue_run_depth` | `queue_batching` / ruleset `max_merge` | Batch/consolidation suggestions (existing) |
-| `rd_dispatch_queue_depth` | New config alongside `open_count_threshold` (default TBD) | Optional DRAIN reason “dispatch backlog” (shadow mode first) |
-| Open PR rate vs merge rate | `overload.py` windows | Unchanged |
+| Signal                         | Threshold owner                                           | Action                                                       |
+| ------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------ |
+| `github_merge_queue_run_depth` | `queue_batching` / ruleset `max_merge`                    | Batch/consolidation suggestions (existing)                   |
+| `rd_dispatch_queue_depth`      | New config alongside `open_count_threshold` (default TBD) | Optional DRAIN reason “dispatch backlog” (shadow mode first) |
+| Open PR rate vs merge rate     | `overload.py` windows                                     | Unchanged                                                    |
 
 **Shadow period:** Emit both metrics in overload snapshots with warnings when legacy field `merge_queue_depth` is read without checking labels; remove shadow after one release cycle.
 

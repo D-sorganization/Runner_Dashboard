@@ -45,12 +45,12 @@ Keep `blocked`, `judgement:design`, and `panel-review` until the ruling; then `j
 
 ## Files likely touched
 
-| Area | Paths |
-| --- | --- |
-| RD persona | `backend/staff/linus_persona.py` (new) |
-| RD tests | `tests/unit/test_linus_persona.py` (new) |
-| RM role | `Repository_Management/staff/roles/linus.yml` |
-| Docs | `docs/agents/role-seats.md` (update Linus row after cutover), `docs/operations/persona-cutover.md` |
+| Area       | Paths                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------- |
+| RD persona | `backend/staff/linus_persona.py` (new)                                                             |
+| RD tests   | `tests/unit/test_linus_persona.py` (new)                                                           |
+| RM role    | `Repository_Management/staff/roles/linus.yml`                                                      |
+| Docs       | `docs/agents/role-seats.md` (update Linus row after cutover), `docs/operations/persona-cutover.md` |
 
 ## Acceptance criteria
 
@@ -69,11 +69,11 @@ Keep `blocked`, `judgement:design`, and `panel-review` until the ruling; then `j
 
 ## Suggested PR split (advisory ~500 lines each (not a gate))
 
-| PR | Content | Closes |
-| --- | --- | --- |
-| 1 | `linus_persona.py` + role_data/schema tests | — |
-| 2 | Shadow slot + notify fail-closed tests | — |
-| 3 | Fallback drill + relay env + doc touch | `Closes #3702` |
+| PR  | Content                                     | Closes         |
+| --- | ------------------------------------------- | -------------- |
+| 1   | `linus_persona.py` + role_data/schema tests | —              |
+| 2   | Shadow slot + notify fail-closed tests      | —              |
+| 3   | Fallback drill + relay env + doc touch      | `Closes #3702` |
 
 ## Recommended labels
 

@@ -33,18 +33,18 @@ kept under this overlay's `policy_dir` and never in this repo.
 
 Each entry in `private_roles` is an object:
 
-| Key                    | Type   | Meaning                                              |
+| Key                    | Type   | Meaning                                               |
 | ---------------------- | ------ | ----------------------------------------------------- |
 | `role_id`              | string | Unique id; must match the requesting role exactly.    |
 | `allowed_templates`    | list   | Template names this role may read. No bulk/listing.   |
 | `providers`            | object | Host name to list of approved subscription CLI names. |
-| `context_store_dir`    | string | Host-local directory of the encrypted context store. |
+| `context_store_dir`    | string | Host-local directory of the encrypted context store.  |
 | `store_schema_version` | int    | Must equal the store's `.store-schema-version` file.  |
 
 `backend/private_roles.py` is the single accessor
 (`read_private_context`). It is called with the requesting role id, a target
 template name, the host, and the provider CLI in use, and enforces, in
-order: the role exists, the requester *is* that role (no panel, agent or
+order: the role exists, the requester _is_ that role (no panel, agent or
 other role reads), the template is allowlisted, the host+provider pair is
 approved, a host-local key is configured (`RD_PRIVATE_CONTEXT_KEY_PATH`), the
 context store and its schema-version marker exist and match, and the
@@ -64,10 +64,10 @@ nothing under `tests/fixtures/` holds a real store or key.
 One additional, optional top-level key. Omitting it (every overlay before
 #3250, and any overlay that doesn't want it) validates exactly as before.
 
-| Key             | Type | Meaning                                                  |
-| ---------------- | ---- | --------------------------------------------------------- |
-| `enabled`        | bool | Private Mode on for this overlay.                          |
-| `default_level`  | string | One of `PUBLIC`, `INTERNAL`, `SENSITIVE` (`backend/private_mode.py`). Unknown names fail closed. |
+| Key             | Type   | Meaning                                                                                          |
+| --------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| `enabled`       | bool   | Private Mode on for this overlay.                                                                |
+| `default_level` | string | One of `PUBLIC`, `INTERNAL`, `SENSITIVE` (`backend/private_mode.py`). Unknown names fail closed. |
 
 Absent, or `{"enabled": false, "default_level": "PUBLIC"}` — the same thing —
 resolves to `private_mode.DISABLED`: classification stays `PUBLIC`

@@ -80,11 +80,11 @@ Runner_Dashboard#3300: "Bar frozen at claim: adopt. Hash the canonicalized check
 text. A mismatch forces a re-claim." Second of the four ADR/spec docs in #3300's build order
 (ADR 0010 is the first); the implementation PR for this upgrade follows after this doc merges.
 
-**Problem.** A claim fixes *who* is working an issue (the existing lease format above), but not
-*what they were asked to do*. An issue's acceptance criteria can change — a checkbox added, a
+**Problem.** A claim fixes _who_ is working an issue (the existing lease format above), but not
+_what they were asked to do_. An issue's acceptance criteria can change — a checkbox added, a
 Dependencies section edited — after the lease is taken, while the builder keeps working from the
 version they first read. The verifier (ADR 0010) then judges the PR against whatever criteria are
-on the issue *now*, which may not be what the builder claimed against.
+on the issue _now_, which may not be what the builder claimed against.
 
 **Decision.** Extend the lease comment with one additional field, appended to the existing line:
 
@@ -118,9 +118,9 @@ hash the checklist at claim time; compare on `check()`), and the shared RM lease
 
 **Consequences.**
 
-- *Easier:* the verifier always judges a PR against a frozen, named version of the bar; a Barb or
+- _Easier:_ the verifier always judges a PR against a frozen, named version of the bar; a Barb or
   reviewer disputing a PR can point at the exact `bar:` hash it was built against.
-- *Harder / cost:* an issue whose criteria legitimately need mid-flight clarification now requires
+- _Harder / cost:_ an issue whose criteria legitimately need mid-flight clarification now requires
   an explicit re-claim rather than a silent continuation; this is intentional (the panel's "a
   mismatch forces a re-claim"), but it does add one more step to a long-running claim when the
   issue author tightens wording after work has started.
