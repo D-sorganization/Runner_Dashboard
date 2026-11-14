@@ -31,7 +31,6 @@ from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field, field_validator
 from routers.staff_dispatch import run_dispatch
-from staff import fleet as staff_fleet
 from staff.activity_summary import ActivitySummaryUnavailable, activity_summary_counts
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
 from staff.audit import (
@@ -62,6 +61,8 @@ from staff.runner import get_runner
 from staff.scheduler import get_scheduler
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES, default_db_path
 from staff.summary_view import build_staff_summary
+
+from staff import fleet as staff_fleet
 
 log = logging.getLogger("dashboard.staff")
 router = APIRouter(prefix="/api/staff", tags=["staff"])

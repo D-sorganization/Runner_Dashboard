@@ -7,7 +7,6 @@ import logging
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from staff import quota as quota_mod
 from staff.adapters import READ_ONLY_RUN_PROVIDERS, ProviderAdapter
 from staff.plan import RunRequest
 from staff.provider_cooldown import (
@@ -16,8 +15,10 @@ from staff.provider_cooldown import (
     provider_in_cooldown,
 )
 from staff.provider_failover_config import FailoverStep, resolve_failover_chain
-from staff.roles import RoleSpec
 from staff.runner_ops import can_run_unattended, read_only_kwargs
+
+from staff import quota as quota_mod
+from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.failover_dispatch")
 
