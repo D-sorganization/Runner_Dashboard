@@ -72,10 +72,12 @@ export async function openThread(page: Page, roleTitle: string): Promise<string>
   await page.goto("/staff");
   const title = roleTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const roleButton = page.getByRole("button", { name: new RegExp(`^${title}, Status:`) });
-  if (!(await roleButton.isVisible())) {
+  try {
+    await roleButton.waitFor({ state: "visible", timeout: 3_000 });
+  } catch {
     await page.getByRole("button", { name: "Choose staff" }).click();
   }
-  await expect(roleButton).toBeVisible();
+  await expect(roleButton).toBeVisible({ timeout: 20_000 });
   const history = page.waitForResponse(
     (r) => r.request().method() === "GET" && THREAD_DETAIL.test(new URL(r.url()).pathname),
   );
