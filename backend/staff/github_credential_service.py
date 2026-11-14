@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 from staff.github_run_env import StaffGithubToken, mint_staff_run_github_token
-from staff.roles import load_roles
 from staff.runner import get_runner
 from staff.store import ACTIVE_STATUSES
+
+from staff.roles import load_roles
 
 
 def _assert_run_active(run_id: str) -> None:

@@ -24,6 +24,28 @@ NOW = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
 VALID = {"repos": ["Runner_Dashboard"], "duration_min": 90, "lanes": 2}
 BODY = "```backlog-push-request\n" + json.dumps(VALID) + "\n```"
 
+# Pids these tests write into pid files and state. None of them is a process the test owns.
+_FIXTURE_PIDS = frozenset({1000, 2000, 4300, 9999})
+
+
+@pytest.fixture(autouse=True)
+def _fixture_pids_are_not_host_processes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A liveness probe (signal 0) of a fixture pid never reaches the host's process table (#4393).
+
+    ``_pid_identity_matches`` probes with ``os.kill(pid, 0)``. Where the host happened to run
+    a process with one of these pids, "the supervisor is gone" tests saw it as still running
+    (CI: ``test_recovery_across_restarts_distinguishes_outcome``, ``assert 0 == 1``). A test
+    that needs a fixture pid alive patches the relay's helpers itself, which still wins.
+    """
+    real_kill = relay.os.kill
+
+    def kill(pid: int, sig: int) -> None:
+        if sig == 0 and pid in _FIXTURE_PIDS:
+            raise ProcessLookupError(pid)
+        real_kill(pid, sig)
+
+    monkeypatch.setattr(relay.os, "kill", kill)
+
 
 class FakeGitHub:
     def __init__(self, issues: list[dict[str, Any]], editor: str | None = None) -> None:
