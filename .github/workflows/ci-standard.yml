@@ -314,11 +314,26 @@ jobs:
           # check — plus security-scan, tests, tests-required) is skipped when
           # this predicate is false, so a missing prefix means a PR merges with
           # no test signal at all.
-          prefixes = ("backend/", "clients/", "deploy/", "tests/")
+          # H-04 (#4268): scripts/, shared_scripts/, .github/, config/ and
+          # fleet-hooks/ are exercised by pytest (workflow contract, script
+          # and hook tests), as are the lock file and the Dockerfile.
+          prefixes = (
+              "backend/",
+              "clients/",
+              "deploy/",
+              "tests/",
+              "scripts/",
+              "shared_scripts/",
+              ".github/",
+              "config/",
+              "fleet-hooks/",
+          )
           exact = {
               "pyproject.toml",
               "uv.lock",
               "requirements.txt",
+              "requirements.lock.txt",
+              "Dockerfile",
               "requirements-audit-ignore.txt",
               "bandit.yaml",
               ".pre-commit-config.yaml",
@@ -333,7 +348,7 @@ jobs:
           EOF
       - name: Report skipped Python validation
         if: github.event_name == 'pull_request' && steps.python-scope.outputs.run_python_tests != 'true'
-        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, clients, deploy, tests, or Python dependency policy files."
+        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, clients, deploy, tests, scripts, shared_scripts, .github, config, fleet-hooks, the Dockerfile, or Python dependency policy files."
 
   # â”€â”€ Fleet-wide CI health gate (issue #154) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ci-health-check:
