@@ -65,57 +65,80 @@ _NO_VERDICT_CONCLUSIONS = frozenset({"skipped", "neutral"})
 
 
 def _creation_order(run: dict[str, Any]) -> tuple[int, str]:
-    """Order attempts of one check name: GitHub ids grow with creation, then start time.
-
-    The merge queue runs CI on a commit under ``merge_group`` and again under
-    ``push``; the two runs share a name and the later one has the larger id.
-    """
+    """Order attempts of one check: GitHub ids grow with creation, then start time."""
     run_id = run.get("id")
     ordinal = run_id if isinstance(run_id, int) and not isinstance(run_id, bool) and run_id > 0 else 0
     started = run.get("started_at")
     return ordinal, started if isinstance(started, str) else ""
 
 
-def latest_verdict_runs(completed: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return the newest completed run(s) that carry a verdict (#4419).
+def _nested_id(run: dict[str, Any], field: str) -> int:
+    holder = run.get(field)
+    value = holder.get("id") if isinstance(holder, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else 0
 
-    Skipped/neutral runs did not run and cancelled/stale runs were superseded, so
-    neither decides a name while another run does. More than one run is returned
-    only when the newest ones cannot be told apart (no id, no start time); the
-    caller must then require every one of them to pass.
+
+def _attempt_key(run: dict[str, Any]) -> tuple[int, int]:
+    """(app, check suite) of a run.
+
+    Board ruling C1 keys an attempt by (name, SHA, app, event). A check-run record
+    has no event field; the workflow run of one event owns one check suite, so the
+    suite stands in for the event. The merge queue runs CI on a commit under
+    ``merge_group`` and GitHub runs it again under ``push``: two suites, two keys.
+    Re-running a job adds an attempt to the same suite.
     """
-    deciding = [
-        r for r in completed if str(r.get("conclusion") or "") not in _NO_VERDICT_CONCLUSIONS | _IGNORED_WHEN_SUPERSEDED
-    ]
-    if not deciding:
-        return []
-    newest = max(_creation_order(r) for r in deciding)
-    return [r for r in deciding if _creation_order(r) == newest]
+    return _nested_id(run, "app"), _nested_id(run, "check_suite")
+
+
+def latest_attempts(completed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return the deciding completed run of each (app, suite) for one check name (#4419).
+
+    Within a suite the newest attempt that passed or failed decides, and older
+    attempts are superseded. A newer attempt that skipped or was cancelled does
+    not replace an earlier verdict, so a skip cannot repair a failure. A suite
+    with no verdict at all yields its newest attempt. More than one run per suite
+    is returned only when the newest ones cannot be told apart (no id, no start
+    time); the caller must then require every one of them to pass.
+    """
+    by_key: dict[tuple[int, int], list[dict[str, Any]]] = {}
+    for run in completed:
+        by_key.setdefault(_attempt_key(run), []).append(run)
+    no_verdict = _NO_VERDICT_CONCLUSIONS | _IGNORED_WHEN_SUPERSEDED
+    latest: list[dict[str, Any]] = []
+    for attempts in by_key.values():
+        deciding = [r for r in attempts if str(r.get("conclusion") or "") not in no_verdict] or attempts
+        newest = max(_creation_order(r) for r in deciding)
+        latest.extend(r for r in deciding if _creation_order(r) == newest)
+    return latest
 
 
 def check_name_passes(runs: list[dict[str, Any]], *, required: bool = True) -> bool:
     """Decide one check name from all of its runs on a commit.
 
     Pre: ``runs`` share a name and a head sha.
-    Post: True only when
-    - the newest run that carries a verdict succeeded (an older failure that was
-      re-run, or a superseded merge-queue run, does not block; a failure in the
-      newest run always does), or
-    - no run carries a verdict, none was cancelled, and the name is not a required
-      context (a job that skipped everywhere is not a failure). A required
-      context needs a success, or an allowlisted skip.
+    Post: only the latest attempt of each (app, suite) counts; superseded attempts
+    do not block. True only when
+    - no latest attempt failed (a failure in any suite blocks, whatever the other
+      suites say), and
+    - at least one latest attempt succeeded (skipped, neutral, cancelled and stale
+      attempts of other suites carry no verdict), or every latest attempt was
+      skipped and the name is either not a required context or is on
+      ``SKIPPED_CONCLUSION_ALLOWLIST``.
+    Cancelled-only, stale-only and neutral-only names fail: skipped or neutral is
+    never a pass for a required context outside the allowlist, and neutral alone
+    is never a pass.
     """
     completed = [r for r in runs if not run_is_pending(r)]
     if not completed:
         return False
-    latest = latest_verdict_runs(completed)
-    if latest:
-        return all(str(r.get("conclusion") or "") in SATISFYING_NAME_CONCLUSIONS for r in latest)
-
-    conclusions = {str(r.get("conclusion") or "") for r in completed}
-    if not conclusions <= _NO_VERDICT_CONCLUSIONS:
-        return False  # only cancelled/stale (or malformed) runs: nothing vouches for the name
+    conclusions = {str(r.get("conclusion") or "") for r in latest_attempts(completed)}
+    if conclusions - SATISFYING_NAME_CONCLUSIONS - _NO_VERDICT_CONCLUSIONS - _IGNORED_WHEN_SUPERSEDED:
+        return False  # a latest attempt failed (or has an unknown conclusion)
+    if conclusions & SATISFYING_NAME_CONCLUSIONS:
+        return True
+    if conclusions != {"skipped"}:
+        return False  # cancelled, stale or neutral with no success: nothing vouches for the name
     if not required:
         return True
     name = str(completed[0].get("name") or "")
-    return conclusions == {"skipped"} and name in SKIPPED_CONCLUSION_ALLOWLIST
+    return name in SKIPPED_CONCLUSION_ALLOWLIST

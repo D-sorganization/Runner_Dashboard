@@ -1,4 +1,9 @@
-"""Release/deploy gate: the latest run per check name decides (#4419, #4425).
+"""Release/deploy gate: the latest attempt per check name and suite decides (#4419, #4425).
+
+Board ruling C1 (2026-11-13): latest attempt per (name, SHA, app, event); pending
+blocks; a newer failure fails; explicit, tested skip allowlist. A check-run record
+carries no event field; the workflow run of one event owns one check suite, so
+the attempt key is (app, suite).
 
 The shapes come from the check runs of main commit 74b0a1a0, whose release was
 skipped although CI was green: the merge queue ran CI under ``merge_group`` and
@@ -21,7 +26,7 @@ sys.path.insert(0, str(REPO / "deploy"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from main_auto_release.gate import commit_passes_publisher_ci_gate  # noqa: E402
-from node_auto_deploy.check_runs import check_name_passes, latest_verdict_runs  # noqa: E402
+from node_auto_deploy.check_runs import check_name_passes, latest_attempts  # noqa: E402
 from node_auto_deploy.ci_gate import ci_gate_for_commit, ci_gate_for_deploy_commit  # noqa: E402
 from required_context_helper import (  # noqa: E402
     policy_required_context_names,
@@ -47,7 +52,10 @@ def _run(name: str, conclusion: str | None, run_id: int, *, suite: int = _PUSH_S
 
 
 def _by_conclusions(*conclusions: str | None) -> list[dict[str, Any]]:
-    """Runs of one name in creation order; odd positions are the merge-queue suite."""
+    """Runs of one name in creation order, alternating merge-queue suite and push suite.
+
+    Positions 0 and 2 are attempts of the merge-queue suite, position 1 is the push suite.
+    """
     return [
         _run("job", conclusion, 100 + index, suite=_MERGE_GROUP_SUITE if index % 2 == 0 else _PUSH_SUITE)
         for index, conclusion in enumerate(conclusions)
@@ -63,20 +71,20 @@ def _by_conclusions(*conclusions: str | None) -> list[dict[str, Any]]:
         ("success", "skipped", "success"),
         ("success", "success", "skipped"),
         ("cancelled", "success", "success"),
-        ("failure", "success"),  # a failed attempt that was re-run and passed
-        ("failure", "cancelled", "success"),
+        ("failure", "cancelled", "success"),  # merge-queue attempt failed, its re-run passed
         ("success", "neutral"),
     ],
 )
-def test_name_passes_when_the_latest_verdict_is_success(conclusions: tuple[str, ...]) -> None:
+def test_name_passes_when_the_latest_attempts_succeed(conclusions: tuple[str, ...]) -> None:
     assert check_name_passes(_by_conclusions(*conclusions)) is True
 
 
 @pytest.mark.parametrize(
     "conclusions",
     [
-        ("success", "failure"),  # the newest attempt failed: fail closed
-        ("success", "success", "failure"),
+        ("success", "failure"),  # the push run failed after a green merge-queue run
+        ("failure", "success"),  # another suite's success does not repair a failed suite
+        ("success", "success", "failure"),  # a newer attempt of the merge-queue suite failed
         ("success", "timed_out"),
         ("success", "action_required"),
         ("failure", "skipped"),  # a later skip does not repair a failure
@@ -86,14 +94,38 @@ def test_name_passes_when_the_latest_verdict_is_success(conclusions: tuple[str, 
         ("cancelled", "cancelled"),
         ("cancelled", "skipped"),
         ("stale",),
+        ("neutral",),  # neutral alone is never a pass
+        ("neutral", "skipped"),
     ],
 )
-def test_name_fails_when_the_latest_verdict_is_not_success(conclusions: tuple[str, ...]) -> None:
+def test_name_fails_when_a_latest_attempt_is_not_success(conclusions: tuple[str, ...]) -> None:
     assert check_name_passes(_by_conclusions(*conclusions)) is False
     assert check_name_passes(_by_conclusions(*conclusions), required=False) is False
 
 
-@pytest.mark.parametrize("conclusions", [("skipped",), ("skipped", "skipped", "skipped"), ("neutral",)])
+def test_superseded_attempt_in_one_suite_does_not_block() -> None:
+    rerun_passed = [_run("job", "failure", 200), _run("job", "success", 300)]
+    rerun_failed = [_run("job", "success", 200), _run("job", "failure", 300)]
+    assert check_name_passes(rerun_passed) is True
+    assert check_name_passes(rerun_failed) is False
+
+
+@pytest.mark.parametrize("later", ["skipped", "neutral", "cancelled", "stale"])
+def test_later_attempt_without_a_verdict_does_not_replace_a_verdict_in_its_suite(later: str) -> None:
+    after_failure = [_run("guard", "failure", 200), _run("guard", later, 300)]
+    after_success = [_run("job", "success", 200), _run("job", later, 300)]
+    assert check_name_passes(after_failure) is False
+    assert check_name_passes(after_failure, required=False) is False
+    assert check_name_passes(after_success) is True
+
+
+def test_attempts_are_keyed_by_app_as_well_as_suite() -> None:
+    other_app_failed = _run("job", "failure", 200)
+    other_app_failed["app"] = {"id": 2}
+    assert check_name_passes([other_app_failed, _run("job", "success", 300)]) is False
+
+
+@pytest.mark.parametrize("conclusions", [("skipped",), ("skipped", "skipped", "skipped")])
 def test_skip_only_name_passes_unless_it_is_a_required_context(conclusions: tuple[str, ...]) -> None:
     runs = _by_conclusions(*conclusions)
     assert check_name_passes(runs, required=False) is True
@@ -106,7 +138,7 @@ def test_order_is_by_run_id_not_by_list_position() -> None:
     newest_passed = [_run("job", "success", 300), _run("job", "failure", 200)]
     assert check_name_passes(newest_failed) is False
     assert check_name_passes(newest_passed) is True
-    assert [run["id"] for run in latest_verdict_runs(newest_failed)] == [300]
+    assert [run["id"] for run in latest_attempts(newest_failed)] == [300]
 
 
 def test_runs_that_cannot_be_ordered_must_all_pass() -> None:
@@ -235,3 +267,33 @@ def test_pending_duplicate_still_makes_the_gate_wait() -> None:
     ok, detail = ci_gate_for_commit(runs, _SHA)
     assert ok is False
     assert "still running" in detail
+
+
+def test_missing_required_context_blocks() -> None:
+    name = policy_required_context_names()[0]
+    runs = [run for run in _merge_queue_commit() if run["name"] != name]
+    for gate in (ci_gate_for_commit, ci_gate_for_deploy_commit, commit_passes_publisher_ci_gate):
+        ok, detail = gate(runs, _SHA)
+        assert ok is False, gate.__name__
+        assert "required checks missing" in detail
+        assert name in detail
+
+
+def test_allowlisted_required_skip_passes_but_its_neutral_or_cancelled_run_blocks() -> None:
+    assert ci_gate_for_commit(_merge_queue_commit(), _SHA)[0] is True
+    for conclusion in ("neutral", "cancelled", "failure"):
+        runs = _merge_queue_commit()
+        for run in runs:
+            if run["name"] == "guard":
+                run["conclusion"] = conclusion
+        ok, detail = ci_gate_for_commit(runs, _SHA)
+        assert ok is False, conclusion
+        assert "guard" in detail
+
+
+def test_optional_check_that_is_only_neutral_blocks() -> None:
+    runs = _merge_queue_commit()
+    runs.append(_run("Advisory scan", "neutral", 8000))
+    ok, detail = ci_gate_for_commit(runs, _SHA)
+    assert ok is False
+    assert "Advisory scan" in detail
