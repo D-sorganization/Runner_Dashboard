@@ -1025,6 +1025,21 @@ def test_ci_failure_alert_checks_out_main_for_trusted_andon_script() -> None:
         assert (checkout.get("with") or {}).get("ref") == "main", filename
 
 
+@pytest.mark.parametrize("filename", ("ci-standard.yml", "ci-nightly.yml"))
+def test_ci_failure_alert_skips_when_andon_script_absent_on_main(filename: str) -> None:
+    """Sparse checkout from main must not hard-fail before workflow_failure_andon.py lands (#4302)."""
+    data = _load_workflow(_WORKFLOWS_DIR / filename)
+    alert = data["jobs"]["ci-failure-alert"]
+    andon_step = next(
+        s for s in alert["steps"] if "workflow_failure_andon.py" in str(s.get("run", ""))
+    )
+    run = str(andon_step["run"])
+    assert "[ ! -f scripts/ci/workflow_failure_andon.py ]" in run
+    assert "exit 0" in run
+    assert "::notice::ci-failure-alert:" in run
+    assert "workflow_failure_andon.py not on main yet" in run
+
+
 @pytest.mark.parametrize("job_id", ["quality-gate", "tests-required"])
 def test_required_aggregates_report_on_every_event(job_id: str) -> None:
     from scripts.check_required_checks_drift import check_job_fails_closed
