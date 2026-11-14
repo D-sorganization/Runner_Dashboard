@@ -33,8 +33,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from staff.roles import RoleSpec, load_roles
 from staff.store import _config_dir, _now
+
+from staff.roles import RoleSpec, load_roles
 
 log = logging.getLogger("dashboard.staff.holds")
 

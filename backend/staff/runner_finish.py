@@ -5,13 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from staff import consolidation, review, verification
-from staff import runner_ops as ops
-from staff import usage as usage_mod
 from staff.execution_result import classify_execution_result
 from staff.plan import RunPlan
 from staff.run_status import RunStatus, transition_to
 from staff.store import RunRecord, RunStore, _now
+
+from staff import consolidation, review, verification
+from staff import runner_ops as ops
+from staff import usage as usage_mod
 
 if TYPE_CHECKING:
     from staff.runner import StaffRunner

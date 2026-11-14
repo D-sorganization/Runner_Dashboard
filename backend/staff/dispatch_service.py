@@ -13,8 +13,6 @@ from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller
-from staff import claim_guard, consolidation, resource_admission
-from staff import fleet as staff_fleet
 from staff.audit import AuditError, record_audit
 from staff.barb_lease_fence import BarbClaim, barb_write_fence, is_barb_seat
 from staff.budget import BudgetGuard
@@ -22,6 +20,9 @@ from staff.rate_limit import check_rate_limit
 from staff.run_status import RunStatus, transition
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import _now
+
+from staff import claim_guard, consolidation, resource_admission
+from staff import fleet as staff_fleet
 
 log = logging.getLogger("dashboard.staff")
 DispatchResourceSnapshot = resource_admission.DispatchResourceSnapshot

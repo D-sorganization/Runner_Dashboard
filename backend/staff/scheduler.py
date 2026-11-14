@@ -30,12 +30,10 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from staff import claim_guard, consolidation, verification
 from staff.barb_continuity import BarbContinuityStore, get_barb_continuity_store
 from staff.budget import BudgetGuard
 from staff.holds import HoldsList
 from staff.role_capsule import RoleCapsuleStore
-from staff.roles import RoleSpec
 from staff.runner import RunRequest, StaffRunner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
@@ -56,6 +54,9 @@ from staff.scheduler_named_jobs import named_jobs, queue_due_slot
 from staff.scheduler_persona_guards import persona_fire_guard
 from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
+
+from staff import claim_guard, consolidation, verification
+from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.scheduler")
 

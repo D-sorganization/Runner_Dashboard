@@ -185,8 +185,9 @@ def authorization_headers_for_run(
     fleet_actions: Iterable[str] | None = None,
 ) -> dict[str, str]:
     """Bearer headers for an active staff run to authorize relay-card writes."""
-    from staff.roles import load_roles
     from staff.store import RunRecord
+
+    from staff.roles import load_roles
 
     if not isinstance(run, RunRecord):
         raise TypeError("run must be a RunRecord")

@@ -856,6 +856,10 @@ from routers import staff_review_metrics as _staff_review_metrics_router  # noqa
 
 app.include_router(_staff_review_metrics_router.router)  # review-flow metrics decision gate (#4250)
 
+from routers import staff_dispatch_sessions as _staff_dispatch_sessions_router  # noqa: E402
+
+app.include_router(_staff_dispatch_sessions_router.router, prefix="/api/v1/staff")
+
 from routers import fleet_brief as _fleet_brief_router  # noqa: E402
 from routers import kanban_github as _kanban_github_router  # noqa: E402
 

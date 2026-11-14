@@ -119,6 +119,9 @@ it("sidebar selection updates the mounted central console and both composers sen
       surface.getByRole("textbox", { name: /staff conversation input/i }),
       { target: { value: "hello" } },
     );
+    await waitFor(() =>
+      expect(surface.getByRole("button", { name: /^send/i })).toBeEnabled(),
+    );
     fireEvent.click(surface.getByRole("button", { name: /^send/i }));
   }
   await waitFor(() => expect(api.postThreadMessage).toHaveBeenCalledTimes(2));
