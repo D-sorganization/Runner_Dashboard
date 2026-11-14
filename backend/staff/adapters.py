@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from agent_remediation.provider_registry import _ANTIGRAVITY_MODELS, _CURSOR_AGENT_MODELS, canonical_provider_id
-from staff import ollama_env
 from staff.adapter_policies import (
     _CHAT_BYPASS_FLAGS,
     _CHAT_READ_ONLY_FLAGS,
@@ -47,6 +46,8 @@ from staff.qwen_provider import (
 )
 from staff.run_events import LESSON_EVIDENCE_ASSISTANT_ANSWER
 from staff.staff_result import apply_output_schema
+
+from staff import ollama_env
 
 # Provider ids used by staff roles (mapped to provider_registry.py via canonical_provider_id).
 ProviderId = str
