@@ -56,6 +56,8 @@ def classify_outcome(status: str, verification: str = "", failure_class: str = "
         return "cancelled"
     if status == "blocked":
         return "infra_fail"
+    if status == "failed" and verification == "verified":
+        return "success"
     if status in ("succeeded", "completed"):
         if verification == "verified":
             return "success"
