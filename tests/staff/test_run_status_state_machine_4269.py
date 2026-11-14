@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+from staff.failover_dispatch import _mark_providers_exhausted
 from staff.run_status import (
     ACTIVE_STATUSES,
     LEGAL_TRANSITIONS,
@@ -50,6 +52,7 @@ def test_transition_table_is_closed_and_terminal_states_sticky() -> None:
         (RunStatus.PREPARING, RunStatus.RUNNING),
         (RunStatus.RUNNING, RunStatus.SUCCEEDED),
         (RunStatus.RUNNING, RunStatus.NEEDS_INPUT),
+        (RunStatus.NEEDS_INPUT, RunStatus.BLOCKED),
     ],
 )
 def test_legal_transitions_succeed(from_status: RunStatus, to_status: RunStatus) -> None:
@@ -164,6 +167,91 @@ def test_mark_run_blocked_leaves_terminal_lifecycle_status_unchanged(
         assert got.status == terminal_status.value
         assert got.failure_class == "providers_exhausted"
         assert got.remediation == "all providers cooling down"
+    finally:
+        store.close()
+
+
+@pytest.mark.unit
+def test_mark_run_blocked_transitions_needs_input_to_blocked(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "blocked-needs-input.sqlite3")
+    try:
+        store.create_run(
+            RunRecord("ni-1", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="needs_input")
+        )
+        mark_run_blocked(
+            store,
+            "ni-1",
+            RunStatus.NEEDS_INPUT,
+            failure_class="providers_exhausted",
+            remediation="all providers cooling down",
+        )
+        got = store.get_run("ni-1")
+        assert got is not None
+        assert got.status == "blocked"
+        assert got.failure_class == "providers_exhausted"
+        assert got.remediation == "all providers cooling down"
+    finally:
+        store.close()
+
+
+@pytest.mark.unit
+def test_mark_run_blocked_never_raw_writes_blocked_on_illegal_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = RunStore(tmp_path / "blocked-illegal.sqlite3")
+    status_writes: list[str] = []
+    original = store.update_run
+
+    def tracked_update(run_id: str, **fields: object) -> None:
+        if "status" in fields:
+            status_writes.append(str(fields["status"]))
+        original(run_id, **fields)
+
+    monkeypatch.setattr(store, "update_run", tracked_update)
+    monkeypatch.setattr(
+        "staff.run_status.is_legal_transition",
+        lambda _from, _to: False,
+    )
+    try:
+        store.create_run(
+            RunRecord("ill-src", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="running")
+        )
+        mark_run_blocked(store, "ill-src", RunStatus.RUNNING, failure_class="providers_exhausted")
+        got = store.get_run("ill-src")
+        assert got is not None
+        assert got.status == "running"
+        assert "blocked" not in status_writes
+        assert got.failure_class == "providers_exhausted"
+    finally:
+        store.close()
+
+
+@pytest.mark.unit
+def test_mark_providers_exhausted_transitions_needs_input_via_state_machine(tmp_path: Path) -> None:
+    store = RunStore(tmp_path / "exhausted-needs-input.sqlite3")
+    try:
+        store.create_run(
+            RunRecord(
+                "ni-root",
+                "worker",
+                "codex",
+                None,
+                "m",
+                "repo",
+                "prompt",
+                "",
+                "p",
+                status="needs_input",
+            )
+        )
+        latest = store.get_run("ni-root")
+        assert latest is not None
+        _mark_providers_exhausted(store, latest, "ni-root", MagicMock())
+        got = store.get_run("ni-root")
+        assert got is not None
+        assert got.status == "blocked"
+        assert got.failure_class == "providers_exhausted"
+        assert got.retryable is False
     finally:
         store.close()
 

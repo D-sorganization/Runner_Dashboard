@@ -14,16 +14,11 @@ from pathlib import Path
 from typing import Any
 
 from coordination.cursor_dispatch_lease import cursor_finalize_on_publish, cursor_pre_launch_or_block
-from staff import lease as lease_ritual
-from staff import lifecycle_fence, runner_planning, workspace
-from staff import retry as retry_mod
-from staff import runner_ops as ops
 from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ADAPTERS, ProviderAdapter
 from staff.lessons import select_repo_lessons
 from staff.plan import RunPlan, RunRequest
-from staff.roles import RoleSpec, load_roles
-from staff.run_link import handle_run_status_change
+from staff.run_link import handle_run_status_change, result_summary
 from staff.run_status import RunStatus, transition, transition_to
 from staff.runner_finish import finish_run_after_execution
 from staff.runner_ops import StaffRunPreparationError
@@ -31,6 +26,13 @@ from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
+
+from staff import claim_guard, consolidation, lifecycle_fence, review, runner_planning, verification, workspace
+from staff import lease as lease_ritual
+from staff import retry as retry_mod
+from staff import runner_ops as ops
+from staff import usage as usage_mod
+from staff.roles import RoleSpec, load_roles
 
 log = logging.getLogger("dashboard.staff.runner")
 

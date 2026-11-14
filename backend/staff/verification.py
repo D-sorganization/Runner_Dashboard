@@ -28,7 +28,6 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
-from staff.roles import AD_HOC_ROLE, load_roles
 from staff.run_status import persist_run_updates
 from staff.verification_diag import record_role_open_pr_diagnostic
 from staff.verification_probe import GhCliPrProbe
@@ -40,6 +39,8 @@ from staff.verification_types import (
     Verdict,
     ci_state,
 )
+
+from staff.roles import AD_HOC_ROLE, load_roles
 
 if TYPE_CHECKING:
     from staff.store import RunRecord, RunStore

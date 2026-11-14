@@ -21,6 +21,17 @@ from staff.validator import validate_role_data
 
 
 @dataclass(frozen=True)
+class ParsedHold:
+    """One standing policy from a role's ``holds:`` list (string or structured mapping)."""
+
+    text: str
+    set_by: str = ""
+    created: str = ""
+    lifted_when: str = ""
+    applies_to: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RoleSpec:
     """Flat, typed view of one role file (LoD: handlers only see this)."""
 
@@ -46,6 +57,7 @@ class RoleSpec:
     permissions: dict[str, Any] = field(default_factory=dict)
     reports_to: str = ""
     holds: tuple[str, ...] = ()
+    parsed_holds: tuple[ParsedHold, ...] = ()
     surface: str = "dashboard"
     retired: bool = False
     retired_reason: str = ""
@@ -72,6 +84,20 @@ class RoleSpec:
     def code_read_only(self) -> bool:
         """Unattended runs of this role are code-read-only (explicit ``permissions.code_read_only``; #1659)."""
         return self.permissions.get("code_read_only") is True
+
+    @property
+    def occupies_paths(self) -> bool:
+        """Whether dispatch should acquire and enforce path-overlap for this role.
+
+        Explicit ``permissions.occupies_paths`` wins. Otherwise ``code_read_only`` roles
+        do not occupy paths (reviews and scouts may overlap implementation work).
+        """
+        perms = self.permissions
+        if perms.get("occupies_paths") is False:
+            return False
+        if perms.get("occupies_paths") is True:
+            return True
+        return not self.code_read_only
 
     @property
     def library_read(self) -> bool:
@@ -165,6 +191,36 @@ class RoleSpec:
         }
 
 
+def _parse_holds(raw: Any) -> tuple[ParsedHold, ...]:
+    if not isinstance(raw, list):
+        return ()
+    out: list[ParsedHold] = []
+    for item in raw:
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                out.append(ParsedHold(text=text))
+        elif isinstance(item, dict):
+            text = str(item.get("text") or "").strip()
+            if not text:
+                continue
+            applies_raw = item.get("applies_to")
+            applies: tuple[str, ...] = ()
+            if isinstance(applies_raw, list):
+                applies = tuple(str(t).strip() for t in applies_raw if str(t).strip())
+            lifted = str(item.get("lifted_when") or item.get("lift_condition") or "")
+            out.append(
+                ParsedHold(
+                    text=text,
+                    set_by=str(item.get("set_by") or ""),
+                    created=str(item.get("created") or ""),
+                    lifted_when=lifted,
+                    applies_to=applies,
+                )
+            )
+    return tuple(out)
+
+
 def _as_tuple(value: Any) -> tuple[str, ...]:
     if isinstance(value, str):
         return (value,)
@@ -195,8 +251,13 @@ def parse_role(
     *,
     errors: tuple[str, ...] = (),
     avatars_dir: Path | None = None,
+    enrich_policy: bool = True,
 ) -> RoleSpec:
     """Build a RoleSpec from a parsed YAML mapping."""
+    if enrich_policy:
+        from staff.role_provider_chains import enrich_role_provider_policy
+
+        data = enrich_role_provider_policy(data)
     name = str(data.get("name") or (Path(source_path).stem if source_path else "")).strip()
     if not name:
         name = "unnamed"
@@ -306,7 +367,8 @@ def parse_role(
         idle_minutes=idle_m,
         permissions=_parse_permissions(perms),
         reports_to=str(data.get("reports_to") or ""),
-        holds=_as_tuple(data.get("holds")),
+        holds=tuple(h.text for h in _parse_holds(data.get("holds"))),
+        parsed_holds=_parse_holds(data.get("holds")),
         surface=str(data.get("surface") or "dashboard"),
         retired=bool(data.get("retired", False)),
         retired_reason=retired_reason,
@@ -361,6 +423,9 @@ def read_and_parse_role_file(path: Path) -> RoleSpec:
             errors=("top level is not a mapping",),
             source_path=str(path),
         )
+    from staff.role_provider_chains import enrich_role_provider_policy
+
+    data = enrich_role_provider_policy(data)
     errs = validate_role_data(data)
     from staff.role_avatar_paths import staff_avatars_dir_for_roles
 

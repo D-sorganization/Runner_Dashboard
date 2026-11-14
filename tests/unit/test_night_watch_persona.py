@@ -34,7 +34,7 @@ def test_night_watch_yaml_passes_schema_validation_and_loads_into_roster(tmp_pat
     assert spec_raw["permissions"]["merge"] is False
     assert spec_raw["window"] == {"start": "22:00", "end": "06:00"}
     assert spec_raw["reports_to"] == "barb" and spec_raw["surface"] == "dashboard"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity"]
+    assert spec_raw["providers"] == ["codex", "claude", "cursor-agent"]
     clear_roles_cache()
     role = load_roles(tmp_path)["night-watch"]
     assert role.valid
@@ -47,16 +47,15 @@ def test_night_watch_yaml_passes_schema_validation_and_loads_into_roster(tmp_pat
 def test_night_watch_resolved_chain_has_no_model_override(tmp_path: Path) -> None:
     nw.write_night_watch_role_yaml(tmp_path)
     resolved = resolve_failover_chain(nw.load_night_watch_role_spec(tmp_path))
-    assert resolved == nw.NIGHT_WATCH_FAILOVER_CHAIN == (FailoverStep("claude", None), *resolved[1:])
-    assert [s.provider for s in resolved] == ["claude", "codex", "antigravity"]
-    # rd_barb_provider.chain() defaults a bare claude head to "opus" when nothing overrides it.
-    assert rp.select({}, role="night-watch") == rp.Decision("claude", "opus", False)
-    assert rp.chain({}, role="night-watch") == (FailoverStep("claude", "opus"), *nw.NIGHT_WATCH_FAILOVER_CHAIN[1:])
+    assert resolved == nw.NIGHT_WATCH_FAILOVER_CHAIN
+    assert [s.provider for s in resolved] == ["codex", "claude", "cursor-agent"]
+    assert rp.select({}, role="night-watch") == rp.Decision("codex", "gpt-6.1-sol", False)
+    assert rp.chain({}, role="night-watch") == nw.NIGHT_WATCH_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
-    args = ["--role", "night-watch", "next", "--current", "claude", "--failure", "rate_limited"]
+    args = ["--role", "night-watch", "next", "--current", "codex", "--failure", "rate_limited"]
     rc = rp.main(args, config={}, notify=sent.append)
     assert rc == 0 and len(sent) == 1
-    assert sent[0]["sender_role"] == "night-watch" and "codex" in sent[0]["summary"]
+    assert sent[0]["sender_role"] == "night-watch" and "claude" in sent[0]["summary"]
 
 
 def test_night_watch_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:

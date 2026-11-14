@@ -54,8 +54,9 @@ from private_mode_operator_ui import (
 )
 from private_mode_parking import _format_iso
 from private_mode_sinks import emit_board_entry, emit_turnover_entry
-from staff import fleet_run_token_service
 from staff.github_run_env import StaffGithubToken
+
+from staff import fleet_run_token_service
 from staff.roles import RoleSpec
 
 DRY_RUN_CHECKLIST_STEPS: tuple[str, ...] = tuple(

@@ -428,3 +428,13 @@ def test_reconcile_preserves_scheduled_retries(temp_store: RunStore) -> None:
     assert updated is not None
     assert updated.status == "queued"
     assert updated.next_attempt_at == future_time
+
+
+@pytest.mark.unit
+def test_fleet_failover_distinguishes_provider_usage_from_needs_input() -> None:
+    """#2047: retry scheduling and fleet failover share failure-class semantics."""
+    from staff.failover_dispatch import is_failover_failure
+
+    assert is_failover_failure("rate_limited")
+    assert is_failover_failure("quota_exhausted")
+    assert not is_failover_failure("needs_input")

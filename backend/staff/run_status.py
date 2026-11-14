@@ -64,7 +64,13 @@ LEGAL_TRANSITIONS: dict[RunStatus, frozenset[RunStatus]] = {
         },
     ),
     RunStatus.NEEDS_INPUT: frozenset(
-        {RunStatus.RUNNING, RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.SUCCEEDED},
+        {
+            RunStatus.RUNNING,
+            RunStatus.FAILED,
+            RunStatus.CANCELLED,
+            RunStatus.SUCCEEDED,
+            RunStatus.BLOCKED,
+        },
     ),
     RunStatus.FAILED: frozenset(),
     RunStatus.SUCCEEDED: frozenset(),
@@ -191,7 +197,8 @@ def mark_run_blocked(
     if is_legal_transition(expected, RunStatus.BLOCKED):
         transition(store, run_id, expected, RunStatus.BLOCKED, raise_on_race=False, **fields)
         return
-    store.update_run(run_id, status=RunStatus.BLOCKED.value, **fields)
+    if fields:
+        store.update_run(run_id, **fields)
 
 
 def transition_to(

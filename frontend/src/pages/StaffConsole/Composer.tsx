@@ -79,7 +79,10 @@ export const Composer: React.FC<ComposerComponentProps> = ({
     const previousThreadId = prevThreadIdRef.current;
     const saved = getDraft(threadId);
     const keepNew = previousThreadId === "new" && threadId !== "new" && !saved && latestTextRef.current.trim().length > 0;
-    const keepHandoffDraft = conversationOpeningRef.current && !saved && latestTextRef.current.trim().length > 0;
+    const keepHandoffDraft =
+      (conversationOpening || conversationOpeningRef.current) &&
+      !saved &&
+      latestTextRef.current.trim().length > 0;
     const nextText = keepNew || keepHandoffDraft ? latestTextRef.current : saved;
     if (keepNew) { saveDraft(threadId, nextText); clearDraft("new"); }
     else if (keepHandoffDraft) saveDraft(threadId, nextText);
@@ -90,7 +93,7 @@ export const Composer: React.FC<ComposerComponentProps> = ({
     setErrorMessage(null);
     setIdempotencyKey(null);
     setActiveMenu(null);
-  }, [threadId]);
+  }, [threadId, conversationOpening]);
 
   useEffect(() => {
     conversationOpeningRef.current = conversationOpening;

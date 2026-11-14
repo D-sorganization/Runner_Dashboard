@@ -20,7 +20,6 @@ import uuid
 from staff.audit import record_audit
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.loop_guard import HandoffHopCapExceededError, enforce_handoff_hop_cap_or_raise
-from staff.roles import RoleSpec
 from staff.router_models import (
     BARB_DIRECT_KEYWORDS,
     DEFAULT_CONFIDENCE_THRESHOLD,
@@ -35,6 +34,8 @@ from staff.router_models import (
 )
 from staff.store import _now as _now_iso
 from staff.work_items import WorkItemStore
+
+from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.router")
 

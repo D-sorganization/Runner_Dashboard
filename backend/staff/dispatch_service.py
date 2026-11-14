@@ -13,8 +13,6 @@ from typing import Any
 
 from fastapi import HTTPException
 from identity import Principal, format_caller
-from staff import claim_guard, consolidation, resource_admission
-from staff import fleet as staff_fleet
 from staff.audit import AuditError, record_audit
 from staff.barb_lease_fence import BarbClaim, barb_write_fence, is_barb_seat
 from staff.budget import BudgetGuard
@@ -22,6 +20,9 @@ from staff.rate_limit import check_rate_limit
 from staff.run_status import RunStatus, transition
 from staff.runner import RunRequest, StaffRunner, get_runner
 from staff.store import _now
+
+from staff import claim_guard, consolidation, resource_admission
+from staff import fleet as staff_fleet
 
 log = logging.getLogger("dashboard.staff")
 DispatchResourceSnapshot = resource_admission.DispatchResourceSnapshot
@@ -197,6 +198,18 @@ async def _forward(
     return {**data, "machine": data.get("machine", target), "forwarded_to": target}
 
 
+def _refuse_if_hold(cmd: DispatchCommand) -> None:
+    """409 when an active fleet hold blocks this dispatch slice (issue #2657)."""
+    if not cmd.repo:
+        return
+    from staff.holds import refusal_detail, refuse_dispatch_if_held  # noqa: PLC0415
+
+    hit = refuse_dispatch_if_held(cmd.role, cmd.repo, cmd.prompt)
+    if hit is not None:
+        log.info("staff: dispatch of %s on %s refused by hold %s", cmd.role, cmd.repo, hit.id)
+        raise HTTPException(status_code=409, detail=refusal_detail(hit))
+
+
 def _refuse_if_excluded(cmd: DispatchCommand) -> None:
     """409 when (repo, issue, declared paths) fall in an active dispatch exclusion.
 
@@ -228,6 +241,7 @@ async def dispatch_staff_run(
     exists, except ``launch_failed``, which names the run it left ``failed``.
     """
     _refuse_if_excluded(cmd)
+    _refuse_if_hold(cmd)
 
     if not cmd.dry_run and cmd.issue and cmd.repo:
         attempt_block = claim_guard.issue_attempt_blocker(
@@ -278,7 +292,13 @@ async def dispatch_staff_run(
             )
 
         if cmd.repo:
+            from dispatch_queue_link import purge_stale_overlap_sessions
+            from dispatch_session_policy import role_occupies_paths
+
             paths = extract_declared_paths(cmd.prompt)
+            role_spec = get_runner().roles().get(cmd.role)
+            occupies = role_occupies_paths(role_spec)
+            purge_stale_overlap_sessions()
             attempt = dispatch_queue_manager.try_dispatch(
                 repository=cmd.repo,
                 number=cmd.issue,
@@ -286,6 +306,8 @@ async def dispatch_staff_run(
                 labels=(),
                 declared_paths=paths,
                 requested_model=cmd.model or "",
+                occupies_paths=occupies,
+                role=cmd.role,
             )
             if not attempt.dispatched:
                 blocker = attempt.queued_item.blocking_session_id if attempt.queued_item else ""
