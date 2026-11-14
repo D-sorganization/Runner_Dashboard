@@ -118,7 +118,7 @@ def test_recheck_flips_ci_failed_run_to_verified_and_restores_status(store: RunS
     assert checked == ["run-a"]
     got = store.get_run("run-a")
     assert got is not None
-    assert (got.verification, got.status, got.failure_class, got.error) == ("verified", "succeeded", "", "")
+    assert (got.verification, got.status, got.failure_class, got.error) == ("verified", "failed", "", "")
 
 
 def test_recheck_keeps_unrelated_failed_runs_out(store: RunStore) -> None:
@@ -184,6 +184,7 @@ def test_classifier_keeps_pending_ci_and_skips_neutral() -> None:
     assert classify_outcome("succeeded", "not_applicable", "") == "no_op"
     assert classify_outcome("succeeded", "verified", "") == "success"
     assert classify_outcome("failed", "failed", v.UNVERIFIED_OUTPUT) == "quality_fail"
+    assert classify_outcome("failed", "verified", "") == "success"
 
 
 # -- stale rows --------------------------------------------------------------

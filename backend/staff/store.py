@@ -16,9 +16,8 @@ from staff.dispatcher_metrics import dispatcher_origin
 from staff.redaction import redact_value
 from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
 from staff.run_schema import _ADDED_COLUMNS, _SCHEMA
-
-RUN_STATUSES = ("queued", "preparing", "running", "succeeded", "failed", "cancelled", "blocked", "needs_input")
-ACTIVE_STATUSES = ("queued", "preparing", "running")
+from staff.run_status import ACTIVE_STATUSES, RUN_STATUSES  # noqa: F401 — re-exported for importers
+from staff.run_store_usage import USAGE_GROUPS  # noqa: F401 — re-exported for importers
 
 
 def _config_dir() -> Path:
@@ -142,10 +141,6 @@ def _redacted(column: str, value: Any) -> Any:
     return redact_value(value) if column in _REDACTED_COLUMNS else value
 
 
-USAGE_GROUPS = ("provider", "role", "day")
-_USAGE_GROUP_SQL = {"provider": "provider", "role": "role", "day": "substr(created_at, 1, 10)"}
-
-
 class RunStore:
     """Thread-safe SQLite-backed run + event store."""
 
@@ -213,6 +208,29 @@ class RunStore:
         with self._lock:
             values = tuple(_redacted(k, v) for k, v in fields.items())
             self._conn.execute(f"UPDATE runs SET {sets} WHERE id = ?", (*values, run_id))  # noqa: S608
+
+    def compare_and_set_run_status(
+        self,
+        run_id: str,
+        *,
+        expected: str,
+        status: str,
+        **fields: Any,
+    ) -> bool:
+        """Update ``status`` and optional fields only when the row's status equals ``expected``."""
+        assert expected in RUN_STATUSES, expected  # noqa: S101
+        assert status in RUN_STATUSES, status  # noqa: S101
+        merged = {**fields, "status": status}
+        unknown = set(merged) - set(_COLUMNS)
+        assert not unknown, f"unknown columns: {unknown}"  # noqa: S101
+        sets = ", ".join(f"{k} = ?" for k in merged)
+        with self._lock:
+            values = tuple(_redacted(k, v) for k, v in merged.items())
+            cur = self._conn.execute(
+                f"UPDATE runs SET {sets} WHERE id = ? AND status = ?",  # noqa: S608
+                (*values, run_id, expected),
+            )
+            return cur.rowcount == 1
 
     def get_run(self, run_id: str) -> RunRecord | None:
         with self._lock:
@@ -374,36 +392,9 @@ class RunStore:
         return {str(r["role"]): float(r["usd"]) for r in rows}
 
     def usage_by(self, group: str = "provider", since: str | None = None) -> list[dict[str, Any]]:
-        """Aggregate runs by ``provider``, ``role`` or ``day`` (issue #1200).
+        from staff.run_store_usage import usage_by as _usage_by
 
-        Pre: ``group`` in ``USAGE_GROUPS``. Post: one row per key, ordered by key,
-        with ``runs``, ``cost_usd``, ``input_tokens``, ``output_tokens`` and
-        ``wall_seconds`` (sum of ended_at - started_at over runs that have both).
-        """
-        assert group in USAGE_GROUPS, group  # noqa: S101
-        key_sql = _USAGE_GROUP_SQL[group]
-        where = "WHERE created_at >= ?" if since else ""
-        params: tuple[Any, ...] = (since,) if since else ()
-        sql = (
-            f"SELECT {key_sql} AS key, COUNT(*) AS runs, COALESCE(SUM(cost_usd), 0) AS cost_usd, "
-            "COALESCE(SUM(input_tokens), 0) AS input_tokens, COALESCE(SUM(output_tokens), 0) AS output_tokens, "
-            "COALESCE(SUM(CASE WHEN started_at IS NOT NULL AND ended_at IS NOT NULL "
-            "THEN (julianday(ended_at) - julianday(started_at)) * 86400.0 ELSE 0 END), 0) AS wall_seconds "
-            f"FROM runs {where} GROUP BY key ORDER BY key"  # noqa: S608
-        )
-        with self._lock:
-            rows = self._conn.execute(sql, params).fetchall()
-        return [
-            {
-                "key": str(r["key"]),
-                "runs": int(r["runs"]),
-                "cost_usd": round(float(r["cost_usd"]), 6),
-                "input_tokens": int(r["input_tokens"]),
-                "output_tokens": int(r["output_tokens"]),
-                "wall_seconds": round(max(0.0, float(r["wall_seconds"])), 1),
-            }
-            for r in rows
-        ]
+        return _usage_by(self, group=group, since=since)
 
     # ── events ───────────────────────────────────────────────────────────
     def append_event(self, run_id: str, kind: str, text: str, *, lesson_evidence: str | None = None) -> int:

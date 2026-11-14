@@ -20,7 +20,6 @@ records only; ``off`` skips the check.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from collections.abc import Callable
@@ -29,6 +28,8 @@ from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
+from staff.run_status import persist_run_updates
+from staff.verification_diag import record_role_open_pr_diagnostic
 from staff.verification_probe import GhCliPrProbe
 from staff.verification_types import (
     GH_TIMEOUT_SECONDS,
@@ -286,7 +287,7 @@ def apply_deliverable_failure(
     updates = deliverable_failure_updates(rec, verdict, opens_pr=requires_pr)
     if not updates:
         return rec
-    store.update_run(rec.id, **updates)
+    persist_run_updates(store, rec, updates)
     return store.get_run(rec.id)
 
 
@@ -295,9 +296,11 @@ def deliverable_failure_updates(
     verdict: Verdict | None,
     *,
     opens_pr: bool,
+    execution_status: str | None = None,
 ) -> dict[str, Any]:
     """Fail succeeded runs that targeted an issue/PR but delivered no commits or PR (#2171)."""
-    if rec.status != "succeeded" or not opens_pr or rec.target_kind not in ("issue", "pr"):
+    claimed = (execution_status or rec.status or "").strip()
+    if claimed != "succeeded" or not opens_pr or rec.target_kind not in ("issue", "pr"):
         return {}
     if verdict is None or verdict.verification not in ("no_change", "failed"):
         return {}
@@ -321,41 +324,16 @@ def deliverable_failure_updates(
 
 
 def updates_for(rec: RunRecord, verdict: Verdict, mode: str) -> dict[str, Any]:
-    """The run fields to write. Only ``enforce`` changes the status of a succeeded run."""
+    """The run fields to write. Status changes belong in :func:`apply_enforce_before_terminal`."""
     updates: dict[str, Any] = {
         "verification": verdict.verification,
         "verification_detail": verdict.detail,
         "pr_number": verdict.pr_number,
         "artifact": verdict.artifact,
     }
-    if mode == "enforce" and verdict.verification == "failed" and rec.status == "succeeded":
-        updates.update(status="failed", failure_class=UNVERIFIED_OUTPUT, error=verdict.detail)
-    elif verdict.verification == "verified" and rec.status == "failed" and rec.failure_class == UNVERIFIED_OUTPUT:
-        # The failure was verification alone (CI raced the check); CI is green now, so restore the run.
-        updates.update(status="succeeded", failure_class="", error="", remediation="", retryable=False)
+    if verdict.verification == "verified" and rec.status == "failed" and rec.failure_class == UNVERIFIED_OUTPUT:
+        updates.update(failure_class="", error="", remediation="", retryable=False)
     return updates
-
-
-def _record_role_open_pr_diagnostic(store: RunStore, rec: RunRecord, resolver_path: str) -> None:
-    """Telemetry for unexpected ``opens_pr=False`` verdict paths (diagnosis class E)."""
-    payload: dict[str, Any] = {
-        "run_id": rec.id,
-        "role": rec.role,
-        "resolver_path": resolver_path,
-        "role_found": False,
-        "role_permissions_open_pr": None,
-    }
-    try:
-        spec = load_roles().get(rec.role)
-        payload["role_found"] = spec is not None
-        if spec is not None:
-            payload["role_permissions_open_pr"] = bool((spec.permissions or {}).get("open_pr"))
-            payload["role_surface"] = spec.surface
-            payload["role_providers"] = list(spec.providers)
-    except Exception as exc:  # noqa: BLE001 - diagnostics must not affect verification
-        payload["role_lookup_error"] = str(exc)[:200]
-    store.append_event(rec.id, "verify_diag", json.dumps(payload, sort_keys=True))
-    log.warning("verification role-open-pr diagnostic: %s", payload)
 
 
 def verify_and_record(
@@ -366,6 +344,7 @@ def verify_and_record(
     probe: PrProbe | None = None,
     mode: str | None = None,
     now: datetime | None = None,
+    precomputed_verdict: Verdict | None = None,
 ) -> Verdict | None:
     """Verify one finished run and persist the verdict with a ``verify`` event.
 
@@ -381,23 +360,26 @@ def verify_and_record(
         if mode == "off" or rec is None:
             return None
         resolver_path = "callable" if callable(opens_pr) else "direct-value"
-        try:
-            is_opens_pr = opens_pr() if callable(opens_pr) else bool(opens_pr)
-            verdict = evaluate(
-                rec,
-                opens_pr=is_opens_pr,
-                probe=probe or GhCliPrProbe(),
-                now=now or datetime.now(UTC),
-                result_text=store.last_result_line(run_id),
-            )
-        except Exception as exc:  # noqa: BLE001 - verification must never break a run
-            log.exception("verification of run %s failed", run_id)
-            verdict = Verdict("unverified", f"verification error: {exc}")
+        if precomputed_verdict is not None:
+            verdict = precomputed_verdict
+        else:
+            try:
+                is_opens_pr = opens_pr() if callable(opens_pr) else bool(opens_pr)
+                verdict = evaluate(
+                    rec,
+                    opens_pr=is_opens_pr,
+                    probe=probe or GhCliPrProbe(),
+                    now=now or datetime.now(UTC),
+                    result_text=store.last_result_line(run_id),
+                )
+            except Exception as exc:  # noqa: BLE001 - verification must never break a run
+                log.exception("verification of run %s failed", run_id)
+                verdict = Verdict("unverified", f"verification error: {exc}")
         if verdict.verification == "not_applicable" and verdict.detail == "role does not open pull requests":
-            _record_role_open_pr_diagnostic(store, rec, resolver_path)
+            record_role_open_pr_diagnostic(store, rec, resolver_path, roles_loader=load_roles)
         # The verify event lands before the verdict, so a reader that sees the verdict sees it (#1489).
         store.append_event(run_id, "verify", f"{verdict.verification}: {verdict.detail}")
-        store.update_run(run_id, **updates_for(rec, verdict, mode))
+        persist_run_updates(store, rec, updates_for(rec, verdict, mode))
         if verdict.verification == "verified":
             try:
                 from staff.review import auto_review_if_eligible
@@ -438,6 +420,8 @@ def recheck_runs(
     return [rec.id for rec in runs]
 
 
+from staff.verification_terminal import apply_enforce_before_terminal  # noqa: E402
+
 __all__ = [
     "GH_TIMEOUT_SECONDS",
     "GhCliPrProbe",
@@ -445,5 +429,6 @@ __all__ = [
     "PrProbe",
     "PullRequest",
     "Verdict",
+    "apply_enforce_before_terminal",
     "ci_state",
 ]
