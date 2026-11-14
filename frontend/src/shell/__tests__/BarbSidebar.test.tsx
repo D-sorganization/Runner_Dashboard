@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockUseStaffConsole = vi.hoisted(() => vi.fn());
 vi.mock("../../pages/StaffConsole/useStaffConsole", () => ({
   useStaffConsole: mockUseStaffConsole,
 }));
+
+afterAll(() => {
+  vi.doUnmock("../../pages/StaffConsole/useStaffConsole");
+});
 
 import { BarbSidebar } from "../BarbSidebar";
 
