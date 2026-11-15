@@ -9,9 +9,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from identity import Principal, principal_has_scope, require_scope
 from routers import staff_dispatcher
-from staff import idempotency
 from staff.dispatcher_metrics import DispatcherRateLimitError, dispatcher_origin, record_dispatcher_fallback
 from staff.store import RunRecord, RunStore
+
+from staff import idempotency
 
 READER = Principal(id="reader", type="human", name="Reader", roles=[], scopes=["staff.read"])
 WRITER = Principal(id="agent-grok", type="bot", name="Grok", roles=[], scopes=["staff.dispatcher.ledger.write"])

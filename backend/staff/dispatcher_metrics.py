@@ -129,9 +129,7 @@ def aggregate_dispatcher_metrics(
         # A ``not_applicable`` verdict means there was nothing to verify (#3048), so it is
         # neither a false success nor part of the verified-success denominator.
         successes = [
-            run
-            for run in day_runs
-            if run.get("status") == "succeeded" and run.get("verification") != "not_applicable"
+            run for run in day_runs if run.get("status") == "succeeded" and run.get("verification") != "not_applicable"
         ]
         verified = sum(1 for run in successes if run.get("verification") == "verified")
         reason_counts = dict(Counter(str(row["reason"]) for row in day_fallbacks))
