@@ -45,7 +45,8 @@ fi
 '@
 
 if ($PSCmdlet.ShouldProcess($Distro, 'Install host-metrics-probe timer inside WSL')) {
-    wsl.exe -d $Distro -e bash -c $bashScript -- $DeployDir
+    # Feed bash on stdin: PS 5.1 strips embedded quotes from native -c arguments (#4465).
+    $bashScript | wsl.exe -d $Distro -e bash -s -- $DeployDir
     Write-Output "Host-metrics probe install invoked in WSL distro '$Distro'."
     Write-Output "If the dashboard uses a system unit, the bash installer will prompt for sudo inside WSL."
 }

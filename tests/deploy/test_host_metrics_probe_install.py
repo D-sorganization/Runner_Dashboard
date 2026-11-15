@@ -52,6 +52,14 @@ def test_windows_wsl_install_helper_exists() -> None:
     assert '\\"${DeployDir}\\"' not in text
 
 
+def test_windows_wsl_install_feeds_bash_via_stdin_not_c_arg() -> None:
+    """Windows PowerShell 5.1 breaks multi-line bash -c strings that contain quotes (#4465)."""
+    helper = DEPLOY / "windows" / "install-host-metrics-probe-wsl.ps1"
+    text = helper.read_text(encoding="utf-8")
+    assert "bash -s" in text
+    assert "bash -c $bashScript" not in text
+
+
 def test_install_skips_probe_copy_when_source_is_deploy_tree() -> None:
     install = (DEPLOY / "install-host-metrics-probe.sh").read_text(encoding="utf-8")
     assert 'realpath "${PROBE_SRC}"' in install
