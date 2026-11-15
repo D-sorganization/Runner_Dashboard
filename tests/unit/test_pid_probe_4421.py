@@ -188,6 +188,22 @@ def test_gate_flags_seeded_violation(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
+        "import os, signal\nos.kill(pid, signal.SIGINT)\n",
+        "import os\nfrom signal import SIGINT\nos.kill(pid, SIGINT)\n",
+        "import os, signal\nos.kill(pid, signal.Signals.SIGINT)\n",
+        "import os, signal\nos.kill(pid, sig=signal.SIGINT)\n",
+    ],
+)
+def test_gate_rejects_sigint(source: str) -> None:
+    """Review finding on #4432: SIGINT through os.kill is not a safe interrupt on Windows."""
+    found = gate.find_violations(source, "seeded.py")
+    assert len(found) == 1 and found[0].startswith("seeded.py:")
+    assert "SIGINT" in found[0]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
         "import os, signal\nos.kill(pid, signal.SIGTERM)\n",
         "import os\nos.kill(pid, 9)\n",
         "import os\nos.kill(pid, sig)\n",

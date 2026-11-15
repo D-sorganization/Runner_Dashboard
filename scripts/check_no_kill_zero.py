@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Fail on ``os.kill(x, 0)`` and ``os.kill(x, signal.CTRL_C_EVENT)`` (#4421).
+"""Fail on ``os.kill(x, 0)``, ``os.kill(x, signal.CTRL_C_EVENT)`` and ``os.kill(x, signal.SIGINT)`` (#4421).
 
-On Windows both send CTRL+C to every process attached to the console. Use
-``scripts/pid_probe.py::pid_alive`` to ask whether a process exists.
+On Windows the first two send CTRL+C to every process attached to the console. Use
+``scripts/pid_probe.py::pid_alive`` to ask whether a process exists. ``SIGINT`` through
+``os.kill`` is no interrupt on Windows either, so it is rejected as well: stop a child
+with ``terminate()`` or ``SIGTERM``.
 
 Usage::
 
@@ -25,6 +27,8 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 ALLOWED = frozenset({"scripts/pid_probe.py"})
 SCAN_DIRS = ("backend", "clients", "deploy", "scripts", "tests")
 _SKIP_PARTS = frozenset({"__pycache__", ".venv", "venv", "node_modules", "wheels"})
+_PROBE_ADVICE = "sends CTRL+C to the whole console on Windows; use scripts/pid_probe.py::pid_alive"
+_INTERRUPT_ADVICE = "is not a safe interrupt on Windows; stop the process with terminate() or SIGTERM"
 
 
 def _is_kill(func: ast.expr, kill_names: set[str], os_names: set[str]) -> bool:
@@ -34,10 +38,13 @@ def _is_kill(func: ast.expr, kill_names: set[str], os_names: set[str]) -> bool:
 
 
 def _signal_problem(arg: ast.expr) -> str | None:
+    """Return ``<what> <why and what to use>`` for an unsafe signal argument, else None."""
     if isinstance(arg, ast.Constant) and arg.value == 0 and not isinstance(arg.value, bool):
-        return "signal 0"
+        return f"signal 0 {_PROBE_ADVICE}"
     name = arg.attr if isinstance(arg, ast.Attribute) else arg.id if isinstance(arg, ast.Name) else ""
-    return "CTRL_C_EVENT" if name == "CTRL_C_EVENT" else None
+    if name == "CTRL_C_EVENT":
+        return f"CTRL_C_EVENT {_PROBE_ADVICE}"
+    return f"SIGINT {_INTERRUPT_ADVICE}" if name == "SIGINT" else None
 
 
 def _imported_names(tree: ast.AST) -> tuple[set[str], set[str]]:
@@ -66,10 +73,7 @@ def find_violations(source: str, filename: str) -> list[str]:
                 signal_arg = keyword.value
         problem = _signal_problem(signal_arg) if signal_arg is not None else None
         if problem:
-            found.append(
-                f"{filename}:{node.lineno}: os.kill with {problem} sends CTRL+C to the whole console on Windows; "
-                "use scripts/pid_probe.py::pid_alive"
-            )
+            found.append(f"{filename}:{node.lineno}: os.kill with {problem}")
     return found
 
 
