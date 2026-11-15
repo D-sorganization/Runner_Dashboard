@@ -73,6 +73,22 @@ def test_detect_secrets_hook_uses_path_stable_wrapper() -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", repo["rev"]), "detect-secrets stays SHA-pinned"
 
 
+def test_precommit_detect_secrets_rev_baseline_line_matches_yaml() -> None:
+    """Insertions above the Yelp/detect-secrets rev pin must refresh `.secrets.baseline`."""
+    config_path = REPO_ROOT / ".pre-commit-config.yaml"
+    lines = config_path.read_text(encoding="utf-8").splitlines()
+    repo = next(r for r in _precommit()["repos"] if r["repo"].endswith("Yelp/detect-secrets"))
+    rev_line = next(i + 1 for i, line in enumerate(lines) if line.strip() == f"rev: {repo['rev']}")
+    baseline = json.loads((REPO_ROOT / ".secrets.baseline").read_text(encoding="utf-8"))
+    pin_findings = [
+        entry
+        for entry in baseline["results"].get(".pre-commit-config.yaml", [])
+        if entry["type"] == "Hex High Entropy String"
+    ]
+    assert len(pin_findings) == 1
+    assert pin_findings[0]["line_number"] == rev_line
+
+
 def _baseline(results: dict[str, list[dict[str, Any]]], stamp: str = "2026-10-22T23:53:58Z") -> dict[str, Any]:
     return {"version": "1.5.0", "results": results, "generated_at": stamp}
 
