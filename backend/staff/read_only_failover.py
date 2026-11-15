@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 from staff.adapters import READ_ONLY_RUN_PROVIDERS, ProviderAdapter
