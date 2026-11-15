@@ -26,6 +26,7 @@ BULK_LIGHT_WORKFLOWS = frozenset(
         "ci-private-roles-redaction-gate.yml",
         "ci-standalone-smoke.yml",
         "local-only-runner-guard.yml",
+        "architecture-map-contract.yml",
     }
 )
 BULK_FLEET_FALLBACK = "d-sorg-fleet-bulk"
@@ -136,7 +137,8 @@ def test_light_queue_jobs_honor_queue_runner_mode(workflow: str, only: list[str]
     for job_id, job in jobs.items():
         runs_on = " ".join(str(job["runs-on"]).split())
         assert QUEUE_SWITCH in runs_on, f"{workflow}::{job_id}"
-        suffix = BULK_FLEET_FALLBACK_SUFFIX if workflow == "ci-secrets.yml" else NEUTRAL_FLEET_FALLBACK_SUFFIX
+        bulk = workflow in {"ci-secrets.yml", "architecture-map-contract.yml"}
+        suffix = BULK_FLEET_FALLBACK_SUFFIX if bulk else NEUTRAL_FLEET_FALLBACK_SUFFIX
         assert runs_on.endswith(suffix), f"{workflow}::{job_id} lost the fleet default"
 
 
