@@ -298,9 +298,9 @@ def wi_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[WorkIt
         ("preparing", "waiting_on_user", "in_progress"),
         ("needs_input", "in_progress", "waiting_on_user"),
         ("succeeded", "in_progress", "needs_evidence"),
-        ("failed", "in_progress", "in_progress"),
-        ("cancelled", "in_progress", "in_progress"),
-        ("blocked", "open", "open"),
+        ("failed", "in_progress", "blocked"),
+        ("cancelled", "in_progress", "open"),
+        ("blocked", "open", "blocked"),
     ],
 )
 def test_run_status_to_work_item_transitions_observed(
