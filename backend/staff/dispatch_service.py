@@ -370,7 +370,7 @@ async def dispatch_staff_run(
                         status_code=422,
                         detail="internal model_tier is supported only for local dispatch",
                     )
-                check_rate_limit("dispatches", caller)
+                check_rate_limit("dispatches", caller, role=cmd.role)
                 origin = cmd.origin_node or runner.machine
                 obo_hdr = staff_fleet.sign_on_behalf_of(
                     cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin
@@ -417,7 +417,7 @@ async def dispatch_staff_run(
         auth_refusal = refusal_for_provider_auth(plan.provider, runner.machine)
         if auth_refusal is not None:
             raise HTTPException(status_code=409, detail=auth_refusal.to_http_detail())
-        check_rate_limit("dispatches", caller)
+        check_rate_limit("dispatches", caller, role=cmd.role)
         target = resolved_target or await _resolve_target(runner, cmd.machine, plan.provider, role=spec)
         if target != "local":
             origin = cmd.origin_node or runner.machine
