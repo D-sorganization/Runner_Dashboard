@@ -122,9 +122,11 @@ def test_context_degraded_stamped_on_plan(monkeypatch: pytest.MonkeyPatch, skill
         "staff.lessons.select_repo_lessons",
         lambda _repo: RepoLessonsResult(lessons_block, ("les-a",), {}, 550),
     )
+    from staff.failover_dispatch import ProviderPick
+
     monkeypatch.setattr(
         "staff.failover_dispatch.resolve_provider_and_model",
-        lambda *args, **kwargs: ("claude", None, "routine", []),
+        lambda *args, **kwargs: ProviderPick("claude", None, "routine", []),
     )
     rec, plan, _ = get_runner().admit(
         RunRequest(role="ad-hoc", repo="Runner_Dashboard", issue=1, prompt="Weekly desk review")
@@ -144,9 +146,11 @@ def test_context_degraded_alert_emitted(monkeypatch: pytest.MonkeyPatch, skills_
         "staff.lessons.select_repo_lessons",
         lambda _repo: RepoLessonsResult(lessons_block, ("les-a",), {}, 550),
     )
+    from staff.failover_dispatch import ProviderPick
+
     monkeypatch.setattr(
         "staff.failover_dispatch.resolve_provider_and_model",
-        lambda *args, **kwargs: ("claude", None, "routine", []),
+        lambda *args, **kwargs: ProviderPick("claude", None, "routine", []),
     )
     notify = MagicMock()
     record = MagicMock()

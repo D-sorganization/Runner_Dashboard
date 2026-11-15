@@ -6195,6 +6195,11 @@
       "RunBody": {
         "description": "POST body for a dispatch. DbC: exactly the fields the runner understands.",
         "properties": {
+          "authority_code_read_only": {
+            "default": false,
+            "title": "Authority Code Read Only",
+            "type": "boolean"
+          },
           "claim_override_reason": {
             "default": "",
             "maxLength": 500,
@@ -6340,6 +6345,11 @@
             "maxLength": 8000,
             "title": "Standards Extra",
             "type": "string"
+          },
+          "strict_provider": {
+            "default": false,
+            "title": "Strict Provider",
+            "type": "boolean"
           },
           "surface": {
             "anyOf": [

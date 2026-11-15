@@ -42,6 +42,7 @@ class ProviderPick:
         yield self.tier
         yield self.auth_skipped
 
+
 FAILOVER_FAILURE_CLASSES = frozenset(
     {
         "provider_capacity",

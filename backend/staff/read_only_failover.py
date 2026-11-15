@@ -32,13 +32,14 @@ def code_read_only_chain_warnings(data: dict[str, Any]) -> list[str]:
     warnings: list[str] = []
     chain = parse_role_failover_chain(data)
     if not chain:
+        providers = data.get("providers")
+        if isinstance(providers, list) and any(p in READ_ONLY_RUN_PROVIDERS for p in providers):
+            return warnings
         warnings.append("code_read_only role has no failover_chain providers configured")
         return warnings
     head = chain[0].provider
     if head not in READ_ONLY_RUN_PROVIDERS:
-        warnings.append(
-            f"code_read_only failover_chain[0] provider {head!r} has no read-only unattended mode"
-        )
+        warnings.append(f"code_read_only failover_chain[0] provider {head!r} has no read-only unattended mode")
     if not any(step.provider in READ_ONLY_RUN_PROVIDERS for step in chain):
         warnings.append("code_read_only role has no read-only-capable provider in failover_chain")
     return warnings
@@ -142,9 +143,7 @@ def role_read_only_config_warnings(spec: RoleSpec) -> list[str]:
             warnings.append("no read-only-capable provider in role providers list")
         return warnings
     if chain[0].provider not in READ_ONLY_RUN_PROVIDERS:
-        warnings.append(
-            f"failover_chain[0] provider {chain[0].provider!r} has no read-only unattended mode"
-        )
+        warnings.append(f"failover_chain[0] provider {chain[0].provider!r} has no read-only unattended mode")
     if not any(step.provider in READ_ONLY_RUN_PROVIDERS for step in chain):
         warnings.append("no read-only-capable provider in failover_chain")
     return warnings

@@ -454,7 +454,12 @@ def validate_role_data(data: Any) -> list[str]:
     problems.extend(_validate_avatar_field(data))
     from staff.read_only_failover import code_read_only_chain_warnings  # noqa: PLC0415
 
-    problems.extend(f"warning: {w}" for w in code_read_only_chain_warnings(data))
+    for warning in code_read_only_chain_warnings(data):
+        # Chain head warnings are surfaced on /roles/health; YAML may still list codex first
+        # when later steps are read-only-capable and dispatch skips non-RO providers.
+        if warning.startswith("code_read_only failover_chain[0]"):
+            continue
+        problems.append(f"warning: {warning}")
     return problems
 
 

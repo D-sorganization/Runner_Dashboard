@@ -151,6 +151,8 @@ async def test_dispatch_allows_auto_release_fix_under_rd_deploy_hold(
             model="",
             target_ref="",
             provider_auth_skipped=None,
+            substitution_reason=None,
+            requested_provider=None,
         )
         with patch("staff.dispatch_service.record_audit"), patch(
             "staff.provider_dispatch_preflight.refusal_for_provider_auth", return_value=None
@@ -186,6 +188,8 @@ async def test_dispatch_unrelated_runner_dashboard_work_not_blocked_by_rd_deploy
             model="",
             target_ref="",
             provider_auth_skipped=None,
+            substitution_reason=None,
+            requested_provider=None,
         )
         runner.machine = "test-node"
         with patch("staff.dispatch_service.record_audit"), patch(
