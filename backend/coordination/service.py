@@ -162,8 +162,8 @@ async def sessions(repo: str | None) -> dict[str, Any]:
     if source_warning:
         warnings.append(source_warning)
     hub_rows = hub_sessions.list_sessions(repo)
-    staff_session_rows = [staff_run_as_session(r) for r in runs]
-    merged_sessions = _live_session_rows([*data.get("sessions", []), *staff_session_rows, *hub_rows])
+    staff_session_rows = _live_session_rows([staff_run_as_session(r) for r in runs])
+    merged_sessions = [*data.get("sessions", []), *staff_session_rows, *hub_rows]
     # de-dupe by (session, repo)
     seen: set[tuple[str, str]] = set()
     sessions_out: list[dict[str, Any]] = []
