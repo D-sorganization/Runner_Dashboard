@@ -56,6 +56,11 @@ QUEUE_LABEL_JOBS: dict[str, list[str]] = {
     "ci-secrets.yml": ["gitleaks", "detect-secrets"],
     "anti-phantom-merge.yml": ["guard"],
 }
+
+# Lightweight governance jobs fall back to bulk HDD runners when no reserved label is set.
+BULK_FLEET_FALLBACK = "'d-sorg-fleet-bulk' }}"
+NEUTRAL_FLEET_FALLBACK = "'d-sorg-fleet' }}"
+BULK_QUEUE_LABEL_WORKFLOWS = frozenset({"ci-secrets.yml", "anti-phantom-merge.yml"})
 QUEUE_LABEL_HEAVY_JOBS: dict[str, list[str]] = {
     "frontend-tests.yml": ["playwright-e2e", "staff-console-e2e"],
     "ci-auto-deploy-regression.yml": ["auto-deploy-regression"],
@@ -114,7 +119,8 @@ def test_merge_group_jobs_use_queue_label_switch(workflow: str, only: list[str])
     for job_id, job in jobs.items():
         runs_on = " ".join(str(job["runs-on"]).split())
         assert QUEUE_LABEL_SWITCH in runs_on, f"{workflow}::{job_id}"
-        assert runs_on.endswith("'d-sorg-fleet' }}"), f"{workflow}::{job_id} lost the fleet default"
+        fallback = BULK_FLEET_FALLBACK if workflow in BULK_QUEUE_LABEL_WORKFLOWS else NEUTRAL_FLEET_FALLBACK
+        assert runs_on.endswith(fallback), f"{workflow}::{job_id} lost the fleet default"
 
 
 @pytest.mark.parametrize(("workflow", "only"), QUEUE_LABEL_HEAVY_JOBS.items())
@@ -169,9 +175,10 @@ def test_switch_unset_is_noop(event_name: str) -> None:
 @pytest.mark.parametrize(("workflow", "only"), QUEUE_LABEL_JOBS.items())
 def test_runs_on_unset_label_falls_back_to_fleet_text(workflow: str, only: list[str]) -> None:
     """Static sanity: the switch is additive — the bare fleet fallback string survives."""
+    fallback = BULK_FLEET_FALLBACK if workflow in BULK_QUEUE_LABEL_WORKFLOWS else NEUTRAL_FLEET_FALLBACK
     for job_id, job in _jobs(workflow, only).items():
         runs_on = " ".join(str(job["runs-on"]).split())
-        assert runs_on.endswith("'d-sorg-fleet' }}"), f"{workflow}::{job_id}"
+        assert runs_on.endswith(fallback), f"{workflow}::{job_id}"
 
 
 @pytest.mark.parametrize(("workflow", "only"), QUEUE_LABEL_HEAVY_JOBS.items())

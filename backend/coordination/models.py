@@ -208,3 +208,20 @@ class JobHeartbeatBody(_SessionRepo):
     issue: int = Field(gt=0)
     fence: int = Field(gt=0)
     ttl_hours: float = Field(default=2.0, ge=0.1, le=8.0)
+
+
+class HubSessionRegisterBody(_Body):
+    """Register or heartbeat a hub-local session (Cursor cloud lane, Barb, external agent)."""
+
+    session: str = Field(pattern=SESSION_PATTERN)
+    role: str = Field(min_length=1, max_length=128)
+    provider: str = Field(min_length=1, max_length=64)
+    machine: str = Field(min_length=1, max_length=128)
+    repo: str | None = Field(default=None, pattern=REPO_PATTERN)
+    target: str | None = Field(default=None, max_length=200)
+    ttl_hours: float = Field(default=2.0, ge=0.1, le=24.0)
+
+    @field_validator("repo")
+    @classmethod
+    def _repo(cls, value: str | None) -> str | None:
+        return bare_repo(value) if value else None

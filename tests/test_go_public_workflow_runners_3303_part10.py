@@ -18,6 +18,9 @@ PART10 = (
     ("ci-standalone-smoke.yml", None),
 )
 
+# Bulk-tier governance workflows use d-sorg-fleet-bulk as the private fallback.
+BULK_SELF_HOSTED_FALLBACK = "d-sorg-fleet-bulk"
+
 
 def _runs_on(workflow: str, job_id: str | None) -> str:
     data = yaml.safe_load((WORKFLOWS / workflow).read_text(encoding="utf-8"))
@@ -31,4 +34,10 @@ def test_part10_jobs_honor_pr_and_merge_group_hosted_modes() -> None:
         runs_on = _runs_on(workflow, job_id)
         assert PR_SWITCH in runs_on, workflow
         assert QUEUE_SWITCH in runs_on, workflow
-        assert "d-sorg-fleet" in runs_on, workflow
+        fallback = (
+            BULK_SELF_HOSTED_FALLBACK
+            if workflow
+            in {"ci-private-roles-redaction-gate.yml", "ci-standalone-smoke.yml"}
+            else "d-sorg-fleet"
+        )
+        assert fallback in runs_on, workflow

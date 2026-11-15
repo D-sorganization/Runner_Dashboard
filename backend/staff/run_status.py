@@ -133,12 +133,15 @@ def transition(
     to_status: RunStatus | str,
     *,
     raise_on_race: bool = True,
+    notify_terminal: bool = True,
     **fields: Any,
 ) -> TransitionResult:
     """Compare-and-set status transition plus optional non-status column updates.
 
     Pre: ``from_status`` and ``to_status`` are legal unless identical (no-op success).
     Post: row updated when CAS wins; raises or returns ``ok=False`` on a lost race.
+    Post: a CAS win into a terminal status calls the run notifier once (#4269 D-06).
+    ``notify_terminal=False`` is for a caller that emits that notification itself.
     """
     expected = _coerce_status(from_status)
     target = _coerce_status(to_status)
@@ -154,6 +157,10 @@ def transition(
         raise ValueError("pass status via to_status, not in fields")
 
     if store.compare_and_set_run_status(run_id, expected=expected.value, status=target.value, **fields):
+        if notify_terminal and target in TERMINAL_STATUSES:
+            from staff import run_terminal  # noqa: PLC0415
+
+            run_terminal.notify_run_terminal(store, run_id, target)
         return TransitionResult(ok=True, run_id=run_id, from_status=expected, to_status=target)
 
     actual = store.get_run(run_id)
@@ -207,6 +214,7 @@ def transition_to(
     to_status: RunStatus | str,
     *,
     raise_on_race: bool = True,
+    notify_terminal: bool = True,
     **fields: Any,
 ) -> TransitionResult:
     """Compare-and-set from the run row's current status."""
@@ -219,6 +227,7 @@ def transition_to(
         _coerce_record_status(rec.status),
         to_status,
         raise_on_race=raise_on_race,
+        notify_terminal=notify_terminal,
         **fields,
     )
 

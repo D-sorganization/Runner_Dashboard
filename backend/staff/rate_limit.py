@@ -109,6 +109,17 @@ class TokenBucketLimiter:
         for k in keys_to_reset:
             self._buckets.pop(k, None)
 
+    def ensure_limits(self, action: str, capacity: float, rate_per_sec: float) -> None:
+        """Apply policy-driven limits once without treating them as custom overrides.
+
+        Unlike ``set_limits``, this does not add ``action`` to ``_custom_limits``, so
+        privileged principals still receive the elevated dispatch budget on role buckets.
+        """
+        if action in self._default_capacity:
+            return
+        self._default_capacity[action] = capacity
+        self._default_rate[action] = rate_per_sec
+
     def acquire(
         self,
         principal_id: str,
@@ -289,15 +300,24 @@ def check_rate_limit(
     action: str,
     principal: Principal,
     limiter: TokenBucketLimiter | None = None,
+    *,
+    role: str | None = None,
 ) -> None:
     """Enforce rate limit for principal, raising HTTP 429 with Retry-After if exceeded."""
+    from staff.dispatch_rate_policy import dispatch_action_for_role, resolve_dispatch_bucket
+
     lim = limiter or get_rate_limiter()
     principal_type = getattr(principal, "type", "bot") or "bot"
     principal_id = getattr(principal, "id", "anonymous")
 
+    bucket_action = dispatch_action_for_role(role) if action == "dispatches" and role else action
+    if action == "dispatches" and role:
+        capacity, rate = resolve_dispatch_bucket(role)
+        lim.ensure_limits(bucket_action, capacity, rate)
+
     allowed, retry_after = lim.acquire(
         principal_id=principal_id,
-        action=action,
+        action=bucket_action,
         principal_type=principal_type,
     )
     if not allowed:
@@ -308,7 +328,7 @@ def check_rate_limit(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
                 "code": "rate_limited",
-                "message": f"Rate limit exceeded for {action}. Try again in {retry_seconds}s.",
+                "message": f"Rate limit exceeded for {bucket_action}. Try again in {retry_seconds}s.",
                 "retryable": True,
                 "retry_after": round(retry_after, 2),
             },

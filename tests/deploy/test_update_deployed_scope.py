@@ -62,6 +62,7 @@ def _create_fixture_repository(repo: Path) -> None:
         "wsl-mirrored-port-helper.sh",
         "loopback_bind_guard.py",
         "hub_tailnet_serve.py",
+        "host-metrics-probe.py",
     ):
         (repo / "deploy" / filename).write_text("#!/usr/bin/env python3\n", encoding="utf-8")
     (repo / "local_apps.json").write_text("[]", encoding="utf-8")
@@ -78,6 +79,12 @@ def _create_fixture_scripts(scripts: Path) -> None:
     shutil.copy2(ROOT / "deploy" / "rollback-deployed.sh", scripts / "rollback-deployed.sh")
     (scripts / "systemd-dropins").mkdir()
     (scripts / "systemd-dropins" / "40-cursor-sandbox.conf").write_text("", encoding="utf-8")
+    probe_installer = scripts / "install-host-metrics-probe.sh"
+    probe_installer.write_text(
+        '#!/usr/bin/env bash\nprintf "helper install-host-metrics-probe.sh\\n" >> "$COMMAND_LOG"\n',
+        encoding="utf-8",
+    )
+    probe_installer.chmod(0o755)
     for helper in ("migrate-runner-units.sh", "refresh-maintenance-assets.sh", "write-deployment-metadata.sh"):
         helper_path = scripts / helper
         helper_path.write_text(

@@ -166,12 +166,10 @@ class StaffRunner:
         if proc is not None and proc.poll() is None:
             terminate_process_group(proc.pid, grace_period=1.0)
             self.store.append_event(run_id, "cancel", "terminate signal sent")
-            handle_run_status_change(rec, "cancelled")
-            return True
+            return True  # the worker's finish path writes ``cancelled`` and notifies once (#4269)
         if rec.status in ("queued", "preparing"):
             transition(self.store, run_id, RunStatus(rec.status), RunStatus.CANCELLED, ended_at=_now())
             self.store.append_event(run_id, "cancel", "cancelled before start")
-            handle_run_status_change(rec, "cancelled")
             return True
         return False
 

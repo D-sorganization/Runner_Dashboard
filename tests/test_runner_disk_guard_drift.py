@@ -8,7 +8,9 @@ from pathlib import Path
 
 _SCRIPTS = Path(__file__).parent.parent / "scripts"
 if str(_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_SCRIPTS))
+    # Appended, not put first: scripts/ holds CLI shims that share a name with a backend
+    # module (runner_lease_pilot), and a later ``import runner_lease_pilot`` must get the backend.
+    sys.path.append(str(_SCRIPTS))
 
 import check_runner_disk_guard_drift as drift  # noqa: E402
 

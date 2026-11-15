@@ -266,9 +266,14 @@ def set_host_memory_gb(host_memory_gb: float | None) -> None:
     _host_memory_gb = host_memory_gb
 
 
-@router.get("/api/system")
-async def get_system_metrics() -> dict[str, Any]:
-    """Real-time system resource metrics."""
+async def local_system_metrics_snapshot() -> dict[str, Any]:
+    """This host's system metrics, with its runner capacity and runner processes.
+
+    Every reader of the local host's metrics uses this helper (``/api/system``, the local row of
+    ``/api/fleet/status``, local host health, the local node proxy). A bare
+    ``get_system_metrics_snapshot()`` has no runner capacity, so its host health reports
+    ``desired`` 0 and the fallback cap (#4439).
+    """
     from system_utils import get_system_metrics_snapshot
 
     return await get_system_metrics_snapshot(
@@ -277,6 +282,12 @@ async def get_system_metrics() -> dict[str, Any]:
         host_memory_gb=_host_memory_gb,
         get_runner_capacity_snapshot=_get_runner_capacity_snapshot,
     )
+
+
+@router.get("/api/system")
+async def get_system_metrics() -> dict[str, Any]:
+    """Real-time system resource metrics."""
+    return await local_system_metrics_snapshot()
 
 
 @router.get("/api/system/host-memory")

@@ -41,7 +41,7 @@ _PRIVATE_FAST_CHECKS_TAIL: Final = (
     f"|| {_QUEUE_AND_PR_HOSTED}"
     f"|| {_MERGE_GROUP_FAST_CHECKS} "
     "|| github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_LABEL "
-    "|| 'd-sorg-fleet'"
+    "|| 'd-sorg-fleet-bulk'"
 )
 
 _FRONTEND_FAST_CHECKS_TAIL: Final = (
