@@ -7,6 +7,7 @@ deploy artifact can finalize code-reviewer runs with only ``backend/`` on ``sys.
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -14,6 +15,8 @@ import httpx
 from coordination.merge_shepherd_exact_head import head_sha_matches
 from dashboard_config import ORG
 from staff.independent_exact_head_verdict import (
+    READ_BACK_ATTEMPTS,
+    READ_BACK_DELAY_SECONDS,
     VerdictPostError,
     mint_runner_dashboard_verdict_token,
 )
@@ -61,6 +64,25 @@ def own_stale_changes_requested_review_ids(
     return out
 
 
+def own_approved_review_ids_at_head(
+    reviews: Sequence[Mapping[str, Any]],
+    *,
+    head_sha: str,
+    bot_login: str = RUNNER_DASHBOARD_BOT_LOGIN,
+) -> list[int]:
+    out: list[int] = []
+    for item in reviews:
+        if str(item.get("state") or "").upper() != "APPROVED":
+            continue
+        if not is_runner_dashboard_bot_review(item, bot_login=bot_login):
+            continue
+        commit = str(item.get("commit_id") or "").strip()
+        rid = item.get("id")
+        if commit and head_sha_matches(commit, head_sha) and isinstance(rid, int):
+            out.append(rid)
+    return out
+
+
 def runner_dashboard_has_approved_at_head(
     reviews: Sequence[Mapping[str, Any]],
     *,
@@ -98,7 +120,10 @@ def fetch_pull_reviews(*, full_repo: str, pr_number: int, token: str) -> list[di
                 f"GitHub PR reviews list refused: HTTP {resp.status_code} ({detail})",
                 http_status=resp.status_code,
             )
-        payload = resp.json()
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            raise VerdictPostError("GitHub PR reviews list returned non-JSON") from exc
         if not isinstance(payload, list):
             raise VerdictPostError("GitHub PR reviews list returned unexpected payload")
         out.extend(row for row in payload if isinstance(row, dict))
@@ -173,8 +198,14 @@ def ensure_runner_dashboard_formal_approve(
     pr_number: int,
     head_sha: str,
     body: str,
-) -> None:
-    """Submit APPROVE at ``head_sha`` and dismiss this App's stale CHANGES_REQUESTED reviews."""
+) -> bool:
+    """Submit APPROVE at ``head_sha`` and dismiss this App's stale CHANGES_REQUESTED reviews.
+
+    Post: an APPROVED review by this App on ``head_sha`` was read back from GitHub. A
+    post that GitHub answered with success but that the read-back does not show raises
+    :class:`VerdictPostError`, so the head stays unreviewed (#4249, board ruling 2026-11-13).
+    Returns True when this call posted the review, False when it was already there.
+    """
     from staff.independent_exact_head_verdict import _repo_slug
 
     slug = _repo_slug(repo)
@@ -184,7 +215,7 @@ def ensure_runner_dashboard_formal_approve(
     reviews = fetch_pull_reviews(full_repo=full_repo, pr_number=pr_number, token=cred.token)
     if runner_dashboard_has_approved_at_head(reviews, head_sha=sha):
         log.info("Formal APPROVED review already recorded for %s#%s at %s", full_repo, pr_number, sha[:7])
-        return
+        return False
     dismiss_msg = f"Superseded by staff code-reviewer APPROVE at {sha[:7]}"
     for review_id in own_stale_changes_requested_review_ids(reviews, head_sha=sha):
         log.info("Dismissing stale CHANGES_REQUESTED review %s on %s#%s", review_id, full_repo, pr_number)
@@ -203,4 +234,27 @@ def ensure_runner_dashboard_formal_approve(
         body=body,
         token=cred.token,
     )
-    log.info("Posted formal APPROVE for %s#%s at %s", full_repo, pr_number, sha[:7])
+    for attempt in range(READ_BACK_ATTEMPTS):
+        if attempt:
+            time.sleep(READ_BACK_DELAY_SECONDS)
+        published = fetch_pull_reviews(full_repo=full_repo, pr_number=pr_number, token=cred.token)
+        if runner_dashboard_has_approved_at_head(published, head_sha=sha):
+            log.info("Posted formal APPROVE for %s#%s at %s and read it back", full_repo, pr_number, sha[:7])
+            return True
+    raise VerdictPostError(
+        f"Formal APPROVE for {full_repo}#{pr_number} at {sha[:7]} was not found on read-back; the head stays unreviewed"
+    )
+
+
+def withdraw_runner_dashboard_approve_at_head(*, repo: str, pr_number: int, head_sha: str, message: str) -> None:
+    """Dismiss this App's APPROVED reviews on ``head_sha``; raises :class:`VerdictPostError` on failure."""
+    from staff.independent_exact_head_verdict import _repo_slug
+
+    full_repo = f"{ORG}/{_repo_slug(repo)}"
+    cred = mint_runner_dashboard_verdict_token(repo)
+    reviews = fetch_pull_reviews(full_repo=full_repo, pr_number=pr_number, token=cred.token)
+    for review_id in own_approved_review_ids_at_head(reviews, head_sha=head_sha.lower()):
+        log.info("Withdrawing APPROVED review %s on %s#%s", review_id, full_repo, pr_number)
+        dismiss_pull_review(
+            full_repo=full_repo, pr_number=pr_number, review_id=review_id, message=message, token=cred.token
+        )

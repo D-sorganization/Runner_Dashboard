@@ -35,6 +35,7 @@ BULK_GOVERNANCE_WORKFLOWS = frozenset(
         "rd-barb-hold-integrity.yml",
         "recurring-scan.yml",
         "reusable-pr-freshness-guard.yml",
+        "architecture-map-contract.yml",
     }
 )
 

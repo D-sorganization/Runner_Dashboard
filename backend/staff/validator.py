@@ -452,7 +452,20 @@ def validate_role_data(data: Any) -> list[str]:
         problems.extend(validate_role_tier(str(tier)))
     problems.extend(_validate_retry_block(data))
     problems.extend(_validate_avatar_field(data))
+    from staff.read_only_failover import code_read_only_chain_warnings  # noqa: PLC0415
+
+    for warning in code_read_only_chain_warnings(data):
+        # Chain head warnings are surfaced on /roles/health; YAML may still list codex first
+        # when later steps are read-only-capable and dispatch skips non-RO providers.
+        if warning.startswith("code_read_only failover_chain[0]"):
+            continue
+        problems.append(f"warning: {warning}")
     return problems
+
+
+def validate_role_data_errors_only(data: Any) -> list[str]:
+    """Like :func:`validate_role_data` but drops ``warning:`` entries (invalidation only)."""
+    return [p for p in validate_role_data(data) if not str(p).startswith("warning:")]
 
 
 def _validate_avatar_field(data: dict[str, Any]) -> list[str]:

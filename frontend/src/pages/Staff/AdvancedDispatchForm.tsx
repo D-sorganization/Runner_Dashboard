@@ -56,7 +56,7 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
     run_id: initialValues?.target?.run_id != null ? String(initialValues.target.run_id) : "",
   }));
   const [prompt, setPrompt] = useState(() => initialValues?.prompt ?? "");
-  const [preview, setPreview] = useState<StaffDispatchResult | null>(null);
+  const [preview, setPreview] = useState<{ plan: StaffDispatchResult; intent: string } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [previewBusy, setPreviewBusy] = useState(false);
@@ -139,20 +139,24 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
     [kind, needsRole, role, provider, model, machine, executionMode, repo, numbers, prompt],
   );
 
+  // The request as the user has it now. A preview is shown, and a failed dispatch is
+  // retried under its idempotency key, only while this still matches (#4276).
+  const intent = useMemo(() => JSON.stringify(buildRequest(false)), [buildRequest]);
+
   const previewRequest = useCallback(() => {
     setPreviewBusy(true);
     setError(null);
     setNotice(null);
     submitStaffRequest(buildRequest(true))
       .then((resp) => {
-        setPreview(resp.plan ?? null);
+        setPreview(resp.plan ? { plan: resp.plan, intent } : null);
         if (resp.state === "approval_required") {
           setNotice(`Awaiting approval: ${resp.approval ?? "the request needs an approver"}`);
         }
       })
       .catch((e: unknown) => setError(errorMessage(e)))
       .finally(() => setPreviewBusy(false));
-  }, [buildRequest]);
+  }, [buildRequest, intent]);
 
   const dispatchRequest = useCallback(() => {
     if (dispatchSubmit.isSubmitting) return;
@@ -170,8 +174,8 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
           onDispatched(resp.run_id);
         }
       }
-    });
-  }, [buildRequest, dispatchSubmit, onDispatched]);
+    }, intent);
+  }, [buildRequest, dispatchSubmit, intent, onDispatched]);
 
   if (!roster) {
     return (
@@ -189,6 +193,7 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
   }
 
   const clearPreview = () => setPreview(null);
+  const shownPlan = preview?.intent === intent ? preview.plan : null;
   return (
     <div className="glass-card staff-panel staff-assign">
       <div className="staff-panel__header">
@@ -398,8 +403,8 @@ export function AdvancedDispatchForm({ roster, initialRole, initialValues, onDis
         </p>
       ) : null}
       {!hasTarget ? <p className="staff-muted">Give an issue, a PR or a prompt.</p> : null}
-      {preview?.plan && !dispatchSubmit.isSubmitting ? (
-        <DispatchPlan plan={preview.plan} machine={preview.machine} forwardedTo={preview.forwarded_to} />
+      {shownPlan?.plan && !dispatchSubmit.isSubmitting ? (
+        <DispatchPlan plan={shownPlan.plan} machine={shownPlan.machine} forwardedTo={shownPlan.forwarded_to} />
       ) : null}
     </div>
   );

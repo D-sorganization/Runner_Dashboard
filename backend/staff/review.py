@@ -625,6 +625,14 @@ def finalize_code_reviewer_run(
             error=review_verdict.error or "Malformed review verdict line",
             remediation="Review completed with a malformed STAFF_RESULT line.",
         )
+    if review_verdict.status == "succeeded" and review_verdict.verdict == "approve" and expected_pr_number is None:
+        return CodeReviewerRunOutcome(
+            status="failed",
+            failure_class="invalid_output",
+            retryable=False,
+            error="Approve STAFF_RESULT on a review run that targets no pull request",
+            remediation="An approve verdict needs a PR-targeted run, so that it can be published and read back.",
+        )
     if review_verdict.status == "succeeded" and review_verdict.verdict == "approve" and expected_pr_number is not None:
         from coordination.merge_shepherd_exact_head import head_sha_matches  # noqa: PLC0415
         from staff.independent_exact_head_verdict import (  # noqa: PLC0415
