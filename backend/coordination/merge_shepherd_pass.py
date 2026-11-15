@@ -14,6 +14,7 @@ from coordination.merge_shepherd import (
     PRCandidate,
     ShepherdAction,
     ShepherdDecision,
+    count_queue_bounces,
     get_auto_merge_flag,
     rank_candidates_for_shepherding,
 )
@@ -83,8 +84,14 @@ query($owner: String!, $name: String!) {
         commits(last: 1) {
           nodes {
             commit {
+              committedDate
               statusCheckRollup { state }
             }
+          }
+        }
+        timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+          nodes {
+            ... on RemovedFromMergeQueueEvent { createdAt reason }
           }
         }
       }
@@ -421,6 +428,7 @@ def node_to_candidate(repo: str, node: Mapping[str, Any], *, is_drained: bool) -
         labels=_label_names(node),
         is_queued=is_queued,
         auto_merge_enabled=auto_merge,
+        bounces=count_queue_bounces(node),
         is_drained=is_drained,
     )
 
