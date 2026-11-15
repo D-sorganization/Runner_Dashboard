@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 from agent_bus import reaper
@@ -101,6 +102,24 @@ def test_readyz_checked_once_per_node_per_pass(fake_store: MagicMock) -> None:
 
     assert calls == ["http://node-b:8321"]
     assert snapshot()["deferred_sessions"] == 2
+
+
+@pytest.mark.unit
+def test_stale_local_session_reaped_when_host_metrics_cache_degraded(
+    fake_store: MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import host_metrics_cache as hmc
+    import readiness as r
+
+    fake_store.list_stale_principals.return_value = [_stale("sess-local", "Hub-A")]
+    probe = r.HostMetricsCacheProbe(dashboard_service_check=lambda: True)
+    monkeypatch.setattr(r, "get_default_probes", lambda: [probe])
+    with patch.object(hmc, "read_cache", return_value=hmc.CacheReadResult("missing", None, None, Path("/x"))):
+        result = reaper.reap_once(allows_reap=node_reap_gate(local_machine="Hub-A", peers=_PEERS))
+
+    fake_store.release_tracked_claims.assert_called_once()
+    fake_store.drop_principal.assert_called_once_with("sess-local")
+    assert result["released_claims"] == 1
 
 
 @pytest.mark.unit

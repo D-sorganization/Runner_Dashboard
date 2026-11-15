@@ -27,27 +27,25 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$deployExport = ''
-if ($DeployDir) {
-    $deployExport = "export RUNNER_DASHBOARD_DEPLOY_DIR='${DeployDir}'"
-}
-$cmd = @"
+$bashScript = @'
 set -euo pipefail
-$deployExport
-installer=~/actions-runners/dashboard/deploy/install-host-metrics-probe.sh
-if [[ -n \"${DeployDir}\" ]]; then
-  installer='${DeployDir}/deploy/install-host-metrics-probe.sh'
-fi
-if [[ -f \"\$installer\" ]]; then
-  bash \"\$installer\"
+deploy_dir="${1:-}"
+if [[ -n "${deploy_dir}" ]]; then
+  export RUNNER_DASHBOARD_DEPLOY_DIR="${deploy_dir}"
+  installer="${deploy_dir}/deploy/install-host-metrics-probe.sh"
 else
-  echo \"Installer not found at \$installer — deploy dashboard first\" >&2
+  installer="${HOME}/actions-runners/dashboard/deploy/install-host-metrics-probe.sh"
+fi
+if [[ -f "${installer}" ]]; then
+  bash "${installer}"
+else
+  echo "Installer not found at ${installer} — deploy dashboard first" >&2
   exit 1
 fi
-"@
+'@
 
 if ($PSCmdlet.ShouldProcess($Distro, 'Install host-metrics-probe timer inside WSL')) {
-    wsl.exe -d $Distro -- /bin/bash -lc $cmd
+    wsl.exe -d $Distro -e bash -c $bashScript -- $DeployDir
     Write-Output "Host-metrics probe install invoked in WSL distro '$Distro'."
     Write-Output "If the dashboard uses a system unit, the bash installer will prompt for sudo inside WSL."
 }

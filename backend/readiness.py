@@ -285,6 +285,7 @@ class HostMetricsCacheProbe:
     """Warn when the #4309 cache is missing/stale on hosts running runner-dashboard."""
 
     name = "host_metrics_cache"
+    readiness_fatal = False
 
     def __init__(
         self,
@@ -428,17 +429,22 @@ _DEFAULT_PROBES: list[Probe] = [
 async def aggregate(probes: list[Probe]) -> tuple[int, dict]:
     """Run all probes concurrently and return (http_status, response_body).
 
-    Returns HTTP 200 when all probes report ``"ok"``, HTTP 503 otherwise.
+    Returns HTTP 200 when every *fatal* probe reports ``"ok"``. Probes may set
+    ``readiness_fatal = False`` to surface ``degraded`` in ``checks`` without
+    failing readiness (used for informational host-metrics cache health).
     """
+    fatal_by_name = {p.name: getattr(p, "readiness_fatal", True) for p in probes}
     results = await bounded_checks(((p.name, p.check) for p in probes), COMPONENT_BUDGET_S, AGGREGATE_BUDGET_S)
 
     checks_payload: dict[str, str | dict] = {}
     any_down = False
     any_degraded = False
     for name, (status, detail) in results:
+        fatal = fatal_by_name.get(name, True)
         if status in {"down", "timed_out"}:
-            any_down = True
-        elif status == "degraded":
+            if fatal:
+                any_down = True
+        elif status == "degraded" and fatal:
             any_degraded = True
         if status == "timed_out":
             checks_payload[name] = {"status": status, "budget_s": min(COMPONENT_BUDGET_S, AGGREGATE_BUDGET_S)}

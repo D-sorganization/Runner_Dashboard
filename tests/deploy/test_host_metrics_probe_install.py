@@ -47,3 +47,12 @@ def test_windows_wsl_install_helper_exists() -> None:
     assert helper.is_file()
     text = helper.read_text(encoding="utf-8")
     assert "install-host-metrics-probe.sh" in text
+    assert "@'" in text
+    assert 'deploy_dir="${1:-}"' in text
+    assert '\\"${DeployDir}\\"' not in text
+
+
+def test_install_skips_probe_copy_when_source_is_deploy_tree() -> None:
+    install = (DEPLOY / "install-host-metrics-probe.sh").read_text(encoding="utf-8")
+    assert 'realpath "${PROBE_SRC}"' in install
+    assert 'realpath "${PROBE_DEST}"' in install
