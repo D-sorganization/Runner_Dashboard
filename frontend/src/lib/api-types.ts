@@ -1713,6 +1713,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/sessions/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Sessions Register
+         * @description Register or heartbeat a hub-local session for cloud lanes and external agents (#4458).
+         */
+        post: operations["post_sessions_register_api_coordination_sessions_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/credentials": {
         parameters: {
             query?: never;
@@ -10908,6 +10928,29 @@ export interface components {
             schema_version: number;
         };
         /**
+         * HubSessionRegisterBody
+         * @description Register or heartbeat a hub-local session (Cursor cloud lane, Barb, external agent).
+         */
+        HubSessionRegisterBody: {
+            /** Machine */
+            machine: string;
+            /** Provider */
+            provider: string;
+            /** Repo */
+            repo?: string | null;
+            /** Role */
+            role: string;
+            /** Session */
+            session: string;
+            /** Target */
+            target?: string | null;
+            /**
+             * Ttl Hours
+             * @default 2
+             */
+            ttl_hours: number;
+        };
+        /**
          * InitializeExecutorPayload
          * @description Children always come from the filed plan; the caller may only tune execution.
          */
@@ -16881,6 +16924,41 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_sessions_register_api_coordination_sessions_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HubSessionRegisterBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
