@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from collections.abc import Mapping
 from typing import Any
 
 from staff.adapters import READ_ONLY_RUN_PROVIDERS, ProviderAdapter
@@ -26,7 +27,8 @@ def code_read_only_chain_warnings(data: dict[str, Any]) -> list[str]:
     """Non-fatal YAML warnings for ``code_read_only`` roles and their failover chain."""
     from staff.provider_failover_config import parse_role_failover_chain
 
-    perms = data.get("permissions") if isinstance(data.get("permissions"), dict) else {}
+    raw_perms = data.get("permissions")
+    perms = raw_perms if isinstance(raw_perms, dict) else {}
     if perms.get("code_read_only") is not True:
         return []
     warnings: list[str] = []
@@ -69,7 +71,7 @@ def read_only_substitution_skips(
 
 
 def _skip_reason(
-    adapters: dict[str, ProviderAdapter],
+    adapters: Mapping[str, ProviderAdapter],
     role: RoleSpec,
     provider: str,
     *,
@@ -101,7 +103,7 @@ def _skip_reason(
 
 
 def explain_read_only_chain_exhausted(
-    adapters: dict[str, ProviderAdapter],
+    adapters: Mapping[str, ProviderAdapter],
     role: RoleSpec,
     req: RunRequest,
     *,

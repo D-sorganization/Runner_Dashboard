@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,7 +36,7 @@ class ProviderPick:
     requested_provider: str | None = None
     substitution_reason: str | None = None
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str | list[dict[str, str]] | None]:
         yield self.provider
         yield self.model
         yield self.tier

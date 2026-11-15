@@ -592,12 +592,17 @@ async def dispatch_staff_run(
             rec.target_ref,
             cmd.requested_by,
         )
-        out: dict[str, Any] = {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine, **claim_info}
+        launch_result: dict[str, Any] = {
+            "dry_run": False,
+            "run": rec.to_dict(),
+            "machine": runner.machine,
+            **claim_info,
+        }
         if plan.substitution_reason:
-            out["requested_provider"] = plan.requested_provider
-            out["provider"] = plan.provider
-            out["substitution_reason"] = plan.substitution_reason
-        return out
+            launch_result["requested_provider"] = plan.requested_provider
+            launch_result["provider"] = plan.provider
+            launch_result["substitution_reason"] = plan.substitution_reason
+        return launch_result
 
     finally:
         from dispatch_queue_link import release_unbound_overlap_session  # noqa: PLC0415
