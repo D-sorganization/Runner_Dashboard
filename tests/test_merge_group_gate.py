@@ -27,6 +27,7 @@ MERGE_GROUP_JOB_ALLOWLIST: dict[str, frozenset[str]] = {
             "tests",
             "tests-required",
             "quality-gate",
+            "record-failure-visibility",
         }
     ),
     "frontend-tests.yml": frozenset(
