@@ -87,6 +87,8 @@ class RunBody(BaseModel):
     work_item_id: str | None = Field(default=None, max_length=120)
     origin_node: str | None = Field(default=None, max_length=60)
     dry_run: bool = False
+    strict_provider: bool = False
+    authority_code_read_only: bool = False
     # Run even when the role's budget or the provider's plan window is spent (#1588); audited.
     ignore_budget: bool = False
     # Operator-only: dispatch despite a foreign claim:* label / closing PR; needs a reason; audited (#2562).

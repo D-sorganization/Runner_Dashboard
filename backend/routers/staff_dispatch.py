@@ -84,6 +84,8 @@ async def run_dispatch(
         execution_mode=getattr(body, "execution_mode", "local") or "local",
         dispatch_origin=authenticated_origin,
         pr_restrictions=tuple(body.pr_restrictions),
+        strict_provider=body.strict_provider,
+        authority_code_read_only=body.authority_code_read_only,
     )
     # A request that declares Barb authority is fenced on its lease epoch (#2734, #3543);
     # when a peer forwards on behalf of another principal, evaluate the fence against the

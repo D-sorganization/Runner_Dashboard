@@ -452,7 +452,15 @@ def validate_role_data(data: Any) -> list[str]:
         problems.extend(validate_role_tier(str(tier)))
     problems.extend(_validate_retry_block(data))
     problems.extend(_validate_avatar_field(data))
+    from staff.read_only_failover import code_read_only_chain_warnings  # noqa: PLC0415
+
+    problems.extend(f"warning: {w}" for w in code_read_only_chain_warnings(data))
     return problems
+
+
+def validate_role_data_errors_only(data: Any) -> list[str]:
+    """Like :func:`validate_role_data` but drops ``warning:`` entries (invalidation only)."""
+    return [p for p in validate_role_data(data) if not str(p).startswith("warning:")]
 
 
 def _validate_avatar_field(data: dict[str, Any]) -> list[str]:
