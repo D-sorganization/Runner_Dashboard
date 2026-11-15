@@ -47,7 +47,6 @@ _UNCLASSIFIED: dict[str, str] = {
     "deploy-qualified-release.yml": (
         "Pinned to a single named host (d-sorg-local-Oglaptop-1); tier labels do not apply."
     ),
-    "local-only-runner-guard.yml": "runs-on is an expression that falls back to ubuntu-latest on public forks.",
     "util-queued-job-reaper.yml": "Hosted ubuntu-latest for go-public queue maintenance (#3303 part 4).",
     "verify-tag.yml": "Hosted ubuntu-latest for go-public tag validation (#3303 part 4).",
     "ci-slo-check.yml": "Hosted ubuntu-latest for go-public queue SLO metrics (#3303).",
