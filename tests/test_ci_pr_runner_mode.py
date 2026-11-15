@@ -17,6 +17,22 @@ from test_ci_expedite_runner_mode import _run_select
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
 PR_SWITCH = "github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest'"
 
+BULK_LIGHT_WORKFLOWS = frozenset(
+    {
+        "ci-secrets.yml",
+        "anti-phantom-merge.yml",
+        "ci-spec-check.yml",
+        "lint-workflow-files.yml",
+        "ci-private-roles-redaction-gate.yml",
+        "ci-standalone-smoke.yml",
+        "local-only-runner-guard.yml",
+    }
+)
+BULK_FLEET_FALLBACK = "d-sorg-fleet-bulk"
+NEUTRAL_FLEET_FALLBACK = "d-sorg-fleet"
+BULK_FLEET_FALLBACK_SUFFIX = "'d-sorg-fleet-bulk' }}"
+NEUTRAL_FLEET_FALLBACK_SUFFIX = "'d-sorg-fleet' }}"
+
 LIGHT_JOBS = {
     # ci-standard pick-runner pinned to ubuntu-latest for go-public (#3303 part 8);
     # PR mode is enforced in the select script, not runs-on YAML.
@@ -95,7 +111,8 @@ def test_light_pr_jobs_honor_pr_runner_mode(workflow: str, only: list[str] | Non
     for job_id, job in jobs.items():
         runs_on = " ".join(str(job["runs-on"]).split())
         assert PR_SWITCH in runs_on, f"{workflow}::{job_id}"
-        assert "d-sorg-fleet" in runs_on, f"{workflow}::{job_id} lost the fleet default"
+        fallback = BULK_FLEET_FALLBACK if workflow in BULK_LIGHT_WORKFLOWS else NEUTRAL_FLEET_FALLBACK
+        assert fallback in runs_on, f"{workflow}::{job_id} lost the fleet default"
 
 
 @pytest.mark.parametrize(("workflow", "only"), HEAVY_JOBS.items())
@@ -119,7 +136,8 @@ def test_light_queue_jobs_honor_queue_runner_mode(workflow: str, only: list[str]
     for job_id, job in jobs.items():
         runs_on = " ".join(str(job["runs-on"]).split())
         assert QUEUE_SWITCH in runs_on, f"{workflow}::{job_id}"
-        assert runs_on.endswith("'d-sorg-fleet' }}"), f"{workflow}::{job_id} lost the fleet default"
+        suffix = BULK_FLEET_FALLBACK_SUFFIX if workflow == "ci-secrets.yml" else NEUTRAL_FLEET_FALLBACK_SUFFIX
+        assert runs_on.endswith(suffix), f"{workflow}::{job_id} lost the fleet default"
 
 
 @pytest.mark.parametrize(("workflow", "only"), HEAVY_JOBS.items())

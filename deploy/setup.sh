@@ -66,6 +66,8 @@ ALLOW_HUB_URL_OVERRIDE=""
 
 # shellcheck source=deploy/setup-systemd-scope.sh
 source "${SCRIPT_DIR}/deploy/setup-systemd-scope.sh"
+# shellcheck source=deploy/setup-host-metrics-probe.sh
+source "${SCRIPT_DIR}/deploy/setup-host-metrics-probe.sh"
 
 # preflight() — assert deploy preconditions (issue #402). Idempotent.
 preflight() {
@@ -442,6 +444,8 @@ if [[ -x "${SCRIPT_DIR}/deploy/install-runner-maintenance.sh" ]]; then
 else
     warn "Runner maintenance installer not found; skipping cleanup/scheduler timers"
 fi
+
+setup_install_host_metrics_probe "${SCRIPT_DIR}" "${DEPLOY_DIR}"
 
 sleep 3
 if dashboard_systemctl_active; then

@@ -34,6 +34,7 @@ it.
 8. [0009 — Private Mode: classification levels and the safe-disable contract](./0009-private-mode-classification-levels.md) — the `Level` total order and the optional `private_mode` overlay field, off by default (epic #3249, PM-0).
 9. [0010 — Independent verifier at the exact head SHA](./0010-verifier-at-exact-sha.md) — a reviewer other than the PR's builder must record accept/reject against the PR's current tree hash before Barb arms auto-merge; self-verify refused, a timeout is `STALE_UNVERIFIED` (#3300 upgrade 1).
 10. [0011 — Pool controller: lane files, claim-as-dequeue, drain semantics](./0011-pool-controller-lane-files-and-claim-queue.md) — `pool-controller-lane.v1` lane files, `LaneState` transitions, write-before-spawn behind `DASHBOARD_ENABLE_POOL_CONTROLLER` (#4279 WP27 slice 1).
+11. [0012 — Pool controller design note: lane file v2, claim-as-dequeue, reconcile loop and drain](./0012-pool-controller-design-note.md) — proposed design for the parts 0011 deferred; records that the #4279 build gate (WP12–WP15 landed, demand shown by #4250 metrics) is not met on 2026-11-14 (#4279 WP27, design only).
 
 ## Template
 

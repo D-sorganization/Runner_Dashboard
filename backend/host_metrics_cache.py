@@ -16,6 +16,7 @@ import logging
 import os
 import platform
 import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -45,6 +46,40 @@ def _default_state_dir() -> Path:
 def cache_file_path() -> Path:
     """Return the canonical host-metrics cache path for this node."""
     return _default_state_dir() / CACHE_BASENAME
+
+
+def dashboard_service_present() -> bool:
+    """Return True when a runner-dashboard systemd unit is enabled on this host."""
+    if shutil.which("systemctl") is None:
+        return False
+    probes = (
+        ["systemctl", "is-enabled", "runner-dashboard.service"],
+        ["systemctl", "--user", "is-enabled", "runner-dashboard.service"],
+    )
+    for cmd in probes:
+        try:
+            completed = subprocess.run(cmd, capture_output=True, timeout=2, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        if completed.returncode == 0:
+            return True
+    return False
+
+
+def warn_host_metrics_cache_at_startup() -> None:
+    """Log once at process start when the cache is missing/stale (#4443)."""
+    if not dashboard_service_present():
+        return
+    result = read_cache()
+    if result.status == "fresh":
+        return
+    logger.warning(
+        "host_metrics cache %s at %s — fleet status may show host offline until "
+        "runner-dashboard-host-metrics-probe.timer is installed (bash deploy/install-host-metrics-probe.sh; "
+        "system scope needs sudo)",
+        result.status,
+        result.path,
+    )
 
 
 def _parse_sampled_at(raw: object) -> datetime | None:

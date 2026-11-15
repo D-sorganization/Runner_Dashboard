@@ -20,10 +20,10 @@ from coordination import claims as claims_mod
 from coordination import job_board_lease
 from coordination import jobs as jobs_mod
 from coordination.board import RMScriptError
-from staff import claim_guard
-from staff import lease as lease_mod
 from staff.store import RunRecord, RunStore
 
+from staff import claim_guard
+from staff import lease as lease_mod
 from tests.api.coordination_fake_rm import FakeRM, claim_status, install, lease_result
 
 REPO = "Tools"
@@ -323,68 +323,12 @@ def test_failed_lease_post_rolls_back_orphan_claim_label(rm: FakeRM, monkeypatch
     assert "release_agent_lease" in [name for name, _ in rm.calls()]
 
 
-# ── B-09: in-memory fence/TTL bookkeeping ───────────────────────────────────
+# ── B-09: fence/TTL bookkeeping is durable ──────────────────────────────────
+# The earlier characterization (fence 0 and a stale-fence release after a restart) was
+# replaced by tests/unit/test_job_board_durable_state_4270.py when B-09 was fixed.
 
 
 @pytest.mark.unit
-def test_current_behavior_job_board_fence_and_ttl_live_only_in_process(
-    rm: FakeRM, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """#4270 B-09: fence epochs and TTL rows vanish on ``reset_job_board_claim_state`` (no persistence)."""
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(ISSUE))
-    rm.respond("post_agent_lease", lease_result(agent=AGENT))
-    posted = {"n": 0}
-    real_post = claims_mod.post_lease
-
-    def post_lease(*args: Any, **kwargs: Any) -> dict[str, Any]:
-        posted["n"] += 1
-        return real_post(*args, **kwargs)
-
-    def check(repo: str, issue: int) -> dict[str, Any]:
-        if posted["n"] == 0:
-            return {"available": True, "held": False, "agent": "", "session": "", "reason": "", "expires_at": None}
-        return {
-            "available": True,
-            "held": True,
-            "agent": AGENT,
-            "session": f"{AGENT}-{ISSUE}",
-            "reason": "active lease",
-            "expires_at": "2026-11-11T12:00:00+00:00",
-        }
-
-    monkeypatch.setattr(claims_mod, "post_lease", post_lease)
-    monkeypatch.setattr(claims_mod, "check", check)
-
-    claimed = jobs_mod.claim_job(REPO, ISSUE, agent=AGENT, session=f"{AGENT}-{ISSUE}", intent="fence")
-    fence = claimed["fence"]
-    assert fence > 0
-    jobs_mod.reset_job_board_claim_state()
-    assert jobs_mod._current_fence(REPO, ISSUE) == 0
-
-    def still_held(repo: str, issue: int) -> dict[str, Any]:
-        return {
-            "available": True,
-            "held": True,
-            "agent": AGENT,
-            "session": f"{AGENT}-{ISSUE}",
-            "reason": "active lease",
-            "expires_at": "2026-11-11T12:00:00+00:00",
-        }
-
-    monkeypatch.setattr(claims_mod, "check", still_held)
-    with pytest.raises(jobs_mod.StaleFenceError):
-        jobs_mod.release_job(
-            REPO,
-            ISSUE,
-            agent=AGENT,
-            session=f"{AGENT}-{ISSUE}",
-            fence=fence,
-            reason="after-restart",
-        )
-
-
-@pytest.mark.unit
-@pytest.mark.xfail(strict=True, reason="#4270 B-09: fence/TTL rows must survive process restart (PR 3)")
 def test_job_board_fence_survives_simulated_process_restart(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(ISSUE))
     rm.respond("post_agent_lease", lease_result(agent=AGENT))
