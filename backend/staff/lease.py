@@ -18,7 +18,6 @@ from staff.run_status import RunStatus, transition_to
 from staff.store import RunRecord, RunStore
 from staff.workspace import rm_root
 
-from staff import claim_guard
 from staff import dispatch_self_claim as dispatch_self_claim_mod
 
 LEASE_SKIPPED_NOTE = (
@@ -75,7 +74,6 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
             ended_at=_now(),
             error="issue claim held by another agent",
         )
-        claim_guard.release_claim(run_id, "blocked")
         _record_block_diagnostics(store, run_id, repo=repo, issue=issue, agent=agent, session=session, check=check)
         store.append_event(run_id, "blocked", "issue claim held by another agent; not starting")
         return None
@@ -93,7 +91,6 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
             ended_at=_now(),
             error="post_agent_lease failed",
         )
-        claim_guard.release_claim(run_id, "blocked")
         store.append_event(run_id, "blocked", "post_agent_lease failed; run not started")
         return None
     res = run_module(

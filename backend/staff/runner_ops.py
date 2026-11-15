@@ -433,8 +433,6 @@ def ensure_preparing_before_launch(store: RunStore, rec: RunRecord) -> None:
 
 
 def record_worker_crash(store: RunStore, rec: RunRecord, exc: BaseException) -> None:
-    from staff import claim_guard
-
     transition_to(
         store,
         rec.id,
@@ -442,7 +440,6 @@ def record_worker_crash(store: RunStore, rec: RunRecord, exc: BaseException) -> 
         ended_at=_now(),
         error=str(exc)[:1000],
     )
-    claim_guard.release_claim(rec.id, "failed")
     store.append_event(rec.id, "error", str(exc)[:1000])
 
 
