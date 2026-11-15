@@ -128,6 +128,17 @@ def test_goal_outcome_with_newline_is_422(rm: FakeRM, client: TestClient) -> Non
         ("/api/coordination/presence/release", {"session": "jules-1", "repo": "Tools"}),
         ("/api/coordination/messages", {"session": "jules-1", "repo": "Tools", "to": "*", "text": "hi"}),
         ("/api/coordination/messages/ack", {"session": "jules-1", "repo": "Tools", "message_id": "m1"}),
+        (
+            "/api/coordination/sessions/register",
+            {
+                "session": "codex-1",
+                "role": "jules",
+                "provider": "cursor",
+                "machine": "cloud",
+                "repo": "Tools",
+                "ttl_hours": 2,
+            },
+        ),
     ],
 )
 def test_bot_cannot_impersonate_another_agent_or_session(rm: FakeRM, client: TestClient, path: str, body: dict) -> None:

@@ -12,7 +12,6 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from coordination.staff_runs_cache import record_staff_runs_snapshot
 from staff.runner import get_runner
 
 from staff import fleet as staff_fleet
@@ -98,5 +97,4 @@ async def staff_runs(repo: str | None = None) -> tuple[list[dict[str, Any]], lis
     if repo:
         wanted = repo.casefold()
         rows = [r for r in rows if str(r["repo"] or "").casefold() == wanted]
-    record_staff_runs_snapshot(rows, [])
     return rows, []

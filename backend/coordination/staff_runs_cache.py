@@ -6,6 +6,8 @@ import threading
 import time
 from typing import Any
 
+STAFF_RUNS_SNAPSHOT_MAX_AGE_S = 60.0
+
 _lock = threading.RLock()
 _runs: list[dict[str, Any]] = []
 _warnings: list[str] = []
@@ -32,7 +34,14 @@ def record_staff_runs_snapshot(runs: list[dict[str, Any]], warnings: list[str]) 
         _recorded_at = time.monotonic()
 
 
-def snapshot_staff_runs() -> tuple[list[dict[str, Any]], list[str], bool]:
-    """Return a copy of the last snapshot and whether any data was recorded."""
+def snapshot_staff_runs(
+    max_age_s: float | None = None,
+) -> tuple[list[dict[str, Any]], list[str], bool]:
+    """Return a copy of the last snapshot when younger than ``max_age_s`` (default bound)."""
+    bound = STAFF_RUNS_SNAPSHOT_MAX_AGE_S if max_age_s is None else max_age_s
     with _lock:
-        return list(_runs), list(_warnings), bool(_runs)
+        if not _runs or not _recorded_at:
+            return [], [], False
+        if time.monotonic() - _recorded_at > bound:
+            return [], [], False
+        return list(_runs), list(_warnings), True
