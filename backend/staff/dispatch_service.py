@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 from fastapi import HTTPException
@@ -86,6 +86,8 @@ class DispatchCommand:
     claim_override_reason: str = ""
     execution_mode: str = "local"
     dispatch_origin: str = ""
+    strict_provider: bool = False
+    authority_code_read_only: bool = False
 
     def __post_init__(self) -> None:
         if not self.role.strip():
@@ -111,6 +113,10 @@ class DispatchCommand:
         if not body["force_claim_override"]:
             body.pop("force_claim_override")
             body.pop("claim_override_reason")
+        if not body.get("strict_provider"):
+            body.pop("strict_provider", None)
+        if not body.get("authority_code_read_only"):
+            body.pop("authority_code_read_only", None)
         return body
 
     def run_id(self) -> str:
@@ -369,7 +375,10 @@ async def dispatch_staff_run(
                 obo_hdr = staff_fleet.sign_on_behalf_of(
                     cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin
                 )
-                return await _forward(resolved_target, cmd, obo_hdr, barb_claim, format_caller(caller))
+                forward_cmd = cmd
+                if spec.code_read_only and not cmd.authority_code_read_only:
+                    forward_cmd = replace(cmd, authority_code_read_only=True)
+                return await _forward(resolved_target, forward_cmd, obo_hdr, barb_claim, format_caller(caller))
 
         req = RunRequest(
             role=cmd.role,
@@ -396,6 +405,8 @@ async def dispatch_staff_run(
             execution_mode=cmd.execution_mode or "local",
             dispatch_origin=cmd.dispatch_origin,
             barb_bypass_role_repos=is_barb_seat(caller),
+            strict_provider=cmd.strict_provider,
+            authority_code_read_only=cmd.authority_code_read_only,
         )
         try:
             plan = runner.plan(req)
@@ -411,7 +422,10 @@ async def dispatch_staff_run(
         if target != "local":
             origin = cmd.origin_node or runner.machine
             obo_hdr = staff_fleet.sign_on_behalf_of(cmd.requested_by, cmd.surface, cmd.thread_id, origin_node=origin)
-            return await _forward(target, cmd, obo_hdr, barb_claim, format_caller(caller))
+            forward_cmd = cmd
+            if spec is not None and spec.code_read_only and not cmd.authority_code_read_only:
+                forward_cmd = replace(cmd, authority_code_read_only=True)
+            return await _forward(target, forward_cmd, obo_hdr, barb_claim, format_caller(caller))
         if cmd.dry_run:
             try:
                 record_audit(
@@ -438,7 +452,12 @@ async def dispatch_staff_run(
                 )
             except AuditError as exc:
                 log.warning("staff: dry-run dispatch audit skipped: %s", exc)
-            return {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine, **claim_info}
+            out = {"dry_run": True, "plan": plan.to_dict(), "machine": runner.machine, **claim_info}
+            if plan.substitution_reason:
+                out["requested_provider"] = plan.requested_provider
+                out["provider"] = plan.provider
+                out["substitution_reason"] = plan.substitution_reason
+            return out
         resource_admission.check_dispatch_resource_admission(
             cmd, caller, machine=target, sampler=sample_dispatch_resources
         )
@@ -528,6 +547,21 @@ async def dispatch_staff_run(
                     model=None,
                     outcome=str(row.get("outcome") or "auth_expired"),
                 )
+        if created and plan.substitution_reason:
+            from staff.failover_dispatch import append_chain_attempt  # noqa: PLC0415
+
+            substitute_msg = (
+                f"requested_provider_substituted: {plan.requested_provider} -> {plan.provider} "
+                f"({plan.substitution_reason})"
+            )
+            runner.store.append_event(rec.id, "requested_provider_substituted", substitute_msg)
+            append_chain_attempt(
+                runner.store,
+                rec.id,
+                provider=str(plan.requested_provider or ""),
+                model=None,
+                outcome="substituted",
+            )
         if created and cmd.issue and cmd.repo and claim_info.get("claim_check") != "unavailable":
             applied = await claim_guard.apply_claim(rec.id, cmd.repo, cmd.issue, rec.role)
             if applied:
@@ -558,7 +592,17 @@ async def dispatch_staff_run(
             rec.target_ref,
             cmd.requested_by,
         )
-        return {"dry_run": False, "run": rec.to_dict(), "machine": runner.machine, **claim_info}
+        launch_result: dict[str, Any] = {
+            "dry_run": False,
+            "run": rec.to_dict(),
+            "machine": runner.machine,
+            **claim_info,
+        }
+        if plan.substitution_reason:
+            launch_result["requested_provider"] = plan.requested_provider
+            launch_result["provider"] = plan.provider
+            launch_result["substitution_reason"] = plan.substitution_reason
+        return launch_result
 
     finally:
         from dispatch_queue_link import release_unbound_overlap_session  # noqa: PLC0415

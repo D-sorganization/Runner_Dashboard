@@ -12194,6 +12194,11 @@ export interface components {
          */
         RunBody: {
             /**
+             * Authority Code Read Only
+             * @default false
+             */
+            authority_code_read_only: boolean;
+            /**
              * Claim Override Reason
              * @default
              */
@@ -12258,6 +12263,11 @@ export interface components {
              * @default
              */
             standards_extra: string;
+            /**
+             * Strict Provider
+             * @default false
+             */
+            strict_provider: boolean;
             /** Surface */
             surface?: string | null;
             /**

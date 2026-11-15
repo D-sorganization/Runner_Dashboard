@@ -108,7 +108,7 @@ def get_provider_active(_principal: Principal = Depends(require_scope("fleet.rea
 
 
 @router.get("/roles/health")
-def get_roles_health(
+async def get_roles_health(
     roles: str | None = Query(default=None, max_length=256),
     now: float | None = Query(default=None),
     _principal: Principal = Depends(require_scope("fleet.read")),  # noqa: B008
@@ -116,7 +116,27 @@ def get_roles_health(
     """Aggregate persona role health with 2-reading hysteresis; unknown roles fail closed to ``degraded`` (#3295 S3)."""
     role_list = [r.strip() for r in roles.split(",") if r.strip()] if roles else None
     try:
-        return role_health_store().aggregate_status(roles=role_list, now=now)
+        payload = role_health_store().aggregate_status(roles=role_list, now=now)
+        from staff.read_only_failover import reviewer_provider_available_on_board, role_read_only_config_warnings
+        from staff.runner import get_runner
+
+        from staff import fleet as staff_fleet
+
+        runner = get_runner()
+        roles_map = runner.roles()
+        board = await staff_fleet.aggregate_board(staff_fleet.local_board(runner), staff_fleet.peer_nodes())
+        for name, snap in list((payload.get("roles") or {}).items()):
+            spec = roles_map.get(name)
+            if spec is None:
+                continue
+            cfg_warnings = role_read_only_config_warnings(spec)
+            if cfg_warnings:
+                snap["config_warnings"] = cfg_warnings
+            avail = reviewer_provider_available_on_board(board, spec)
+            if avail:
+                snap["reviewer_nodes"] = avail
+            payload["roles"][name] = snap
+        return payload
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
