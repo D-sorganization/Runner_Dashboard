@@ -28,6 +28,7 @@ from staff.conversations import (
 from datetime import UTC, datetime, timedelta
 
 from staff.loop_guard import DEFAULT_MAX_AGENT_TURNS, LoopGuard, reset_global_loop_guard
+from staff.dispatch_rate_policy import dispatch_action_for_role
 from staff.rate_limit import (
     TokenBucketLimiter,
     get_rate_limiter,
@@ -227,7 +228,8 @@ def test_dispatch_rate_limit_returns_429(client: TestClient, staff_cli_installed
     app.dependency_overrides[require_scope("staff.dispatch")] = lambda: BOT_PRINCIPAL
 
     limiter = get_rate_limiter()
-    limiter.set_limits(action="dispatches", capacity=1, rate_per_sec=0.01)
+    ad_hoc_dispatch = dispatch_action_for_role("ad-hoc")
+    limiter.set_limits(action=ad_hoc_dispatch, capacity=1, rate_per_sec=0.01)
 
     # 1st dispatch succeeds
     res1 = client.post(

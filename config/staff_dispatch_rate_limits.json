@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "description": "Per-role staff dispatch token buckets (POST /api/staff/{role}/run). Issue #4457 / epic #4251.",
+  "default_dispatches_per_hour": 10,
+  "roles": {
+    "code-reviewer": {
+      "dispatches_per_hour": 30
+    }
+  }
+}
