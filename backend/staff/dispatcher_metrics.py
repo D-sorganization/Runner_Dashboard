@@ -126,7 +126,13 @@ def aggregate_dispatcher_metrics(
         grok_runs = sum(1 for run in day_runs if run.get("dispatch_origin") == "grok")
         fallback_count = len(day_fallbacks)
         denominator = grok_runs + fallback_count
-        successes = [run for run in day_runs if run.get("status") == "succeeded"]
+        # A ``not_applicable`` verdict means there was nothing to verify (#3048), so it is
+        # neither a false success nor part of the verified-success denominator.
+        successes = [
+            run
+            for run in day_runs
+            if run.get("status") == "succeeded" and run.get("verification") != "not_applicable"
+        ]
         verified = sum(1 for run in successes if run.get("verification") == "verified")
         reason_counts = dict(Counter(str(row["reason"]) for row in day_fallbacks))
         turns = sum(int(row["est_grok_turns"]) for row in day_fallbacks)

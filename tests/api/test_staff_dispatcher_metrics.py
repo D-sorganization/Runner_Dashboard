@@ -98,6 +98,37 @@ def test_metrics_aggregate_dispatches_and_fallbacks_by_day(client: TestClient) -
 
 
 @pytest.mark.unit
+def test_not_applicable_successes_are_not_false_successes(client: TestClient) -> None:
+    """#3048: a run with nothing to verify is neither a false success nor in the rate denominator."""
+    store: RunStore = client.store  # type: ignore[attr-defined]
+    timestamp = f"{datetime.now(UTC).date().isoformat()}T12:00:00Z"
+    verdicts = {"sweep": "not_applicable", "pr-run": "verified", "empty-run": "no_change", "pending-run": "unverified"}
+    for run_id, verdict in verdicts.items():
+        store.create_run(
+            RunRecord(
+                id=run_id,
+                role="worker",
+                provider="claude",
+                model=None,
+                machine="node",
+                repo="repo",
+                target_kind="issue",
+                target_ref=run_id,
+                prompt="",
+                requested_by="principal:human",
+                created_at=timestamp,
+                status="succeeded",
+                verification=verdict,
+            )
+        )
+
+    day = client.get("/api/v1/staff/dispatcher/metrics", params={"days": 1}).json()["days"][0]
+
+    assert day["false_success_count"] == 2
+    assert day["verified_success_rate"] == pytest.approx(1 / 3)
+
+
+@pytest.mark.unit
 def test_ledger_is_idempotent_and_rejects_unknown_reason(client: TestClient) -> None:
     headers = {"Idempotency-Key": "fallback-1"}
     body = {"reason": "held", "task_class": "small", "est_grok_turns": 2}
