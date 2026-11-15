@@ -85,6 +85,7 @@ def test_retry_constants() -> None:
     assert "rate_limited" in retry_mod.RETRYABLE_FAILURE_CLASSES
     assert "provider_error" in retry_mod.RETRYABLE_FAILURE_CLASSES
     assert "workspace_error" in retry_mod.RETRYABLE_FAILURE_CLASSES
+    assert "submodule_lock" in retry_mod.RETRYABLE_FAILURE_CLASSES
 
     for non_retryable in (
         "needs_input",
@@ -113,6 +114,7 @@ def test_compute_backoff_exponential() -> None:
         ("rate_limited", True),
         ("provider_error", True),
         ("workspace_error", True),
+        ("submodule_lock", True),
         ("needs_input", False),
         ("auth_expired", False),
         ("lease_blocked", False),
@@ -125,7 +127,7 @@ def test_compute_backoff_exponential() -> None:
     ],
 )
 def test_retry_matrix_per_failure_class(failure_class: str, expected_retryable: bool) -> None:
-    """Only rate_limited, provider_error, and workspace_error are retried."""
+    """Registered retryable failure classes are eligible for same-provider retry."""
     assert retry_mod.is_retryable_class(failure_class) is expected_retryable
 
 
