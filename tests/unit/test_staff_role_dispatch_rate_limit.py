@@ -48,3 +48,23 @@ def test_retry_after_header_is_consistent_on_role_dispatch_limit() -> None:
     assert detail["code"] == "rate_limited"
     assert detail["retry_after"] == pytest.approx(float(retry_hdr), rel=0, abs=1)
     assert math.isfinite(detail["retry_after"])
+
+
+def test_privileged_principal_exempt_from_policy_role_dispatch_bucket() -> None:
+    """Owner / loopback sessions keep elevated dispatch budget; bots stay per-role capped (#4460 B1)."""
+    limiter = TokenBucketLimiter()
+    owner = Principal(id="owner-session", type="human", name="Owner", roles=[], scopes=[])
+    loopback = Principal(id="__loopback__", type="human", name="Loopback", roles=[], scopes=[])
+    for principal in (owner, loopback):
+        for _ in range(11):
+            check_rate_limit("dispatches", principal, limiter=limiter, role="ad-hoc")
+
+
+def test_agent_principal_hits_code_reviewer_hourly_cap() -> None:
+    limiter = TokenBucketLimiter()
+    agent = Principal(id="agent-cursor", type="bot", name="Cursor", roles=[], scopes=[])
+    for _ in range(30):
+        check_rate_limit("dispatches", agent, limiter=limiter, role="code-reviewer")
+    with pytest.raises(HTTPException) as exc_info:
+        check_rate_limit("dispatches", agent, limiter=limiter, role="code-reviewer")
+    assert exc_info.value.status_code == 429

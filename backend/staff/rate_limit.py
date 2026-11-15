@@ -110,10 +110,15 @@ class TokenBucketLimiter:
             self._buckets.pop(k, None)
 
     def ensure_limits(self, action: str, capacity: float, rate_per_sec: float) -> None:
-        """Apply limits once per action without resetting active buckets on every call."""
-        if action in self._custom_limits:
+        """Apply policy-driven limits once without treating them as custom overrides.
+
+        Unlike ``set_limits``, this does not add ``action`` to ``_custom_limits``, so
+        privileged principals still receive the elevated dispatch budget on role buckets.
+        """
+        if action in self._default_capacity:
             return
-        self.set_limits(action, capacity, rate_per_sec)
+        self._default_capacity[action] = capacity
+        self._default_rate[action] = rate_per_sec
 
     def acquire(
         self,
