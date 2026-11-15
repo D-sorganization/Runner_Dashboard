@@ -171,7 +171,7 @@ When an issue is labeled `panel-review`, the workflow automatically selects tier
 
 ## Configuration (Agent Roster)
 
-The agent roster is configured in `.github/scripts/panel-review.js`:
+The agent roster is configured in `.github/scripts/panel-review.cjs`:
 
 ```javascript
 const AGENT_ROSTER = {
