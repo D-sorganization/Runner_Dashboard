@@ -45,7 +45,9 @@ from staff.scheduler_leader_lease import (
     leader_chain,
     lease_allows_firing,
     lease_ttl_seconds,
+    report_handled_slots,
     skip_slots_handled_by_peer,
+    slot_key,
 )
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
@@ -231,7 +233,12 @@ class StaffScheduler:
         return lease_ttl_seconds(self.tick_seconds)
 
     def acquire_leader_lease(
-        self, machine: str, *, now: datetime | None = None, ttl_seconds: float | None = None
+        self,
+        machine: str,
+        *,
+        now: datetime | None = None,
+        ttl_seconds: float | None = None,
+        handled: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         """Acquire/renew this scheduler lease on the local authority state file.
 
@@ -241,7 +248,9 @@ class StaffScheduler:
         now = now or self._clock()
         ttl = ttl_seconds if ttl_seconds is not None and ttl_seconds > 0 else self._lease_ttl_seconds()
         with self._lock:
-            return _lease_acquire_leader_lease(self._load_state, self._save_state, machine, now=now, ttl_seconds=ttl)
+            return _lease_acquire_leader_lease(
+                self._load_state, self._save_state, machine, now=now, ttl_seconds=ttl, handled=handled
+            )
 
     def _lease_allows_firing(self, now: datetime) -> bool:
         ttl = self._lease_ttl_seconds()
@@ -379,6 +388,10 @@ class StaffScheduler:
                     self._queue_due_slot(role, now, decisions, pending_fires)
             if decisions:
                 self._save_state()
+        # Cursors for these slots have moved; tell the lease authority so a later leader skips them.
+        keys = [slot_key(str(d["role"]), d.get("job")) for d in decisions]
+        keys += [slot_key(p["name"], p.get("job")) for p in pending_fires]
+        report_handled_slots(self.acquire_leader_lease, self.runner.machine, now, self._lease_ttl_seconds(), keys)
         for pending in pending_fires:
             try:
                 decisions.append(self._fire_pending_slot(now, **pending))

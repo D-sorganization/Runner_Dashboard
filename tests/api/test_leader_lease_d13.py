@@ -75,8 +75,10 @@ def fleet(
     node.status()
     monkeypatch.setenv("STAFF_SCHEDULER_LEADER_CHAIN", CHAIN)
 
-    def _ask_hub(_local: Any, machine: str, now: datetime, ttl_seconds: float) -> dict[str, Any]:
-        return hub.acquire_leader_lease(machine, now=now, ttl_seconds=ttl_seconds)
+    def _ask_hub(
+        _local: Any, machine: str, now: datetime, ttl_seconds: float, handled: dict[str, str] | None = None
+    ) -> dict[str, Any]:
+        return hub.acquire_leader_lease(machine, now=now, ttl_seconds=ttl_seconds, handled=handled)
 
     monkeypatch.setattr(lease_mod, "acquire_remote_leader_lease", _ask_hub)
     return hub, hub_runner, node, node_runner, clock
@@ -123,17 +125,48 @@ def test_failover_still_fires_slot_the_old_leader_never_reached(fleet: Any) -> N
 
 
 @pytest.mark.unit
-def test_lease_reply_reports_how_far_the_peer_leader_got(fleet: Any) -> None:
+def test_preempting_primary_fires_slot_the_failover_only_deferred(fleet: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review finding on #4442: renewing the lease is not handling the slot."""
+    from staff import scheduler_named_jobs as named_jobs_mod  # noqa: PLC0415
+
+    hub, hub_runner, node, node_runner, clock = fleet
+    # node-b leads across the slot but is in startup grace: it renews and defers the slot.
+    monkeypatch.setattr(named_jobs_mod, "skip_due_slot_during_startup", lambda _name: True)
+    clock["now"] = _la(2026, 9, 22, 22, 0, 5)
+    assert node.tick() == []
+    assert node_runner.submitted == []
+    monkeypatch.setattr(named_jobs_mod, "skip_due_slot_during_startup", lambda _name: False)
+    # The primary returns and preempts. Nobody handled the 22:00 slot, so it must fire here.
+    clock["now"] = _la(2026, 9, 22, 22, 0, 40)
+    assert [d["fired"] for d in hub.tick()] == [True]
+    assert len(hub_runner.submitted) == 1 and node_runner.submitted == []
+
+
+@pytest.mark.unit
+def test_renewal_alone_reports_nothing_handled(fleet: Any) -> None:
     hub, _, _, _, _ = fleet
     t0 = _la(2026, 9, 22, 22, 0, 0)
-    first = hub.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30)
-    assert first["granted"] is True and first.get("handled_through") is None
+    assert hub.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30)["granted"] is True
     denied = hub.acquire_leader_lease("node-b", now=_la(2026, 9, 22, 22, 0, 10), ttl_seconds=30)
-    assert denied["granted"] is False and denied["handled_through"] == t0.isoformat()
+    assert denied["granted"] is False and not denied.get("handled")
+
+
+@pytest.mark.unit
+def test_lease_reply_carries_only_the_holders_reports(fleet: Any) -> None:
+    hub, _, _, _, _ = fleet
+    t0 = _la(2026, 9, 22, 22, 0, 0)
+    key = "night-watch"
+    first = hub.acquire_leader_lease("hub-a", now=t0, ttl_seconds=30, handled={key: t0.isoformat()})
+    assert first["granted"] is True and first["handled"] == {key: t0.isoformat()}
+    # A host that does not hold the lease cannot report, and an older time never replaces a newer one.
+    later = _la(2026, 9, 22, 22, 0, 10)
+    denied = hub.acquire_leader_lease("node-b", now=later, ttl_seconds=30, handled={key: later.isoformat()})
+    assert denied["granted"] is False and denied["handled"] == {key: t0.isoformat()}
+    old = _la(2026, 9, 22, 21, 0, 0)
+    renewed = hub.acquire_leader_lease("hub-a", now=later, ttl_seconds=30, handled={key: old.isoformat(), "x": "junk"})
+    assert renewed["handled"] == {key: t0.isoformat()}
     takeover = hub.acquire_leader_lease("node-b", now=_la(2026, 9, 22, 22, 1, 0), ttl_seconds=30)
-    assert takeover["granted"] is True and takeover["handled_through"] == t0.isoformat()
-    renewed = hub.acquire_leader_lease("node-b", now=_la(2026, 9, 22, 22, 1, 20), ttl_seconds=30)
-    assert renewed["reason"] == "renewed" and renewed["handled_through"] == t0.isoformat()
+    assert takeover["granted"] is True and takeover["handled"] == {key: t0.isoformat()}
 
 
 # ── scope (claim a) ──────────────────────────────────────────────────────
