@@ -34,7 +34,7 @@ tracks the current routing plan.
 - `docker`: container-build workflows that should avoid the bulk label and
   prefer `d-sorg-fleet-docker` or `d-sorg-fleet-nvme`.
 
-## Bulk governance on DeskComputer (owner ruling 2026-11-14)
+## Bulk governance on hub-a (owner ruling 2026-11-14)
 
 Lightweight governance jobs — the reusable **pr-guard**
 (`reusable-pr-freshness-guard.yml`), spec/title/phantom guards, secret scans,
