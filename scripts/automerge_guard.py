@@ -33,8 +33,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -90,17 +92,47 @@ EXIT_ARM_CAP_REFUSED = 4
 EXIT_IN_FLIGHT_HOLD = 5
 
 
+#: Return code the default runner reports for a ``gh`` call that hit the timeout.
+EXIT_GH_TIMED_OUT = 124
+
+#: Seconds one ``gh`` call may run before it is treated as failed (#4249 H-14).
+DEFAULT_GH_TIMEOUT_SECONDS = 120.0
+GH_TIMEOUT_ENV = "AUTOMERGE_GUARD_GH_TIMEOUT_SECONDS"
+
+
+def _gh_timeout_seconds() -> float:
+    """The per-call timeout: the environment value when it is a positive number."""
+    raw = os.environ.get(GH_TIMEOUT_ENV, "").strip()
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_GH_TIMEOUT_SECONDS
+    return value if math.isfinite(value) and value > 0 else DEFAULT_GH_TIMEOUT_SECONDS
+
+
 def _default_runner(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    """Run ``cmd`` and capture output. Resolved via PATH so Windows finds gh.exe."""
+    """Run ``cmd`` and capture output. Resolved via PATH so Windows finds gh.exe.
+
+    A call that outlives the timeout comes back as a failed call (return code
+    :data:`EXIT_GH_TIMED_OUT`), so every caller's existing error path applies.
+    """
     exe = shutil.which(cmd[0]) or cmd[0]
-    return subprocess.run(
-        [exe, *cmd[1:]],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    timeout = _gh_timeout_seconds()
+    try:
+        return subprocess.run(
+            [exe, *cmd[1:]],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        what = " ".join(list(cmd)[:3])
+        return subprocess.CompletedProcess(
+            args=list(cmd), returncode=EXIT_GH_TIMED_OUT, stdout="", stderr=f"timed out after {timeout:g}s: {what}"
+        )
 
 
 def classify_token(token: str) -> str:
@@ -226,7 +258,9 @@ class ArmResult:
     in_flight_hold_after_completion: bool = False
 
     def reason(self) -> str:
-        """Why the PR is not armed: ``detail`` when set, else the hold verdict."""
+        """Why the PR is not armed: the hold reasons for a held PR, else ``detail``."""
+        if self.verdict.held and self.detail in ("", "held"):
+            return self.verdict.describe()
         return self.detail or self.verdict.describe()
 
 
@@ -469,8 +503,8 @@ def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> bool:
 def disarm_if_held(repo: str, pr: int, *, runner: CommandRunner | None = None) -> HoldVerdict:
     """Re-check holds on an already-armed PR; disarm when a hold applies (#4315).
 
-    Post: returns the current :func:`evaluate_hold` verdict. When ``held``, one
-  ``DELETE .../ccr/auto_merge`` is attempted (author-bot / scheduled paths).
+      Post: returns the current :func:`evaluate_hold` verdict. When ``held``, one
+    ``DELETE .../ccr/auto_merge`` is attempted (author-bot / scheduled paths).
     """
     run = runner or _default_runner
     verdict = evaluate_hold(repo, pr, runner=run)
@@ -860,6 +894,8 @@ def arm_auto_merge(
             if _base_has_merge_queue(repo, verdict.base_ref, run):
                 return _enqueue_clean_pr(repo, pr, strategy, verdict, run)
             return _merge_clean_pr(repo, pr, strategy, verdict.head_sha, verdict, run, delete_branch)
+    if proc.returncode == EXIT_GH_TIMED_OUT:
+        return _after_arm_timeout(repo, pr, verdict, proc.stderr.strip(), run)
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Could not arm auto-merge on %s#%s: %s", repo, pr, detail)
@@ -867,6 +903,25 @@ def arm_auto_merge(
 
     logger.info("Auto-merge armed on %s#%s (%s).", repo, pr, strategy)
     return ArmResult(True, verdict, "armed")
+
+
+def _after_arm_timeout(repo: str, pr: int, verdict: HoldVerdict, detail: str, run: CommandRunner) -> ArmResult:
+    """Say what GitHub holds after an arm call that timed out (#4249 H-14).
+
+    The call may have landed before the timeout. Auto-merge read as on is
+    reported armed, read as off is reported not armed, and an unreadable
+    state is reported as possibly on.
+    """
+    stored = _stored_merge_method(repo, pr, run)
+    if stored == "null":
+        logger.warning("Arm call timed out on %s#%s and auto-merge reads off: %s", repo, pr, detail)
+        return ArmResult(False, verdict, f"{detail}; auto-merge reads off")
+    if stored:
+        logger.info("Arm call timed out on %s#%s but auto-merge reads on (%s).", repo, pr, stored)
+        return ArmResult(True, verdict, "armed")
+    full = f"{detail}; auto-merge state could not be read"
+    logger.error("DANGER %s#%s: %s", repo, pr, full)
+    return ArmResult(False, verdict, full, auto_merge_may_be_on=True)
 
 
 def enqueue_stalled_pr(
@@ -923,6 +978,149 @@ def _current_head_sha(repo: str, pr: int, run: CommandRunner) -> str:
     return proc.stdout.strip() if proc.returncode == 0 else ""
 
 
+@dataclass(frozen=True)
+class ArmOutcome:
+    """What ``--arm`` did, for a caller that needs more than an exit code (#4249 B-22)."""
+
+    exit_code: int
+    #: The result line the CLI prints.
+    message: str
+    armed: bool = False
+    merged: bool = False
+    #: Why the PR was not armed: hold reasons, a cap refusal or an error. Empty on success.
+    reason: str = ""
+    #: Extra lines the CLI prints before ``message`` (for example a shadow-cap note).
+    notes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class _CapSlot:
+    """The armed-PR cap's answer for one arm attempt."""
+
+    refusal: str = ""
+    token: str = ""
+    store: Any = None
+    note: str = ""
+
+
+def _cap_root(repo_root: str) -> Path:
+    """Where ``config/dispatch_limits.json`` lives: ``repo_root``, else cwd, else this checkout."""
+    if repo_root:
+        return Path(repo_root).resolve()
+    cwd = Path.cwd()
+    if (cwd / "config" / "dispatch_limits.json").is_file():
+        return cwd
+    return Path(__file__).resolve().parents[1]
+
+
+def _reserve_arm_slot(
+    arm_cap: Any, repo: str, pr: int, *, arm_tier: str, dispatch_kind: str, repo_root: str
+) -> _CapSlot:
+    """Ask the armed-PR cap for a slot, failing closed (#4249 B-22).
+
+    An unreadable policy refuses the arm, because the cap's mode is then
+    unknown. A store error refuses it when the cap is enforced; a shadow or
+    disabled cap never refuses, so there it is logged and the arm goes on.
+    """
+    try:
+        policy = arm_cap.load_policy(_cap_root(repo_root))
+    except ValueError as exc:
+        return _CapSlot(refusal=f"armed-PR cap policy unreadable; refusing to arm: {exc}")
+    try:
+        path = arm_cap.resolve_store_path() if hasattr(arm_cap, "resolve_store_path") else arm_cap.DEFAULT_STORE_PATH
+        store = arm_cap.ArmCapStore(path)
+        admit = arm_cap.admit_for_arm(
+            repo,
+            pr,
+            arm_cap.AdmitContext(tier=arm_tier, dispatch_kind=dispatch_kind),
+            store=store,
+            policy=policy,
+        )
+    except (OSError, sqlite3.Error, ValueError) as exc:
+        if policy.shadow_mode or not policy.enabled:
+            logger.warning("armed-PR cap store unavailable; the cap is not enforced, arming goes on: %s", exc)
+            return _CapSlot()
+        return _CapSlot(refusal=f"armed-PR cap store unavailable; refusing to arm: {exc}")
+    if not admit.allowed:
+        return _CapSlot(refusal=admit.reason)
+    note = f"SHADOW would-block {repo}#{pr}: {admit.reason}" if admit.shadow_would_block else ""
+    return _CapSlot(token=admit.reservation_token or "", store=store, note=note)
+
+
+def _settle_arm_slot(slot: _CapSlot, *, keep: bool) -> None:
+    """Confirm or release the reservation. A store error is logged; it expires by TTL."""
+    if not slot.token or slot.store is None:
+        return
+    try:
+        if keep:
+            slot.store.confirm_reservation(slot.token)
+        else:
+            slot.store.release_reservation(slot.token)
+    except (OSError, sqlite3.Error) as exc:
+        logger.error("armed-PR cap reservation not %s: %s", "confirmed" if keep else "released", exc)
+
+
+def _outcome_from(repo: str, pr: int, strategy: str, result: ArmResult, notes: tuple[str, ...]) -> ArmOutcome:
+    """Turn an :class:`ArmResult` into the CLI exit code, result line and reason."""
+    name = f"{repo}#{pr}"
+    if result.in_flight_hold_after_completion:
+        why = result.reason()
+        return ArmOutcome(
+            EXIT_IN_FLIGHT_HOLD, f"IN-FLIGHT HOLD {name}: {why}", merged=result.merged, reason=why, notes=notes
+        )
+    if result.armed:
+        return ArmOutcome(0, f"armed {name}", armed=True, notes=notes)
+    if result.merged:
+        return ArmOutcome(0, f"merged {name} ({strategy}; PR was already clean)", merged=True, notes=notes)
+    why = result.reason()
+    if result.auto_merge_may_be_on:
+        return ArmOutcome(EXIT_ARM_MAY_BE_ON, f"DANGER NOT armed {name}: {why}", reason=why, notes=notes)
+    return ArmOutcome(1, f"NOT armed {name}: {why}", reason=why, notes=notes)
+
+
+def arm_with_cap(
+    repo: str,
+    pr: int,
+    *,
+    strategy: str,
+    delete_branch: bool,
+    arm_tier: str,
+    dispatch_kind: str,
+    repo_root: str,
+    match_head_commit: str = "",
+    runner: CommandRunner | None = None,
+) -> ArmOutcome:
+    """Arm ``repo#pr`` under the armed-PR cap and say what happened (RD-CI-005, #4249).
+
+    Postconditions: a cap reservation taken here is confirmed only when the PR
+    was armed or merged, and released on every other path, including an
+    exception from the arm itself. ``reason`` is non-empty whenever the PR was
+    not armed.
+    """
+    run = runner or _default_runner
+    if match_head_commit:
+        head = _current_head_sha(repo, pr, run)
+        if not head or head != match_head_commit.strip():
+            why = f"head moved (expected {match_head_commit}, saw {head or 'unknown'})"
+            return ArmOutcome(1, f"NOT armed {repo}#{pr}: {why}", reason=why)
+    slot = _CapSlot()
+    arm_cap = _import_arm_cap_module()
+    if arm_cap is not None:
+        slot = _reserve_arm_slot(arm_cap, repo, pr, arm_tier=arm_tier, dispatch_kind=dispatch_kind, repo_root=repo_root)
+        if slot.refusal:
+            return ArmOutcome(EXIT_ARM_CAP_REFUSED, f"NOT armed {repo}#{pr}: {slot.refusal}", reason=slot.refusal)
+    notes = (slot.note,) if slot.note else ()
+    try:
+        result = arm_auto_merge(repo, pr, strategy=strategy, delete_branch=delete_branch, runner=runner)
+    except Exception as exc:  # noqa: BLE001 - any failure must give the reservation back
+        _settle_arm_slot(slot, keep=False)
+        why = f"arm path failed: {exc}"
+        logger.warning("Arm path failed on %s#%s: %s", repo, pr, exc)
+        return ArmOutcome(1, f"NOT armed {repo}#{pr}: {why} (auto-merge state not verified)", reason=why, notes=notes)
+    _settle_arm_slot(slot, keep=result.armed or result.merged)
+    return _outcome_from(repo, pr, strategy, result, notes)
+
+
 def _arm_cli(
     repo: str,
     pr: int,
@@ -935,65 +1133,22 @@ def _arm_cli(
     match_head_commit: str = "",
     runner: CommandRunner | None = None,
 ) -> int:
-    """Run ``--arm`` with optional WIP-cap reservation (RD-CI-005)."""
-    run = runner or _default_runner
-    if match_head_commit:
-        head = _current_head_sha(repo, pr, run)
-        if not head or head != match_head_commit.strip():
-            _emit(f"NOT armed {repo}#{pr}: head moved (expected {match_head_commit}, saw {head or 'unknown'})")
-            return 1
-    cap_token: str | None = None
-    arm_cap = _import_arm_cap_module()
-    if arm_cap is not None:
-        root = Path(repo_root or ".").resolve()
-        try:
-            policy = arm_cap.load_policy(root)
-            store_path = (
-                arm_cap.resolve_store_path() if hasattr(arm_cap, "resolve_store_path") else arm_cap.DEFAULT_STORE_PATH
-            )
-            store = arm_cap.ArmCapStore(store_path)
-            admit = arm_cap.admit_for_arm(
-                repo,
-                pr,
-                arm_cap.AdmitContext(tier=arm_tier, dispatch_kind=dispatch_kind),  # type: ignore[arg-type]
-                store=store,
-                policy=policy,
-            )
-        except ValueError as exc:
-            logger.warning("armed-PR cap policy unreadable; failing open: %s", exc)
-            admit = None
-        if admit is not None and not admit.allowed:
-            _emit(f"NOT armed {repo}#{pr}: {admit.reason}")
-            return EXIT_ARM_CAP_REFUSED
-        if admit is not None and admit.reservation_token:
-            cap_token = admit.reservation_token
-            if admit.shadow_would_block:
-                _emit(f"SHADOW would-block {repo}#{pr}: {admit.reason}")
-
-    result = arm_auto_merge(repo, pr, strategy=strategy, delete_branch=delete_branch)
-    if arm_cap is not None and cap_token:
-        store_path = (
-            arm_cap.resolve_store_path() if hasattr(arm_cap, "resolve_store_path") else arm_cap.DEFAULT_STORE_PATH
-        )
-        cap_store = arm_cap.ArmCapStore(store_path)
-        if result.armed or result.merged:
-            cap_store.confirm_reservation(cap_token)
-        else:
-            cap_store.release_reservation(cap_token)
-    if result.in_flight_hold_after_completion:
-        _emit(f"IN-FLIGHT HOLD {repo}#{pr}: {result.reason()}")
-        return EXIT_IN_FLIGHT_HOLD
-    if result.armed:
-        _emit(f"armed {repo}#{pr}")
-        return 0
-    if result.merged:
-        _emit(f"merged {repo}#{pr} ({strategy}; PR was already clean)")
-        return 0
-    if result.auto_merge_may_be_on:
-        _emit(f"DANGER NOT armed {repo}#{pr}: {result.reason()}")
-        return EXIT_ARM_MAY_BE_ON
-    _emit(f"NOT armed {repo}#{pr}: {result.reason()}")
-    return 1
+    """Run ``--arm`` with the WIP-cap reservation and print the result (RD-CI-005)."""
+    outcome = arm_with_cap(
+        repo,
+        pr,
+        strategy=strategy,
+        delete_branch=delete_branch,
+        arm_tier=arm_tier,
+        dispatch_kind=dispatch_kind,
+        repo_root=repo_root,
+        match_head_commit=match_head_commit,
+        runner=runner,
+    )
+    for note in outcome.notes:
+        _emit(note)
+    _emit(outcome.message)
+    return outcome.exit_code
 
 
 def main(argv: Sequence[str] | None = None) -> int:

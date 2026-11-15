@@ -34,8 +34,17 @@ from coordination.merge_shepherd_pass import (  # noqa: E402
 log = logging.getLogger("merge_shepherd_pass")
 
 
+#: Seconds one ``gh`` call of the pass may run before it counts as failed (#4249 H-14).
+GH_TIMEOUT_SECONDS = 120.0
+
+
 def _default_runner(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(list(cmd), capture_output=True, text=True, check=False)
+    try:
+        return subprocess.run(list(cmd), capture_output=True, text=True, check=False, timeout=GH_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args=list(cmd), returncode=124, stdout="", stderr=f"timed out after {GH_TIMEOUT_SECONDS:g}s"
+        )
 
 
 def _graphql_query(
@@ -159,19 +168,25 @@ def _arm_via_guard(repo: str, pr: int, *, strategy: str, head_sha: str, repo_roo
         sys.path.insert(0, _SCRIPT_DIR)
     import automerge_guard  # noqa: PLC0415
 
-    argv = [
+    if not automerge_guard.check_token_identity(require_app_token=True):
+        return {
+            "exit_code": automerge_guard.EXIT_IDENTITY_REFUSED,
+            "armed": False,
+            "reason": "the active token is not a GitHub App installation token",
+        }
+    outcome = automerge_guard.arm_with_cap(
         repo,
-        str(pr),
-        "--arm",
-        f"--strategy={strategy}",
-        "--require-app-token",
-        "--repo-root",
-        str(repo_root),
-    ]
-    if head_sha:
-        argv.extend(["--match-head-commit", head_sha])
-    code = automerge_guard.main(argv)
-    return {"exit_code": code, "armed": code == 0}
+        pr,
+        strategy=strategy,
+        delete_branch=False,
+        arm_tier="agent",
+        dispatch_kind="",
+        repo_root=str(repo_root),
+        match_head_commit=head_sha,
+    )
+    for line in (*outcome.notes, outcome.message):
+        log.info("%s", line)
+    return {"exit_code": outcome.exit_code, "armed": outcome.exit_code == 0, "reason": outcome.reason}
 
 
 def _write_step_summary(payload: dict[str, Any]) -> None:
