@@ -198,3 +198,27 @@ def test_vendored_scripts_avoid_consumer_placeholder_patterns() -> None:
     for name in ("requeue_stalled_merges.py", "automerge_guard.py"):
         for lineno, line in enumerate((_SCRIPTS / name).read_text(encoding="utf-8").splitlines(), 1):
             assert not placeholder.search(line), f"{name}:{lineno}: {line.strip()}"
+
+
+def test_default_runner_bounds_every_gh_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#4249 H-14: a hung gh call must not hold the requeue pass open."""
+    seen: dict[str, object] = {}
+
+    def fake_run(argv: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        seen.update(kwargs)
+        return subprocess.CompletedProcess(list(argv), 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert requeue._run(["gh", "api", "x"]).stdout == "ok"
+    timeout = seen["timeout"]
+    assert isinstance(timeout, (int, float)) and timeout > 0
+
+
+def test_default_runner_reports_a_timeout_as_a_failed_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(argv: Sequence[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise subprocess.TimeoutExpired(cmd=list(argv), timeout=1)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    proc = requeue._run(["gh", "api", "x"])
+    assert proc.returncode != 0
+    assert "timed out" in proc.stderr

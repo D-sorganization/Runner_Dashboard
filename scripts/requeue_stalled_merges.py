@@ -59,7 +59,8 @@ class RequeueReport:
 
 
 def _run(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(list(cmd), capture_output=True, text=True, check=False)
+    """Run one gh call under the guard's timeout; a hung call comes back failed."""
+    return automerge_guard._default_runner(cmd)
 
 
 def _gh_lines(run: CommandRunner, args: Sequence[str]) -> list[str]:
