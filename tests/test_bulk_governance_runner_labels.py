@@ -21,24 +21,6 @@ DESK_NEUTRAL_MARKERS = (
     "[self-hosted, Linux, X64, d-sorg-fleet]",
 )
 
-BULK_GOVERNANCE_WORKFLOWS = frozenset(
-    {
-        "anti-phantom-merge.yml",
-        "ci-private-roles-redaction-gate.yml",
-        "ci-secrets.yml",
-        "ci-spec-check.yml",
-        "ci-standalone-smoke.yml",
-        "lint-workflow-files.yml",
-        "local-only-runner-guard.yml",
-        "merge-shepherd.yml",
-        "publish-guard.yml",
-        "rd-barb-hold-integrity.yml",
-        "recurring-scan.yml",
-        "reusable-pr-freshness-guard.yml",
-        "architecture-map-contract.yml",
-    }
-)
-
 PR_GUARD_BULK_RUNS_ON = ["self-hosted", "Linux", "X64", "d-sorg-fleet-bulk"]
 
 
@@ -57,9 +39,15 @@ def test_pr_freshness_guard_pinned_to_bulk_tuple() -> None:
     assert data["jobs"]["guard"]["runs-on"] == PR_GUARD_BULK_RUNS_ON
 
 
+def test_bulk_policy_workflows_exist() -> None:
+    bulk = _policy_bulk_workflows()
+    missing = [name for name in sorted(bulk) if not (WORKFLOWS / name).is_file()]
+    assert not missing, "bulk policy lists missing workflow files:\n" + "\n".join(missing)
+
+
 def test_bulk_governance_workflows_avoid_desk_neutral_label() -> None:
     missing = []
-    for name in sorted(BULK_GOVERNANCE_WORKFLOWS):
+    for name in sorted(_policy_bulk_workflows()):
         text = (WORKFLOWS / name).read_text(encoding="utf-8")
         for marker in DESK_NEUTRAL_MARKERS:
             if marker in text:

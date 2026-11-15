@@ -74,6 +74,14 @@ repos:
         pass_filenames: false
         types: [python]
 
+      # os.kill(pid, 0) is CTRL_C_EVENT for the whole console on Windows (#4421).
+      - id: no-kill-zero
+        name: "no os.kill(pid, 0) outside scripts/pid_probe.py"
+        entry: python scripts/check_no_kill_zero.py
+        language: system
+        pass_filenames: false
+        types: [python]
+
   # ===========================================================================
   # SECRET SCANNING (Issue #396)
   # ===========================================================================
