@@ -193,6 +193,9 @@ def test_merge_group_triggers_have_no_path_filters() -> None:
         )
 
 
+_POST_QUALITY_GATE_JOBS = frozenset({"record-failure-visibility"})
+
+
 def test_quality_gate_needs_cover_merge_group_allowlist() -> None:
     jobs = _load(_CI_STANDARD)["jobs"]
     gate = jobs["quality-gate"]
@@ -201,7 +204,7 @@ def test_quality_gate_needs_cover_merge_group_allowlist() -> None:
         "quality-gate",
         "pick-runner",
         "tests",
-    }
+    } - _POST_QUALITY_GATE_JOBS
     assert allowlisted <= needs, (
         f"quality-gate needs must include every merge_group job except itself; missing {sorted(allowlisted - needs)}"
     )
