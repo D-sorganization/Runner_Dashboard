@@ -816,3 +816,12 @@ def test_ci_nightly_fails_on_empty_selection_and_verifies_executed_cases() -> No
     assert "continuing successfully" not in content
     assert "--junitxml=nightly-junit.xml" in content
     assert "python scripts/ci/check_junit_executed.py nightly-junit.xml" in content
+    assert "publish_workflow_failure_notice.py" in content
+
+
+def test_ci_standard_records_visible_failure_on_main_schedule_and_merge_group() -> None:
+    """Red tier-1 CI must open or update a tracking issue (#4299)."""
+    content = _workflow_text()
+    assert "record-failure-visibility" in content
+    assert "publish_workflow_failure_notice.py" in content
+    assert "merge_group)" in content
