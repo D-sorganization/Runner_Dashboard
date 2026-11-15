@@ -71,6 +71,7 @@ function Surfaces() {
 }
 
 beforeEach(() => {
+  vi.resetAllMocks();
   window.history.replaceState({}, "", "/staff?thread=a&role=barb");
   const roles = ["barb", "maintenance"].map((name) => ({
     name,
