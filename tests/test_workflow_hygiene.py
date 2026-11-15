@@ -1005,6 +1005,28 @@ def test_merge_group_shards_collect_coverage_and_floor_job_enforces() -> None:
     assert "enforce_coverage_floor.py" in str(floor)
 
 
+def test_merge_group_coverage_upload_keeps_hidden_shard_data_files() -> None:
+    """upload-artifact drops dotfiles unless include-hidden-files is set (#4302).
+
+    Each merge_group shard writes a bare ``.coverage`` (pytest-cov combines
+    xdist files into that name, then deletes the parts). The default
+    ``include-hidden-files: false`` uploaded only ``coverage.xml``, and the
+    floor job exited 2 with ``No coverage data files``. A flat
+    ``merge-multiple`` download also collapses two ``.coverage`` basenames
+    into one, so the upload step must stage a unique ``.coverage.shardN``
+    before publishing hidden data files.
+    """
+    upload = _ci_step("tests", name="Upload coverage artifact")
+    upload_with = upload.get("with") or {}
+    assert upload_with.get("include-hidden-files") is True
+    upload_paths = str(upload_with.get("path") or "")
+    assert ".coverage" in upload_paths
+    stage = _ci_step("tests", name="Stage shard coverage data")
+    assert "--stage-shard" in str(stage.get("run") or "")
+    assert "COVERAGE_SHARD" in (stage.get("env") or {})
+    assert stage.get("if") == upload.get("if")
+
+
 def test_ci_standard_files_andon_on_main_path_failures_only() -> None:
     data = _load_workflow(_CI_STANDARD)
     alert = data["jobs"]["ci-failure-alert"]

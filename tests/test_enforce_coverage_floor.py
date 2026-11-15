@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
 
+from scripts.ci import enforce_coverage_floor
 from scripts.ci.enforce_coverage_floor import discover_data_files, enforce, load_fail_under
 
 
@@ -74,9 +76,75 @@ def test_enforce_passes_when_combined_total_meets_floor(
     assert "meets fail_under" in message
 
 
-def test_enforce_fails_when_total_below_floor(
+def _write_partial_coverage(data_dir: Path, module: Path, hit_lines: list[int]) -> None:
+    """Write a real ``.coverage`` whose hits are ``hit_lines`` of the shared ``module``."""
+    coverage = pytest.importorskip("coverage")
+    data = coverage.CoverageData(basename=str(data_dir / ".coverage"))
+    data.add_lines({str(module.resolve()): hit_lines})
+    data.write()
+
+
+def test_staged_shards_survive_flat_merge_when_each_is_below_the_floor(
     tmp_path: Path, repo_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Two shard ``.coverage`` files must both reach the floor job (#4302).
+
+    ``actions/download-artifact`` with ``merge-multiple: true`` extracts every
+    shard into one directory. Identical basenames overwrite, so a bare
+    ``.coverage`` from shard 2 replaces shard 1 and the combined total never
+    sees both halves. Each half here is 50% (below fail_under 60); the union
+    is 100%.
+    """
+    pytest.importorskip("coverage")
+    stage = getattr(enforce_coverage_floor, "stage_shard_coverage", None)
+    assert callable(stage), "stage_shard_coverage must publish a unique .coverage.shardN"
+
+    module = tmp_path / "backend" / "split.py"
+    module.parent.mkdir()
+    module.write_text("".join(f"v{i} = {i}\n" for i in range(10)), encoding="utf-8")
+    shard_dirs = []
+    for shard, hits in (("1", list(range(1, 6))), ("2", list(range(6, 11)))):
+        shard_root = tmp_path / f"shard{shard}"
+        shard_root.mkdir()
+        _write_partial_coverage(shard_root, module, hits)
+        shard_dirs.append((shard, shard_root))
+
+    raw = tmp_path / "raw-merge"
+    raw.mkdir()
+    for _shard, shard_root in shard_dirs:
+        shutil.copyfile(shard_root / ".coverage", raw / ".coverage")
+    # Report paths are relative to cwd; the shared module lives at tmp_path/backend.
+    monkeypatch.chdir(tmp_path)
+    raw_code, raw_message = enforce(raw, repo_root / "pyproject.toml")
+    assert raw_code == 1, raw_message
+    assert "below fail_under" in raw_message
+
+    merged = tmp_path / "staged-merge"
+    merged.mkdir()
+    for shard, shard_root in shard_dirs:
+        staged = stage(shard_root, shard)
+        assert staged.name == f".coverage.shard{shard}"
+        assert not (shard_root / ".coverage").exists()
+        shutil.copyfile(staged, merged / staged.name)
+    found = {path.name for path in discover_data_files(merged)}
+    assert found == {".coverage.shard1", ".coverage.shard2"}
+    code, message = enforce(merged, repo_root / "pyproject.toml")
+    assert code == 0, message
+    assert "meets fail_under" in message
+
+
+def test_stage_shard_coverage_rejects_unsafe_shard_ids(tmp_path: Path) -> None:
+    stage = getattr(enforce_coverage_floor, "stage_shard_coverage", None)
+    assert callable(stage)
+    (tmp_path / ".coverage").write_bytes(b"not-empty")
+    with pytest.raises(ValueError):
+        stage(tmp_path, "../1")
+    with pytest.raises(ValueError):
+        stage(tmp_path, "")
+    assert (tmp_path / ".coverage").is_file()
+
+
+def test_enforce_fails_when_total_below_floor(tmp_path: Path, repo_root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     coverage = pytest.importorskip("coverage")
     monkeypatch.chdir(tmp_path)
     covered = Path("backend/hit.py")

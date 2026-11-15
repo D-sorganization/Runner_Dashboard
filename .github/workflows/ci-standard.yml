@@ -970,11 +970,22 @@ jobs:
         env:
           MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
         run: bash .github/scripts/merge-queue-ref-guard.sh
+      - name: Stage shard coverage data
+        if: always() && hashFiles('coverage.xml') != ''
+        env:
+          COVERAGE_SHARD: ${{ matrix.shard }}
+        # pytest-cov combines xdist data into a bare .coverage. Two shards
+        # would overwrite that name on a flat download, so publish
+        # .coverage.shardN before the artifact step.
+        run: python scripts/ci/enforce_coverage_floor.py --stage-shard "$COVERAGE_SHARD"
       - name: Upload coverage artifact
         if: always() && hashFiles('coverage.xml') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.3.0
         with:
           name: coverage-${{ matrix.shard }}
+          # v4 excludes dotfiles unless this is true. Without it the floor
+          # job only receives coverage.xml and reports no data files (#4302).
+          include-hidden-files: true
           path: |
             coverage.xml
             .coverage

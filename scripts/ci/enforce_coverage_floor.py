@@ -5,15 +5,55 @@ from __future__ import annotations
 
 import argparse
 import glob
+import re
 import sys
 import tomllib
 from pathlib import Path
+
+# Shard ids become a filename suffix. Reject path separators and empty values.
+_SHARD_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}")
 
 
 def discover_data_files(root: Path) -> list[Path]:
     """Return coverage data files under ``root`` (``.coverage`` and ``.coverage.*``)."""
     names = {root / ".coverage", *(Path(p) for p in glob.glob(str(root / ".coverage.*")))}
     return sorted(p for p in names if p.is_file())
+
+
+def stage_shard_coverage(root: Path, shard: str) -> Path:
+    """Publish one shard's combined data under a unique parallel-data name.
+
+    Pre: ``shard`` matches ``[A-Za-z0-9][A-Za-z0-9._-]{0,31}``.
+    Pre: ``root`` is a directory that contains a non-empty ``.coverage`` file,
+    an already staged ``.coverage.shard<shard>`` file, or other ``.coverage.*``
+    parallel data.
+    Post: when a bare ``.coverage`` was present, ``.coverage.shard<shard>``
+    exists, the bare file does not, and the return value is that staged path.
+    A flat artifact download can then keep every shard: two files both named
+    ``.coverage`` would otherwise overwrite each other.
+    """
+    if not isinstance(shard, str) or _SHARD_ID.fullmatch(shard) is None:
+        raise ValueError(f"shard id must match {_SHARD_ID.pattern!r}, got {shard!r}")
+    root = root.resolve()
+    if not root.is_dir():
+        raise FileNotFoundError(f"coverage root is not a directory: {root}")
+    dest = root / f".coverage.shard{shard}"
+    source = root / ".coverage"
+    if source.is_file():
+        payload = source.read_bytes()
+        if not payload:
+            raise ValueError(f"coverage data file is empty: {source}")
+        dest.write_bytes(payload)
+        source.unlink()
+        if source.exists() or not dest.is_file() or dest.stat().st_size == 0:
+            raise RuntimeError(f"failed to stage coverage data at {dest}")
+        return dest
+    if dest.is_file():
+        return dest
+    parallel = discover_data_files(root)
+    if parallel:
+        return parallel[0]
+    raise FileNotFoundError(f"No .coverage data file under {root} to stage for shard {shard}")
 
 
 def load_fail_under(pyproject: Path) -> float:
@@ -63,7 +103,22 @@ def main(argv: list[str] | None = None) -> int:
         default=Path("pyproject.toml"),
         help="Path to pyproject.toml with [tool.coverage.report]",
     )
+    parser.add_argument(
+        "--stage-shard",
+        metavar="SHARD",
+        help=(
+            "Copy .coverage to .coverage.shardSHARD and remove the bare file so a flat artifact merge keeps every shard"
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.stage_shard is not None:
+        try:
+            staged = stage_shard_coverage(args.root, args.stage_shard)
+        except (OSError, ValueError) as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print(staged.name)
+        return 0
     pyproject = args.pyproject if args.pyproject.is_absolute() else args.root / args.pyproject
     code, message = enforce(args.root.resolve(), pyproject.resolve())
     print(message, file=sys.stderr if code else sys.stdout)
