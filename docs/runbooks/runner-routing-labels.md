@@ -34,6 +34,21 @@ tracks the current routing plan.
 - `docker`: container-build workflows that should avoid the bulk label and
   prefer `d-sorg-fleet-docker` or `d-sorg-fleet-nvme`.
 
+## Bulk governance on DeskComputer (owner ruling 2026-11-14)
+
+Lightweight governance jobs — the reusable **pr-guard**
+(`reusable-pr-freshness-guard.yml`), spec/title/phantom guards, secret scans,
+merge-queue ref hygiene, and the workflows listed under `bulk` in
+`config/workflow_runner_routing_policy.json` — must not use the neutral
+`d-sorg-fleet` fallback on the hub's capped runner pool (six runners;
+daytime target three). They belong on `d-sorg-fleet-bulk` instead, with the
+full label tuple where jobs pin placement explicitly.
+
+Fork PRs and deliberate hosted paths (`CI_PR_RUNNER_MODE=hosted`, H-06) remain
+on `ubuntu-latest`; only private same-repo fleet execution moves to bulk.
+
+Contract: `tests/test_bulk_governance_runner_labels.py`.
+
 ## Current Transition Rule
 
 Until node-a exposes distinct NVMe and HDD pools, workflows may remain on
