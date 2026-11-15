@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -19,6 +20,18 @@ from staff.store import RunRecord
 _FLEET_SECRET = "fleet-hub-secret-scope-test"  # pragma: allowlist secret
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 _FAKE_GHS = "ghs_" + "S" * 40 + "_scoped"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def test_committed_openapi_mint_requests_only_expose_run_id() -> None:
+    """Regenerated contract must not publish caller-controlled principal_id (RM#2855)."""
+    spec = json.loads((_REPO_ROOT / "frontend/src/lib/openapi.json").read_text(encoding="utf-8"))
+    schemas = spec["components"]["schemas"]
+    for name in ("RunJwtRequest", "FleetRunTokenRequest"):
+        props = schemas[name]["properties"]
+        assert "principal_id" not in props
+        assert set(props) == {"run_id"}
+        assert schemas[name]["required"] == ["run_id"]
 
 
 def _role(repos: tuple[str, ...] = ("Runner_Dashboard",)) -> RoleSpec:
