@@ -10988,6 +10988,10 @@ export interface components {
         };
         /** LeaderLeaseBody */
         LeaderLeaseBody: {
+            /** Handled */
+            handled?: {
+                [key: string]: string;
+            };
             /** Machine */
             machine: string;
             /** Ttl Seconds */

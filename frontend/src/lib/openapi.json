@@ -3451,6 +3451,14 @@
       },
       "LeaderLeaseBody": {
         "properties": {
+          "handled": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 200,
+            "title": "Handled",
+            "type": "object"
+          },
           "machine": {
             "maxLength": 80,
             "minLength": 1,
