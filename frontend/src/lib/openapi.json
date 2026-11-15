@@ -3285,6 +3285,69 @@
         "title": "HostSettingsPutBody",
         "type": "object"
       },
+      "HubSessionRegisterBody": {
+        "additionalProperties": false,
+        "description": "Register or heartbeat a hub-local session (Cursor cloud lane, Barb, external agent).",
+        "properties": {
+          "machine": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Machine",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "role": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "ttl_hours": {
+            "default": 2.0,
+            "maximum": 24.0,
+            "minimum": 0.1,
+            "title": "Ttl Hours",
+            "type": "number"
+          }
+        },
+        "required": ["session", "role", "provider", "machine"],
+        "title": "HubSessionRegisterBody",
+        "type": "object"
+      },
       "InitializeExecutorPayload": {
         "additionalProperties": false,
         "description": "Children always come from the filed plan; the caller may only tune execution.",
@@ -14081,6 +14144,53 @@
           }
         ],
         "summary": "Get Sessions",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/sessions/register": {
+      "post": {
+        "description": "Register or heartbeat a hub-local session for cloud lanes and external agents (#4458).",
+        "operationId": "post_sessions_register_api_coordination_sessions_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubSessionRegisterBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Sessions Register Api Coordination Sessions Register Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Sessions Register",
         "tags": ["coordination"]
       }
     },

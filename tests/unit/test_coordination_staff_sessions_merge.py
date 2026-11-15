@@ -67,7 +67,7 @@ async def test_sessions_merges_staff_runs_into_sessions(monkeypatch) -> None:
                     "id": "run-1",
                     "role": "ad-hoc",
                     "provider": "claude",
-                    "machine": "Brick",
+                    "machine": "node-b",
                     "repo": "Tools",
                     "target": "",
                     "status": "running",
@@ -84,4 +84,4 @@ async def test_sessions_merges_staff_runs_into_sessions(monkeypatch) -> None:
     assert "rm-1" in session_ids
     assert "staff:run-1" in session_ids
     staff_row = next(s for s in out["sessions"] if s["session"] == "staff:run-1")
-    assert staff_row["machine"] == "Brick" and staff_row["provider"] == "claude"
+    assert staff_row["machine"] == "node-b" and staff_row["provider"] == "claude"

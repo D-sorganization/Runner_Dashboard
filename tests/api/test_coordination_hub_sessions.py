@@ -18,7 +18,7 @@ _BOT = {"Authorization": "Bearer bot-token", **_XHR}
 
 @pytest.fixture
 def rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRM]:
-    principals = {"bot-token": bot("agent-codex")}
+    principals = {"bot-token": bot("agent-cursor")}
     yield from install(tmp_path, monkeypatch, principals, repos="Tools")
 
 
@@ -44,9 +44,7 @@ def test_register_hub_session_appears_in_sessions(rm: FakeRM, client: TestClient
     }
     resp = client.post("/api/coordination/sessions/register", json=body, headers=_BOT)
     assert resp.status_code == 200, resp.text
-    sessions = client.get("/api/coordination/sessions", headers={"Authorization": "Bearer bot-token"}).json()[
-        "sessions"
-    ]
+    sessions = client.get("/api/coordination/sessions").json()["sessions"]
     assert any(s["session"] == "cursor-lane-a" and s["source"] == "hub" for s in sessions)
 
 
@@ -61,7 +59,7 @@ def test_running_staff_run_appears_in_sessions_not_only_staff_runs(rm: FakeRM, c
             role="ad-hoc",
             provider="claude",
             model=None,
-            machine="Brick",
+            machine="node-b",
             repo="Tools",
             target_kind="prompt",
             target_ref="",

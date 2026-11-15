@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from activity_producers import emit_activity
-from coordination import board, claims, roster
+from coordination import board, claims, hub_sessions, roster
 from coordination import jobs as jobs_mod
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
 from coordination.models import (
@@ -34,7 +34,6 @@ from coordination.models import (
     PresenceBody,
     ReleaseBody,
 )
-from coordination import hub_sessions
 from coordination.staff_runs_cache import record_staff_runs_snapshot, snapshot_staff_runs
 from coordination.staff_view import staff_run_as_session, staff_runs
 from staff.rm_sync import stale_source_warning
@@ -120,9 +119,7 @@ async def sessions(repo: str | None) -> dict[str, Any]:
         cached_runs, _cached_warnings, had_cache = snapshot_staff_runs()
         runs = cached_runs if had_cache else []
         staff_warnings = (
-            ["staff runs read timed out; serving cached snapshot"]
-            if had_cache
-            else ["staff runs read timed out"]
+            ["staff runs read timed out; serving cached snapshot"] if had_cache else ["staff runs read timed out"]
         )
     if staff_future.done() and runs:
         record_staff_runs_snapshot(runs, staff_warnings)
