@@ -3,16 +3,26 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator
 
 import pytest
 from fastapi import HTTPException
 from identity import Principal
+from staff import dispatch_rate_policy as drp
 from staff.rate_limit import TokenBucketLimiter, check_rate_limit, reset_rate_limiter
 
 
 @pytest.fixture(autouse=True)
 def _fresh_limiter() -> None:
     reset_rate_limiter()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_dispatch_rate_policy() -> Iterator[None]:
+    """Read the repo policy, not one another test left in the lru_cache (main-red from #4460)."""
+    drp.reload_dispatch_rate_policy()
+    yield
+    drp.reload_dispatch_rate_policy()
 
 
 def test_code_reviewer_and_ad_hoc_do_not_share_one_bucket() -> None:
