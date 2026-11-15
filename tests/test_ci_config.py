@@ -825,3 +825,4 @@ def test_ci_standard_records_visible_failure_on_main_schedule_and_merge_group() 
     assert "record-failure-visibility" in content
     assert "publish_workflow_failure_notice.py" in content
     assert "merge_group)" in content
+    assert "--base-ref" in content

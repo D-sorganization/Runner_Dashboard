@@ -931,9 +931,10 @@ jobs:
           SHARDS: ${{ matrix.shards }}
         # -n auto: pytest-xdist parallel workers (issue #401).
         # -m exclusion: integration / playwright tests run nightly only.
-        # full_suite (merge_group, schedule, workflow_dispatch): fast marker
-        # subset with coverage + fail_under (#4299, issue #342). PR tier: fast
-        # subset without coverage instrumentation (issue #1864).
+        # full_suite (merge_group, schedule, workflow_dispatch): non-integration,
+        # non-playwright pytest with coverage + fail_under (#4299, issue #342).
+        # Includes slow tests (CLI -m overrides pyproject not-slow addopts). PR
+        # tier: fast subset without coverage instrumentation (issue #1864).
         run: |
           python - <<'PY'
           import os
@@ -1282,6 +1283,7 @@ jobs:
           python scripts/ci/publish_workflow_failure_notice.py \
             --workflow "CI Standard" \
             --ref "${GITHUB_REF}" \
+            --base-ref "${{ github.event.merge_group.base_ref || '' }}" \
             --run-id "${{ github.run_id }}" \
             --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${{ github.run_id }}" \
             --event-name "${{ github.event_name }}"

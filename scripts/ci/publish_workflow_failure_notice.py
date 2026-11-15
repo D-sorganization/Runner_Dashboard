@@ -11,7 +11,6 @@ import argparse
 import json
 import logging
 import subprocess
-import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -31,6 +30,17 @@ def should_publish_notice(event_name: str, ref: str) -> bool:
     if event_name == "merge_group":
         return True
     return False
+
+
+def notice_title_ref(event_name: str, ref: str, *, base_ref: str | None = None) -> str:
+    """Stable ref for issue titles so merge_group queue entries dedupe (#4299)."""
+    if event_name != "merge_group":
+        return ref
+    if base_ref:
+        return base_ref
+    if "gh-readonly-queue" in ref:
+        return "refs/heads/main"
+    return ref
 
 
 def build_notice_title(workflow: str, ref: str) -> str:
@@ -74,8 +84,11 @@ class NoticePublisher:
         run_id: str,
         repository: str,
         run_url: str,
+        event_name: str = "",
+        base_ref: str | None = None,
     ) -> int:
-        title = build_notice_title(workflow, ref)
+        title_key = notice_title_ref(event_name, ref, base_ref=base_ref) if event_name else ref
+        title = build_notice_title(workflow, title_key)
         body = build_notice_body(
             workflow=workflow,
             ref=ref,
@@ -153,6 +166,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repository", default="D-sorganization/Runner_Dashboard")
     parser.add_argument("--run-url", required=True)
     parser.add_argument("--event-name", default="")
+    parser.add_argument(
+        "--base-ref",
+        default="",
+        help="merge_group.base_ref for stable failure-issue titles (#4299)",
+    )
     args = parser.parse_args(argv)
     if args.event_name and not should_publish_notice(args.event_name, args.ref):
         logger.info("skip publish for event=%s ref=%s", args.event_name, args.ref)
@@ -162,12 +180,15 @@ def main(argv: list[str] | None = None) -> int:
         create_issue=_default_create_issue,
         comment_issue=_default_comment_issue,
     )
+    base_ref = args.base_ref or None
     issue = publisher.publish(
         workflow=args.workflow,
         ref=args.ref,
         run_id=args.run_id,
         repository=args.repository,
         run_url=args.run_url,
+        event_name=args.event_name,
+        base_ref=base_ref,
     )
     print(f"published ci failure notice on issue #{issue}")
     return 0
