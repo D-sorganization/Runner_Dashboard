@@ -2,10 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 from staff import dispatch_rate_policy as drp
+
+
+@pytest.fixture(autouse=True)
+def _fresh_dispatch_rate_policy() -> Iterator[None]:
+    """The policy is lru_cached; drop it around each test so an override never leaks."""
+    drp.reload_dispatch_rate_policy()
+    yield
+    drp.reload_dispatch_rate_policy()
 
 
 def test_resolve_code_reviewer_gets_higher_hourly_allowance() -> None:
@@ -37,3 +46,9 @@ def test_config_override_from_repo_file(tmp_path: Path, monkeypatch: pytest.Monk
     assert cap == pytest.approx(40.0)
     cap_default, _ = drp.resolve_dispatch_bucket("bob")
     assert cap_default == pytest.approx(5.0)
+
+
+def test_config_override_does_not_leak_into_the_next_test() -> None:
+    """Runs right after the override test: the repo policy must be back (main-red from #4460)."""
+    cap, _ = drp.resolve_dispatch_bucket("code-reviewer")
+    assert cap == pytest.approx(30.0)
