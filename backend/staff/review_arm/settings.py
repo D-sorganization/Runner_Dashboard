@@ -39,4 +39,9 @@ class Settings:
             repo, number = entry.strip().rsplit("#", 1)
             Candidate(repo, int(number), "0" * 40)
             held.add((repo, int(number)))
-        return cls(requested and machine.casefold() == "controltower", dry_run, interval * 60, repos, frozenset(held))
+        # Deployment supplies the approved hub name through host-local configuration.
+        # Missing/blank host authorization must never enable the service.
+        host = env.get("RD_REVIEW_ARM_HOST", "").strip().casefold()
+        return cls(
+            bool(requested and host and machine.casefold() == host), dry_run, interval * 60, repos, frozenset(held)
+        )

@@ -252,13 +252,16 @@ def test_rate_limit_stops_repo_scan_without_more_calls():
     source.list_open.assert_called_once()
 
 
-def test_settings_off_by_default_and_only_controltower():
+def test_settings_off_by_default_and_only_configured_hub():
     from staff.review_arm.settings import Settings
 
-    assert not Settings.from_env({}, machine="ControlTower").enabled
-    assert not Settings.from_env({"RD_REVIEW_ARM_ENABLED": "1"}, machine="DeskComputer").enabled
-    assert Settings.from_env({"RD_REVIEW_ARM_ENABLED": "1"}, machine="ControlTower").enabled
-    assert Settings.from_env({}, machine="ControlTower").interval_seconds == 600
+    env = {"RD_REVIEW_ARM_ENABLED": "1", "RD_REVIEW_ARM_HOST": "hub-a"}
+    assert not Settings.from_env({}, machine="hub-a").enabled
+    assert not Settings.from_env({"RD_REVIEW_ARM_ENABLED": "1"}, machine="hub-a").enabled
+    assert not Settings.from_env({**env, "RD_REVIEW_ARM_HOST": " "}, machine="hub-a").enabled
+    assert not Settings.from_env(env, machine="node-b").enabled
+    assert Settings.from_env(env, machine="HUB-A").enabled
+    assert Settings.from_env({}, machine="hub-a").interval_seconds == 600
 
 
 @pytest.mark.parametrize(
@@ -271,13 +274,13 @@ def test_settings_dry_run_only_disabled_by_explicit_opt_out(raw, expected):
     env = (
         {"RD_REVIEW_ARM_ENABLED": "1"} if raw is None else {"RD_REVIEW_ARM_ENABLED": "1", "RD_REVIEW_ARM_DRY_RUN": raw}
     )
-    assert Settings.from_env(env, machine="ControlTower").dry_run is expected
+    assert Settings.from_env(env, machine="hub-a").dry_run is expected
 
 
 def test_settings_extend_holds_without_removing_seeds():
     from staff.review_arm.settings import Settings
 
-    settings = Settings.from_env({"RD_REVIEW_ARM_HELD_PRS": "Tools#999"}, machine="ControlTower")
+    settings = Settings.from_env({"RD_REVIEW_ARM_HELD_PRS": "Tools#999"}, machine="hub-a")
     assert ("Tools", 999) in settings.held_prs
     assert ("Gasification_Model", 5873) in settings.held_prs
 

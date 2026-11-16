@@ -8,7 +8,9 @@ change in this slice (RD #2657 deployment hold remains in force).
 `Settings.from_env(env, machine=...)` reads `RD_REVIEW_ARM_ENABLED` (default off),
 `RD_REVIEW_ARM_DRY_RUN` (default true), `RD_REVIEW_ARM_INTERVAL_MINUTES` (default
 10), `RD_REVIEW_ARM_REPOS`, and additional `RD_REVIEW_ARM_HELD_PRS` entries in
-`Repository_Name#123` format. Only machine `ControlTower` may enable the loop.
+`Repository_Name#123` format. Only the machine named by the host-local
+`RD_REVIEW_ARM_HOST` setting may enable the loop; missing/blank disables it.
+Deployment must set this to the approved hub, never a worker (example: `hub-a`).
 Seed holds are always retained. `Intake.candidates()` makes one source listing
 per repository and confirms only candidates; source rate limiting aborts the
 cycle. The source must budget and interpret GitHub primary/secondary rate-limit
@@ -50,7 +52,7 @@ Boundary requirements for the subsequent integration slice:
   squash auto-merge, and never directly merge, enqueue, or bypass protection.
 - Persist/deduplicate round-cap escalations and route them to Barb. Never post
   PR comments on work_private. The core itself posts no PR comments anywhere.
-- Add ControlTower scheduler leader fencing and a read-only staff status route
+- Add approved-hub scheduler leader fencing and a read-only staff status route
   around this core; call at `interval_seconds`. No feature flag should enable
   a partial port implementation.
 
