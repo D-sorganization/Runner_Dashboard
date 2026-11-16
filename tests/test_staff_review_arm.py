@@ -370,4 +370,4 @@ def test_list_query_requests_completeness_evidence():
     from staff.review_arm.github_source import LIST_QUERY
 
     assert "labels(first: 100) { pageInfo { hasNextPage }" in LIST_QUERY
-    assert LIST_QUERY.count("pageInfo { hasNextPage }") == 2
+    assert "pullRequests(states: OPEN, first: 100) {\n      pageInfo { hasNextPage }\n      nodes" in LIST_QUERY
