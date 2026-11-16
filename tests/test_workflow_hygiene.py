@@ -687,14 +687,13 @@ def test_pre_push_mypy_dependencies_are_installable() -> None:
 
 
 def test_commit_stage_gitleaks_scans_staged_changes_only() -> None:
-    """#1871: commit-time gitleaks scans staged changes, not the whole repo history."""
+    """#1871 / #4451: gitleaks hook uses the fail-closed wrapper with pre-push range scans."""
     config = yaml.safe_load((Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
     hooks = [hook for repo in config["repos"] for hook in repo.get("hooks", [])]
     gitleaks = next(hook for hook in hooks if hook["id"] == "gitleaks")
     command = " ".join([gitleaks["entry"], *gitleaks.get("args", [])])
-    assert "protect --staged" in command
-    assert "detect" not in command
-    assert "--source" not in command
+    assert "gitleaks_pre_commit.py" in command
+    assert gitleaks.get("stages") == ["pre-commit", "pre-push"]
 
 
 def test_ci_secrets_gitleaks_pr_range_and_full_history() -> None:

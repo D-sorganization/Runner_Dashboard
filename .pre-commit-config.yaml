@@ -98,9 +98,10 @@ repos:
     hooks:
       - id: gitleaks
         name: "gitleaks (secret scan)"
-        entry: gitleaks protect --staged --config .gitleaks.toml --no-banner --redact
+        entry: python scripts/gitleaks_pre_commit.py
         language: system
         pass_filenames: false
+        stages: [pre-commit, pre-push]
 
   - repo: https://github.com/Yelp/detect-secrets
     # v1.5.0 — pinned by SHA per repo policy.
