@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from activity_producers import record_job_claim_activity
+from coordination import claims as claims_mod
 from coordination.rm_scripts import run_module
 from staff.run_status import RunStatus, transition_to
 from staff.store import RunRecord, RunStore
@@ -81,8 +82,25 @@ def acquire(store: RunStore, run_id: str, *, repo: str, issue: str, agent: str, 
         "post_agent_lease", "--repo", repo, "--issue", issue, "--agent", agent, "--session", session, root=root
     )
     store.append_event(run_id, "lease", f"post_agent_lease rc={res.rc}: {res.output[:300]}")
-    lease_payload = res.json() or {}
+    lease_data = res.json()
+    lease_payload = lease_data or {}
     if res.rc != 0 or not lease_payload.get("ok"):
+        label_orphaned = lease_data is None or (
+            bool(lease_payload.get("label_updated")) and not lease_payload.get("comment_posted")
+        )
+        if label_orphaned:
+            try:
+                issue_num = int(str(issue).lstrip("#"))
+            except ValueError:
+                issue_num = None
+            if issue_num is not None:
+                rollback_failure = claims_mod._rollback_failed_lease_write(repo, issue_num, agent, session)
+                if rollback_failure is not None:
+                    store.append_event(
+                        run_id,
+                        "lease",
+                        f"orphan claim label rollback failed: {rollback_failure[:200]}",
+                    )
         transition_to(
             store,
             run_id,
