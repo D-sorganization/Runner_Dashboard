@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
 import os
 import sqlite3
 import threading
@@ -25,14 +26,29 @@ log = logging.getLogger("dashboard.coordination.claim_state")
 
 _SQLITE_BUSY_RETRIES = 8
 _SQLITE_BUSY_SLEEP_S = 0.05
-_DEFAULT_CAS_RESERVE_TTL_S = float(os.environ.get("CLAIM_STATE_CAS_TTL_S", "300"))
+_FALLBACK_CAS_RESERVE_TTL_S = 300.0
+
+
+def _parse_ttl(raw: str | None) -> float | None:
+    """Parse a TTL string; ``None`` unless it is a finite number greater than zero."""
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) and value > 0 else None
+
+
+_DEFAULT_CAS_RESERVE_TTL_S = _parse_ttl(os.environ.get("CLAIM_STATE_CAS_TTL_S")) or _FALLBACK_CAS_RESERVE_TTL_S
 
 
 def cas_reserve_ttl_seconds() -> float:
-    raw = os.environ.get("CLAIM_STATE_CAS_TTL_S")
-    if raw is not None and raw != "":
-        return float(raw)
-    return _DEFAULT_CAS_RESERVE_TTL_S
+    """Reservation TTL from the environment; a malformed or non-positive value falls back to 300s."""
+    parsed = _parse_ttl(os.environ.get("CLAIM_STATE_CAS_TTL_S"))
+    if parsed is not None:
+        return parsed
+    return _FALLBACK_CAS_RESERVE_TTL_S
 
 
 _store_lock = threading.Lock()
@@ -174,6 +190,8 @@ class ClaimStateStore(JobBoardRows):
         repo_key, issue_num = self._key(repo, issue)
         now = time.time()
         ttl = cas_reserve_ttl_seconds() if reserve_ttl_s is None else float(reserve_ttl_s)
+        if not math.isfinite(ttl) or ttl <= 0:
+            raise ValueError(f"reserve_ttl_s must be a finite number > 0, got {reserve_ttl_s!r}")
         expires = now + ttl
 
         with self._lock:
