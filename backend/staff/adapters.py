@@ -165,7 +165,12 @@ class ProviderAdapter:
             "{policy}": policy or "",
         }
         out: list[str] = [self.executable]
-        for part in self.argv:
+        # Read-only Codex must not inherit writable roots or network permissions.
+        argv = self.argv
+        if read_only and self.provider_id == "codex":
+            assert argv[: len(_UNATTENDED_CODEX)] == _UNATTENDED_CODEX, "unknown Codex sandbox template"  # noqa: S101
+            argv = _READ_ONLY_CODEX + argv[len(_UNATTENDED_CODEX) :]
+        for part in argv:
             if part in ("{model}", "{policy}") and not slots[part]:
                 # Drop the flag that precedes an empty slot.
                 if out and out[-1].startswith("-"):
@@ -350,6 +355,7 @@ _UNATTENDED_CLAUDE = (
     "--model",
     "{model}",
 )
+_READ_ONLY_CODEX = ("exec", "--sandbox", "read-only", "--skip-git-repo-check", "--json")
 # workspace-write confines writes to the worktree plus its git common dir (where
 # a linked worktree's commits land); the network stays on for push and gh.
 _UNATTENDED_CODEX = (
