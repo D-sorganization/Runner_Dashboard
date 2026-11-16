@@ -42,7 +42,7 @@ Rules:
 2. The agent renews the lease (posts a new lease comment) every two hours while work is ongoing.
 3. The most-recent lease comment wins; older comments are advisory only.
 4. The lease is released by either letting it expire, opening a PR that references the issue, or posting a "release" / explicit unclaim comment.
-5. When two agents race on the same issue, the priority order in `CLAUDE.md` resolves: `user > maxwell-daemon > claude > codex > jules > local > gaai`.
+5. When two agents race on the same issue, the priority order in `CLAUDE.md` resolves: `user > maxwell-daemon > claude > codex > jules > local`.
 6. The `Agent-Lease-Reaper.yml` workflow runs every 30 minutes, parses the latest lease comment, and removes the matching `claim:<agent>` label if the lease is expired and there is no open PR referencing the issue.
 
 The format is deliberately _not_ YAML, JSON, or front-matter. It is a single self-describing line that:

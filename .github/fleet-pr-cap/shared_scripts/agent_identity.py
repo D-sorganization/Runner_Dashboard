@@ -58,7 +58,6 @@ AGENT_IDS: Final[tuple[str, ...]] = (
     "jules",
     "grok-pm",
     "local",
-    "gaai",
 )
 
 #: Priority order. Earlier = higher priority. Used by the redundant-PR
@@ -270,18 +269,6 @@ PROFILES: Final[dict[str, AgentProfile]] = {
         display_name="Local human session",
         author_logins=frozenset(),
         wip_cap=None,
-    ),
-    "gaai": AgentProfile(
-        agent_id="gaai",
-        display_name="GAAI (legacy)",
-        author_logins=frozenset(
-            {
-                "gaai-bot",
-                "gaai[bot]",
-            }
-        ),
-        wip_cap=0,
-        phased_out=True,
     ),
 }
 
