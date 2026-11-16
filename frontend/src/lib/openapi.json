@@ -22626,7 +22626,14 @@
             "schema": {
               "anyOf": [
                 {
-                  "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+                  "enum": [
+                    "live",
+                    "idle",
+                    "stale",
+                    "ended",
+                    "uncaptured",
+                    "blocked"
+                  ],
                   "type": "string"
                 },
                 {

@@ -161,3 +161,15 @@ def test_limit_is_bounded(tmp_path, monkeypatch):
         assert response.status_code == 422
         response = client.get("/api/v1/activity/sessions", params={"limit": 501})
         assert response.status_code == 422
+
+
+def test_published_session_status_filter_matches_response_enum():
+    """Clients must be able to filter every status exposed by session summaries."""
+    import json
+    from pathlib import Path
+
+    schema = json.loads((Path(__file__).resolve().parents[1] / "frontend/src/lib/openapi.json").read_text())
+    response_statuses = schema["components"]["schemas"]["SessionSummary"]["properties"]["status"]["enum"]
+    parameters = schema["paths"]["/api/v1/activity/sessions"]["get"]["parameters"]
+    status = next(parameter for parameter in parameters if parameter["name"] == "status")
+    assert status["schema"]["anyOf"][0]["enum"] == response_statuses

@@ -13,7 +13,7 @@ import logging
 import re
 import threading
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from activity import ActivityEnvelope, ActivitySource, get_activity_store
 
@@ -24,8 +24,8 @@ log = logging.getLogger("dashboard.activity_producers")
 
 # Activity kinds for permission/notification input gates (#4488); consumed by
 # ``activity_sessions._derive_status``.
-INPUT_GATE_BLOCKED_KIND = "blocked_on_input"
-INPUT_GATE_UNBLOCKED_KIND = "unblocked"
+INPUT_GATE_BLOCKED_KIND: Final = "blocked_on_input"
+INPUT_GATE_UNBLOCKED_KIND: Final = "unblocked"
 
 # Opaque hub-local identity for in-process producers; never a secret or network address.
 PRODUCER_PRINCIPAL = "hub:activity-producer"
