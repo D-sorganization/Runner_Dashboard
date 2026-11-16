@@ -134,8 +134,10 @@ else
         mkdir -p "$DEPLOY_DIR/deploy"
         cp "$REPO/deploy/loopback_bind_guard.py" "$DEPLOY_DIR/deploy/loopback_bind_guard.py"
         cp "$REPO/deploy/hub_tailnet_serve.py" "$DEPLOY_DIR/deploy/hub_tailnet_serve.py"
+        cp "$REPO/deploy/host-metrics-probe.py" "$DEPLOY_DIR/deploy/host-metrics-probe.py"
         chmod 0755 "$DEPLOY_DIR/deploy/loopback_bind_guard.py" "$DEPLOY_DIR/deploy/hub_tailnet_serve.py"
-        ok  "hub_tailnet_serve.py deployed"
+        chmod 0755 "$DEPLOY_DIR/deploy/host-metrics-probe.py"
+        ok  "hub_tailnet_serve.py + host-metrics-probe.py deployed"
     fi
 
     info "Copying frontend..."

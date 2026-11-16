@@ -687,14 +687,13 @@ def test_pre_push_mypy_dependencies_are_installable() -> None:
 
 
 def test_commit_stage_gitleaks_scans_staged_changes_only() -> None:
-    """#1871: commit-time gitleaks scans staged changes, not the whole repo history."""
+    """#1871 / #4451: gitleaks hook uses the fail-closed wrapper with pre-push range scans."""
     config = yaml.safe_load((Path(__file__).parent.parent / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
     hooks = [hook for repo in config["repos"] for hook in repo.get("hooks", [])]
     gitleaks = next(hook for hook in hooks if hook["id"] == "gitleaks")
     command = " ".join([gitleaks["entry"], *gitleaks.get("args", [])])
-    assert "protect --staged" in command
-    assert "detect" not in command
-    assert "--source" not in command
+    assert "gitleaks_pre_commit.py" in command
+    assert gitleaks.get("stages") == ["pre-commit", "pre-push"]
 
 
 def test_ci_secrets_gitleaks_pr_range_and_full_history() -> None:
@@ -932,7 +931,7 @@ def test_changes_job_runs_on_every_event() -> None:
     ("event_name", "tier", "full_suite", "run_python_tests"),
     [
         ("pull_request", "pr", "false", None),  # decided by the scope detector
-        ("merge_group", "merge-group", "false", "true"),
+        ("merge_group", "merge-group", "true", "true"),
         ("workflow_dispatch", "full", "true", "true"),
         ("push", "post-merge", "false", "false"),
         ("schedule", "full", "true", "true"),  # unknown events fail safe to full
@@ -991,6 +990,16 @@ def test_pr_tier_runs_fast_tests_and_full_tier_measures_coverage() -> None:
     assert "--cov=backend" in run
     assert 'if [ "$FULL_SUITE" = "true" ]' in run
     assert "not slow" in run, "the PR tier runs the fast subset"
+
+
+def test_merge_group_runs_single_test_shard_with_coverage() -> None:
+    """merge_group runs one shard with pytest-cov so fail_under applies (#4299)."""
+    include = str(_ci_jobs()["tests"]["strategy"]["matrix"]["include"])
+    assert 'shards":2}' not in include
+    assert 'shards":1}' in include
+    run = _ci_step("tests", name="Run Python tests")["run"]
+    assert "--cov=backend" in run
+    assert "--cov-report=xml" in run
 
 
 @pytest.mark.parametrize("job_id", ["quality-gate", "tests-required"])

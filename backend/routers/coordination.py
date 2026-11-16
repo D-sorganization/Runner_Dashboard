@@ -1,7 +1,8 @@
 """Fleet Coordination API (epic #1192, issue #1229). Contract: ``docs/coordination-api.md``.
 
 Routes (all under ``/api/coordination``):
-  GET  /sessions            Board sessions (all repos, ``?repo=`` filter) + staff runs in flight.
+  GET  /sessions            Board + staff runs + hub-registered lanes (``?repo=`` filter); staff_runs also listed.
+  POST /sessions/register   Register/heartbeat a hub-local lane session (Cursor cloud, Barb).
   GET  /inbox               Messages and conflicts for ``?session=``.
   POST /presence            Register or renew presence (RM ``agent_communicate register``).
   POST /presence/release    Drop presence (RM ``release``).
@@ -47,6 +48,7 @@ from coordination.models import (
     AckBody,
     ClaimBody,
     ClaimReleaseBody,
+    HubSessionRegisterBody,
     JobClaimBody,
     JobHeartbeatBody,
     JobReleaseBody,
@@ -90,6 +92,12 @@ async def get_sessions(
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
     return await service.sessions(_repo(repo))
+
+
+@router.post("/sessions/register")
+async def post_sessions_register(body: HubSessionRegisterBody, caller: Caller = WRITER) -> dict[str, Any]:
+    """Register or heartbeat a hub-local session for cloud lanes and external agents (#4458)."""
+    return await _write(lambda: service.register_hub_session(body, caller), caller, "hub session register")
 
 
 @router.get("/inbox")

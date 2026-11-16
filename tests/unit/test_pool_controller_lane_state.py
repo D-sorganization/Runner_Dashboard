@@ -20,12 +20,12 @@ def test_lane_state_literals_match_backlog_push_receipt_statuses() -> None:
     assert LaneState.ROLLED_BACK == "rolled_back"
     assert LaneState.TERMINATION_PENDING == "termination_pending"
     assert LaneState.PENDING == "pending"
+    assert LaneState.DRAINING == "draining"
+    assert LaneState.EXITED == "exited"
 
 
 def test_terminal_lane_states_frozen() -> None:
-    assert TERMINAL_LANE_STATES == frozenset(
-        {LaneState.ROLLED_BACK, LaneState.TERMINATION_PENDING},
-    )
+    assert TERMINAL_LANE_STATES == frozenset({LaneState.ROLLED_BACK, LaneState.EXITED})
 
 
 @pytest.mark.parametrize(

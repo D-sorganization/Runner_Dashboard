@@ -32,6 +32,7 @@ INFRA_FAILURE_CLASSES = frozenset(
         "orphaned",
         "workspace_error",
         "environment_error",
+        "submodule_lock",
         "sandbox_error",
         "unkillable",
         "upstream_unavailable",

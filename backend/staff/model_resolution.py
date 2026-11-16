@@ -54,6 +54,7 @@ def resolve_staff_run_model_detail(
     provider_id: str,
     adapter: ProviderAdapter,
     role_tier: str | None = "routine",
+    trust_failover_step_model: bool = False,
 ) -> ResolvedModel:
     """Return model, effective tier, and which precedence level won."""
     assert provider_id.strip(), "provider_id must be non-empty"  # noqa: S101
@@ -64,6 +65,8 @@ def resolve_staff_run_model_detail(
         return ResolvedModel(model=explicit, tier=tier, source="request")
     from_role = _normalized(role_model)
     if from_role is not None and from_role.lower() not in _UNSET_ROLE_MODELS:
+        if trust_failover_step_model:
+            return ResolvedModel(model=from_role, tier=tier, source="role_model")
         _assert_allowed(provider_id, from_role, adapter)
         return ResolvedModel(model=from_role, tier=tier, source="role_model")
     from_tier = model_for_provider_tier(provider_id, tier)

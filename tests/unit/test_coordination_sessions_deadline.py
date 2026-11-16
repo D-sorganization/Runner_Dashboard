@@ -7,7 +7,16 @@ import threading
 import time
 from types import SimpleNamespace
 
-from coordination import service, staff_view
+import pytest
+
+from coordination import hub_sessions, service, staff_view
+from coordination.staff_runs_cache import reset_staff_runs_cache
+
+
+@pytest.fixture(autouse=True)
+def _reset_coordination_caches() -> None:
+    reset_staff_runs_cache()
+    hub_sessions.reset_hub_sessions()
 
 
 def _wait_for_read_cleanup(key: str) -> None:
@@ -46,7 +55,8 @@ def test_slow_board_read_preserves_staff_runs_and_returns_before_deadline(monkey
         result = asyncio.run(service.sessions("Tools"))
         assert result["available"] is False
         assert result["complete"] is False
-        assert result["sessions"] == [] and result["messages"] == [] and result["conflicts"] == []
+        assert result["messages"] == [] and result["conflicts"] == []
+        assert any(s.get("session") == "staff:run-1" for s in result["sessions"])
         assert result["staff_runs"] == [{"id": "run-1", "repo": "Tools"}]
         assert result["warnings"] == ["board sessions read timed out"]
         assert board_calls == [None]

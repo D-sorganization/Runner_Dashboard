@@ -8,6 +8,7 @@ operation id admits one run however often it is retried.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import pytest
@@ -150,6 +151,12 @@ async def test_launch_failure_leaves_a_failed_run_under_the_same_id(
     assert err.value.detail["run_id"] == "run-feedfacecafe"
     rec = staff.store.get_run("run-feedfacecafe")
     assert rec is not None and rec.status == "failed" and rec.failure_class == "launch_failed"
+    # The terminal notifier releases the label off-thread (#4269 D-06): wait for it, then
+    # check it happened once.
+    deadline = time.monotonic() + 5.0
+    while not released and time.monotonic() < deadline:
+        time.sleep(0.02)
+    time.sleep(0.1)
     assert released == [("/repos/Runner_Dashboard/issues/7/labels/claim%3Astaff", "DELETE")]
 
 

@@ -1,5 +1,5 @@
-// Tests for panel-review.js
-// Run with: node --test .github/scripts/panel-review.test.js
+// Tests for panel-review.cjs
+// Run with: node --test .github/scripts/panel-review.test.cjs
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
 const {
@@ -14,7 +14,7 @@ const {
   STATUS_MARKER,
   MAX_RETRIES,
   INITIAL_RETRY_DELAY_MS,
-} = require("./panel-review");
+} = require("./panel-review.cjs");
 
 // ---------------------------------------------------------------------------
 // parseOpinion

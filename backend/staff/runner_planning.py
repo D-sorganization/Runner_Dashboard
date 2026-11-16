@@ -41,7 +41,10 @@ def build_run_plan(
 
     role = resolve_dispatch_role(roles, req)
 
-    provider, _chain_model, model_tier, auth_skipped = resolve_provider_and_model(adapters, machine, req, role)
+    pick = resolve_provider_and_model(adapters, machine, req, role)
+    provider = pick.provider
+    model_tier = pick.tier
+    auth_skipped = pick.auth_skipped
     if req.repo and not _SAFE_REF.match(req.repo):
         raise ValueError("repo must be a bare repository name")
     if role.repos and req.repo and req.repo not in role.repos and not req.barb_bypass_role_repos:
@@ -106,6 +109,7 @@ def build_run_plan(
         adapter=adapter,
         step=step,
         active_tier=role_base_tier(role),
+        trust_failover_step_model=bool(pick.substitution_reason),
     )
     execution_mode, argv, cloud_stdin, lease = resolve_plan_execution(
         req, role, provider, adapter, prompt, effective_model, lease, ops.read_only_kwargs(role)
@@ -115,6 +119,8 @@ def build_run_plan(
         provider=provider,
         model=effective_model,
         model_tier=resolved_tier or model_tier,
+        requested_provider=pick.requested_provider,
+        substitution_reason=pick.substitution_reason,
         repo=req.repo,
         target_kind=req.target_kind,
         target_ref=req.target_ref,

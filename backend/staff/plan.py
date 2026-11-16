@@ -54,6 +54,10 @@ class RunRequest:
     dispatch_origin: str = ""
     # Barb lane dispatch: skip per-role repo allowlist when planning (#4117).
     barb_bypass_role_repos: bool = False
+    # When true, refuse explicit non-read-only providers instead of failover substitution (#4452).
+    strict_provider: bool = False
+    # Hub authority: forwarded run must stay code-read-only even if this node's role copy is stale (#4452).
+    authority_code_read_only: bool = False
 
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):
@@ -113,6 +117,8 @@ class RunPlan:
     lessons_tokens: int = 0
     execution_mode: str = "local"
     cloud_stdin: str = ""
+    requested_provider: str | None = None
+    substitution_reason: str | None = None
 
     @property
     def strategy_mode(self) -> str:
@@ -156,6 +162,11 @@ class RunPlan:
             "skipped_lesson_ids": dict(self.skipped_lesson_ids),
             "lessons_tokens": self.lessons_tokens,
             "execution_mode": self.execution_mode,
+            **(
+                {"requested_provider": self.requested_provider, "substitution_reason": self.substitution_reason}
+                if self.substitution_reason
+                else {}
+            ),
         }
 
 

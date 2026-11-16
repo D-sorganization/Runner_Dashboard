@@ -34,6 +34,21 @@ tracks the current routing plan.
 - `docker`: container-build workflows that should avoid the bulk label and
   prefer `d-sorg-fleet-docker` or `d-sorg-fleet-nvme`.
 
+## Bulk governance on hub-a (owner ruling 2026-11-14)
+
+Lightweight governance jobs — the reusable **pr-guard**
+(`reusable-pr-freshness-guard.yml`), spec/title/phantom guards, secret scans,
+merge-queue ref hygiene, and the workflows listed under `bulk` in
+`config/workflow_runner_routing_policy.json` — must not use the neutral
+`d-sorg-fleet` fallback on the hub's capped runner pool (six runners;
+daytime target three). They belong on `d-sorg-fleet-bulk` instead, with the
+full label tuple where jobs pin placement explicitly.
+
+Fork PRs and deliberate hosted paths (`CI_PR_RUNNER_MODE=hosted`, H-06) remain
+on `ubuntu-latest`; only private same-repo fleet execution moves to bulk.
+
+Contract: `tests/test_bulk_governance_runner_labels.py`.
+
 ## Current Transition Rule
 
 Until node-a exposes distinct NVMe and HDD pools, workflows may remain on
@@ -125,6 +140,22 @@ Expected behavior:
   `d-sorg-fleet-docker`, or `d-sorg-fleet-nvme` are reported as violations.
 - Workflows still on neutral `d-sorg-fleet` show up as migration
   recommendations, not failures.
+
+## Hub-neutral offload (governance → bulk)
+
+As of 2026-11-14, lightweight governance and check jobs must not fall back to
+bare `d-sorg-fleet` on private fleet runs. Pin them to `d-sorg-fleet-bulk` (full
+`[self-hosted, Linux, X64, d-sorg-fleet-bulk]` tuple when the job is
+label-static, or `|| 'd-sorg-fleet-bulk'` at the end of the hosted/fleet
+expression). The reusable PR freshness guard (`pr-guard`) is the canonical
+example. The hub's neutral `d-sorg-fleet` pool is capacity-capped (six runners;
+daytime target three); bulk runners on other hosts take governance traffic
+instead.
+
+Hosted fallbacks (`CI_PR_RUNNER_MODE`, `CI_QUEUE_RUNNER_MODE`, fork PRs) are
+unchanged — see `docs/runner-labels.md` (H-06 context).
+
+Contract tests: `tests/test_bulk_governance_runner_labels.py`.
 
 ## Immediate Workflow Guidance
 
