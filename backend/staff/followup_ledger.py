@@ -114,10 +114,12 @@ class FollowupLedger:
     def claim(self, target_id: str, target_kind: str, now_iso: str, next_iso: str, worker: str) -> bool:
         """Take ``target_id`` until ``next_iso`` if its check is due at ``now_iso``.
 
-        Pre: ``now_iso <= next_iso`` (both UTC ISO-8601 with the same format).
+        Pre: ``now_iso <= next_iso`` (both UTC ISO-8601 with the same format); otherwise
+        ``ValueError``, raised even under ``python -O``.
         Post: returns True for exactly one caller per due window, across threads and processes.
         """
-        assert now_iso <= next_iso, "a claim must move the next check forward"  # noqa: S101
+        if now_iso > next_iso:
+            raise ValueError("a claim must move the next check forward")
         with self._lock:
             conn = self._conn()
             try:
