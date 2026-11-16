@@ -89,6 +89,10 @@ export async function openThread(page: Page, roleTitle: string): Promise<string>
     throw new Error("could not resolve staff thread id from history response");
   }
   await expect(page.getByRole("textbox", { name: "Staff conversation input" })).toBeVisible();
+  const detail = (await histResp.json()) as { messages?: Array<{ id?: string }> };
+  for (const message of detail.messages ?? []) {
+    if (message.id) await expect(page.getByTestId(`message-${message.id}`)).toBeVisible();
+  }
   return threadId;
 }
 
