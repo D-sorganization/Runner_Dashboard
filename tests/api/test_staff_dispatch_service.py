@@ -284,7 +284,7 @@ async def test_approved_dispatch_is_rate_limited_like_the_route(
 ) -> None:
     buckets: list[str] = []
 
-    def refuse(action: str, principal: Principal) -> None:
+    def refuse(action: str, principal: Principal, *, role: str | None = None) -> None:
         buckets.append(action)
         raise HTTPException(status_code=429, detail={"code": "rate_limited", "message": "slow down"})
 

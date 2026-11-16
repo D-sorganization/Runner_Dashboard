@@ -34,6 +34,13 @@ WORK_ITEM_STATES: tuple[str, ...] = (
     "escalated",
 )
 
+# Extra moves allowed only when a run gives its work item back (#4269 D-08): a cancelled
+# run returns the item to ``open``. Operators cannot make these moves through the API.
+RUN_RELEASE_TRANSITIONS: dict[str, set[str]] = {
+    "in_progress": {"open"},
+    "waiting_on_user": {"open"},
+}
+
 TERMINAL_STATES: frozenset[str] = frozenset({"done", "cancelled", "escalated"})
 
 VALID_TRANSITIONS: dict[str, set[str]] = {
@@ -361,8 +368,14 @@ class WorkItemStore:
         target_state: str,
         actor: str = "",
         reason: str = "",
+        *,
+        run_release: bool = False,
     ) -> WorkItemRecord:
-        """Enforce state machine transition and record audit event."""
+        """Enforce state machine transition and record audit event.
+
+        ``run_release=True`` also allows ``RUN_RELEASE_TRANSITIONS``; only the run
+        notifier passes it.
+        """
         if target_state not in WORK_ITEM_STATES:
             raise InvalidStateTransitionError("unknown", target_state, f"Invalid target state '{target_state}'")
 
@@ -374,7 +387,10 @@ class WorkItemStore:
                     raise KeyError(f"Work item '{work_item_id}' not found")
                 current = WorkItemRecord.from_row(row)
 
-                if target_state not in VALID_TRANSITIONS.get(current.state, set()):
+                allowed = set(VALID_TRANSITIONS.get(current.state, set()))
+                if run_release:
+                    allowed |= RUN_RELEASE_TRANSITIONS.get(current.state, set())
+                if target_state not in allowed:
                     raise InvalidStateTransitionError(
                         current.state,
                         target_state,

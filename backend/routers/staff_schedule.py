@@ -192,6 +192,8 @@ class ScheduleToggleBody(BaseModel):
 class LeaderLeaseBody(BaseModel):
     machine: str = Field(min_length=1, max_length=80)
     ttl_seconds: float | None = Field(default=None, gt=0, le=3600)
+    # Slots the caller handled as leader: slot key -> ISO time of the tick that covered it (#4274 D-13).
+    handled: dict[str, str] = Field(default_factory=dict, max_length=200)
 
 
 @router.post(
@@ -333,7 +335,9 @@ async def post_leader_lease(
     # The holder decides which host submits scheduled runs, so this needs ``staff.dispatch``
     # (which fleet peers carry), never the read scope (#4274 D-13).
     sched = get_scheduler()
-    return sched.acquire_leader_lease(body.machine, now=datetime.now(UTC), ttl_seconds=body.ttl_seconds)
+    return sched.acquire_leader_lease(
+        body.machine, now=datetime.now(UTC), ttl_seconds=body.ttl_seconds, handled=body.handled
+    )
 
 
 v1_router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])

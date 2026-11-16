@@ -61,3 +61,26 @@ jobs:
       - name: Verify integration cases executed
         if: ${{ !cancelled() }}
         run: python scripts/ci/check_junit_executed.py nightly-junit.xml
+
+  record-failure-visibility:
+    name: Record nightly failure
+    needs:
+      - integration
+    if: failure() && !cancelled()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Publish workflow failure notice
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/ci/publish_workflow_failure_notice.py \
+            --workflow "CI Nightly (Integration)" \
+            --ref "refs/heads/main" \
+            --run-id "${{ github.run_id }}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${{ github.run_id }}" \
+            --event-name "schedule"

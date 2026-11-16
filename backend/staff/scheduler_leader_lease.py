@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import datetime, timedelta
 from typing import Any
 from urllib.error import URLError
@@ -20,6 +20,8 @@ from urllib.request import Request, urlopen
 
 from dashboard_config import HUB_URL
 from machine_registry import is_portable_machine
+from staff.schedule import next_fire, parse_cron
+from staff.scheduler_named_jobs import named_jobs
 
 log = logging.getLogger("dashboard.staff.scheduler")
 
@@ -74,8 +76,12 @@ def acquire_leader_lease(
     *,
     now: datetime,
     ttl_seconds: float,
+    handled: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Acquire/renew the scheduler lease on the local authority state file.
+
+    ``handled`` is the holder's report of slots it has handled: slot key to the tick time
+    that covered it. It is recorded only when ``machine`` holds the lease after this call.
 
     Precondition: ``machine`` is a non-empty fleet display name; the caller holds
     whatever lock guards ``load_state``/``save_state``.
@@ -133,6 +139,7 @@ def acquire_leader_lease(
         reason = f"held by {holder}"
 
     if granted:
+        _record_handled(entry, handled)
         expires = now + timedelta(seconds=ttl_seconds)
         entry["holder"] = machine
         entry["acquired_at"] = acquired_at or now.isoformat()
@@ -151,7 +158,65 @@ def acquire_leader_lease(
         "reason": reason,
         "expires_at": iso(expires_at),
         "chain": list(chain),
+        # Slots a leader reported as handled. A renewal alone proves nothing: a leader can
+        # renew and still defer a due slot (startup grace), so only reports count (#4274 D-13).
+        "handled": dict(entry.get("handled") or {}) or None,
     }
+
+
+def _record_handled(entry: dict[str, Any], handled: Mapping[str, str] | None) -> None:
+    """Merge the holder's handled-slot report into the lease entry, keeping the later time per key."""
+    if not handled:
+        return
+    known = entry.get("handled")
+    if not isinstance(known, dict):
+        known = {}
+        entry["handled"] = known
+    for key, raw in handled.items():
+        when, prior = parse_iso(str(raw)), parse_iso(str(known.get(key) or ""))
+        try:
+            if when is not None and (prior is None or when > prior):
+                known[str(key)] = when.isoformat()
+        except TypeError:  # naive and aware timestamps cannot be compared
+            continue
+
+
+def skip_slots_handled_by_peer(
+    state: dict[str, dict[str, Any]],
+    roles: Mapping[str, Any],
+    decision: Mapping[str, Any],
+    now: datetime,
+    tz: str,
+) -> bool:
+    """Move slot cursors past slots another leader already handled. Returns True when ``state`` changed.
+
+    Cursors are per host, so without this a host that takes the lease over (failover or a
+    returning primary) re-fires the slot the previous leader fired (#4274 D-13). Only a cursor
+    with a slot at or before the time a leader reported for that slot key moves; a slot no
+    leader reported (never reached, or deferred) still fires here.
+    """
+    handled = decision.get("handled")
+    if not isinstance(handled, Mapping) or not handled:
+        return False
+    changed = False
+    for role in roles.values():
+        if not role.dispatchable:
+            continue
+        jobs = named_jobs(role)
+        crons = {f"{role.name}::{job}": cron for job, cron in jobs.items()} if jobs else {role.name: role.schedule}
+        for key, cron in crons.items():
+            entry = state.get(key) or {}
+            cursor = parse_iso(str(entry.get("cursor") or ""))
+            through = parse_iso(str(handled.get(key) or ""))
+            try:
+                if not cron or cursor is None or through is None or next_fire(parse_cron(cron), cursor, tz) > through:
+                    continue
+                entry["cursor"] = min(through, now).isoformat()
+            except (TypeError, ValueError):  # bad cron, or naive/aware timestamps that cannot be compared
+                continue
+            entry["last_reason"] = f"slots through {through.isoformat()} handled by another scheduler leader"
+            changed = True
+    return changed
 
 
 def acquire_remote_leader_lease(
@@ -159,13 +224,15 @@ def acquire_remote_leader_lease(
     machine: str,
     now: datetime,
     ttl_seconds: float,
+    handled: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     """Ask the lease authority (HUB_URL by default) to grant the lease, falling back to the
     local state file when no authority is configured."""
     authority = lease_authority_url()
+    extra = {"handled": dict(handled)} if handled else {}
     if not authority:
-        return acquire_local(machine, now=now, ttl_seconds=ttl_seconds)
-    body = json.dumps({"machine": machine, "ttl_seconds": ttl_seconds}).encode("utf-8")
+        return acquire_local(machine, now=now, ttl_seconds=ttl_seconds, **extra)
+    body = json.dumps({"machine": machine, "ttl_seconds": ttl_seconds, **extra}).encode("utf-8")
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json",
@@ -197,11 +264,40 @@ def acquire_remote_leader_lease(
     return payload
 
 
+def report_handled_slots(
+    acquire_local: Callable[..., dict[str, Any]],
+    runner_machine: str,
+    now: datetime,
+    ttl_seconds: float,
+    keys: Iterable[str],
+) -> None:
+    """Tell the lease authority which slot keys this leader handled in the tick at ``now``.
+
+    Without a leader chain there is no peer to tell. A failed report only means a later
+    leader may fire the slot again, which is the behaviour before #4274.
+    """
+    handled = {key: now.isoformat() for key in keys}
+    if not handled or not leader_chain():
+        return
+    decision = acquire_remote_leader_lease(acquire_local, runner_machine, now, ttl_seconds, handled)
+    if not bool(decision.get("granted", False)):
+        log.warning(
+            "staff scheduler: handled-slot report from %s not recorded - %s",
+            runner_machine,
+            decision.get("reason") or "lease denied",
+        )
+
+
+def slot_key(role: str, job: str | None) -> str:
+    return f"{role}::{job}" if job else role
+
+
 def lease_allows_firing(
     acquire_local: Callable[..., dict[str, Any]],
     runner_machine: str,
     now: datetime,
     ttl_seconds: float,
+    on_decision: Callable[[dict[str, Any], datetime], None] | None = None,
 ) -> bool:
     if is_portable_machine(runner_machine):
         return False
@@ -211,6 +307,8 @@ def lease_allows_firing(
     if runner_machine not in chain:
         return False
     decision = acquire_remote_leader_lease(acquire_local, runner_machine, now, ttl_seconds)
+    if on_decision is not None:
+        on_decision(decision, now)
     if not bool(decision.get("granted", False)):
         holder = str(decision.get("holder") or "<none>")
         reason = str(decision.get("reason") or "lease denied")
