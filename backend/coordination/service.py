@@ -86,15 +86,20 @@ def _parse_expires(value: str) -> datetime | None:
         return None
 
 
-def _live_session_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Drop rows whose ``expires`` is in the past (staff merges and board payloads)."""
+def _live_staff_runs(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop staff runs whose own ``expires`` is in the past.
+
+    Only an explicit run ``expires`` counts: the ``started_at + TTL`` fallback that
+    ``staff_run_as_session`` synthesizes must not hide a run that is still active
+    after more than the TTL.
+    """
     now = datetime.now(UTC)
     out: list[dict[str, Any]] = []
-    for row in rows:
-        exp = _parse_expires(str(row.get("expires") or ""))
+    for run in runs:
+        exp = _parse_expires(str(run.get("expires") or ""))
         if exp is not None and exp <= now:
             continue
-        out.append(row)
+        out.append(run)
     return out
 
 
@@ -162,7 +167,7 @@ async def sessions(repo: str | None) -> dict[str, Any]:
     if source_warning:
         warnings.append(source_warning)
     hub_rows = hub_sessions.list_sessions(repo)
-    staff_session_rows = _live_session_rows([staff_run_as_session(r) for r in runs])
+    staff_session_rows = [staff_run_as_session(r) for r in _live_staff_runs(runs)]
     merged_sessions = [*data.get("sessions", []), *staff_session_rows, *hub_rows]
     # de-dupe by (session, repo)
     seen: set[tuple[str, str]] = set()
