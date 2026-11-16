@@ -21,6 +21,7 @@ const EVENTS_LIMIT = 200;
 /** Status display order for grouped session lists (live fleet work first). */
 export const STATUS_ORDER: readonly SessionSummary["status"][] = [
   "live",
+  "blocked",
   "idle",
   "stale",
   "ended",
