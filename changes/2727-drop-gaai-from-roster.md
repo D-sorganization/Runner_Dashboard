@@ -1,3 +1,8 @@
+---
+issue: 2727
+summary: Remove retired gaai identity from live roster and executor coordination
+---
+
 # Change fragment: drop gaai from the Runner Dashboard roster
 
 - Removes `gaai` from `backend/coordination/roster.py`, executor coordination,
