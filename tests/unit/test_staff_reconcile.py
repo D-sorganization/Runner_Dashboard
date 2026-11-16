@@ -12,17 +12,18 @@ from unittest.mock import patch
 
 import pytest
 from fleet_events import EventStore
-from staff import runner as runner_mod
-from staff import store as store_mod
 from staff.reconcile import (
     pid_belongs_to_run,
+    rearm_pending_retries,
     reconcile_executing_proposals,
     reconcile_orphaned_runs,
-    rearm_pending_retries,
     terminate_pid_for_run,
 )
-from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore
+
+from staff import runner as runner_mod
+from staff import store as store_mod
+from staff.roles import RoleSpec
 
 pytestmark = pytest.mark.unit
 
@@ -518,16 +519,21 @@ def test_reconcile_executing_proposals_marks_failed_without_retry(
     assert len(msgs_after) == len(msgs)
 
 
-def test_requeue_queued_preserves_plain_queued_runs(
+def test_restart_turns_workerless_queued_runs_into_retryable_failures(
     temp_store: RunStore, staff_runner: runner_mod.StaffRunner
 ) -> None:
-    """Queued-not-started runs survive startup reconcile when requeue_queued is enabled (#4256)."""
+    """Startup must not preserve a queued row without restoring its worker (#4514)."""
     _make_run(temp_store, "run-queued", "queued")
     reconciled = reconcile_orphaned_runs(staff_runner, event_store=EventStore(), requeue_queued=True)
-    assert "run-queued" not in reconciled
+    assert "run-queued" in reconciled
     rec = temp_store.get_run("run-queued")
     assert rec is not None
-    assert rec.status == "queued"
+    assert rec.status == "failed"
+    assert rec.failure_class == "orphaned_queued"
+    assert rec.retryable is True
+    assert rec.ended_at is not None
+    assert temp_store.active_runs() == []
+    assert any(event["kind"] == "reconcile" for event in temp_store.events_after(rec.id, 0))
 
 
 def test_rearm_pending_retries_schedules_due_attempt(

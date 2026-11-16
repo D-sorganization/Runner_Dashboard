@@ -402,6 +402,94 @@ def test_hub_proxies_remote_cancel(client: TestClient, monkeypatch: pytest.Monke
 
 
 @pytest.mark.unit
+def test_configured_peer_lookup_budget_allows_a_slower_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    import staff.remote_runs as remote_runs  # noqa: PLC0415
+
+    monkeypatch.setattr(remote_runs, "_LOOKUP_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(remote_runs, "_LOOKUP_SEMAPHORE", asyncio.Semaphore(remote_runs._LOOKUP_CONCURRENCY))
+    monkeypatch.setenv("STAFF_PEER_LOOKUP_TIMEOUT_SECONDS", "0.2")
+
+    async def slow_owner(url: str, headers: dict[str, str]) -> dict[str, Any]:
+        await asyncio.sleep(0.03)
+        return {"run": {"id": "run-configured-slow-owner"}, "events": [], "attempts": []}
+
+    monkeypatch.setattr("staff.fleet.get_json", slow_owner)
+    owner = asyncio.run(
+        remote_runs.find_remote_run("run-configured-slow-owner", peers={"SlowPeer": "http://slow-peer"})
+    )
+
+    assert owner == ("SlowPeer", "http://slow-peer")
+
+
+@pytest.mark.unit
+def test_timed_out_last_known_owner_returns_named_degraded_detail(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import staff.remote_runs as remote_runs  # noqa: PLC0415
+
+    run_id = "run-expired-known-owner"
+    remote_runs._RUN_PEER_CACHE[run_id] = ("KnownPeer", "http://known-peer", time.monotonic() - 1)
+
+    async def unavailable(url: str, headers: dict[str, str]) -> dict[str, Any]:
+        raise httpx.ReadTimeout("peer is slow")
+
+    monkeypatch.setattr("staff.fleet.get_json", unavailable)
+    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: {"KnownPeer": "http://known-peer"})
+
+    response = client.get(f"/api/staff/runs/{run_id}")
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["run"]["id"] == run_id
+    assert detail["run"]["machine"] == "KnownPeer"
+    assert detail["run"]["status"] == "node_unreachable"
+    assert detail["last_known_owner"] == "KnownPeer"
+    assert detail["degraded"] is True
+    assert detail["events"] == []
+    assert detail["attempts"] == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("raw", ["", "bad", "0", "-1", "nan", "inf", "1e309"])
+def test_invalid_peer_lookup_budget_falls_back_to_finite_default(monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+    import staff.remote_runs as remote_runs  # noqa: PLC0415
+
+    monkeypatch.setenv("STAFF_PEER_LOOKUP_TIMEOUT_SECONDS", raw)
+    assert remote_runs._lookup_timeout_seconds() == remote_runs._LOOKUP_TIMEOUT_SECONDS
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("owner_state", ["removed", "changed_url", "confirmed_missing"])
+def test_unsafe_last_owner_hints_do_not_fabricate_degraded_run_details(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, owner_state: str
+) -> None:
+    import staff.remote_runs as remote_runs  # noqa: PLC0415
+
+    run_id = f"run-unsafe-owner-{owner_state}"
+    remote_runs._RUN_PEER_CACHE[run_id] = ("KnownPeer", "http://known-peer", time.monotonic() - 1)
+    peers = {"OtherPeer": "http://other-peer"}
+    if owner_state != "removed":
+        peers["KnownPeer"] = "http://new-peer" if owner_state == "changed_url" else "http://known-peer"
+
+    async def unavailable(url: str, headers: dict[str, str]) -> dict[str, Any]:
+        if owner_state == "confirmed_missing" and url.startswith("http://known-peer/"):
+            request = httpx.Request("GET", url)
+            response = httpx.Response(
+                404, request=request, json={"detail": {"code": "local_run_not_found", "run_id": run_id}}
+            )
+            raise httpx.HTTPStatusError("confirmed missing", request=request, response=response)
+        raise httpx.ReadTimeout("peer is slow")
+
+    monkeypatch.setattr("staff.fleet.get_json", unavailable)
+    monkeypatch.setattr("staff.fleet.peer_nodes", lambda: peers)
+
+    response = client.get(f"/api/staff/runs/{run_id}")
+
+    assert response.status_code == 503
+    assert "run" not in response.json()
+
+
+@pytest.mark.unit
 def test_hub_proxies_remote_stream(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     remote_data = {
         "run": {"id": "run-rem-stream", "machine": "node-b", "status": "running"},

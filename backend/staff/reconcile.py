@@ -382,6 +382,8 @@ def reconcile_orphaned_runs(
     Post: active runs owned by this machine are marked failed/orphaned,
           leases are released, clean worktrees removed, fleet events emitted,
           and interrupted chat messages and executing proposals reconciled.
+          Plain unstarted queued rows become retryable failures when requeue_queued
+          is enabled; scheduled backoff retries are preserved and re-armed.
     """
     from staff import verification  # noqa: PLC0415
 
@@ -411,9 +413,6 @@ def reconcile_orphaned_runs(
         if rec.machine and rec.machine != runner.machine:
             continue
 
-        if requeue_queued and rec.status == "queued" and not rec.started_at:
-            continue
-
         # Preserve scheduled retries waiting for backoff (issue #1303, SC-A7)
         if rec.status == "queued" and rec.next_attempt_at:
             continue
@@ -437,6 +436,7 @@ def reconcile_orphaned_runs(
         revoke_run_token(rec.id)
 
         # 4. Update run record
+        queued_orphan = requeue_queued and rec.status == "queued" and not rec.started_at
         err_msg = (
             f"orphaned by dashboard restart; recovery worktree preserved at {preserved_path}"
             if preserved_path
@@ -447,9 +447,13 @@ def reconcile_orphaned_runs(
             rec.id,
             RunStatus(rec.status),
             RunStatus.FAILED,
-            failure_class="orphaned",
-            retryable=False,
-            remediation=f"Run was orphaned across dashboard restart on node {runner.machine}; inspect worktree.",
+            failure_class="orphaned_queued" if queued_orphan else "orphaned",
+            retryable=bool(queued_orphan),
+            remediation=(
+                "Queued run lost its worker during restart; retry this run."
+                if queued_orphan
+                else f"Run was orphaned across dashboard restart on node {runner.machine}; inspect worktree."
+            ),
             ended_at=_now(),
             error=err_msg,
         )

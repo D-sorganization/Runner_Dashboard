@@ -25,6 +25,7 @@ from staff.provider_auth_preflight import (
     attention_items_from_provider_auth,
     provider_auth_cache_snapshot,
 )
+from staff.queued_attention import format_stale_queued_attention
 from staff.runner import get_runner
 from staff.standards_registry import load_fleet_standards
 
@@ -83,7 +84,12 @@ async def build_staff_summary() -> dict[str, Any]:
         if isinstance(mirror, dict):
             auth_attention.extend(attention_items_from_mirror_health(mirror, machine=machine_name))
     standards = load_fleet_standards()
-    attention = attention_items_from_preflight(preflight) + auth_attention + format_attention_items(recent)
+    queued_attention = format_stale_queued_attention(
+        runner.store.active_runs(), machine=runner.machine, active_worker_ids=runner.active_worker_run_ids()
+    )
+    attention = (
+        attention_items_from_preflight(preflight) + auth_attention + queued_attention + format_attention_items(recent)
+    )
     keep = (
         "id",
         "role",

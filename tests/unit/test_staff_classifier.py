@@ -30,6 +30,7 @@ def test_allowed_failure_classes_complete() -> None:
         "stalled",
         "lease_blocked",
         "orphaned",
+        "orphaned_queued",
         "workspace_error",
         "environment_error",
         "unkillable",

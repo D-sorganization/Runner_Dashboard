@@ -39,6 +39,7 @@ MAX_CONCURRENT_RUNS = int(os.environ.get("STAFF_MAX_CONCURRENT_RUNS", "3"))
 NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line"
 RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
 IDLE_TIMEOUT_SECONDS = int(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", str(20 * 60)))
+_WORKER_THREAD_PREFIX = "staff-"
 from staff.runner_registry import get_runner, reset_runner  # noqa: E402
 
 __all__ = ["RunPlan", "RunRequest", "StaffRunner", "get_runner", "reset_runner"]
@@ -137,11 +138,22 @@ class StaffRunner:
 
     def launch(self, rec: RunRecord, plan: RunPlan) -> None:
         """Start the worker thread for a run :meth:`admit` created."""
-        thread = threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True)
+        thread = threading.Thread(
+            target=self._worker, args=(rec, plan), name=f"{_WORKER_THREAD_PREFIX}{rec.id}", daemon=True
+        )
         with self._lock:
             self._threads = [t for t in self._threads if t.is_alive()]
             self._threads.append(thread)
         thread.start()
+
+    def active_worker_run_ids(self) -> frozenset[str]:
+        """Snapshot runs with live in-process workers, including semaphore waiters."""
+        with self._lock:
+            return frozenset(
+                thread.name.removeprefix(_WORKER_THREAD_PREFIX)
+                for thread in self._threads
+                if thread.is_alive() and thread.name.startswith(_WORKER_THREAD_PREFIX)
+            )
 
     def join_all(self, timeout: float = 10.0) -> list[str]:
         """Wait for launch()'s daemon threads to finish; return names still alive after timeout (#3778)."""

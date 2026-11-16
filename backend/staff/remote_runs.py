@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
+import os
 import time
 from collections import OrderedDict
 from collections.abc import AsyncIterator
@@ -37,9 +39,22 @@ _STREAM_ERROR_BODY_TIMEOUT_SECONDS = 2.5
 class RemoteRunLookupUnavailable(Exception):
     """Peer lookup could not finish reliably within its bounded budget."""
 
+    def __init__(self, message: str = "", *, peer: tuple[str, str] | None = None) -> None:
+        super().__init__(message)
+        self.peer = peer
+
 
 class RemoteRunNotFound(Exception):
     """A cached remote owner no longer has the run."""
+
+
+def _lookup_timeout_seconds() -> float:
+    """Resolve a positive finite discovery budget without changing live SSE timeouts."""
+    try:
+        value = float(os.environ.get("STAFF_PEER_LOOKUP_TIMEOUT_SECONDS", str(_LOOKUP_TIMEOUT_SECONDS)))
+    except ValueError:
+        return _LOOKUP_TIMEOUT_SECONDS
+    return value if math.isfinite(value) and value > 0 else _LOOKUP_TIMEOUT_SECONDS
 
 
 def _cached_peer(run_id: str) -> tuple[str, str] | None:
@@ -67,6 +82,27 @@ def _forget_peer(run_id: str) -> None:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
+def unreachable_run_detail(
+    run_id: str, peer_name: str, error: str, *, last_known_owner: bool = False
+) -> dict[str, Any]:
+    """Describe unavailable data without inventing a live or terminal run state."""
+    detail: dict[str, Any] = {
+        "run": {
+            "id": run_id,
+            "machine": peer_name,
+            "status": "node_unreachable",
+            "error": error,
+            "failure_class": "node_offline",
+        },
+        "events": [],
+        "attempts": [],
+        "unreachable_since": _now_iso(),
+    }
+    if last_known_owner:
+        detail.update(degraded=True, last_known_owner=peer_name)
+    return detail
 
 
 def _has_local_run_detail(data: Any, run_id: str) -> bool:
@@ -120,6 +156,7 @@ async def find_remote_run(
 
     Returns (peer_name, peer_url) or None if not found on any peer.
     """
+    last_known = _RUN_PEER_CACHE.get(run_id)
     cached_peer = _cached_peer(run_id)
     if cached_peer is not None:
         return cached_peer
@@ -129,15 +166,17 @@ async def find_remote_run(
         return None
 
     headers = staff_fleet.fleet_headers()
+    timeout = _lookup_timeout_seconds()
+    confirmed_misses: set[str] = set()
 
     async def _lookup(name: str, url: str) -> tuple[str, str] | None:
         acquired = False
         try:
-            await asyncio.wait_for(_LOOKUP_SEMAPHORE.acquire(), timeout=_LOOKUP_TIMEOUT_SECONDS)
+            await asyncio.wait_for(_LOOKUP_SEMAPHORE.acquire(), timeout=timeout)
             acquired = True
             data = await asyncio.wait_for(
                 staff_fleet.get_json(f"{url}/api/staff/local-runs/{run_id}?events=0", headers),
-                timeout=_LOOKUP_TIMEOUT_SECONDS,
+                timeout=timeout,
             )
             if _has_local_run_detail(data, run_id):
                 return name, url
@@ -145,6 +184,7 @@ async def find_remote_run(
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 if _is_confirmed_local_miss(exc.response, run_id):
+                    confirmed_misses.add(name)
                     return None
                 raise RemoteRunLookupUnavailable(
                     f"peer {name} does not support the safe local-run lookup contract; upgrade required"
@@ -162,7 +202,7 @@ async def find_remote_run(
     if not tasks:
         return None
     try:
-        done, pending = await asyncio.wait(tasks, timeout=_LOOKUP_TIMEOUT_SECONDS)
+        done, pending = await asyncio.wait(tasks, timeout=timeout)
         for task in pending:
             task.cancel()
         if pending:
@@ -175,7 +215,14 @@ async def find_remote_run(
                 _remember_peer(run_id, *match)
                 return match
         if pending or failures:
-            raise RemoteRunLookupUnavailable("peer run lookup did not complete within its bounded budget")
+            peer_hint = None
+            if last_known is not None:
+                name, url, _expires = last_known
+                if nodes.get(name) == url and name not in confirmed_misses:
+                    peer_hint = (name, url)
+            raise RemoteRunLookupUnavailable(
+                "peer run lookup did not complete within its bounded budget", peer=peer_hint
+            )
         return None
     finally:
         unfinished = [task for task in tasks if not task.done()]
@@ -219,32 +266,10 @@ async def proxy_remote_run(
             run_id,
             reason,
         )
-        return {
-            "run": {
-                "id": run_id,
-                "machine": peer_name,
-                "status": "node_unreachable",
-                "error": f"Node {peer_name}: {reason}",
-                "failure_class": "node_offline",
-            },
-            "events": [],
-            "attempts": [],
-            "unreachable_since": _now_iso(),
-        }
+        return unreachable_run_detail(run_id, peer_name, f"Node {peer_name}: {reason}")
     except Exception as exc:  # noqa: BLE001
         log.warning("staff.remote_runs: peer %s unreachable for run %s: %s", peer_name, run_id, exc)
-        return {
-            "run": {
-                "id": run_id,
-                "machine": peer_name,
-                "status": "node_unreachable",
-                "error": f"Node {peer_name} unreachable since {_now_iso()}: {exc}",
-                "failure_class": "node_offline",
-            },
-            "events": [],
-            "attempts": [],
-            "unreachable_since": _now_iso(),
-        }
+        return unreachable_run_detail(run_id, peer_name, f"Node {peer_name} unreachable since {_now_iso()}: {exc}")
 
 
 async def stream_remote_run(
@@ -356,14 +381,15 @@ async def find_remote_session(session_id: str, peers: dict[str, str] | None = No
     if not nodes:
         return None
     headers = staff_fleet.fleet_headers()
+    timeout = _lookup_timeout_seconds()
 
     async def _lookup(name: str, url: str) -> tuple[str, str] | None:
         acquired = False
         try:
-            await asyncio.wait_for(_LOOKUP_SEMAPHORE.acquire(), timeout=_LOOKUP_TIMEOUT_SECONDS)
+            await asyncio.wait_for(_LOOKUP_SEMAPHORE.acquire(), timeout=timeout)
             acquired = True
             path = f"{url}/api/v1/activity/local-sessions/{session_id}/chunks?after_seq=-1&limit=1"
-            data = await asyncio.wait_for(staff_fleet.get_json(path, headers), timeout=_LOOKUP_TIMEOUT_SECONDS)
+            data = await asyncio.wait_for(staff_fleet.get_json(path, headers), timeout=timeout)
             if _has_local_session_chunks(data, session_id):
                 return name, url
             raise RemoteRunLookupUnavailable(f"peer {name} returned an invalid local-session response")
@@ -379,7 +405,7 @@ async def find_remote_session(session_id: str, peers: dict[str, str] | None = No
 
     tasks = [asyncio.create_task(_lookup(name, url)) for name, url in nodes.items()]
     try:
-        done, pending = await asyncio.wait(tasks, timeout=_LOOKUP_TIMEOUT_SECONDS)
+        done, pending = await asyncio.wait(tasks, timeout=timeout)
         for task in pending:
             task.cancel()
         if pending:
