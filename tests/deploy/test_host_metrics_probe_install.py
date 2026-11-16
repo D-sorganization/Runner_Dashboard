@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from bash_host import as_bash_path, require_bash
+
 REPO = Path(__file__).resolve().parents[2]
 DEPLOY = REPO / "deploy"
 
@@ -82,6 +84,7 @@ def test_windows_wsl_bash_payload_handles_lf_file_and_installer_failure() -> Non
     import subprocess
     import tempfile
 
+    bash = require_bash()
     text = (DEPLOY / "windows" / "install-host-metrics-probe-wsl.ps1").read_text(encoding="utf-8")
     payload = text.split("$bashScript = @'\n", 1)[1].split("\n'@", 1)[0]
     with tempfile.TemporaryDirectory(prefix="probe path ") as directory:
@@ -92,12 +95,12 @@ def test_windows_wsl_bash_payload_handles_lf_file_and_installer_failure() -> Non
         installer.write_text('test -d "$RUNNER_DASHBOARD_DEPLOY_DIR/deploy"\n', encoding="utf-8")
         script = root / "wrapper.sh"
         script.write_bytes(payload.replace("\r", "").encode("utf-8"))
-        assert subprocess.run(["bash", str(script), str(root)], check=False).returncode == 0
+        assert subprocess.run([bash, as_bash_path(script), as_bash_path(root)], check=False).returncode == 0
         installer.write_text("exit 23\n", encoding="utf-8")
-        assert subprocess.run(["bash", str(script), str(root)], check=False).returncode == 23
+        assert subprocess.run([bash, as_bash_path(script), as_bash_path(root)], check=False).returncode == 23
         # Reproduce the old Windows PowerShell native-stdin line endings.
         broken = subprocess.run(
-            ["bash", "-s", "--", str(root)],
+            [bash, "-s", "--", as_bash_path(root)],
             input=payload.replace("\n", "\r\n"),
             text=True,
             capture_output=True,
