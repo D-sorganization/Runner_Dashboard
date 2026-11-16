@@ -24,12 +24,16 @@ sudo systemctl restart 'actions.runner.*.service'   # only when idle
 ```
 
 Optional phase 2: set `systemd.memory_high_enabled` to `true` in the same JSON and
-re-run the configure script. Templates intentionally omit `MemoryMax`.
+re-run the configure script. The installer renders the JSON `systemd` settings;
+weights, nice, slice name and memory high are configurable. Setting
+`memory_high_enabled` back to `false` removes that phase’s drop-in.
+Templates intentionally omit `MemoryMax`.
 
 ## Phase 2 — WSL `.wslconfig` (separate; owner approval)
 
 See `config/wslconfig-resource-shaping-trial.example` for `autoMemoryReclaim=gradual`
-and optional `memory=` / `processors=` limits. Requires a planned `wsl --shutdown`
+under `[experimental]` and optional `memory=` / `processors=` limits under
+`[wsl2]`, per the [WSL configuration reference](https://learn.microsoft.com/en-us/windows/wsl/wsl-config). Requires a planned `wsl --shutdown`
 window. **Not applied by scripts in this repo** — manual merge only after approval.
 
 ## Measurement harness (one-week baseline vs trial)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -94,6 +95,7 @@ def test_compare_windows_detects_regression() -> None:
     cfg = load_trial_config(CONFIG)
     verdict = compare_windows(baseline, trial, cfg["measurement"])
     assert verdict.regression is True
+    assert recommend_go_no_go(verdict) == "no-go"
     assert "failure" in verdict.reasons[0].lower() or "timeout" in " ".join(verdict.reasons).lower()
 
 
@@ -110,8 +112,8 @@ def test_recommend_go_no_go_no_regression() -> None:
     )
     trial = WindowSummary(
         total=50,
-        successes=49,
-        failures=1,
+        successes=50,
+        failures=0,
         timeouts=0,
         oom_like=0,
         median_duration_s=510.0,
@@ -121,7 +123,7 @@ def test_recommend_go_no_go_no_regression() -> None:
     cfg = load_trial_config(CONFIG)
     verdict = compare_windows(baseline, trial, cfg["measurement"])
     decision = recommend_go_no_go(verdict)
-    assert decision in {"go", "no-go", "inconclusive"}
+    assert decision == "go"
 
 
 def test_fixture_bundle_round_trip(tmp_path: Path) -> None:
@@ -136,3 +138,30 @@ def test_fixture_bundle_round_trip(tmp_path: Path) -> None:
 
 def test_default_config_path_points_at_repo_seed() -> None:
     assert DEFAULT_CONFIG_PATH.name == "resource-shaping-trial.json"
+
+
+@pytest.mark.parametrize("baseline_total,trial_total", [(19, 50), (50, 19), (0, 0)])
+def test_recommend_inconclusive_with_insufficient_samples(baseline_total: int, trial_total: int) -> None:
+    summary = WindowSummary(50, 50, 0, 0, 0, 300.0, 600.0, 100.0)
+    baseline = replace(summary, total=baseline_total, successes=baseline_total)
+    trial = replace(summary, total=trial_total, successes=trial_total)
+    verdict = compare_windows(baseline, trial, load_trial_config(CONFIG)["measurement"])
+    assert recommend_go_no_go(verdict) == "inconclusive"
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("cpu_weight", 10001),
+        ("io_weight", True),
+        ("nice", 20),
+        ("slice_name", "../outside.slice"),
+        ("memory_high", "1750M\nMemoryMax=1M"),
+        ("memory_high_enabled", "false"),
+    ],
+)
+def test_validate_rejects_invalid_systemd_settings(key: str, value: object) -> None:
+    cfg = load_trial_config(CONFIG)
+    cfg["systemd"][key] = value
+    with pytest.raises(ValueError, match=f"systemd.{key}"):
+        validate_trial_config(cfg)

@@ -102,11 +102,14 @@ remove_trial_dropins() {
     done < <(discover_runner_units)
 }
 
-apply_enabled() {
-    local slice_name template_src memory_high
+apply_enabled() (
+    local slice_name template_src memory_high rendered
+    rendered="$(mktemp -d)"
+    trap 'rm -rf "$rendered"' EXIT
+    (cd "$PROJECT_ROOT" && python3 -m deploy.resource_shaping_trial.render "$CONFIG_PATH" "$rendered")
     slice_name="$(read_config_str systemd.slice_name)"
     slice_name="${slice_name:-runners.slice}"
-    template_src="${PROJECT_ROOT}/deploy/systemd-dropins/${DROPIN_NAME}"
+    template_src="${rendered}/${DROPIN_NAME}"
     memory_high="$(read_config_bool systemd.memory_high_enabled)"
 
     install_file "${PROJECT_ROOT}/deploy/systemd-dropins/runners.slice" "${SLICE_DEST}/${slice_name}"
@@ -118,8 +121,14 @@ apply_enabled() {
         install_file "$template_src" "${dropin_dir}/${DROPIN_NAME}"
         if [[ "$memory_high" == "true" ]]; then
             install_file \
-                "${PROJECT_ROOT}/deploy/systemd-dropins/${MEMORY_HIGH_DROPIN}" \
+                "${rendered}/${MEMORY_HIGH_DROPIN}" \
                 "${dropin_dir}/${MEMORY_HIGH_DROPIN}"
+        elif [[ -f "${dropin_dir}/${MEMORY_HIGH_DROPIN}" ]]; then
+            if [[ "$DRY_RUN" == "1" ]]; then
+                log "[dry-run] would remove ${dropin_dir}/${MEMORY_HIGH_DROPIN}"
+            else
+                rm -f "${dropin_dir}/${MEMORY_HIGH_DROPIN}"
+            fi
         fi
     done < <(discover_runner_units)
 
@@ -127,7 +136,7 @@ apply_enabled() {
         systemctl daemon-reload || true
     fi
     log "trial enabled (slice=${slice_name}); restart idle runner units to apply weights"
-}
+)
 
 main() {
     if [[ ! -f "$CONFIG_PATH" ]]; then

@@ -8,6 +8,8 @@
 # from systemd CPUWeight/IOWeight/Nice, which need no WSL restart).
 #
 [wsl2]
-autoMemoryReclaim=gradual
 # memory=48GB
 # processors=12
+
+[experimental]
+autoMemoryReclaim=gradual

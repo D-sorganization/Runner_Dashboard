@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import configparser
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -60,6 +61,8 @@ def test_runners_slice_unit_exists() -> None:
 def test_wslconfig_example_documents_optional_trial() -> None:
     assert WSL_EXAMPLE.is_file()
     text = WSL_EXAMPLE.read_text(encoding="utf-8")
+    config = _parse_systemd_unit(WSL_EXAMPLE)
+    assert config.get("experimental", "autoMemoryReclaim") == "gradual"
     assert "autoMemoryReclaim" in text
     assert "memory=" in text.lower() or "memory =" in text.lower()
 
@@ -109,3 +112,51 @@ main --dry-run
     )
     assert out.returncode == 0, out.stderr + out.stdout
     assert "disabled" in (out.stdout + out.stderr).lower()
+
+
+@pytest.mark.skipif(BASH is None, reason="bash not available")
+def test_configure_uses_settings_and_removes_disabled_memory_phase(tmp_path: Path) -> None:
+    cfg = json.loads(CONFIG.read_text(encoding="utf-8"))
+    cfg["enabled"] = True
+    cfg["systemd"].update(
+        cpu_weight=35, io_weight=45, nice=5, slice_name="trial.slice", memory_high_enabled=True, memory_high="2G"
+    )
+    cfg_path = tmp_path / "trial.json"
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    bin_dir = tmp_path / "trial-bin"
+    bin_dir.mkdir()
+    systemctl = bin_dir / "systemctl"
+    systemctl.write_text(
+        '#!/bin/sh\nif [ "$1" = list-unit-files ]; then\n  echo "actions.runner.test.service enabled"\nfi\n'
+    )
+    systemctl.chmod(0o755)
+    env = dict(
+        os.environ,
+        PATH=f"{bin_dir}:{os.environ['PATH']}",
+        RESOURCE_SHAPING_TRIAL_CONFIG=as_bash_path(cfg_path),
+        SYSTEMD_UNIT_DROPIN_ROOT=as_bash_path(tmp_path / "units"),
+        SYSTEMD_SLICE_ROOT=as_bash_path(tmp_path / "slices"),
+    )
+    unit_dir = tmp_path / "units" / "actions.runner.test.d"
+    memory_file = unit_dir / MEMORY_HIGH_DROPIN.name
+
+    def run() -> None:
+        result = subprocess.run([BASH, as_bash_path(CONFIGURE)], env=env, capture_output=True, text=True)
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    result = subprocess.run([BASH, as_bash_path(CONFIGURE), "--dry-run"], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert not unit_dir.exists()
+    run()
+    text = (unit_dir / SHAPING_DROPIN.name).read_text()
+    for setting in ("CPUWeight=35", "IOWeight=45", "Nice=5", "Slice=trial.slice"):
+        assert setting in text
+    assert "MemoryHigh=2G" in memory_file.read_text()
+    cfg["systemd"]["memory_high_enabled"] = False
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    run()
+    assert not memory_file.exists()
+    cfg["enabled"] = False
+    cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
+    run()
+    assert not (unit_dir / SHAPING_DROPIN.name).exists()

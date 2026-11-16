@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -40,10 +41,18 @@ def validate_trial_config(cfg: dict[str, Any]) -> None:
     for key, label in forbidden.items():
         if key in systemd:
             raise ValueError(f"excluded knob present: {label}")
-    for weight_key in ("cpu_weight", "io_weight", "nice"):
-        val = systemd.get(weight_key)
-        if not isinstance(val, int) or val < 1:
-            raise ValueError(f"systemd.{weight_key} must be a positive integer")
+    for key, lower, upper in (("cpu_weight", 1, 10000), ("io_weight", 1, 10000), ("nice", -20, 19)):
+        val = systemd.get(key)
+        if type(val) is not int or not lower <= val <= upper:
+            raise ValueError(f"systemd.{key} must be an integer in {lower}..{upper}")
+    if not isinstance(systemd.get("memory_high_enabled"), bool):
+        raise ValueError("systemd.memory_high_enabled must be a boolean")
+    slice_name = systemd.get("slice_name")
+    if not isinstance(slice_name, str) or not re.fullmatch(r"[a-zA-Z0-9_-]+\.slice", slice_name):
+        raise ValueError("systemd.slice_name must be a slice unit name")
+    memory_high = systemd.get("memory_high")
+    if not isinstance(memory_high, str) or not re.fullmatch(r"[1-9][0-9]*[KMGTPE]?", memory_high):
+        raise ValueError("systemd.memory_high must be a positive systemd size")
     measurement = cfg.get("measurement")
     if not isinstance(measurement, dict):
         raise ValueError("measurement must be an object")
