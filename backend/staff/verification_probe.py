@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 from urllib.parse import quote
 
-from staff.verification_types import GH_TIMEOUT_SECONDS, GitHubLookupError, PullRequest, ci_state
+from staff.verification_types import GH_TIMEOUT_SECONDS, CommitInfo, GitHubLookupError, PullRequest, ci_state
 from staff.workspace import ORG
 
 Runner = Callable[..., "subprocess.CompletedProcess[str]"]
@@ -67,6 +67,7 @@ class GhCliPrProbe:
             ci=ci_state(checks.get("check_runs") or []),
             auto_merge_armed=armed,
             in_merge_queue=in_queue,
+            head_sha=str(pr["head"]["sha"]),
         )
 
     def find(self, repo: str, branch: str) -> PullRequest | None:
@@ -93,3 +94,15 @@ class GhCliPrProbe:
         """PR ``number`` in ``repo`` with its head CI state (the Code Request acceptance check, #1605)."""
         full = self._full(repo)
         return self._with_ci(full, self._api(f"/repos/{full}/pulls/{int(number)}"))
+
+    def commit_info(self, repo: str, sha: str) -> CommitInfo:
+        """Committer date and login (falling back to the git committer name) of ``sha`` (#4492)."""
+        full = self._full(repo)
+        body = self._api(f"/repos/{full}/commits/{quote(sha, safe='')}")
+        git_committer = (body.get("commit") or {}).get("committer") or {}
+        login = (body.get("committer") or {}).get("login") if isinstance(body.get("committer"), dict) else None
+        return CommitInfo(
+            sha=str(body.get("sha") or sha),
+            committed_at=str(git_committer.get("date") or ""),
+            committer=str(login or git_committer.get("name") or ""),
+        )

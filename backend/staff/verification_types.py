@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 GH_TIMEOUT_SECONDS = 30
@@ -25,6 +25,16 @@ class PullRequest:
     ci: str
     auto_merge_armed: bool = False
     in_merge_queue: bool = False
+    head_sha: str = field(default="", compare=False)  # evidence only; not part of PR identity
+
+
+@dataclass(frozen=True)
+class CommitInfo:
+    """A commit's committer timestamp and committer login/name (#4492: PR-branch push evidence)."""
+
+    sha: str
+    committed_at: str
+    committer: str = ""
 
 
 @dataclass(frozen=True)

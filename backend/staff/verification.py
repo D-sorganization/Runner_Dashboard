@@ -31,6 +31,7 @@ from staff.completion import ARTIFACT_PR_MERGED, ARTIFACT_PR_OPEN
 from staff.run_status import persist_run_updates
 from staff.verification_diag import record_role_open_pr_diagnostic
 from staff.verification_probe import GhCliPrProbe
+from staff.verification_push import pushed_to_target_branch
 from staff.verification_types import (
     GH_TIMEOUT_SECONDS,
     GitHubLookupError,
@@ -229,30 +230,42 @@ def evaluate(
         if pr is None and target_pr is not None and callable(get_pr):
             try:
                 target = get_pr(rec.repo, target_pr)
+                if remote_ahead_by == 0 and target.state in ("open", "merged"):  # #4492: pushed to the PR branch?
+                    pr = target if pushed_to_target_branch(rec, target, probe, now) else None
             except GitHubLookupError as exc:
                 return Verdict("unverified", f"GitHub lookup failed: {exc}")
-            if remote_ahead_by == 0 and target.state == "merged":
+            if pr is None and remote_ahead_by == 0 and target.state == "merged":
                 return Verdict(
                     "not_applicable",
                     f"PR #{target_pr} already merged; no commits pushed",
                     target_pr,
                     ARTIFACT_PR_MERGED,
                 )
-            if remote_ahead_by == 0 and target.state == "open" and is_no_commit_action_result(result_text):
+            if (
+                pr is None
+                and remote_ahead_by == 0
+                and target.state == "open"
+                and is_no_commit_action_result(result_text)
+            ):
                 return Verdict(
                     "not_applicable",
                     f"PR #{target_pr} is still open; run reported a confirmed no-commit action",
                     target_pr,
                     ARTIFACT_PR_OPEN,
                 )
-            if remote_ahead_by == 0 and target.state == "open" and (target.auto_merge_armed or target.in_merge_queue):
+            if (
+                pr is None
+                and remote_ahead_by == 0
+                and target.state == "open"
+                and (target.auto_merge_armed or target.in_merge_queue)
+            ):
                 return Verdict(
                     "not_applicable",
                     f"PR #{target_pr} is still open with auto-merge armed or queued; no commits pushed",
                     target_pr,
                     ARTIFACT_PR_OPEN,
                 )
-            if remote_ahead_by > 0:
+            if pr is None and remote_ahead_by > 0:
                 pr = target
     verdict = decide(
         claimed=claimed,
