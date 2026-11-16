@@ -1,0 +1,15 @@
+{
+  "workflow_runs": [
+    {
+      "conclusion": "success",
+      "run_started_at": "2026-11-08T08:00:00Z",
+      "updated_at": "2026-11-08T08:11:00Z"
+    },
+    {
+      "conclusion": "failure",
+      "run_started_at": "2026-11-09T09:00:00Z",
+      "updated_at": "2026-11-09T09:05:00Z"
+    }
+  ],
+  "interactive_latency_ms": [92, 98]
+}
