@@ -1,9 +1,13 @@
-"""Prune stale agent git worktrees under fleet repo checkouts (Refs #2550).
+"""Prune stale agent git worktrees under fleet repo checkouts (Refs #2550, #4440).
 
 Candidates must be clean (no uncommitted or unpushed changes), at least ``min_age_hours``
 old, on a branch merged into ``origin/main`` or whose upstream is gone (closed/abandoned),
-and not on the protected basename list (``pr-10507``, ``pr-10633`` by default). Removal
-uses ``git worktree remove`` without ``--force``.
+and not on the protected basename list (``pr-10507``, ``pr-10633`` by default). Worktrees of
+a private repo (``DEFAULT_PROTECTED_REPOS``) are never removed, and such a repo is not fetched.
+
+Removal uses ``git worktree remove`` without ``--force``. The one exception is a tree with
+submodules, which git refuses to remove otherwise: it is forced only after the tree and every
+submodule checked out in it are shown to hold no local changes and no unpushed commits.
 """
 
 from __future__ import annotations
@@ -16,18 +20,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from agent_active_workdirs import active_staff_workdirs
 from staff.repo_roots import repos_roots
 
 log = logging.getLogger("dashboard.agent_worktree_hygiene")
 
 DEFAULT_PROTECTED_WORKTREES: tuple[str, ...] = ("pr-10507", "pr-10633")
+DEFAULT_PROTECTED_REPOS: tuple[str, ...] = ("work_private", "Tools_Private", "glass")
 DEFAULT_MIN_AGE_HOURS = 72.0
+_GITLINK_MODE = "160000"
 
 
 @dataclass(frozen=True)
 class WorktreeEntry:
     path: Path
     branch: str
+    locked: bool = False
 
 
 def _git(cwd: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
@@ -45,20 +53,19 @@ def _git(cwd: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProce
 
 
 def _parse_worktree_list(checkout: Path) -> list[WorktreeEntry]:
+    """Every non-bare worktree of ``checkout``; a detached one has an empty ``branch``."""
     res = _git(checkout, "worktree", "list", "--porcelain")
     if res.returncode != 0:
         return []
     entries: list[WorktreeEntry] = []
-    path: Path | None = None
-    branch = ""
-    for line in res.stdout.splitlines():
-        if line.startswith("worktree "):
-            path = Path(line.removeprefix("worktree ").strip())
-            branch = ""
-        elif line.startswith("branch refs/heads/") and path is not None:
-            branch = line.removeprefix("branch refs/heads/").strip()
-            entries.append(WorktreeEntry(path=path, branch=branch))
-            path = None
+    for block in res.stdout.split("\n\n"):
+        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
+        paths = [ln.removeprefix("worktree ") for ln in lines if ln.startswith("worktree ")]
+        if not paths or "bare" in lines:
+            continue
+        branches = [ln.removeprefix("branch refs/heads/") for ln in lines if ln.startswith("branch refs/heads/")]
+        locked = any(ln == "locked" or ln.startswith("locked ") for ln in lines)
+        entries.append(WorktreeEntry(path=Path(paths[0]), branch=branches[0] if branches else "", locked=locked))
     return entries
 
 
@@ -70,6 +77,54 @@ def _is_primary_checkout(worktree: Path) -> bool:
 def _is_protected(entry: WorktreeEntry, protected: tuple[str, ...]) -> bool:
     haystack = f"{entry.path.name}/{entry.branch}"
     return any(token in haystack for token in protected)
+
+
+def _repo_name_from_url(origin_url: str) -> str:
+    tail = origin_url.strip().replace("\\", "/").rstrip("/").rsplit("/", 1)[-1].rsplit(":", 1)[-1]
+    return tail[:-4] if tail.endswith(".git") else tail
+
+
+def is_protected_repo(checkout: Path, origin_url: str, protected_repos: tuple[str, ...]) -> bool:
+    """True when the checkout folder or its origin is named as a protected (private) repo."""
+    protected = {name.casefold() for name in protected_repos}
+    return checkout.name.casefold() in protected or _repo_name_from_url(origin_url).casefold() in protected
+
+
+def _gitlink_paths(worktree: Path) -> list[str] | None:
+    """Submodule paths recorded in the index of ``worktree``; ``None`` when it cannot be read."""
+    res = _git(worktree, "ls-files", "--stage", "-z")
+    if res.returncode != 0:
+        return None
+    records = [rec for rec in res.stdout.split("\0") if rec.startswith(_GITLINK_MODE + " ") and "\t" in rec]
+    return [rec.split("\t", 1)[1] for rec in records]
+
+
+def _submodule_problem(worktree: Path) -> str:
+    """Why a submodule below ``worktree`` blocks removal, or ``""`` when none does (fail-closed)."""
+    links = _gitlink_paths(worktree)
+    if links is None:
+        return "submodule_unreadable"
+    for rel in links:
+        sub = worktree / rel
+        if not (sub / ".git").exists():
+            # Not initialised: git keeps nothing for it, so any file here is somebody's work.
+            if sub.is_dir() and any(sub.iterdir()):
+                return "submodule_dirty"
+            continue
+        status = _git(sub, "status", "--porcelain")
+        if status.returncode != 0:
+            return "submodule_unreadable"
+        if status.stdout.strip():
+            return "submodule_dirty"
+        unpushed = _git(sub, "rev-list", "--count", "HEAD", "--all", "--not", "--remotes")
+        if unpushed.returncode != 0:
+            return "submodule_unreadable"
+        if unpushed.stdout.strip() != "0":
+            return "submodule_unpushed"
+        nested = _submodule_problem(sub)
+        if nested:
+            return nested
+    return ""
 
 
 def _worktree_clean(worktree: Path) -> bool:
@@ -109,6 +164,23 @@ def _branch_merged_or_closed(checkout: Path, branch: str) -> bool:
     return False
 
 
+def _active_session_reason(path: Path, active_workdirs: set[Path] | None) -> str:
+    """Why an active staff session blocks removal, or ``""`` (fail-closed when unknown)."""
+    if active_workdirs is None:
+        return "active_session_unknown"
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return "active_session_unknown"
+    for workdir in active_workdirs:
+        try:
+            if resolved == workdir or workdir in resolved.parents or resolved in workdir.parents:
+                return "active_session"
+        except OSError:
+            return "active_session_unknown"
+    return ""
+
+
 def worktree_entry_is_eligible(
     checkout: Path,
     entry: dict[str, Any] | WorktreeEntry,
@@ -116,6 +188,7 @@ def worktree_entry_is_eligible(
     min_age_hours: float = DEFAULT_MIN_AGE_HOURS,
     protected: tuple[str, ...] = DEFAULT_PROTECTED_WORKTREES,
     now: float | None = None,
+    active_workdirs: set[Path] | None | object = ...,
 ) -> tuple[bool, str]:
     """Return (eligible, reason) for one linked worktree (not the primary checkout)."""
     wt = entry if isinstance(entry, WorktreeEntry) else WorktreeEntry(path=entry["path"], branch=entry["branch"])
@@ -123,6 +196,10 @@ def worktree_entry_is_eligible(
         return False, "primary"
     if _is_protected(wt, protected):
         return False, "protected"
+    if wt.locked:
+        return False, "locked"
+    if not wt.branch:
+        return False, "detached"
     ts = now if now is not None else time.time()
     try:
         age_h = (ts - wt.path.stat().st_mtime) / 3600.0
@@ -130,15 +207,35 @@ def worktree_entry_is_eligible(
         return False, "stat_failed"
     if age_h < min_age_hours:
         return False, "too_young"
+    if active_workdirs is ...:
+        active_workdirs = active_staff_workdirs()
+    session_reason = _active_session_reason(wt.path, active_workdirs)
+    if session_reason:
+        return False, session_reason
     if not _worktree_clean(wt.path):
         return False, "dirty"
+    problem = _submodule_problem(wt.path)
+    if problem:
+        return False, problem
     if not _branch_merged_or_closed(checkout, wt.branch):
         return False, "branch_active"
     return True, "eligible"
 
 
 def _git_worktree_remove(checkout: Path, path: Path) -> bool:
-    res = _git(checkout, "worktree", "remove", str(path), timeout=180)
+    links = _gitlink_paths(path)
+    if links is None:
+        log.warning("not removing %s: its index cannot be read", path)
+        return False
+    args = ["worktree", "remove"]
+    if links:
+        # git refuses any tree with submodules unless forced, so prove again that nothing is lost.
+        problem = "dirty" if not _worktree_clean(path) else _submodule_problem(path)
+        if problem:
+            log.warning("not forcing removal of submodule worktree %s: %s", path, problem)
+            return False
+        args.append("--force")
+    res = _git(checkout, *args, str(path), timeout=180)
     if res.returncode != 0:
         log.warning(
             "git worktree remove refused %s: %s",
@@ -149,12 +246,15 @@ def _git_worktree_remove(checkout: Path, path: Path) -> bool:
     return not path.exists()
 
 
-def _refresh_origin(checkout: Path) -> None:
+def _origin_url(checkout: Path) -> str:
+    res = _git(checkout, "remote", "get-url", "origin")
+    return res.stdout.strip() if res.returncode == 0 else ""
+
+
+def _refresh_origin(checkout: Path, origin_url: str) -> None:
     """Fetch and prune ``origin`` unless it is a local path; raises ``TimeoutExpired`` on a slow remote."""
-    url_res = _git(checkout, "remote", "get-url", "origin")
-    if url_res.returncode != 0:
+    if not origin_url:
         return
-    origin_url = url_res.stdout.strip()
     local_origin = origin_url.startswith("file:") or (origin_url.startswith("/") and Path(origin_url).exists())
     if not local_origin:
         _git(checkout, "fetch", "origin", "--prune", "--quiet")
@@ -173,24 +273,58 @@ def _worktree_timeout_reason(worktree: Path, exc: subprocess.TimeoutExpired) -> 
     return f"git_timeout:{command}"
 
 
+def _path_key(path: Path) -> str:
+    return os.path.normcase(os.path.abspath(str(path)))
+
+
+def _linked_worktrees(checkout: Path, seen: set[str]) -> list[WorktreeEntry]:
+    """Linked worktrees of ``checkout`` that no earlier checkout has already listed."""
+    fresh: list[WorktreeEntry] = []
+    for entry in _parse_worktree_list(checkout):
+        key = _path_key(entry.path)
+        if key in seen or _is_primary_checkout(entry.path):
+            continue
+        seen.add(key)
+        fresh.append(entry)
+    return fresh
+
+
+def _count_by_reason(skipped: list[dict[str, str]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in skipped:
+        counts[item["reason"]] = counts.get(item["reason"], 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def plan_agent_worktree_prune(
     repo_checkouts: list[Path],
     *,
     apply: bool = False,
     min_age_hours: float = DEFAULT_MIN_AGE_HOURS,
     protected: tuple[str, ...] = DEFAULT_PROTECTED_WORKTREES,
+    protected_repos: tuple[str, ...] = DEFAULT_PROTECTED_REPOS,
 ) -> dict[str, Any]:
-    """Scan checkouts and optionally remove eligible agent worktrees."""
+    """Scan primary checkouts and optionally remove eligible agent worktrees.
+
+    Each worktree is reported once, under the repo that owns it. A path in ``repo_checkouts``
+    that is itself a linked worktree is ignored: its owner lists it.
+    """
     would_remove: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
     skipped_checkouts: list[dict[str, str]] = []
     removed = 0
+    seen: set[str] = set()
+    active_workdirs = active_staff_workdirs()
     for checkout in repo_checkouts:
-        if not (checkout / ".git").exists():
+        if not _is_primary_checkout(checkout) or _path_key(checkout) in seen:
             continue
+        seen.add(_path_key(checkout))
         try:
-            _refresh_origin(checkout)
-            entries = _parse_worktree_list(checkout)
+            origin_url = _origin_url(checkout)
+            private = is_protected_repo(checkout, origin_url, protected_repos)
+            if not private:
+                _refresh_origin(checkout, origin_url)
+            entries = _linked_worktrees(checkout, seen)
         except subprocess.TimeoutExpired as exc:
             # Refs may be stale, so nothing in this checkout is judged or removed on this run.
             command = _git_subcommand(exc)
@@ -200,15 +334,17 @@ def plan_agent_worktree_prune(
             )
             continue
         for entry in entries:
-            if _is_primary_checkout(entry.path):
-                continue
             item = {"repo": checkout.name, "path": str(entry.path), "branch": entry.branch}
+            if private:
+                skipped.append({**item, "reason": "private_repo"})
+                continue
             try:
                 ok, reason = worktree_entry_is_eligible(
                     checkout,
                     entry,
                     min_age_hours=min_age_hours,
                     protected=protected,
+                    active_workdirs=active_workdirs,
                 )
             except subprocess.TimeoutExpired as exc:
                 ok, reason = False, _worktree_timeout_reason(entry.path, exc)
@@ -233,9 +369,54 @@ def plan_agent_worktree_prune(
         "dry_run": not apply,
         "would_remove": would_remove,
         "skipped": skipped,
+        "skipped_by_reason": _count_by_reason(skipped),
         "skipped_checkouts": skipped_checkouts,
         "removed": removed,
     }
+
+
+def default_agent_worktree_roots(home: Path | None = None) -> list[Path]:
+    """Roots whose linked worktrees register their owning checkout for hygiene scans."""
+    base = home or Path.home()
+    return [base / "staff-worktrees", base / ".codex" / "worktrees"]
+
+
+def _main_checkout_for_linked(path: Path) -> Path | None:
+    res = _git(path, "rev-parse", "--git-common-dir")
+    if res.returncode != 0:
+        return None
+    common = Path(res.stdout.strip())
+    if not common.is_absolute():
+        common = (path / common).resolve()
+    return common.parent if common.name == ".git" else None
+
+
+def enrich_checkouts_from_agent_roots(checkouts: list[Path]) -> list[Path]:
+    """Ensure owning checkouts of ``~/staff-worktrees`` and ``~/.codex/worktrees`` entries are scanned."""
+    seen = {_path_key(c) for c in checkouts}
+    out = list(checkouts)
+    for root in default_agent_worktree_roots():
+        if not root.is_dir():
+            continue
+        for child in sorted(root.iterdir()):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            if not (child / ".git").exists():
+                continue
+            if _is_primary_checkout(child):
+                key = _path_key(child)
+                if key not in seen:
+                    seen.add(key)
+                    out.append(child)
+                continue
+            owner = _main_checkout_for_linked(child)
+            if owner is None:
+                continue
+            key = _path_key(owner)
+            if key not in seen:
+                seen.add(key)
+                out.append(owner)
+    return out
 
 
 def discover_repo_checkouts(extra_roots: list[Path] | None = None) -> list[Path]:
@@ -247,12 +428,12 @@ def discover_repo_checkouts(extra_roots: list[Path] | None = None) -> list[Path]
         for child in sorted(root.iterdir()):
             if not child.is_dir():
                 continue
-            git_dir = child / ".git"
-            if not git_dir.exists():
+            if not _is_primary_checkout(child):
+                # A linked worktree (``.git`` is a file) is listed by the checkout that owns it.
                 continue
             key = str(child.resolve())
             if key in seen:
                 continue
             seen.add(key)
             out.append(child)
-    return out
+    return enrich_checkouts_from_agent_roots(out)

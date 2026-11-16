@@ -103,7 +103,9 @@ def test_dry_run_logs_without_removing(repo_with_worktrees: Path, monkeypatch: p
     assert removed == []
 
 
-def test_apply_uses_worktree_remove_without_force(repo_with_worktrees: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_apply_uses_worktree_remove_without_force_for_plain_trees(
+    repo_with_worktrees: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     wt = repo_with_worktrees.parent / "old-clean-2"
     entry = WorktreeEntry(path=wt, branch="merged/two")
     monkeypatch.setattr(
@@ -114,6 +116,7 @@ def test_apply_uses_worktree_remove_without_force(repo_with_worktrees: Path, mon
         "agent_worktree_hygiene.worktree_entry_is_eligible",
         lambda checkout, ent, **kw: (True, "eligible"),
     )
+    monkeypatch.setattr("agent_worktree_hygiene._gitlink_paths", lambda _path: [])
     calls: list[list[str]] = []
 
     def fake_remove(checkout: Path, path: Path) -> bool:
