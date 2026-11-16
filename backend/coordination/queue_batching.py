@@ -87,7 +87,10 @@ def compute_observed_group_metrics(
         if since is not None and finished < since:
             continue
         raw_sha = run.get("head_sha")
-        key = str(raw_sha).strip() if isinstance(raw_sha, str) and raw_sha.strip() else f"run:{run.get('id', idx)}"
+        # A missing ID falls back to row position in a separate namespace:
+        # index 1 must not collide with another workflow run whose ID is 1.
+        fallback_key = f"run:{run['id']}" if run.get("id") is not None else f"row:{idx}"
+        key = raw_sha.strip() if isinstance(raw_sha, str) and raw_sha.strip() else fallback_key
         if key in group_bounds:
             prev_start, prev_end = group_bounds[key]
             group_bounds[key] = (min(prev_start, started), max(prev_end, finished))
