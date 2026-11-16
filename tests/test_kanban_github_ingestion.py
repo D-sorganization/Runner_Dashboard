@@ -156,7 +156,7 @@ def test_stale_review_surfaces_on_card() -> None:
                     "html_url": "https://github.com/o/r/pull/50#review_old",
                 }
             ],
-            "/repos/o/r/issues/50/timeline?per_page=30": [],
+            "/repos/o/r/issues/50/timeline?per_page=100&page=1": [],
         },
     )
     result = _sync(fake)
@@ -214,7 +214,7 @@ def _armed_pull_fixture() -> dict[str, Any]:
             "check_runs": [{"status": "completed", "conclusion": "success"}],
         },
         "/repos/o/r/pulls/50/reviews": [],
-        "/repos/o/r/issues/50/timeline?per_page=30": _merge_queue_timeline(),
+        "/repos/o/r/issues/50/timeline?per_page=100&page=1": _merge_queue_timeline(),
     }
 
 
@@ -354,7 +354,7 @@ def test_failed_merge_queue_timeline_marks_degraded_not_false_in_queue() -> None
     row_ok = next(i for i in ok.items if i.issue_number == 9)
     assert project_kanban_column(snapshot_from_mapping(row_ok.snapshot)).column == KanbanColumn.ARMED
 
-    timeline_path = "/repos/o/r/issues/50/timeline?per_page=30"
+    timeline_path = "/repos/o/r/issues/50/timeline?per_page=100&page=1"
     kgi.reset_kanban_github_cache()
     list_fake_retry = FakeGitHub(issue_pages=[[_issue(9)]], gets=gets)
 
@@ -379,3 +379,45 @@ def test_failed_merge_queue_timeline_marks_degraded_not_false_in_queue() -> None
     assert row_bad.snapshot["pull_request"]["in_merge_queue"] is False
     card = project_kanban_column(snapshot_from_mapping(row_bad.snapshot))
     assert card.column == KanbanColumn.UNKNOWN
+
+
+# The issue timeline is oldest-first: reading only the first page reported a long-lived
+# PR's early merge-queue state (#4507).
+def _noise(n: int) -> list[dict]:
+    return [{"event": "commented"} for _ in range(n)]
+
+
+def _queue_fixture(pages: list[list[dict]]) -> dict[str, Any]:
+    gets = _armed_pull_fixture()
+    del gets["/repos/o/r/issues/50/timeline?per_page=100&page=1"]
+    for i, page in enumerate(pages, start=1):
+        gets[f"/repos/o/r/issues/50/timeline?per_page=100&page={i}"] = page
+    return gets
+
+
+@pytest.mark.parametrize(
+    ("pages", "expected"),
+    [
+        ([_noise(99) + [{"event": "added_to_merge_queue"}], [{"event": "removed_from_merge_queue"}]], False),
+        ([_noise(100), [{"event": "added_to_merge_queue"}]], True),
+        ([_noise(100), _noise(100), []], False),
+    ],
+)
+def test_merge_queue_state_comes_from_the_latest_timeline_page(pages: list[list[dict]], expected: bool) -> None:
+    fake = FakeGitHub(issue_pages=[[_issue(9)]], gets=_queue_fixture(pages))
+    result = _sync(fake)
+    row = next(i for i in result.items if i.issue_number == 9)
+    assert row.snapshot["pull_request"]["in_merge_queue"] is expected
+    assert row.snapshot["pull_request"]["degraded"] is False
+    assert [p for p in fake.get_paths if "/timeline" in p] == [
+        f"/repos/o/r/issues/50/timeline?per_page=100&page={i}" for i in range(1, len(pages) + 1)
+    ]
+
+
+def test_timeline_longer_than_the_page_cap_is_degraded_not_guessed() -> None:
+    pages = [_noise(100) for _ in range(kgi.MERGE_QUEUE_TIMELINE_MAX_PAGES)]
+    fake = FakeGitHub(issue_pages=[[_issue(9)]], gets=_queue_fixture(pages))
+    result = _sync(fake)
+    row = next(i for i in result.items if i.issue_number == 9)
+    assert row.snapshot["pull_request"]["degraded"] is True
+    assert row.snapshot["pull_request"]["in_merge_queue"] is False

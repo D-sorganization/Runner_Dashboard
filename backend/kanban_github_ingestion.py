@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from functools import partial
 from typing import Any, Literal
 
 from cache_utils import Cache
@@ -371,6 +372,43 @@ def _map_reviews(
     )
 
 
+MERGE_QUEUE_TIMELINE_PER_PAGE = 100
+MERGE_QUEUE_TIMELINE_MAX_PAGES = 5
+
+
+async def _merge_queue_state(
+    full: str,
+    number: int,
+    *,
+    get: Callable[[str], Awaitable[Any]],
+    ttl: float,
+    budget: _Budget,
+    metrics: dict[str, int],
+) -> bool:
+    """True when the PR's latest merge-queue timeline event is an add (#4507).
+
+    The issue timeline is oldest-first, so pages are read until a short one; the first page
+    alone reported a long-lived PR's early queue state. Raises ``KanbanGithubSourceError``
+    when a page fails or the timeline exceeds ``MERGE_QUEUE_TIMELINE_MAX_PAGES``.
+    """
+    events: list[dict] = []
+    path = ""
+    for page in range(1, MERGE_QUEUE_TIMELINE_MAX_PAGES + 1):
+        path = f"/repos/{full}/issues/{number}/timeline?per_page={MERGE_QUEUE_TIMELINE_PER_PAGE}&page={page}"
+        body, _ = await _cached_get(
+            f"kanban:gh:{full}:mq:{number}:{page}",
+            ttl=ttl,
+            budget=budget,
+            metrics=metrics,
+            fetch=partial(get, path),
+        )
+        items = body if isinstance(body, list) else []
+        events.extend(items)
+        if len(items) < MERGE_QUEUE_TIMELINE_PER_PAGE:
+            return _merge_queue_from_timeline(events)
+    raise KanbanGithubSourceError("truncated", "merge queue timeline exceeds the page cap", path)
+
+
 def _merge_queue_from_timeline(events: list[dict]) -> bool:
     for event in reversed(events):
         if not isinstance(event, dict):
@@ -423,14 +461,7 @@ async def _enrich_pull(
     in_queue = False
     if not auto_enabled:
         try:
-            timeline, _ = await _cached_get(
-                f"kanban:gh:{full}:mq:{number}",
-                ttl=ttl,
-                budget=budget,
-                metrics=metrics,
-                fetch=lambda: get(f"/repos/{full}/issues/{number}/timeline?per_page=30"),
-            )
-            in_queue = _merge_queue_from_timeline(timeline if isinstance(timeline, list) else [])
+            in_queue = await _merge_queue_state(full, number, get=get, ttl=ttl, budget=budget, metrics=metrics)
         except KanbanGithubSourceError:
             merge_queue_degraded = True
     pr_snap = KanbanPullRequestSnapshot(
