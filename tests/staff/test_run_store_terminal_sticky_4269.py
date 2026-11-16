@@ -53,3 +53,42 @@ def test_update_run_rejects_terminal_to_terminal_rewrite(tmp_path: Path) -> None
             store.update_run("x", status=RunStatus.FAILED.value)
     finally:
         store.close()
+
+
+@pytest.mark.unit
+def test_status_update_cannot_overwrite_cancellation_after_lock_release(tmp_path: Path) -> None:
+    """Schedule cancellation at the first unlock, exposing a split read/write lock."""
+    from contextlib import contextmanager
+
+    store = RunStore(tmp_path / "race.sqlite3")
+    store.create_run(RunRecord("race", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="queued"))
+    lock = store._lock
+    cancelled = False
+
+    @contextmanager
+    def cancel_on_first_unlock():
+        nonlocal cancelled
+        with lock:
+            yield
+        if not cancelled:
+            cancelled = True
+            current = store.get_run("race")
+            assert current is not None
+            assert store.compare_and_set_run_status("race", expected=current.status, status="cancelled")
+
+    class ScheduledLock:
+        def __enter__(self):
+            self.context = cancel_on_first_unlock()
+            return self.context.__enter__()
+
+        def __exit__(self, *args):
+            return self.context.__exit__(*args)
+
+    store._lock = ScheduledLock()
+    try:
+        store.update_run("race", status="running")
+        got = store.get_run("race")
+        assert got is not None and got.status == "cancelled"
+    finally:
+        store._lock = lock
+        store.close()

@@ -202,27 +202,20 @@ class RunStore:
             )  # noqa: S608
         return rec
 
-    def _run_status_locked(self, run_id: str) -> str | None:
-        with self._lock:
-            row = self._conn.execute("SELECT status FROM runs WHERE id = ?", (run_id,)).fetchone()
-        return None if row is None else str(row[0])
-
     def update_run(self, run_id: str, **fields: Any) -> None:
         if not fields:
             return
         unknown = set(fields) - set(_COLUMNS)
         assert not unknown, f"unknown columns: {unknown}"  # noqa: S101
-        if "status" in fields:
-            assert fields["status"] in RUN_STATUSES, fields["status"]  # noqa: S101
-            current = self._run_status_locked(run_id)
-            if current is not None:
-                new_status = str(fields["status"])
-                if new_status != current and current in {s.value for s in TERMINAL_STATUSES}:
-                    raise IllegalRunStatusTransitionError(
-                        f"illegal run status transition {run_id}: {current!r} → {new_status!r}"
-                    )
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self._lock:
+            if "status" in fields:
+                assert fields["status"] in RUN_STATUSES, fields["status"]  # noqa: S101
+                row = self._conn.execute("SELECT status FROM runs WHERE id = ?", (run_id,)).fetchone()
+                if row is not None and row[0] in TERMINAL_STATUSES and fields["status"] != row[0]:
+                    raise IllegalRunStatusTransitionError(
+                        f"illegal run status transition {run_id}: {row[0]!r} → {fields['status']!r}"
+                    )
             values = tuple(_redacted(k, v) for k, v in fields.items())
             self._conn.execute(f"UPDATE runs SET {sets} WHERE id = ?", (*values, run_id))  # noqa: S608
 
