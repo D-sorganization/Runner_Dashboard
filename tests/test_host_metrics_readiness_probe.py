@@ -56,6 +56,41 @@ def test_host_metrics_cache_probe_registered_in_default_probes() -> None:
     assert "host_metrics_cache" in names
 
 
+@pytest.mark.asyncio
+async def test_readyz_aggregate_ok_when_host_metrics_cache_degraded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    probe = r.HostMetricsCacheProbe(dashboard_service_check=lambda: True)
+    with patch.object(hmc, "read_cache", return_value=hmc.CacheReadResult("missing", None, None, Path("/x"))):
+        http_status, body = await r.aggregate([probe])
+    assert http_status == 200
+    assert body["status"] == "ok"
+    assert body["checks"]["host_metrics_cache"]["status"] == "degraded"
+
+
+@pytest.mark.asyncio
+async def test_readyz_aggregate_still_503_for_other_degraded_probes() -> None:
+    class _DegradedFatal:
+        name = "other"
+        readiness_fatal = True
+
+        async def check(self) -> tuple[r.ProbeStatus, str | None]:
+            return "degraded", "still blocks"
+
+    http_status, body = await r.aggregate([_DegradedFatal()])
+    assert http_status == 503
+    assert body["status"] == "degraded"
+
+
+def test_local_readyz_ok_when_host_metrics_cache_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
+    from agent_bus import reaper_health
+
+    probe = r.HostMetricsCacheProbe(dashboard_service_check=lambda: True)
+    monkeypatch.setattr(r, "get_default_probes", lambda: [probe])
+    with patch.object(hmc, "read_cache", return_value=hmc.CacheReadResult("stale", {}, 120.0, Path("/x"))):
+        assert reaper_health.local_readyz_ok() is True
+
+
 def test_startup_warns_on_stale_host_metrics_cache(caplog: pytest.LogCaptureFixture) -> None:
     with patch.object(hmc, "read_cache", return_value=hmc.CacheReadResult("stale", {}, 120.0, Path("/x"))):
         with patch.object(hmc, "dashboard_service_present", return_value=True):

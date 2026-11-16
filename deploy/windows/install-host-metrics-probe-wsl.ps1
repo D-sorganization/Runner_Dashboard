@@ -27,27 +27,43 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$deployExport = ''
-if ($DeployDir) {
-    $deployExport = "export RUNNER_DASHBOARD_DEPLOY_DIR='${DeployDir}'"
-}
-$cmd = @"
+$bashScript = @'
 set -euo pipefail
-$deployExport
-installer=~/actions-runners/dashboard/deploy/install-host-metrics-probe.sh
-if [[ -n \"${DeployDir}\" ]]; then
-  installer='${DeployDir}/deploy/install-host-metrics-probe.sh'
-fi
-if [[ -f \"\$installer\" ]]; then
-  bash \"\$installer\"
+deploy_dir="${1:-}"
+if [[ -n "${deploy_dir}" ]]; then
+  export RUNNER_DASHBOARD_DEPLOY_DIR="${deploy_dir}"
+  installer="${deploy_dir}/deploy/install-host-metrics-probe.sh"
 else
-  echo \"Installer not found at \$installer — deploy dashboard first\" >&2
+  installer="${HOME}/actions-runners/dashboard/deploy/install-host-metrics-probe.sh"
+fi
+if [[ -f "${installer}" ]]; then
+  bash "${installer}"
+else
+  echo "Installer not found at ${installer} — deploy dashboard first" >&2
   exit 1
 fi
-"@
+'@
 
 if ($PSCmdlet.ShouldProcess($Distro, 'Install host-metrics-probe timer inside WSL')) {
-    wsl.exe -d $Distro -- /bin/bash -lc $cmd
-    Write-Output "Host-metrics probe install invoked in WSL distro '$Distro'."
-    Write-Output "If the dashboard uses a system unit, the bash installer will prompt for sudo inside WSL."
+    # Native stdin from Windows PowerShell 5.1 adds CRLF. Write UTF-8 without
+    # BOM and LF only, then let WSL read the file directly (no bash -c quoting).
+    $scriptPath = [System.IO.Path]::GetTempFileName()
+    try {
+        [System.IO.File]::WriteAllText(
+            $scriptPath, $bashScript.Replace("`r", ""),
+            (New-Object System.Text.UTF8Encoding($false))
+        )
+        $wslScriptPath = wsl.exe -d $Distro -e wslpath -u $scriptPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not translate temporary script path for WSL distro '$Distro'."
+        }
+        wsl.exe -d $Distro -e bash $wslScriptPath $DeployDir
+        if ($LASTEXITCODE -ne 0) {
+            throw "Host-metrics probe install failed in WSL distro '$Distro' (exit $LASTEXITCODE)."
+        }
+        Write-Output "Host-metrics probe install invoked in WSL distro '$Distro'."
+        Write-Output "If the dashboard uses a system unit, the bash installer will prompt for sudo inside WSL."
+    } finally {
+        Remove-Item -LiteralPath $scriptPath -Force
+    }
 }

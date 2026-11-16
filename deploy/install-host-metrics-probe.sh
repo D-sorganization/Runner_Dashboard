@@ -74,7 +74,9 @@ install_host_metrics_probe() {
     return 1
   }
   install -d -m 0755 "${DEPLOY_DIR}/deploy"
-  install -m 0755 "${PROBE_SRC}" "${PROBE_DEST}"
+  if [[ "$(realpath "${PROBE_SRC}")" != "$(realpath "${PROBE_DEST}")" ]]; then
+    install -m 0755 "${PROBE_SRC}" "${PROBE_DEST}"
+  fi
 
   if [[ "${SCOPE}" == user ]]; then
     local UNIT_DIR="${DASHBOARD_HOME}/.config/systemd/user"
