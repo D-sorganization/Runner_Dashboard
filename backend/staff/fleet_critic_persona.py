@@ -48,9 +48,8 @@ FLEET_CRITIC_SCHEDULE_ENTRIES: Mapping[str, str] = {
 # Real staff/roles/fleet-critic.yml lists 4 providers and "model: default" (no per-step
 # override), matching the fleet-standard chain used by the other ported personas.
 FLEET_CRITIC_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
-    FailoverStep("claude", None),
-    FailoverStep("codex", None),
-    FailoverStep("antigravity", None),
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("codex", "gpt-6.1-sol"),
     FailoverStep("cursor-agent", None),
 )
 
@@ -82,7 +81,7 @@ def fleet_critic_role_data() -> dict[str, Any]:
             "when Barb assigns a repo. Interim: reports to barb until the first Board meeting is recorded "
             "in docs/board-meetings/pathway-log.md (RM#1766 Phase 0); then revert to board-secretary."
         ),
-        "providers": ["claude", "codex", "antigravity", "cursor-agent"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "default",
         "schedule": "0 12 * * 5",
         "window": None,

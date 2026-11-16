@@ -73,7 +73,9 @@ def test_resolve_effort_rejects_non_string_kind() -> None:
 def test_ci_fix_routes_carry_effort() -> None:
     assert route_ci_fix("lint").effort == "low"
     assert route_ci_fix("test").effort == "medium"
-    assert route_ci_fix("lint", attempt_number=3, max_attempts=3).effort == "high"
+    assert (
+        route_ci_fix("lint", attempt_number=3, max_attempts=3, allow_strong_escalation=True).effort == "high"
+    )
 
 
 # ─── Envelope contract ───────────────────────────────────────────────────────

@@ -28,8 +28,8 @@ def test_disciple_yaml_passes_schema_validation_and_loads_into_roster(tmp_path: 
     assert spec_raw["permissions"]["merge"] is False
     assert spec_raw["schedule"] is None and spec_raw["window"] is None
     assert spec_raw["reports_to"] == "user" and spec_raw["surface"] == "dashboard"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity"]
-    assert "retry" not in spec_raw
+    assert spec_raw["providers"] == ["claude", "codex", "cursor-agent"]
+    assert "failover_chain" in spec_raw["retry"]
     clear_roles_cache()
     role = load_roles(tmp_path)["disciple"]
     assert role.valid
@@ -39,12 +39,8 @@ def test_disciple_yaml_passes_schema_validation_and_loads_into_roster(tmp_path: 
 
 
 def test_disciple_rd_barb_provider_chain_is_claude_first() -> None:
-    # The real staff/roles/disciple.yml lists three providers (claude, codex, antigravity) with
-    # no retry block, so without a static PERSONA_ROLE_CHAINS entry resolve_failover_chain would
-    # silently fall back to rd_barb_provider's generic codex-first DEFAULT_CHAIN.
-    assert rp.select({}, role="disciple") == rp.Decision("claude", "opus", False)
-    expected_chain = (FailoverStep("claude", None), FailoverStep("codex", None), FailoverStep("antigravity", None))
-    assert rp.chain({}, role="disciple") == (FailoverStep("claude", "opus"), *expected_chain[1:])
+    assert rp.select({}, role="disciple") == rp.Decision("claude", "claude-opus-5-5", False)
+    assert rp.chain({}, role="disciple") == dc.DISCIPLE_FAILOVER_CHAIN
 
 
 def test_is_valid_citation() -> None:

@@ -491,10 +491,13 @@ FLEET_PEER_SCOPES = frozenset(
         "staff.dispatch",
         "staff.cancel",
         "staff.chat",
+        "staff.relay.write",
         "fleet.maintain",
         "fleet.read",
+        "fleet.run_credential.mint",
         "memory.read",
         "activity.read",
+        "runners.scale",
     }
 )
 LOOPBACK_SCOPES = frozenset(
@@ -534,6 +537,8 @@ SCOPE_PRESETS = {
         "staff.read staff.chat staff.dispatch staff.cancel memory.read memory.shared.summarize"
     ).split(),
     "fleet-peer": sorted(FLEET_PEER_SCOPES),
+    # Agent-safe runner count target only (#2889); pair with ``bot`` for staff surfaces.
+    "runner-scaler": ["runners.scale", "fleet.read", "staff.read", "staff.chat"],
     "loopback": sorted(LOOPBACK_SCOPES),
     # A Tailscale sign-in from another tailnet device, e.g. the owner's phone (#1770).
     "tailnet-approver": ["staff.approve"],

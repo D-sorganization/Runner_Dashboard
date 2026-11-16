@@ -294,6 +294,9 @@ def test_report_lists_every_provider_with_billing_and_windows(tmp_path: Path) ->
     assert rows["ollama"]["readable"] is False and rows["ollama"]["billing"] == "local"
     assert rows["grok"]["readable"] is False and rows["grok"]["billing"] == "subscription"
     assert rows["grok"]["quota"] is None
+    assert rows["grok"]["quota_status"] == "unknown"
+    assert rows["claude"]["quota_status"] == "known"
+    assert rows["codex"]["quota_status"] == "unknown"
     assert body["generated_at"] == "2026-09-26T18:00:00Z"
 
 

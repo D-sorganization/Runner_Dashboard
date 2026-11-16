@@ -130,6 +130,14 @@ in flight (the same fan-out as `/api/staff/summary`).
 `complete: false` with `warnings` means the board read was partial — coordination is degraded, not the
 repository free.
 
+### `POST /api/coordination/sessions/register`
+
+Body `{session, role, provider, machine, repo?, target?, ttl_hours?}` registers or heartbeats a hub-local lane
+session (for example Cursor cloud agents) in the in-memory hub registry. Sessions are merged into
+`GET /api/coordination/sessions` with `source: "hub"`. Requires `coordination.write`; bot principals may only
+register sessions whose id starts with `<agent>-` (same impersonation rules as presence). Returns
+`{ok, session, generated_at}` where `session` includes computed `expires`.
+
 ### `GET /api/coordination/inbox?session=&repo=`
 
 `{available, complete, messages, conflicts, warnings, generated_at}` for `session` (`repo` defaults to

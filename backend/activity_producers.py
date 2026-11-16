@@ -13,7 +13,7 @@ import logging
 import re
 import threading
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from activity import ActivityEnvelope, ActivitySource, get_activity_store
 
@@ -21,6 +21,11 @@ if TYPE_CHECKING:
     from staff.store import RunRecord
 
 log = logging.getLogger("dashboard.activity_producers")
+
+# Activity kinds for permission/notification input gates (#4488); consumed by
+# ``activity_sessions._derive_status``.
+INPUT_GATE_BLOCKED_KIND: Final = "blocked_on_input"
+INPUT_GATE_UNBLOCKED_KIND: Final = "unblocked"
 
 # Opaque hub-local identity for in-process producers; never a secret or network address.
 PRODUCER_PRINCIPAL = "hub:activity-producer"
@@ -88,6 +93,30 @@ def emit_activity(
         log.warning(
             "activity adapter failed for source=%s session_id=%s kind=%s", source, session_id, kind, exc_info=True
         )
+
+
+def record_input_gate_activity(
+    *,
+    session_id: str,
+    node: str,
+    kind: Literal["blocked_on_input", "unblocked"],
+    reason: str = "permission",
+    prompt: str = "",
+    source: ActivitySource = "agent_bus",
+    seq: int | None = None,
+) -> None:
+    """Emit a structured blocked/unblocked event for session status projection (#4488)."""
+    payload: dict[str, Any] = {"reason": (reason or "permission")[:128]}
+    if prompt.strip():
+        payload["prompt"] = prompt.strip()[:500]
+    emit_activity(
+        source=source,
+        session_id=session_id,
+        node=node,
+        kind=kind,
+        seq=seq,
+        payload=payload,
+    )
 
 
 def record_staff_run_activity(rec: RunRecord | None, seq: int, kind: str, text: str) -> None:

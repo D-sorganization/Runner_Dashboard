@@ -20,9 +20,14 @@ def test_rule_4_reads_pr_commits_from_the_rest_api() -> None:
     assert "git log" not in script
 
 
-def test_no_step_checks_out_code() -> None:
-    uses = [s.get("uses", "") for s in _steps()]
-    assert not [u for u in uses if u.startswith("actions/checkout")]
+def test_guard_scripts_checkout_is_sparse_on_base_ref_only() -> None:
+    checkout = [s for s in _steps() if str(s.get("uses", "")).startswith("actions/checkout")]
+    assert len(checkout) == 1
+    with_block = checkout[0].get("with") or {}
+    sparse = str(with_block.get("sparse-checkout", ""))
+    assert sparse == "scripts"
+    assert with_block.get("sparse-checkout-cone-mode", True) is not False
+    assert "${{ github.event.pull_request.base.ref" in str(with_block.get("ref", ""))
 
 
 def test_no_pr_head_reference_in_the_guard_job() -> None:

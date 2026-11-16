@@ -192,6 +192,7 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
     except Exception:  # noqa: BLE001
         staff_avail = {}
 
+    from agent_principals_drift import agent_principals_config_drift  # noqa: PLC0415
     from machine_registry import machine_registry_is_empty  # noqa: PLC0415
 
     return {
@@ -211,6 +212,7 @@ async def _health_impl(github_health: dict | None = None, *, started_at: float |
         "oauth": _oauth_health_payload(),
         "staff_availability": staff_avail,
         "machine_registry_empty": machine_registry_is_empty(),
+        "agent_principals_config_drift": agent_principals_config_drift(),
     }
 
 

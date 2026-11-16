@@ -155,14 +155,9 @@ def _lease_scale_down_guard() -> LeaseScaleDownGuard:
             log.warning("Skipping malformed lease record %r: %s", lease_rec, exc)
             continue
         if name is None:
-            log.warning(
-                "Active lease %r has no runner pin (metadata runner_name/pinned_runner/runner); "
-                "blocking scale-down this tick",
-                lease_rec.get("runner_id"),
-            )
-            block = True
-        else:
-            protected.add(name)
+            # Unpinned virtual/agent dispatch leases must not freeze fleet scale-down (#4273 J-06).
+            continue
+        protected.add(name)
     return LeaseScaleDownGuard(frozenset(protected), block)
 
 

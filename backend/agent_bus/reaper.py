@@ -6,6 +6,7 @@ import logging
 from agent_bus.reaper_health import ReapGate, node_reap_gate
 from agent_bus.reaper_stats import record_reap
 from agent_bus.store import get_store
+from agent_bus.store_ops import TrackedClaimReleaseError
 from coordination import jobs as coordination_jobs
 
 log = logging.getLogger("dashboard.agent_bus.reaper")
@@ -28,6 +29,8 @@ def reap_once(allows_reap: ReapGate | None = None) -> dict[str, int]:
         try:
             released += store.release_tracked_claims(row.session_id, row.role, reason=RELEASE_REASON)
         except Exception as exc:  # noqa: BLE001 — reaper must not stall the loop
+            if isinstance(exc, TrackedClaimReleaseError):
+                released += exc.released  # claims released before the one still pending
             errors += 1
             log.warning("agent_bus reaper: claim release failed for %s: %s", row.session_id, exc)
             continue

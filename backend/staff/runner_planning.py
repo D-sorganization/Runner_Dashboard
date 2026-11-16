@@ -8,15 +8,16 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from staff import consolidation, workspace
-from staff import focus as focus_mod
-from staff import runner_ops as ops
 from staff.adapters import ProviderAdapter
 from staff.lessons import select_repo_lessons
 from staff.lifecycle_fence import assert_fence_consumed, resolve_pr_lifecycle
 from staff.plan import RunPlan, RunRequest
-from staff.roles import RoleSpec
 from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP, estimate_tokens
+
+from staff import consolidation, workspace
+from staff import focus as focus_mod
+from staff import runner_ops as ops
+from staff.roles import RoleSpec
 
 _SAFE_REF = re.compile(r"^[A-Za-z0-9._/-]{1,120}$")
 
@@ -40,7 +41,10 @@ def build_run_plan(
 
     role = resolve_dispatch_role(roles, req)
 
-    provider, _chain_model, model_tier, auth_skipped = resolve_provider_and_model(adapters, machine, req, role)
+    pick = resolve_provider_and_model(adapters, machine, req, role)
+    provider = pick.provider
+    model_tier = pick.tier
+    auth_skipped = pick.auth_skipped
     if req.repo and not _SAFE_REF.match(req.repo):
         raise ValueError("repo must be a bare repository name")
     if role.repos and req.repo and req.repo not in role.repos and not req.barb_bypass_role_repos:
@@ -65,6 +69,7 @@ def build_run_plan(
     repo_lessons = select_repo_lessons(req.repo)
     references_block, library_work_ids = library_references_for_plan(role, req)
     prompt_token_cap = TOTAL_CONTEXT_TOKEN_CAP if provider == "codex" else None
+    trim_report: dict[str, Any] = {}
     prompt = workspace.compose_prompt(
         role,
         repo=req.repo,
@@ -78,7 +83,21 @@ def build_run_plan(
         repo_lessons_result=repo_lessons,
         prompt_token_cap=prompt_token_cap,
         lifecycle_fence=lifecycle.prompt_block,
+        trim_report=trim_report,
     )
+    if trim_report.get("context_degraded"):
+        import os
+
+        from staff.context_budget_alerts import build_context_degraded_alert, emit_context_degraded_alert
+
+        emit_context_degraded_alert(
+            build_context_degraded_alert(
+                role=role.name,
+                repo=req.repo or "",
+                trimmed=tuple(trim_report.get("context_trimmed") or ()),
+                machine=os.environ.get("MACHINE_NAME", ""),
+            )
+        )
     assert_fence_consumed(lifecycle, prompt)
     adapter = adapters[provider]
     chain = resolve_failover_chain(role, requested_provider=provider if req.provider else None)
@@ -90,6 +109,7 @@ def build_run_plan(
         adapter=adapter,
         step=step,
         active_tier=role_base_tier(role),
+        trust_failover_step_model=bool(pick.substitution_reason),
     )
     execution_mode, argv, cloud_stdin, lease = resolve_plan_execution(
         req, role, provider, adapter, prompt, effective_model, lease, ops.read_only_kwargs(role)
@@ -99,6 +119,8 @@ def build_run_plan(
         provider=provider,
         model=effective_model,
         model_tier=resolved_tier or model_tier,
+        requested_provider=pick.requested_provider,
+        substitution_reason=pick.substitution_reason,
         repo=req.repo,
         target_kind=req.target_kind,
         target_ref=req.target_ref,
@@ -117,7 +139,15 @@ def build_run_plan(
         library_references=references_block,
         standards_version=bundle.standards_version,
         standards_tokens=bundle.standards_tokens or estimate_tokens(bundle.standards_block),
-        context_stamp=json.dumps(bundle.context_stamp(prompt=prompt, lessons_tokens=repo_lessons.tokens)),
+        context_stamp=json.dumps(
+            bundle.context_stamp(
+                prompt=prompt,
+                lessons_tokens=int(trim_report.get("tier1_lessons_tokens", repo_lessons.tokens)),
+                skills_tokens=int(trim_report.get("tier1_skills_tokens", 0)) or None,
+                context_degraded=bool(trim_report.get("context_degraded")),
+                context_trimmed=tuple(trim_report.get("context_trimmed") or ()),
+            )
+        ),
         library_work_ids=library_work_ids,
         injected_lesson_ids=repo_lessons.injected_ids,
         skipped_lesson_ids=repo_lessons.skipped_ids,

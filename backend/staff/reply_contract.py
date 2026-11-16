@@ -239,6 +239,7 @@ def is_action_allowed_for_role(
 ) -> bool:
     """Check whether a role is authorized to propose ``action`` using registry policy (SC-B1-G3)."""
     from staff.actions import ACTION_REGISTRY, check_role_permission
+
     from staff.roles import RoleSpec, parse_role
 
     reg = registry or ACTION_REGISTRY

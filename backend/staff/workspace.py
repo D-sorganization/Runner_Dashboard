@@ -15,6 +15,7 @@ import staff.worktree_hygiene as _wh
 from platform_utils.wsl_paths import windows_repositories_root
 from staff.git_hooks import install_pre_push_hook
 from staff.git_identity import configure_worktree_git_identity
+from staff.repo_roots import REPOS_ROOT_ENV, default_repos_roots, existing_repos_roots
 from staff.standards_registry import _BUILTIN
 from staff.worktree_status import worktree_has_unpushed_commits  # noqa: F401  re-export (#2806)
 
@@ -79,19 +80,12 @@ def dashboard_api_note() -> str:
 
 def repos_roots() -> list[Path]:
     """Directories that may contain fleet checkouts (first match wins)."""
-    configured = os.environ.get("STAFF_REPOS_ROOT")
-    roots = [Path(p).expanduser() for p in configured.split(os.pathsep) if p] if configured else []
-    roots += _default_repos_roots(Path.home())
-    return [r for r in roots if r.is_dir()]
+    return existing_repos_roots(os.environ.get(REPOS_ROOT_ENV), _default_repos_roots(Path.home()))
 
 
 def _default_repos_roots(home: Path) -> list[Path]:
     """Built-in checkout roots: the WSL home's, then the Windows profile's ``Repositories``."""
-    return [
-        home / "Repositories",
-        home / "actions-runners" / "repos",
-        windows_repositories_root(),
-    ]
+    return default_repos_roots(home, windows_repositories_root())
 
 
 def rm_root() -> Path | None:

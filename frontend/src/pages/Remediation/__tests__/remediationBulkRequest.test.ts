@@ -5,6 +5,7 @@ import {
   buildBulkPRRequest,
   dispatchBulkByRepo,
   formatBulkResponseResult,
+  idempotencyKeyForBulkRepo,
 } from "../remediationBulkRequest";
 import type { StaffRequestResponse, WorkRequest } from "../../Staff/staffApi";
 
@@ -184,6 +185,27 @@ describe("remediationBulkRequest", () => {
         { repo: "org/alpha", issues: [5, 6], ref: "" },
         { repo: "org/beta", issues: [9], ref: "" },
       ]);
+    });
+
+    it("passes distinct per-repository idempotency keys that stay stable on retry", async () => {
+      const baseKey = "intent-abc-123";
+      const submit = vi.fn(async (_req: WorkRequest) => executed({ status: "dispatched", envelope_id: "e" }));
+      const targets = [
+        { repo: "org/alpha", number: 5 },
+        { repo: "org/beta", number: 9 },
+      ];
+
+      await dispatchBulkByRepo(buildBulkIssueRequest, targets, { idempotencyKey: baseKey }, "issue", submit);
+      const firstPassKeys = submit.mock.calls.map(([, key]) => key);
+      expect(firstPassKeys).toEqual([
+        idempotencyKeyForBulkRepo(baseKey, "org/alpha"),
+        idempotencyKeyForBulkRepo(baseKey, "org/beta"),
+      ]);
+      expect(new Set(firstPassKeys).size).toBe(2);
+
+      submit.mockClear();
+      await dispatchBulkByRepo(buildBulkIssueRequest, targets, { idempotencyKey: baseKey }, "issue", submit);
+      expect(submit.mock.calls.map(([, key]) => key)).toEqual(firstPassKeys);
     });
 
     it("keeps the single-repository message unchanged", async () => {

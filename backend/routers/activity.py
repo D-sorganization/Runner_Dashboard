@@ -39,10 +39,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from identity import Principal, require_scope
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
-from staff import fleet as staff_fleet
-from staff import remote_runs
 from staff.rate_limit import check_rate_limit
 from starlette.concurrency import run_in_threadpool
+
+from staff import fleet as staff_fleet
+from staff import remote_runs
 
 router = APIRouter(prefix="/api/v1/activity", tags=["activity"])
 
@@ -157,7 +158,7 @@ async def _read_bounded_body(
             raise HTTPException(413, "activity batch exceeds byte limit")
         body.extend(chunk)
     try:
-        events = TypeAdapter(list[ActivityEnvelope]).validate_json(bytes(body))
+        events: list[ActivityEnvelope] = TypeAdapter(list[ActivityEnvelope]).validate_json(bytes(body))
     except ValidationError as exc:
         # Do not reflect unredacted input through validation errors.
         raise HTTPException(422, "invalid activity batch") from exc

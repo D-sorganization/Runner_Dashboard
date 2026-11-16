@@ -105,6 +105,29 @@ def test_grok_unattended_argv_never_bypasses_permissions() -> None:
 
 
 @pytest.mark.unit
+def test_qwen_unattended_argv_never_bypasses_permissions(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QWENCLOUD_TOKEN_PLAN_API_KEY", "sk-sp-test-plan-key")  # pragma: allowlist secret
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/qwen" if name == "qwen" else None)
+    qwen = adapters_mod.ADAPTERS["qwen"]
+    argv = qwen.build_command("do it", "/tmp/wt", model="qwen3.8-flash")
+    assert argv[0] == "qwen"
+    assert "--yolo" not in argv
+    assert "-y" not in argv
+    assert "sk-sp-test-plan-key" not in argv  # pragma: allowlist secret
+    assert argv[argv.index("--approval-mode") + 1] == "auto-edit"
+    assert argv[-1] == "do it"
+    env = qwen.runtime_env()
+    assert env["OPENAI_API_KEY"] == "sk-sp-test-plan-key"  # pragma: allowlist secret
+    assert env["OPENAI_BASE_URL"].endswith("/compatible-mode/v1")
+
+
+def test_qwen_chat_uses_plan_approval_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QWENCLOUD_TOKEN_PLAN_API_KEY", "sk-sp-test-plan-key")  # pragma: allowlist secret
+    argv = adapters_mod.ADAPTERS["qwen"].chat_argv("hi", "/tmp/wt", model="qwen3.8-flash")
+    assert argv[argv.index("--approval-mode") + 1] == "plan"
+    assert argv[-1] == "hi"
+
+
 def test_grok_chat_turns_are_refused_not_guessed() -> None:
     # No confirmed Grok read-only chat flag yet (#4131); fail closed instead of guessing one.
     with pytest.raises(adapters_mod.ChatReadOnlyUnsupportedError):

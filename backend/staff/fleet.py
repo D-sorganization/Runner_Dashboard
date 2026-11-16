@@ -28,13 +28,14 @@ import httpx
 from dashboard_config import FLEET_NODES, HOSTNAME, RUNNER_ALIASES
 from fleet_autoconfig import derive_fleet_nodes_from_registry
 from machine_registry import load_machine_registry
-from staff import liveness as staff_liveness
 from staff.adapters import available_providers, chat_only_providers
 from staff.barb_lease_fence import BarbClaim
 from staff.liveness import _parse_iso
 from staff.rm_sync import source_status
 from staff.store import ACTIVE_STATUSES
 from staff.usage import today_iso
+
+from staff import liveness as staff_liveness
 
 log = logging.getLogger("dashboard.staff.fleet")
 
@@ -289,24 +290,35 @@ async def aggregate_board(local_board: dict[str, Any], peers: dict[str, str] | N
     }
 
 
-def choose_machine(board: dict[str, Any], provider: str | None, local_name: str) -> str:
-    """Pick the online machine with the fewest active runs that has ``provider`` installed.
+def _placement_load(node: dict[str, Any]) -> tuple[int, float, float]:
+    """Staff runs first, then live CPU %, then memory % (lower is better; #4357)."""
+    runs = len(node.get("running", [])) + len(node.get("queued", []))
+    resources = node.get("dispatch_resources") or {}
+    cpu = float(resources.get("cpu_percent", 0) or 0)
+    mem = float(resources.get("mem_percent", 0) or 0)
+    return runs, cpu, mem
 
-    Ties go to the local node. Falls back to local when nothing qualifies, so a
-    degraded fleet still runs work somewhere.
+
+def choose_machine(board: dict[str, Any], provider: str | None, local_name: str) -> str:
+    """Pick the online machine with the lowest placement load that has ``provider`` installed.
+
+    Load weighs in-flight staff runs, then CPU %, then memory % from each board's
+    ``dispatch_resources``. Among equal loads, prefer a peer over the local hub (#4357).
+    Falls back to local when nothing qualifies.
     """
-    best: tuple[int, int, str] | None = None
+    best: tuple[int, float, float, int, str] | None = None
     for name, node in board.get("machines", {}).items():
         if node.get("status") != "online":
             continue
         installed = node.get("providers") or {}
         if provider and not installed.get(provider, False):
             continue
-        load = len(node.get("running", [])) + len(node.get("queued", []))
-        rank = (load, 0 if name == local_name else 1, name)
+        runs, cpu, mem = _placement_load(node)
+        local_tie = 1 if name == local_name else 0
+        rank = (runs, cpu, mem, local_tie, name)
         if best is None or rank < best:
             best = rank
-    return best[2] if best else local_name
+    return best[4] if best else local_name
 
 
 async def forward_run(
@@ -315,8 +327,12 @@ async def forward_run(
     body: dict[str, Any],
     on_behalf_of: str | None = None,
     barb_claim: BarbClaim | None = None,
+    *,
+    origin_node: str = "",
 ) -> tuple[int, dict[str, Any]]:
     """POST a dispatch to a peer node; returns (status_code, json)."""
+    from staff.barb_origin_fence import ORIGIN_FENCE_HEADER, sign_barb_origin_fence  # noqa: PLC0415
+
     payload = {**body, "machine": "local"}
     headers = fleet_headers()
     if on_behalf_of:
@@ -326,6 +342,8 @@ async def forward_run(
         headers["X-Barb-Lease-Epoch"] = str(barb_claim.epoch)
         if barb_claim.holder:
             headers["X-Barb-Holder"] = barb_claim.holder
+        if origin_node.strip():
+            headers[ORIGIN_FENCE_HEADER] = sign_barb_origin_fence(barb_claim, origin_node=origin_node)
     return await post_json(f"{url}/api/staff/{role}/run", payload, headers)
 
 
@@ -352,6 +370,7 @@ def local_board(runner: Any) -> dict[str, Any]:
 
         provider_auth = run_preflight_and_cache(runner.machine)
     from routers.staff_schedule import schedule_snapshot  # noqa: PLC0415
+    from staff.resource_admission import sample_dispatch_resources  # noqa: PLC0415
 
     return {
         "machine": runner.machine,
@@ -368,6 +387,7 @@ def local_board(runner: Any) -> dict[str, Any]:
         "scheduler": schedule_snapshot(),
         "rm_source": getattr(sys.modules.get("routers.staff"), "source_status", source_status)(),
         "provider_auth": provider_auth,
+        "dispatch_resources": sample_dispatch_resources().to_dict(),
     }
 
 

@@ -22,7 +22,9 @@ def test_reusable_pr_guard_job_wiring_and_runner() -> None:
     assert steps[0]["uses"].startswith("actions/checkout@")
     assert steps[1]["uses"] == "./.github/actions/pr-early-exit"
     runs_on = str(guard["runs-on"])
-    assert "d-sorg-fleet" in runs_on and "ubuntu-latest" not in runs_on
+    assert "d-sorg-fleet-bulk" in runs_on
+    assert "d-sorg-fleet" not in runs_on.replace("d-sorg-fleet-bulk", "")
+    assert "ubuntu-latest" not in runs_on
 
 
 def test_reusable_pr_guard_concurrency_scoped_per_caller_workflow() -> None:

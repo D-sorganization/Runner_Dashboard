@@ -85,7 +85,36 @@ def _translate_upstream_response(resp: httpx.Response, upstream_name: str, reque
             "[%s] %s returned non-JSON (%d). Body: %s", request_id, upstream_name, resp.status_code, body_snippet
         )
         raise HTTPException(status_code=502, detail=f"{upstream_name} returned non-JSON ({resp.status_code})")
-    return resp.json()
+    body = resp.json()
+    if not 200 <= resp.status_code < 300:
+        raise _upstream_error(resp.status_code, body, upstream_name, resp.headers.get("retry-after"))
+    return body
+
+
+# The upstream refused this machine's own fleet token (unknown, or lacking a scope).
+# The caller's session is fine, so the caller must not be told it is unauthenticated
+# or forbidden.
+_UPSTREAM_REFUSED_THIS_MACHINE: frozenset[int] = frozenset({401, 403})
+
+
+def _upstream_error(status: int, body: object, upstream_name: str, retry_after: str | None = None) -> HTTPException:
+    """Map an upstream error answer to the error this machine's caller gets (#4417).
+
+    Precondition: ``status`` is outside 2xx. An upstream error is never returned as a
+    success body.
+    - 401/403: 502 with a fixed message; the upstream body is not relayed.
+    - other 4xx: same status, the upstream ``detail``, and its ``Retry-After`` header.
+    - anything else: 502 with the upstream ``detail``.
+    Only ``detail`` is relayed; other top-level fields of the upstream body are dropped.
+    """
+    if status in _UPSTREAM_REFUSED_THIS_MACHINE:
+        log.warning("%s refused this machine's fleet token (HTTP %d)", upstream_name, status)
+        return HTTPException(status_code=502, detail=f"{upstream_name} refused this machine's fleet token ({status})")
+    detail = (body.get("detail") if isinstance(body, dict) else None) or f"{upstream_name} returned HTTP {status}"
+    if 400 <= status < 500:
+        headers = {"Retry-After": retry_after} if retry_after else None
+        return HTTPException(status_code=status, detail=detail, headers=headers)
+    return HTTPException(status_code=502, detail=detail)
 
 
 def _safe_forward_headers(request: Request) -> dict[str, str]:
@@ -121,7 +150,8 @@ async def proxy_to_hub(request: Request, *, require_success: bool = False):
     before resetting the circuit or accepting a healthy-shaped JSON body.
     Health probes stamp one fixed hop marker, replacing caller-provided values,
     so a misconfigured node-to-node or self URL cannot recurse.
-    Existing proxy callers retain their response translation contract.
+    For every caller a non-2xx hub answer raises (see ``_upstream_error``, #4417);
+    only a 2xx JSON body or a 204 is returned.
     """
     if not dashboard_config.HUB_URL:
         raise HTTPException(status_code=502, detail="HUB_URL not configured")
@@ -160,7 +190,8 @@ async def proxy_to_hub(request: Request, *, require_success: bool = False):
             raise HTTPException(status_code=502, detail="Hub proxy error") from e
 
 
-def _request_prefers_local(request: Request) -> bool:
+def request_prefers_local(request: Request) -> bool:
+    """True when the caller asked for this machine only (``?local=1`` or ``?scope=local``)."""
     local_value = request.query_params.get("local", "").lower()
     scope_value = request.query_params.get("scope", "").lower()
     return local_value in {"1", "true", "yes", "local"} or scope_value == "local"
@@ -172,7 +203,7 @@ def should_mark_hub_circuit_degraded(request: Request) -> bool:
         dashboard_config.MACHINE_ROLE == "node"
         and bool(dashboard_config.HUB_URL)
         and hub_in_cooldown()
-        and not _request_prefers_local(request)
+        and not request_prefers_local(request)
     )
 
 
@@ -185,4 +216,4 @@ def should_proxy_fleet_to_hub(request: Request) -> bool:
     """
     if dashboard_config.MACHINE_ROLE != "node" or not dashboard_config.HUB_URL or hub_in_cooldown():
         return False
-    return not _request_prefers_local(request)
+    return not request_prefers_local(request)

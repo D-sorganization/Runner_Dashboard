@@ -97,6 +97,18 @@ sync_dir() {
     rm -rf "$dest"; mkdir -p "$dest"; cp -a "$src/." "$dest/"
 }
 
+# Timestamped deploy-tree backups from backup_dir() live beside $deploy_dir as
+# $(basename "$deploy_dir").bak.<timestamp> (not under /var/backups).
+find_deploy_backups() {
+    local deploy_dir="$1"
+    find "$(dirname "$deploy_dir")" -maxdepth 1 -type d \
+        -name "$(basename "$deploy_dir").bak.*" 2>/dev/null | sort -r
+}
+
+latest_deploy_backup() {
+    find_deploy_backups "$1" | head -1
+}
+
 # Backup helper: creates a timestamped copy, writes a SHA256 manifest, and
 # prints the backup path to stdout.
 backup_dir() {

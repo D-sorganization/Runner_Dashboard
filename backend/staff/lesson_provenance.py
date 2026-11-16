@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from fastapi import HTTPException
 from identity import Principal
-from staff import store as run_stores
 from staff.store import RunRecord, RunStore
 from staff.tokens import active_run_id_for_principal, is_active_run_principal
+
+from staff import store as run_stores
 
 
 def stored_lesson_run(store: RunStore, run_id: str) -> RunRecord | None:

@@ -25,11 +25,17 @@ log = logging.getLogger("dashboard.staff.chat_shared_memory")
 SHARED_MEMORY_URL_ENV = "BARB_SHARED_MEMORY_URL"
 SHARED_MEMORY_TOKEN_FILE_ENV = "BARB_SHARED_MEMORY_TOKEN_FILE"
 SHARED_MEMORY_ALLOW_HTTP_ENV = "BARB_SHARED_MEMORY_ALLOW_HTTP"
+SHARED_MEMORY_CONTEXT_PACK_ENV = "BARB_SHARED_MEMORY_CONTEXT_PACK"
 FETCH_TIMEOUT_SECONDS = 2.0
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_TOKEN_BYTES = 4 * 1024
 MAX_ORIGIN_CHARS = 256
 MAX_PROMPT_CHARS = 8_000
+
+
+def _context_pack_injection_enabled() -> bool:
+    """Return whether deprecated hub context-pack injection into Barb chat is explicitly opted in."""
+    return (os.environ.get(SHARED_MEMORY_CONTEXT_PACK_ENV) or "").strip() == "1"
 
 
 def _configured_origin() -> str | None:
@@ -158,6 +164,8 @@ async def build_shared_memory_context_block(role_name: str, requester: Principal
     it never falls back to this node's local memory database.
     """
     if role_name.lower() != "barb":
+        return None
+    if not _context_pack_injection_enabled():
         return None
     try:
         origin = _configured_origin()

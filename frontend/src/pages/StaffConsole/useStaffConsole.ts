@@ -130,6 +130,8 @@ export function useStaffConsole({
     focus: initialThread ? { threadId: initialThread.id, origin: "explicit" as const } : null,
   }));
   const { thread: activeThread, focus: activeThreadFocus } = threadSelection;
+  const activeThreadIdRef = useRef(activeThread?.id);
+  activeThreadIdRef.current = activeThread?.id;
   const newThreadFromThisConsole = useRef<string | null>(null);
   // Repeated clicks share a create only within this console and until it settles.
   const pendingNewConversations = useRef(new Map<string, Promise<ThreadInfo>>());
@@ -208,6 +210,7 @@ export function useStaffConsole({
   // Optional entry points such as the global assistant can restore an existing
   // role conversation after navigation or reload. Never create a thread here.
   const initialRoleThreads = useRef(new Map<string, Promise<ThreadInfo[]>>());
+  const lastRestoredPreferred = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (!restoreInitialRoleThread || !initialRole || initialThread || initialThreadId) return;
     if (preferredRoleThreadId && newThreadFromThisConsole.current === preferredRoleThreadId) {
@@ -215,17 +218,51 @@ export function useStaffConsole({
       return;
     }
     newThreadFromThisConsole.current = null;
+    const activeThreadId = activeThreadIdRef.current;
+    if (preferredRoleThreadId && activeThreadId === preferredRoleThreadId) {
+      lastRestoredPreferred.current = preferredRoleThreadId;
+      // A prior in-flight restore may have left openingRole set after this id
+      // was already committed (for example a peer resync that finished early).
+      setOpeningRole(null);
+      return;
+    }
+    const previousPreferred = lastRestoredPreferred.current;
+    const preferredChanged = previousPreferred !== preferredRoleThreadId;
+    lastRestoredPreferred.current = preferredRoleThreadId;
+    const resyncPreferred = Boolean(
+      preferredChanged &&
+      preferredRoleThreadId &&
+      (
+        (activeThreadId && activeThreadId !== preferredRoleThreadId) ||
+        (!activeThreadId && previousPreferred !== undefined)
+      ),
+    );
     let cancelled = false;
     const revision = beginSelection("restore", initialRole);
     // A newly selected id may have been created by another mounted console.
     // Re-read its authorized role list instead of restoring from a stale snapshot.
     const restoreKey = JSON.stringify([initialRole, preferredRoleThreadId ?? null]);
-    let request = initialRoleThreads.current.get(restoreKey);
-    if (!request) {
+    let request: Promise<ThreadInfo[]>;
+    if (resyncPreferred) {
       request = threadApi.listThreads(initialRole);
-      initialRoleThreads.current.set(restoreKey, request);
+    } else {
+      const inflight = initialRoleThreads.current.get(restoreKey);
+      if (inflight) {
+        request = inflight;
+      } else {
+        request = threadApi.listThreads(initialRole).finally(() => {
+          initialRoleThreads.current.delete(restoreKey);
+        });
+        initialRoleThreads.current.set(restoreKey, request);
+      }
     }
-    setOpeningRole(initialRole);
+    if (resyncPreferred) {
+      // A peer console may have updated the URL while this restore was still
+      // listing threads; do not keep the sidebar composer locked on stale state.
+      setOpeningRole(null);
+    } else {
+      setOpeningRole(initialRole);
+    }
     request
       .then((threads) => {
         if (cancelled || !isSelectionCurrent(revision)) return;
@@ -246,8 +283,20 @@ export function useStaffConsole({
       });
     return () => {
       cancelled = true;
+      if (!resyncPreferred) setOpeningRole(null);
     };
-  }, [restoreInitialRoleThread, initialRole, initialThread, initialThreadId, preferredRoleThreadId, threadApi, beginSelection, isSelectionCurrent, commitThread, report]);
+  }, [
+    restoreInitialRoleThread,
+    initialRole,
+    initialThread,
+    initialThreadId,
+    preferredRoleThreadId,
+    threadApi,
+    beginSelection,
+    isSelectionCurrent,
+    commitThread,
+    report,
+  ]);
 
   // History for the open thread. The seeded thread keeps its seeded messages.
   const threadId = activeThread?.id ?? "";

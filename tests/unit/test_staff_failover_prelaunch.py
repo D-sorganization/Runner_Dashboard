@@ -97,7 +97,7 @@ def test_explicit_uninstalled_primary_uses_next_installed_allowed_chain_provider
     )
 
     assert provider == "claude"
-    assert model == "sonnet"
+    assert model == "claude-opus-5-5"
     assert tier == "standard"
 
 

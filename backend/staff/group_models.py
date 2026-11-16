@@ -188,6 +188,8 @@ def get_group_threshold() -> float:
 
 
 def lookup_seat_price(provider: str, model: str) -> Price:
+    if provider.lower() == "deepseek-api" and not model:
+        model = "deepseek-flash"
     prov_dict = PRICE_TABLE.get(provider.lower(), {})
     for k, price in prov_dict.items():
         if k in model.lower():

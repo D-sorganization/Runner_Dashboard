@@ -37,6 +37,7 @@ dev = [
     "pip-audit>=2.10.0",
     "types-PyYAML",
     "types-requests",
+    "mcp==2.3.0",
 ]
 
 [project.optional-dependencies]

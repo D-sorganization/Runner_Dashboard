@@ -6,11 +6,13 @@ Precondition: Requests and plans are structured dataclasses with explicit LoD bo
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import MISSING, dataclass, field, fields, replace
 from typing import TYPE_CHECKING, Any
+from unittest.mock import MagicMock, Mock
+
+from staff.model_tiers import validate_role_tier
 
 from staff import consolidation
-from staff.model_tiers import validate_role_tier
 
 if TYPE_CHECKING:
     from staff.dispatch_bundle import DispatchBundle
@@ -52,6 +54,10 @@ class RunRequest:
     dispatch_origin: str = ""
     # Barb lane dispatch: skip per-role repo allowlist when planning (#4117).
     barb_bypass_role_repos: bool = False
+    # When true, refuse explicit non-read-only providers instead of failover substitution (#4452).
+    strict_provider: bool = False
+    # Hub authority: forwarded run must stay code-read-only even if this node's role copy is stale (#4452).
+    authority_code_read_only: bool = False
 
     def __post_init__(self) -> None:
         if self.head_ref and (not _SAFE_BRANCH.match(self.head_ref) or ".." in self.head_ref or not self.repo):
@@ -111,6 +117,8 @@ class RunPlan:
     lessons_tokens: int = 0
     execution_mode: str = "local"
     cloud_stdin: str = ""
+    requested_provider: str | None = None
+    substitution_reason: str | None = None
 
     @property
     def strategy_mode(self) -> str:
@@ -123,6 +131,10 @@ class RunPlan:
     @property
     def issue_number(self) -> str:
         return self.target_ref.lstrip("#") if self.target_kind == "issue" else ""
+
+    def derive(self, **overrides: Any) -> RunPlan:
+        """Copy this plan, applying only the fields that change on retry/failover (#4259)."""
+        return derive_run_plan(self, **overrides)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -150,4 +162,42 @@ class RunPlan:
             "skipped_lesson_ids": dict(self.skipped_lesson_ids),
             "lessons_tokens": self.lessons_tokens,
             "execution_mode": self.execution_mode,
+            **(
+                {"requested_provider": self.requested_provider, "substitution_reason": self.substitution_reason}
+                if self.substitution_reason
+                else {}
+            ),
         }
+
+
+def _run_plan_field_default(fld: Any) -> Any:
+    if fld.default is not MISSING:
+        return fld.default
+    if fld.default_factory is not MISSING:
+        return fld.default_factory()
+    msg = f"RunPlan field {fld.name!r} has no default"
+    raise TypeError(msg)
+
+
+def _is_unset_mock(value: object) -> bool:
+    return isinstance(value, (MagicMock, Mock))
+
+
+def derive_run_plan(plan: object, **overrides: Any) -> RunPlan:
+    """Derive a :class:`RunPlan` from a plan or any legacy plan-shaped caller object (#4259)."""
+    if isinstance(plan, RunPlan):
+        return replace(plan, **overrides)
+    values: dict[str, Any] = {}
+    for fld in fields(RunPlan):
+        if fld.name in overrides:
+            continue
+        if hasattr(plan, fld.name):
+            val = getattr(plan, fld.name)
+            values[fld.name] = _run_plan_field_default(fld) if _is_unset_mock(val) else val
+        else:
+            values[fld.name] = _run_plan_field_default(fld)
+    values.update(overrides)
+    argv = values.get("argv")
+    if not isinstance(argv, list):
+        values["argv"] = list(argv or [])
+    return RunPlan(**values)

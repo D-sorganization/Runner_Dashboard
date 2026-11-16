@@ -211,7 +211,7 @@ def _unit_has_safe_stop_contract(unit: str) -> bool:
     return True
 
 
-def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
+def _stop_unit(unit: str, *, reason: str = "host overloaded", force: bool = False) -> bool:
     """Stop *unit* via systemd, respecting DRY_RUN mode.
 
     Returns True on success (or in dry-run), False if systemctl reports failure.
@@ -237,7 +237,7 @@ def _stop_unit(unit: str, *, reason: str = "host overloaded") -> bool:
     # Import lazily: busy detection reuses this module's state/workdir helpers.
     from autoscaler_busy import _runner_is_busy
 
-    if _runner_is_busy(unit):
+    if not force and _runner_is_busy(unit):
         log.info("Refusing to stop %s: busy or idleness could not be confirmed", unit)
         return False
     # Issue #935: stop with ``--no-block``. The #640/#679 drain contract lets a

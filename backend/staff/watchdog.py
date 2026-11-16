@@ -103,6 +103,7 @@ class StaffWatchdog:
         heartbeat_interval: float = 60.0,
         grace_period: float = 3.0,
         check_interval: float = 0.2,
+        orphan_grace_seconds: float | None = None,
         time_fn: Callable[[], float] = time.monotonic,
         now_iso_fn: Callable[[], str] = _now,
     ) -> None:
@@ -128,6 +129,13 @@ class StaffWatchdog:
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
+        self._leader_exit_at: float | None = None
+        self._tracked_pids: set[int] = set()
+        self.orphan_grace_seconds = (
+            float(orphan_grace_seconds)
+            if orphan_grace_seconds is not None
+            else float(os.environ.get("STAFF_ORPHAN_GRACE_SECONDS", "5.0"))
+        )
 
     def start(self) -> None:
         now = self._time_fn()
@@ -153,9 +161,38 @@ class StaffWatchdog:
         with self._lock:
             self.last_output_at = now
 
+    def _snapshot_child_pids(self) -> set[int]:
+        pid = self.proc.pid
+        if pid is None or pid <= 0 or psutil is None:
+            return set()
+        try:
+            parent = psutil.Process(pid)
+            return {parent.pid, *(c.pid for c in parent.children(recursive=True))}
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            alive = {p for p in self._tracked_pids if psutil.pid_exists(p)}
+            return alive
+
+    def _any_tracked_process_alive(self) -> bool:
+        if psutil is None:
+            return False
+        return any(psutil.pid_exists(pid) for pid in self._tracked_pids)
+
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
-            if self.proc.poll() is not None:
+            now = self._time_fn()
+            leader_exited = self.proc.poll() is not None
+            if not leader_exited:
+                self._tracked_pids = self._snapshot_child_pids()
+            elif self._any_tracked_process_alive():
+                if self._leader_exit_at is None:
+                    self._leader_exit_at = now
+                if now - self._leader_exit_at > self.orphan_grace_seconds:
+                    self._handle_expiry(
+                        reason="stalled",
+                        msg="leader exited but child processes remained; terminated process group",
+                    )
+                    break
+            elif leader_exited:
                 break
 
             now = self._time_fn()
@@ -201,6 +238,9 @@ class StaffWatchdog:
         )
         try:
             self.store.append_event(self.run_id, "heartbeat", payload)
+            from dispatch_queue_link import touch_run_session  # noqa: PLC0415
+
+            touch_run_session(self.run_id)
         except Exception as exc:  # noqa: BLE001
             log.warning("Failed to record heartbeat event for run %s: %s", self.run_id, exc)
 
@@ -216,9 +256,12 @@ class StaffWatchdog:
             self.failure_class = "unkillable"
             self.error_message = unkillable_msg
             self.store.append_event(self.run_id, "error", unkillable_msg)
-            self.store.update_run(
+            from staff.run_status import RunStatus, transition_to
+
+            transition_to(
+                self.store,
                 self.run_id,
-                status="failed",
+                RunStatus.FAILED,
                 failure_class="unkillable",
                 error=unkillable_msg,
                 ended_at=self._now_iso_fn(),

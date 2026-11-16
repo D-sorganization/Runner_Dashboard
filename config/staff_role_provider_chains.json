@@ -1,0 +1,49 @@
+{
+  "schema_version": "staff-role-provider-chains.v1",
+  "approved_2026_11_13": true,
+  "provider_models": {
+    "codex": "gpt-6.1-sol",
+    "claude": "claude-opus-5-5",
+    "cursor-agent": null,
+    "antigravity": "gemini-3.8-flash-high"
+  },
+  "roles": {
+    "code-reviewer": ["codex", "claude", "cursor-agent"],
+    "issue-remediator": ["claude", "codex", "cursor-agent"],
+    "ad-hoc": ["claude", "codex", "cursor-agent"],
+    "mad-scientist": ["claude", "codex", "cursor-agent"],
+    "pr-remediator": ["codex", "cursor-agent", "claude"],
+    "test-hygiene": ["codex", "cursor-agent", "claude"],
+    "chief-architect": ["claude", "codex", "cursor-agent"],
+    "fleet-critic": ["claude", "codex", "cursor-agent"],
+    "cartographer": ["claude", "codex", "cursor-agent"],
+    "pragmatic-programmer": ["claude", "codex", "cursor-agent"],
+    "product-owner": ["claude", "codex", "cursor-agent"],
+    "pm-upstreamdrift": ["claude", "codex", "cursor-agent"],
+    "pm-affinedrift": ["claude", "codex", "cursor-agent"],
+    "pm-gasification": ["claude", "codex", "cursor-agent"],
+    "pm-sidekick": ["claude", "codex", "cursor-agent"],
+    "night-watch": ["codex", "claude", "cursor-agent"],
+    "sanitation": ["codex", "claude", "cursor-agent"],
+    "maintenance": ["codex", "claude", "cursor-agent"],
+    "fleet-curator": ["codex", "claude", "cursor-agent"],
+    "bean-counter": ["codex", "claude", "cursor-agent"],
+    "postman": ["codex", "claude", "cursor-agent"],
+    "fleet-watch": ["claude", "codex", "cursor-agent"],
+    "librarian": ["claude", "codex", "cursor-agent"],
+    "board-secretary": ["claude", "codex", "cursor-agent"],
+    "project-steward": ["claude", "codex", "cursor-agent"],
+    "disciple": ["claude", "codex", "cursor-agent"],
+    "vision-quest": ["claude", "codex", "cursor-agent"],
+    "research-scout": ["codex", "claude", "antigravity"],
+    "oss-scout": ["codex", "claude", "antigravity"],
+    "tooling-scout": ["codex", "claude", "antigravity"]
+  },
+  "unchanged_roles": ["barb", "bob", "fleet-dispatcher", "expert-panel", "rd-barb"],
+  "antigravity_restricted_repo_bases": [
+    "Gasification_Model",
+    "Repository_Management",
+    "Tools_Private",
+    "work_private"
+  ]
+}

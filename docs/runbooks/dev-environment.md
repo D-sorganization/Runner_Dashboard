@@ -21,7 +21,7 @@ Open http://localhost:8321.
 | ---------- | ----------------------------------------------------------------------- |
 | `--port N` | Bind to port `N` (default `8321`).                                      |
 | `--host H` | Bind to host/interface `H` (default `127.0.0.1`).                       |
-| `--bg`     | Run in the background, log to `/tmp/runner-dashboard.log`.              |
+| `--bg`     | Daemonize, write `./.runner-dashboard.pid`, health-check `/api/health`, log to `./.runner-dashboard.log`. |
 | `--reload` | Hot-reload via `uvicorn --reload --reload-dir backend/`.                |
 | `--mock`   | Sets `DASHBOARD_MOCK_MODE=1` for fixture-backed GH calls (wiring TODO). |
 | `--help`   | Print usage and exit.                                                   |
@@ -47,4 +47,4 @@ Open http://localhost:8321.
 ./stop-dashboard.sh
 ```
 
-Or, if started with `--bg`, `kill` the PID printed at startup.
+If started with `--bg`, prefer `./stop-dashboard.sh` (reads the pid file and verifies process identity).

@@ -21,17 +21,27 @@ if str(_BACKEND_DIR) not in sys.path:
 
 import health  # noqa: E402
 import server  # noqa: E402
+from identity import Principal, require_scope  # noqa: E402
+
+_DRAIN_HEADERS = {"X-Requested-With": "XMLHttpRequest"}
+_ADMIN = Principal(id="test-admin", type="bot", name="Test Admin", roles=["admin"])
+
+
+def _activate_drain(client: TestClient) -> None:
+    assert client.post("/_drain", headers=_DRAIN_HEADERS).status_code == 200
 
 
 @pytest.fixture
 def loopback_client(monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
     """Exercise the mounted server app without starting its lifespan tasks."""
     monkeypatch.setattr(server, "_drain_mode", False)
+    server.app.dependency_overrides[require_scope("admin")] = lambda: _ADMIN
     client = TestClient(server.app, client=("127.0.0.1", 43120), raise_server_exceptions=False)
     try:
         yield client
     finally:
         client.close()
+        server.app.dependency_overrides.pop(require_scope("admin"), None)
 
 
 @contextmanager
@@ -67,7 +77,7 @@ def test_drain_rejects_new_mutations_before_handler_side_effects(loopback_client
         assert effects == [method]
         effects.clear()
 
-        assert loopback_client.post("/_drain").status_code == 200
+        _activate_drain(loopback_client)
 
         response = loopback_client.request(method, "/__test_drain_mutation")
 
@@ -81,7 +91,7 @@ def test_drain_leaves_diagnostics_available_and_marks_readiness_unready(
     mock_aggregate = AsyncMock(return_value=(200, {"status": "ok", "checks": {}}))
     monkeypatch.setattr(health, "aggregate", mock_aggregate)
 
-    assert loopback_client.post("/_drain").status_code == 200
+    _activate_drain(loopback_client)
 
     ready = loopback_client.get("/readyz")
     live = loopback_client.get("/livez")
@@ -99,7 +109,7 @@ def test_drain_keeps_get_and_head_diagnostic_methods_available(loopback_client: 
         return Response(content="ok")
 
     with _mounted_probe("/__test_drain_diagnostic", methods=["GET", "HEAD", "OPTIONS"], action=diagnostic):
-        assert loopback_client.post("/_drain").status_code == 200
+        _activate_drain(loopback_client)
         get_response = loopback_client.get("/__test_drain_diagnostic")
         head_response = loopback_client.head("/__test_drain_diagnostic")
         options_response = loopback_client.options("/__test_drain_diagnostic")
@@ -111,22 +121,23 @@ def test_drain_keeps_get_and_head_diagnostic_methods_available(loopback_client: 
 
 
 def test_repeated_loopback_drain_is_safe(loopback_client: TestClient) -> None:
-    first = loopback_client.post("/_drain")
-    second = loopback_client.post("/_drain")
+    first = loopback_client.post("/_drain", headers=_DRAIN_HEADERS)
+    second = loopback_client.post("/_drain", headers=_DRAIN_HEADERS)
 
     assert first.status_code == second.status_code == 200
     assert first.json() == second.json() == {"status": "draining"}
 
 
 @pytest.mark.parametrize("initial_state", [False, True])
-def test_non_loopback_drain_request_keeps_forbidden_response_and_state(
+def test_non_loopback_drain_without_auth_keeps_state(
     monkeypatch: pytest.MonkeyPatch, initial_state: bool
 ) -> None:
     client = TestClient(server.app, client=("10.0.0.5", 43120), raise_server_exceptions=False)
     monkeypatch.setattr(server, "_drain_mode", initial_state)
+    monkeypatch.delenv("DASHBOARD_LOOPBACK_AUTH", raising=False)
     try:
-        response = client.post("/_drain")
-        assert response.status_code == 403
+        response = client.post("/_drain", headers=_DRAIN_HEADERS)
+        assert response.status_code == 401
         assert server._drain_mode is initial_state
     finally:
         client.close()
@@ -147,6 +158,7 @@ async def test_request_admitted_before_drain_finishes_but_later_mutation_is_reje
         return {"status": "finished"}
 
     server._drain_mode = False
+    server.app.dependency_overrides[require_scope("admin")] = lambda: _ADMIN
     admitted: asyncio.Task[httpx.Response] | None = None
     later: asyncio.Task[httpx.Response] | None = None
     completed: httpx.Response | None = None
@@ -159,7 +171,7 @@ async def test_request_admitted_before_drain_finishes_but_later_mutation_is_reje
             try:
                 admitted = asyncio.create_task(client.post("/__test_drain_slow_mutation"))
                 await asyncio.wait_for(entered.wait(), timeout=2)
-                drain = await client.post("/_drain")
+                drain = await client.post("/_drain", headers=_DRAIN_HEADERS)
                 later = asyncio.create_task(client.post("/__test_drain_slow_mutation"))
                 later_done, _ = await asyncio.wait({later}, timeout=2)
                 release.set()
@@ -168,6 +180,7 @@ async def test_request_admitted_before_drain_finishes_but_later_mutation_is_reje
             finally:
                 release.set()
                 server._drain_mode = False
+                server.app.dependency_overrides.pop(require_scope("admin"), None)
                 active_tasks = [task for task in (admitted, later) if task is not None]
                 if active_tasks:
                     await asyncio.wait_for(asyncio.gather(*active_tasks, return_exceptions=True), timeout=2)

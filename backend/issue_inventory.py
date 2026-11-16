@@ -19,6 +19,7 @@ import re
 from typing import Any
 
 from cache_utils import Cache
+from github_pagination import decode_concatenated_json, merge_page_chunks
 
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 datetime = _dt_mod.datetime
@@ -229,15 +230,15 @@ async def fetch_repo_issues(full_name: str, state: str = "open") -> tuple[list[d
     """
     gh_state = "open" if state == "open" else "all"
     code, stdout, stderr = await _run_gh(
-        ["api", f"/repos/{full_name}/issues?state={gh_state}&per_page=100"],
-        timeout=30,
+        ["api", "--paginate", f"/repos/{full_name}/issues?state={gh_state}&per_page=100"],
+        timeout=60,
     )
     if code != 0:
         msg = f"{full_name}: gh exit {code}: {stderr.strip()[:200]}"
         log.warning("issue_inventory: %s", msg)
         return [], msg
     try:
-        raw = json.loads(stdout)
+        raw = merge_page_chunks(decode_concatenated_json(stdout))
     except (json.JSONDecodeError, ValueError) as exc:
         msg = f"{full_name}: JSON decode error: {exc}"
         log.warning("issue_inventory: %s", msg)

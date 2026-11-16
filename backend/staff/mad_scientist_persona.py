@@ -49,9 +49,9 @@ MAD_SCIENTIST_SCHEDULE_ENTRIES: Mapping[str, str] = {
 # override) -- preserved as-is rather than the 4-step chain with model overrides used by the
 # invented personas, which do not have a prior real role file to match.
 MAD_SCIENTIST_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
-    FailoverStep("claude", None),
-    FailoverStep("codex", None),
-    FailoverStep("antigravity", None),
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
 )
 
 
@@ -79,7 +79,7 @@ def mad_scientist_role_data() -> dict[str, Any]:
             "(lab:promote). Schedule: 0 22 * * 2 (weekly_experiment, Tuesday 10 PM) in "
             "America/Los_Angeles."
         ),
-        "providers": ["claude", "codex", "antigravity"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "default",
         "schedule": "0 22 * * 2",
         "window": None,

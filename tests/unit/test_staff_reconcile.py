@@ -14,7 +14,13 @@ import pytest
 from fleet_events import EventStore
 from staff import runner as runner_mod
 from staff import store as store_mod
-from staff.reconcile import reconcile_executing_proposals, reconcile_orphaned_runs
+from staff.reconcile import (
+    pid_belongs_to_run,
+    reconcile_executing_proposals,
+    reconcile_orphaned_runs,
+    rearm_pending_retries,
+    terminate_pid_for_run,
+)
 from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore
 
@@ -101,10 +107,13 @@ def test_active_runs_reconciled_to_failed_orphaned(temp_store: RunStore, staff_r
 
 def test_child_pid_terminated(temp_store: RunStore, staff_runner: runner_mod.StaffRunner) -> None:
     """If a child PID is recorded on an active run, it is terminated upon reconciliation."""
+    from datetime import UTC, datetime
+
     proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
     try:
         assert proc.poll() is None  # alive
-        _make_run(temp_store, "run-proc", "running", pid=proc.pid)
+        started = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        _make_run(temp_store, "run-proc", "running", pid=proc.pid, started_at=started)
 
         reconcile_orphaned_runs(staff_runner, event_store=EventStore())
 
@@ -507,3 +516,140 @@ def test_reconcile_executing_proposals_marks_failed_without_retry(
     assert reconcile_executing_proposals(conv_store) == []
     msgs_after = conv_store.list_messages(th.id)
     assert len(msgs_after) == len(msgs)
+
+
+def test_requeue_queued_preserves_plain_queued_runs(
+    temp_store: RunStore, staff_runner: runner_mod.StaffRunner
+) -> None:
+    """Queued-not-started runs survive startup reconcile when requeue_queued is enabled (#4256)."""
+    _make_run(temp_store, "run-queued", "queued")
+    reconciled = reconcile_orphaned_runs(staff_runner, event_store=EventStore(), requeue_queued=True)
+    assert "run-queued" not in reconciled
+    rec = temp_store.get_run("run-queued")
+    assert rec is not None
+    assert rec.status == "queued"
+
+
+def test_rearm_pending_retries_schedules_due_attempt(
+    temp_store: RunStore, staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Backoff retries kept in queued state are re-armed after restart (#4256 D-01)."""
+    from datetime import UTC, datetime, timedelta
+
+    scheduled: list[tuple[str, float]] = []
+
+    def _capture(_runner: runner_mod.StaffRunner, rec: RunRecord, _plan: object, delay: float) -> None:
+        scheduled.append((rec.id, delay))
+
+    monkeypatch.setattr("staff.retry._schedule", _capture)
+    from staff.plan import RunPlan
+
+    def _fake_plan(_runner: runner_mod.StaffRunner, rec: RunRecord, _role: RoleSpec) -> RunPlan:
+        return RunPlan(
+            role=rec.role,
+            provider=rec.provider,
+            model=rec.model,
+            repo=rec.repo,
+            target_kind=rec.target_kind,
+            target_ref=rec.target_ref,
+            operator_prompt="",
+            prompt=rec.prompt,
+            argv=["echo", "retry"],
+            branch="staff/retry",
+            lease_ritual=False,
+        )
+
+    monkeypatch.setattr("staff.retry.retry_plan", _fake_plan)
+
+    past_due = (datetime.now(UTC) - timedelta(seconds=30)).isoformat().replace("+00:00", "Z")
+    rec = RunRecord(
+        id="run-pending-retry",
+        role="worker",
+        provider="fake",
+        model=None,
+        machine="test-node",
+        repo="Tools",
+        target_kind="prompt",
+        target_ref="",
+        prompt="hello",
+        status="queued",
+        retry_of="run-root",
+        attempt=2,
+        next_attempt_at=past_due,
+    )
+    temp_store.create_run(rec)
+
+    worker = RoleSpec(
+        name="worker",
+        title="Worker",
+        instructions="Work",
+        providers=("fake",),
+        schedule="",
+        window={"start": "00:00", "end": "23:59"},
+        repos=("Tools",),
+    )
+    runner = runner_mod.StaffRunner(
+        store=temp_store,
+        machine="test-node",
+        roles_loader=lambda: {"worker": worker},
+    )
+
+    rearmed = rearm_pending_retries(runner)
+    assert rearmed == ["run-pending-retry"]
+    assert scheduled and scheduled[0][0] == "run-pending-retry"
+    assert scheduled[0][1] == 0.0
+
+
+def test_terminate_pid_for_run_skips_failed_identity_check(
+    temp_store: RunStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reconcile must not SIGKILL a PID that fails identity verification (#4256 D-04)."""
+    killed: list[int] = []
+
+    def _no_kill(_pid: int | None) -> None:
+        if _pid is not None:
+            killed.append(_pid)
+
+    monkeypatch.setattr("staff.reconcile.terminate_pid", _no_kill)
+    rec = RunRecord(
+        id="run-x",
+        role="worker",
+        provider="fake",
+        model=None,
+        machine="test-node",
+        repo="Tools",
+        target_kind="prompt",
+        target_ref="",
+        prompt="x",
+        status="running",
+        pid=424242,
+        started_at="2026-09-24T12:05:00Z",
+    )
+    with patch("staff.reconcile.pid_belongs_to_run", return_value=False):
+        terminate_pid_for_run(rec)
+    assert killed == []
+
+
+def test_pid_belongs_to_run_matches_workdir_in_cmdline() -> None:
+    rec = RunRecord(
+        id="run-y",
+        role="worker",
+        provider="fake",
+        model=None,
+        machine="test-node",
+        repo="Tools",
+        target_kind="prompt",
+        target_ref="",
+        prompt="y",
+        status="running",
+        workdir="/worktrees/staff-run-y",
+    )
+    proc = type(
+        "Proc",
+        (),
+        {"create_time": lambda self: 1_727_180_710.0, "cmdline": lambda self: ["claude", "/worktrees/staff-run-y"]},
+    )()
+    with patch("staff.reconcile.psutil") as mock_psutil:
+        mock_psutil.pid_exists.return_value = True
+        mock_psutil.Process.return_value = proc
+        assert pid_belongs_to_run(rec, 99) is True

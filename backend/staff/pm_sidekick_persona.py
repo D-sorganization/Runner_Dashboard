@@ -43,9 +43,8 @@ PM_SIDEKICK_SCHEDULE_ENTRIES: Mapping[str, str] = {
 
 PM_SIDEKICK_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
     FailoverStep("claude", "claude-opus-5-5"),
-    FailoverStep("antigravity", "gemini-3.8-flash-high"),
-    FailoverStep("cursor-agent", None),
     FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
 )
 
 
@@ -66,7 +65,7 @@ def pm_sidekick_role_data() -> dict[str, Any]:
             "priority digest) in America/Los_Angeles. Message Barb via persona_notify with open "
             "Sidekick blockers. Never touches Sidekick packaging; that hold stays separate."
         ),
-        "providers": ["claude", "antigravity", "cursor-agent", "codex"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "claude-opus-5-5",
         "schedule": "0 9 * * 1-5",
         "window": None,

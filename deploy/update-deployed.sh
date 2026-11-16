@@ -134,8 +134,10 @@ else
         mkdir -p "$DEPLOY_DIR/deploy"
         cp "$REPO/deploy/loopback_bind_guard.py" "$DEPLOY_DIR/deploy/loopback_bind_guard.py"
         cp "$REPO/deploy/hub_tailnet_serve.py" "$DEPLOY_DIR/deploy/hub_tailnet_serve.py"
+        cp "$REPO/deploy/host-metrics-probe.py" "$DEPLOY_DIR/deploy/host-metrics-probe.py"
         chmod 0755 "$DEPLOY_DIR/deploy/loopback_bind_guard.py" "$DEPLOY_DIR/deploy/hub_tailnet_serve.py"
-        ok  "hub_tailnet_serve.py deployed"
+        chmod 0755 "$DEPLOY_DIR/deploy/host-metrics-probe.py"
+        ok  "hub_tailnet_serve.py + host-metrics-probe.py deployed"
     fi
 
     info "Copying frontend..."
@@ -298,6 +300,19 @@ refresh_maintenance_assets() {
 if [[ "$DEPLOY_SCOPE" == "system" ]]; then
     refresh_maintenance_assets
 fi
+
+# ── Host metrics cache probe timer (#4309) ───────────────────────────────────
+install_host_metrics_probe_timer() {
+    local installer; installer="$(dirname "$0")/install-host-metrics-probe.sh"
+    [[ -f "$installer" ]] || { warn "install-host-metrics-probe.sh not found; skipping"; return 0; }
+    if dry_run "bash $installer"; then
+        return 0
+    fi
+    # DEPLOY_DIR is where host-metrics-probe.py is deployed; pass through for non-default layouts.
+    RUNNER_DASHBOARD_DEPLOY_DIR="${DEPLOY_DIR}" \
+        bash "$installer" || warn "host-metrics-probe install failed — run: bash $installer"
+}
+install_host_metrics_probe_timer
 
 # ── Health-gate: verify service came up ──────────────────────────────────────
 _check_health() {

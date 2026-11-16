@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, time
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
-from host_metrics import get_host_metrics_provider
+from host_metrics import get_host_metrics_provider, normalize_host_key
 
 HealthLevel = Literal["green", "amber", "red"]
 
@@ -15,12 +14,8 @@ _DEFAULT_CAPS = {"huba": 6, "nodeb": 6, "nodea": 8}
 
 
 def _default_cap(host: str) -> int:
-    token = _normalize_host(host)
+    token = normalize_host_key(host)
     return _DEFAULT_CAPS.get(token, 16)
-
-
-def _normalize_host(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
 
 def _metric_percent(system: dict[str, Any], key: str, nested: str | None = None) -> float | None:
@@ -111,13 +106,21 @@ def build_host_health_gauge(host: str, system: dict[str, Any]) -> dict[str, Any]
     cap = int(capacity.get("max_runners") or _default_cap(host))
     override = state.get("target_override") if isinstance(state, dict) else None
     metrics = get_host_metrics_provider().read_cached(host)
-    cpu = _metric_percent(metrics or system, "cpu")
-    mem = _metric_percent(metrics or system, "memory")
-    if mem is None and isinstance(system.get("memory"), dict):
-        mem = _metric_percent(system, "memory")
-    if cpu is None and isinstance(system.get("cpu"), dict):
-        cpu = _metric_percent(system, "cpu")
-    level = _pick_level(cpu, mem, busy, online, desired)
+    cache_untrusted = isinstance(metrics, dict) and metrics.get("source") == "cache" and metrics.get("status") != "ok"
+    if cache_untrusted:
+        cpu = None
+        mem = None
+    else:
+        cpu = _metric_percent(metrics or system, "cpu")
+        mem = _metric_percent(metrics or system, "memory")
+        if mem is None and isinstance(system.get("memory"), dict):
+            mem = _metric_percent(system, "memory")
+        if cpu is None and isinstance(system.get("cpu"), dict):
+            cpu = _metric_percent(system, "cpu")
+    if cache_untrusted:
+        level: HealthLevel = "amber"
+    else:
+        level = _pick_level(cpu, mem, busy, online, desired)
     until_hint = (override or {}).get("until") if isinstance(override, dict) else None
     return {
         "level": level,
@@ -128,7 +131,9 @@ def build_host_health_gauge(host: str, system: dict[str, Any]) -> dict[str, Any]
         "cap": cap,
         "cpu_percent": cpu,
         "memory_percent": mem,
-        "metrics_source": "cache" if metrics else "system",
+        "metrics_source": "cache"
+        if isinstance(metrics, dict) and metrics.get("source") == "cache"
+        else ("cache" if metrics else "system"),
         "schedule_window": _active_schedule_window(capacity or {}),
         "target_override": override,
         "suggested_action": _suggested_action(level, desired, cap, until_hint),

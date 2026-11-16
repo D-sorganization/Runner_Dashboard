@@ -5,8 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from staff import redaction
 from staff.redaction import redact_sensitive_content
+
+from staff import redaction
 
 _GHS_TOKEN_RE = re.compile(r"\bghs_[A-Za-z0-9_]{20,254}\b")
 _SECRET_PATTERNS = (*[getattr(redaction, k) for k in dir(redaction) if k.endswith("_RE")], _GHS_TOKEN_RE)

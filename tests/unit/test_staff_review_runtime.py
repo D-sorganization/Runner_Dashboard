@@ -91,10 +91,12 @@ def test_detect_author_provider_matches_on_branch_and_skips_reviewer_runs(store:
 # ── defect 2: the role's providers and the trailer fallback reach selection ──
 @pytest.mark.unit
 def test_prepare_selects_from_the_code_reviewer_roster_providers() -> None:
-    params = prepare_review_params({"repo": "Runner_Dashboard", "pr": 5}, roster=_roster("gemini", "claude"))
+    params = prepare_review_params(
+        {"repo": "Runner_Dashboard", "pr": 5}, roster=_roster("codex", "claude", "cursor-agent")
+    )
 
     assert params["role"] == "code-reviewer"
-    assert params["provider"] == "gemini"
+    assert params["provider"] == "codex"
 
 
 @pytest.mark.unit
@@ -335,8 +337,10 @@ def _review_in_subprocess(db_path: str) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
     original_already_reviewed = review._already_reviewed
 
-    def traced_already_reviewed(store: Any, repo: str, pr_number: int, role: str = review.REVIEWER_ROLE) -> bool:
-        already_reviewed = original_already_reviewed(store, repo, pr_number, role)
+    def traced_already_reviewed(
+        store: Any, repo: str, pr_number: int, role: str = review.REVIEWER_ROLE, **kwargs: Any
+    ) -> bool:
+        already_reviewed = original_already_reviewed(store, repo, pr_number, role, **kwargs)
         with store._lock:
             rows = store._conn.execute(
                 "SELECT id, status, retry_of FROM runs WHERE role = ? AND repo = ? AND target_ref = ? ORDER BY id",

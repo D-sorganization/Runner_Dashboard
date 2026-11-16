@@ -17,6 +17,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/dashboard-process.sh
+source "${SCRIPT_DIR}/scripts/dashboard-process.sh"
 BACKEND_DIR="${SCRIPT_DIR}/backend"
 VENV_DIR="${SCRIPT_DIR}/.venv"
 # Issue #945: Python deps live in the repo-root requirements.txt, not backend/.
@@ -26,6 +28,9 @@ REQUIREMENTS_FILE="${SCRIPT_DIR}/requirements.txt"
 # repo-root dist/, not frontend/dist/ (#3177).
 DIST_DIR="${SCRIPT_DIR}/dist"
 INSTALL_STAMP="${VENV_DIR}/.installed-stamp"
+PID_FILE="${RUNNER_DASHBOARD_PID_FILE:-${SCRIPT_DIR}/.runner-dashboard.pid}"
+LOG_FILE="${RUNNER_DASHBOARD_LOG_FILE:-${SCRIPT_DIR}/.runner-dashboard.log}"
+START_TIMEOUT_S="${RUNNER_DASHBOARD_START_TIMEOUT_S:-30}"
 PORT="${DASHBOARD_PORT:-8321}"
 HOST="${DASHBOARD_HOST:-127.0.0.1}"
 BACKGROUND=false
@@ -144,11 +149,40 @@ run_server() {
 }
 
 if [[ "$BACKGROUND" == "true" ]]; then
-    nohup bash -c "$(declare -f run_server); run_server" \
-        > /tmp/runner-dashboard.log 2>&1 &
-    echo "Dashboard started in background (PID: $!)"
-    echo "Logs: /tmp/runner-dashboard.log"
-    echo "Stop with: kill $!"
+    if [[ -f "${PID_FILE}" ]]; then
+        existing_pid="$(tr -d '[:space:]' < "${PID_FILE}")"
+        if [[ -n "${existing_pid}" ]] && dashboard_pid_is_dashboard "${existing_pid}" "${SCRIPT_DIR}"; then
+            echo "[ERROR] Dashboard already running (PID: ${existing_pid})" >&2
+            exit 1
+        fi
+        rm -f "${PID_FILE}"
+    fi
+
+    if [[ "$RELOAD" == "true" ]]; then
+        nohup python -m uvicorn server:app \
+            --host "${HOST}" \
+            --port "${PORT}" \
+            --reload \
+            --reload-dir "${BACKEND_DIR}" \
+            --app-dir "${BACKEND_DIR}" \
+            >>"${LOG_FILE}" 2>&1 &
+    else
+        nohup python "${BACKEND_DIR}/server.py" >>"${LOG_FILE}" 2>&1 &
+    fi
+    child_pid=$!
+    echo "${child_pid}" > "${PID_FILE}"
+
+    if ! wait_for_dashboard_health "${HOST}" "${PORT}" "${START_TIMEOUT_S}"; then
+        echo "[ERROR] Dashboard did not become healthy within ${START_TIMEOUT_S}s" >&2
+        echo "        Log: ${LOG_FILE}" >&2
+        kill "${child_pid}" 2>/dev/null || true
+        rm -f "${PID_FILE}"
+        exit 1
+    fi
+
+    echo "Dashboard started in background (PID: ${child_pid})"
+    echo "Logs: ${LOG_FILE}"
+    echo "Stop with: ./stop-dashboard.sh"
 else
     run_server
 fi

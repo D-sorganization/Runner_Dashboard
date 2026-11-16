@@ -34,8 +34,8 @@ def test_issue_remediator_yaml_passes_schema_validation_and_loads_into_roster(tm
     assert spec_raw["permissions"]["merge"] is False
     assert spec_raw["window"] == {"start": "22:00", "end": "06:00"}
     assert spec_raw["reports_to"] == "night-watch" and spec_raw["surface"] == "dashboard"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity"]
-    assert "retry" not in spec_raw
+    assert spec_raw["providers"] == ["claude", "codex", "cursor-agent"]
+    assert "failover_chain" in spec_raw["retry"]
     clear_roles_cache()
     role = load_roles(tmp_path)["issue-remediator"]
     assert role.valid
@@ -52,9 +52,8 @@ def test_issue_remediator_rd_barb_provider_chain_has_no_cursor_agent_step() -> N
     # rd-barb (the one adapter that decides "which CLI runs next") relies on the static
     # PERSONA_ROLE_CHAINS entry, matching the real file's 3-provider list (no cursor-agent).
     # rd_barb_provider.chain() defaults a bare claude head to "opus" when nothing overrides it.
-    assert rp.select({}, role="issue-remediator") == rp.Decision("claude", "opus", False)
-    expected_chain = (FailoverStep("claude", None), FailoverStep("codex", None), FailoverStep("antigravity", None))
-    assert rp.chain({}, role="issue-remediator") == (FailoverStep("claude", "opus"), *expected_chain[1:])
+    assert rp.select({}, role="issue-remediator") == rp.Decision("claude", "claude-opus-5-5", False)
+    assert rp.chain({}, role="issue-remediator") == ir.ISSUE_REMEDIATOR_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
     args = ["--role", "issue-remediator", "next", "--current", "claude", "--failure", "rate_limited"]
     rc = rp.main(args, config={}, notify=sent.append)

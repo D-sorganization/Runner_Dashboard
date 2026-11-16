@@ -41,9 +41,9 @@ NIGHT_WATCH_SCHEDULE_ENTRIES: Mapping[str, str] = {
 
 # Real staff/roles/night-watch.yml: 3 providers, "model: default" (no per-step override).
 NIGHT_WATCH_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
-    FailoverStep("claude", None),
-    FailoverStep("codex", None),
-    FailoverStep("antigravity", None),
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("cursor-agent", None),
 )
 
 NIGHT_WATCH_SUB_ROLES: tuple[str, ...] = ("issue-remediator", "pr-remediator", "sanitation", "cartographer")
@@ -74,7 +74,7 @@ def night_watch_role_data() -> dict[str, Any]:
             "hands complex work to PMs/Fleet-Dispatcher. Issue Remediator, PR Remediator, "
             "Sanitation and Cartographer run under Night Watch."
         ),
-        "providers": ["claude", "codex", "antigravity"],
+        "providers": ["codex", "claude", "cursor-agent"],
         "model": "default",
         "schedule": "0 22 * * *",
         "window": {"start": "22:00", "end": "06:00"},

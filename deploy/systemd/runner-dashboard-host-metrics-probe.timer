@@ -1,0 +1,12 @@
+[Unit]
+Description=Host metrics cache sampler (~30s, #4309)
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+AccuracySec=5s
+Persistent=true
+Unit=runner-dashboard-host-metrics-probe.service
+
+[Install]
+WantedBy=timers.target

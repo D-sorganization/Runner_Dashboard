@@ -42,9 +42,8 @@ PM_UPSTREAMDRIFT_SCHEDULE_ENTRIES: Mapping[str, str] = {
 
 PM_UPSTREAMDRIFT_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
     FailoverStep("claude", "claude-opus-5-5"),
-    FailoverStep("antigravity", "gemini-3.8-flash-high"),
-    FailoverStep("cursor-agent", None),
     FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("cursor-agent", None),
 )
 
 
@@ -66,7 +65,7 @@ def pm_upstreamdrift_role_data() -> dict[str, Any]:
             "never dispatches, opens PRs, or merges. Schedule: 0 9 * * 1-5 (ud_digest, weekday priority "
             "digest) in America/Los_Angeles. Message Barb via persona_notify with open UD blockers."
         ),
-        "providers": ["claude", "antigravity", "cursor-agent", "codex"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "claude-opus-5-5",
         "schedule": "0 9 * * 1-5",
         "window": None,

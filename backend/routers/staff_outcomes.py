@@ -15,7 +15,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from identity import Principal, require_scope
-from staff import outcomes, report_cards
 from staff.adapters import available_providers
 from staff.models_insights import (
     StaffBeanCounterResponse,
@@ -23,6 +22,8 @@ from staff.models_insights import (
     StaffReportCardsResponse,
 )
 from staff.runner import get_runner
+
+from staff import outcomes, report_cards
 
 log = logging.getLogger("dashboard.staff.outcomes")
 router = APIRouter(tags=["staff"])

@@ -333,6 +333,21 @@ def test_label_not_removed_while_non_terminal_or_shared() -> None:
 # ── scheduler ────────────────────────────────────────────────────────────────
 
 
+def test_scheduler_gate_refuses_closed_issue() -> None:
+    reason = claim_guard.scheduler_blocker(
+        REPO,
+        7,
+        None,
+        "issue-remediator",
+        fetch=lambda ep: (
+            {"number": 7, "state": "closed", "labels": []}
+            if "/issues/" in ep
+            else []
+        ),
+    )
+    assert reason and "issue_closed" in reason
+
+
 def test_scheduler_gate_skips_claimed_target() -> None:
     reason = claim_guard.scheduler_blocker(
         REPO, 7, None, "issue-remediator", fetch=lambda ep: _sync(ep, _issue("claim:codex"))

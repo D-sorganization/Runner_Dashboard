@@ -19,7 +19,7 @@ import tempfile
 import time
 from typing import TYPE_CHECKING
 
-from agent_principal_defaults import agent_token_files, merge_agent_principal_defaults
+from agent_principal_defaults import agent_token_files, merge_agent_principal_defaults, principals_lock
 from agent_token_health import current_token_record, token_health_report
 
 if TYPE_CHECKING:
@@ -79,7 +79,8 @@ def rotate_token(manager: IdentityManager, agent_id: str, *, expires_in_days: in
         agent_id, name=f"{_RECORD_NAME_PREFIX}{agent_id}.token", expires_in_days=expires_in_days
     )
     _write_token_file(path, raw_token)
-    merge_agent_principal_defaults(manager)
+    with principals_lock(manager):  # the merge writes principals in place (#4256)
+        merge_agent_principal_defaults(manager)
     log.info("agent token rotated for %s; prior token kept valid for a %d-day grace window", agent_id, GRACE_DAYS)
 
 

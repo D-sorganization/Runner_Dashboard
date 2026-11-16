@@ -19,6 +19,7 @@ class PollFinished(BaseException):
     [([35, 35, 35], []), ([80, 80, 80], []), ([80, 80, 80, 20, 10, 9], [9]), ([None, None, None], [None])],
 )
 def test_io_pressure_used_in_poll(monkeypatch, caplog, pressures, expected_starts):
+    monkeypatch.setattr(ra, "DEFAULT_POOL_MUTATE", True)
     caplog.set_level(logging.WARNING, logger="runner-autoscaler")
     current = [None]
     remaining = iter(pressures)
@@ -45,6 +46,9 @@ def test_io_pressure_used_in_poll(monkeypatch, caplog, pressures, expected_start
     monkeypatch.setattr(ra, "_lease_scale_down_guard", lambda: samp.LeaseScaleDownGuard())
     monkeypatch.setattr(ra, "_unit_is_active", lambda unit: False)
     monkeypatch.setattr(ra, "_runner_is_busy", lambda unit: False)
+    # #4393: the loop reads the shared staff run store; runs left active by earlier
+    # tests in the same process read as queued demand and started a runner under pressure.
+    monkeypatch.setattr(ra, "_queued_staff_runs_count", lambda: 0)
     monkeypatch.setattr(ra, "_get_scheduled_pool_desired", lambda pool, count: 1)
     monkeypatch.setattr(ra, "_is_start_allowed", lambda pool: True)
     monkeypatch.setattr(ra, "process_disk_full_cordon_tick", lambda *args, **kwargs: False)

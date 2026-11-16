@@ -13,7 +13,6 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from staff import conversation_proposals as _proposals
 from staff.audit import StaffAuditStore, record_audit
 from staff.barb_store import BarbAuthorityMixin
 from staff.conversation_migrations import CORE_MIGRATIONS, run_migrations
@@ -35,6 +34,8 @@ from staff.conversation_models import (
 from staff.redaction import redact_sensitive_content, redact_value
 from staff.store import default_db_path, first_touch_lock
 from staff.thread_helpers import StaleThreadEpochError
+
+from staff import conversation_proposals as _proposals
 
 __all__ = [
     "MESSAGE_AUTHOR_KINDS",

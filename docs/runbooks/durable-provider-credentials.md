@@ -51,6 +51,23 @@ If used as a provider, follow that CLI's **subscription / Google account** sign-
 - Ensure the systemd service drop-in permits reading and writing to `~/.grok` via `ReadWritePaths=%h/.grok`.
 - Distinct from Cursor-hosted Grok (`cursor-agent`), which runs through Cursor's own subscription seat without requiring a separate SuperGrok plan.
 
+## Qwen Code CLI (`qwen`) — Token Plan exception
+
+**Monthly Token Plan subscription (not pay-as-you-go):** Qwen Code authenticates with a QwenCloud **Token Plan** API key (`sk-sp-` prefix) against the OpenAI-compatible endpoint. This is a flat subscription allotment, not metered OpenAI billing.
+
+1. Install: `npm i -g @qwen-code/qwen-code@latest`
+2. Store the key in a root-only env file (example `/etc/runner-dashboard/qwen.env`):
+
+   ```bash
+   QWENCLOUD_TOKEN_PLAN_API_KEY=<sk-sp-token-plan-key>
+   OPENAI_BASE_URL=https://token-plan.maas.qwencloudapi.com/compatible-mode/v1
+   OPENAI_MODEL=qwen3.8-flash
+   ```
+
+   The staff adapter maps the plan key to `OPENAI_API_KEY` **only** in the `qwen` child process. Do not point a general `OPENAI_API_KEY` at pay-as-you-go OpenAI for fleet staff.
+
+3. Reference the file from the dashboard unit (`EnvironmentFile=`). Allow `ReadWritePaths=%h/.qwen` and ensure `qwen` is on `PATH` for the service user.
+
 ## Verification
 
 - Per-node: `GET /api/staff/board?local=1` → `provider_auth`.

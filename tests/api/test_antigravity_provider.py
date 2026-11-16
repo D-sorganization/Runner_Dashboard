@@ -192,13 +192,13 @@ def test_probe_antigravity_cli_installed_and_authenticated() -> None:
             "staff.cli_oauth_session.antigravity_oauth_session_alive",
             return_value=(True, "OAuth session active"),
         ),
-        patch("staff.quota.headroom", return_value=(True, "ok")),
     ):
         probe = _probe_antigravity_cli()
         assert probe["id"] == "antigravity"
         assert probe["installed"] is True
         assert probe["authenticated"] is True
-        assert probe["quota_available"] is True
+        assert probe["quota_status"] == "unknown"
+        assert probe["quota_available"] is None
         assert probe["status"] == "ready"
 
 
@@ -209,7 +209,6 @@ def test_probe_antigravity_cli_not_installed() -> None:
         patch("routers.credentials._find_binary", return_value=None),
         patch("routers.credentials._cli_login_file_present", return_value=False),
         patch("routers.credentials._env_present", return_value=False),
-        patch("staff.quota.headroom", return_value=(True, "ok")),
     ):
         probe = _probe_antigravity_cli()
         assert probe["installed"] is False
@@ -224,7 +223,6 @@ def test_probe_antigravity_cli_installed_not_authenticated() -> None:
         patch("routers.credentials._find_binary", return_value="/usr/local/bin/agy"),
         patch("routers.credentials._cli_login_file_present", return_value=False),
         patch("routers.credentials._env_present", return_value=False),
-        patch("staff.quota.headroom", return_value=(True, "ok")),
     ):
         probe = _probe_antigravity_cli()
         assert probe["installed"] is True
@@ -243,13 +241,14 @@ def test_probe_antigravity_cli_quota_exhausted() -> None:
             return_value=(True, "OAuth session active"),
         ),
         patch(
-            "staff.quota.headroom",
-            return_value=(False, "antigravity: plan limit reached"),
+            "staff.quota_reader.credential_probe_quota",
+            return_value=("known", True, "antigravity: plan limit reached"),
         ),
     ):
         probe = _probe_antigravity_cli()
         assert probe["installed"] is True
         assert probe["authenticated"] is True
+        assert probe["quota_status"] == "known"
         assert probe["quota_available"] is False
         assert probe["status"] == "quota_exhausted"
 
@@ -268,7 +267,6 @@ def test_provider_probe_availability_includes_antigravity() -> None:
             "staff.cli_oauth_session.antigravity_oauth_session_alive",
             return_value=(True, "OAuth session active"),
         ),
-        patch("staff.quota.headroom", return_value=(True, "ok")),
     ):
         res = probe_provider_availability()
         assert "antigravity" in res

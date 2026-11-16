@@ -1436,6 +1436,25 @@ def test_no_guard_function_exceeds_the_consumer_function_budget() -> None:
     assert too_long == []
 
 
+def test_arm_cli_refuses_when_match_head_commit_does_not_match(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(automerge_guard, "_current_head_sha", lambda *_a, **_k: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    code = automerge_guard._arm_cli(
+        "o/r",
+        5,
+        strategy="squash",
+        delete_branch=False,
+        arm_tier="agent",
+        dispatch_kind="",
+        repo_root=".",
+        match_head_commit="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        runner=FakeGh(),
+    )
+    assert code == 1
+    assert "head moved" in capsys.readouterr().out
+
+
 def test_guard_has_no_builtin_print_calls() -> None:
     """Consumers (Gasification_Model) ban builtin print() in scripts/; CLI
     output goes through one helper so the vendored file passes as-is."""

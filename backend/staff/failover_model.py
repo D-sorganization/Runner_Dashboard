@@ -7,6 +7,7 @@ from staff.model_resolution import resolve_staff_run_model_detail
 from staff.model_tiers import TIER_NAMES, TierName, model_for_provider_tier, normalize_tier
 from staff.plan import RunRequest
 from staff.provider_failover_config import FailoverStep, resolve_failover_chain
+
 from staff.roles import RoleSpec
 
 
@@ -22,6 +23,7 @@ def resolve_launch_model(
     adapter: ProviderAdapter,
     step: FailoverStep | None,
     active_tier: TierName,
+    trust_failover_step_model: bool = False,
 ) -> tuple[str | None, TierName]:
     """Resolve one chain step without carrying a primary-provider model across vendors."""
     base = role_base_tier(role)
@@ -63,6 +65,7 @@ def resolve_launch_model(
         provider_id=provider,
         adapter=adapter,
         role_tier=tier,
+        trust_failover_step_model=trust_failover_step_model and bool(step_model),
     )
     return resolved.model, resolved.tier
 

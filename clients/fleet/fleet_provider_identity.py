@@ -35,6 +35,8 @@ def infer_fleet_agent() -> str | None:
         return "gemini"
     if _truthy("AGY_CLI") or os.environ.get("ANTIGRAVITY_HOME", "").strip():
         return "agy"
+    if any(os.environ.get(name, "").strip() for name in ("QWENCLOUD_TOKEN_PLAN_API_KEY", "BAILIAN_TOKEN_PLAN_API_KEY")):
+        return "qwen"
     return None
 
 

@@ -7,7 +7,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
-from staff.adapters import ADAPTERS
+from staff.adapters import ADAPTERS, unattended_providers
 from staff import workspace
 from staff.dispatch_bundle import resolve_dispatch_bundle
 from staff.plan import RunPlan, RunRequest
@@ -132,7 +132,10 @@ def test_planned_skill_block_is_byte_identical_at_launch(tmp_path: Path, skills_
     assert launched[start:end] == skill_block
 
 
-@pytest.mark.parametrize("provider", sorted(ADAPTERS))
+@pytest.mark.parametrize(
+    "provider",
+    sorted(pid for pid, ok in unattended_providers().items() if ok),
+)
 def test_skill_block_survives_launch_per_adapter(
     tmp_path: Path,
     skills_env: None,

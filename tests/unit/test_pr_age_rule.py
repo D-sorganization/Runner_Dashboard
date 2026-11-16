@@ -22,7 +22,7 @@ def test_resolve_pr_owner_from_branch_prefix() -> None:
 @pytest.mark.unit
 def test_list_aging_prs_for_agent_filters_by_age() -> None:
     def fetch(path: str) -> list[dict]:
-        if path.endswith("/pulls?state=open&per_page=100"):
+        if path.endswith("/pulls?state=open&per_page=100") or path.endswith("/pulls?state=open"):
             return [
                 {
                     "number": 1,
@@ -80,10 +80,18 @@ def _aging_fetch(pulls_by_repo: dict[str, list[dict]], files_by_pr: dict[tuple[s
 
     def fetch(path: str) -> list[dict]:
         for repo, pulls in pulls_by_repo.items():
-            if path == f"/repos/D-sorganization/{repo}/pulls?state=open&per_page=100":
+            open_pulls = (
+                f"/repos/D-sorganization/{repo}/pulls?state=open&per_page=100",
+                f"/repos/D-sorganization/{repo}/pulls?state=open",
+            )
+            if path in open_pulls:
                 return pulls
             for (files_repo, number), files in files_by_pr.items():
-                if files_repo == repo and path == f"/repos/D-sorganization/{repo}/pulls/{number}/files?per_page=100":
+                file_paths = (
+                    f"/repos/D-sorganization/{repo}/pulls/{number}/files?per_page=100",
+                    f"/repos/D-sorganization/{repo}/pulls/{number}/files",
+                )
+                if files_repo == repo and path in file_paths:
                     return [{"filename": name} for name in files]
         if "/pulls?state=open" in path:
             return []
@@ -168,7 +176,7 @@ def test_same_repo_aging_pr_blocks_when_the_claim_names_no_paths() -> None:
 @pytest.mark.unit
 def test_unreadable_pr_files_count_as_overlap() -> None:
     def fetch(path: str) -> list[dict]:
-        if path.endswith("/pulls?state=open&per_page=100"):
+        if path.endswith("/pulls?state=open&per_page=100") or path.endswith("/pulls?state=open"):
             return [_old_pr(87)]
         raise RuntimeError("files endpoint down")
 

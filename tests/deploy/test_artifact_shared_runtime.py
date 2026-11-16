@@ -18,7 +18,7 @@ SMOKE = ROOT / "deploy" / "artifact_backend_import_smoke.py"
 def _extract_runtime(tmp_path: Path, *, shared: bool = True) -> Path:
     stage = tmp_path / "stage"
     stage.mkdir()
-    packages = ["backend", "scripts", "config"] + (["shared_scripts"] if shared else [])
+    packages = ["backend", "scripts", "config", "clients/fleet"] + (["shared_scripts"] if shared else [])
     for package in packages:
         shutil.copytree(ROOT / package, stage / package, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     archive = tmp_path / "runtime.tar.gz"
@@ -77,10 +77,10 @@ def test_smoke_accepts_shared_package_and_rejects_missing_module(tmp_path: Path)
     args = [sys.executable, "-I", "-B", str(SMOKE), "--files-only"]
     good = subprocess.run(args, cwd=root, env=_env(root), text=True, capture_output=True, timeout=120)
     assert good.returncode == 0, good.stdout + good.stderr
-    (root / "shared_scripts" / "independent_exact_head_review.py").unlink()
+    (root / "shared_scripts" / "andon_fingerprint.py").unlink()
     bad = subprocess.run(args, cwd=root, env=_env(root), text=True, capture_output=True, timeout=120)
     assert bad.returncode != 0
-    assert "shared_scripts/independent_exact_head_review.py" in bad.stdout + bad.stderr
+    assert "shared_scripts/andon_fingerprint.py" in bad.stdout + bad.stderr
 
 
 @pytest.mark.parametrize("kind", ["legacy", "independent", "wrong-head", "wrong-pr"])
@@ -94,11 +94,14 @@ root = Path(os.environ["ARTIFACT_ROOT"]).resolve()
 sys.path[:0] = [str(root / "backend"), str(root)]
 from staff import review, independent_exact_head_verdict as verdict
 from shared_scripts import independent_exact_head_review as shared
+import staff.staff_github_pr_review as pr_review
 for module in (review, verdict, shared):
     assert Path(module.__file__).resolve().is_relative_to(root), module.__file__
 head = "a" * 40
 posted = []
 verdict.fetch_pull_head_sha = lambda repo, pr: head
+# The formal APPROVE needs the hub's GitHub App; stub it (no network in this probe).
+pr_review.ensure_runner_dashboard_formal_approve = lambda *args, **kwargs: None
 verdict.publish_independent_exact_head_verdict = lambda **kwargs: posted.append(kwargs)
 kind = sys.argv[1]
 line = "STAFF_RESULT: review approve #123"
@@ -149,6 +152,10 @@ def test_smoke_handles_package_import_and_lazy_shared_dependency(tmp_path: Path)
     for name in ("backend", "scripts", "shared_scripts"):
         (tmp_path / name).mkdir()
         (tmp_path / name / "__init__.py").write_text("", encoding="utf-8")
+    finalizer_dir = tmp_path / "backend" / "staff"
+    finalizer_dir.mkdir()
+    for name in ("independent_exact_head_verdict", "review", "staff_github_pr_review"):
+        (finalizer_dir / f"{name}.py").write_text("", encoding="utf-8")  # finalizer modules the smoke requires
     (tmp_path / "backend" / "consumer.py").write_text(
         "import shared_scripts\ndef finalize():\n    from shared_scripts import missing\n", encoding="utf-8"
     )

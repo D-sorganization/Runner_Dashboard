@@ -38,7 +38,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -199,6 +199,9 @@ class HoldVerdict:
     #: must never be deleted via the base repo's refs).
     head_ref: str = ""
     head_in_base_repo: bool = False
+    #: ``head_sha`` when an independent PASS is recorded at exactly that head,
+    #: else empty. "No objection" is not a PASS (#4249 B-02).
+    pass_head_sha: str = ""
 
     def describe(self) -> str:
         if not self.held:
@@ -224,6 +227,9 @@ class ArmResult:
     merged: bool = False
     #: True when a hold appeared after merge/enqueue completed; still a failure (#4315).
     in_flight_hold_after_completion: bool = False
+    #: True when the PR was armed or merged with no independent PASS at its head
+    #: (allowed only while the PASS requirement is off; #4249 B-02).
+    pass_missing: bool = False
 
     def reason(self) -> str:
         """Why the PR is not armed: ``detail`` when set, else the hold verdict."""
@@ -431,13 +437,18 @@ def _commit_messages(run: CommandRunner, repo: str, pr: int) -> list[str]:
     return rows
 
 
-def _independent_review_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> list[str]:
-    """Signal 5: independent exact-head FIX-NEEDED at the current head (#4315, #4323)."""
+def _independent_review_state(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> tuple[list[str], str]:
+    """Signal 5 (#4315, #4323) plus the PASS evidence (#4249 B-02).
+
+    Returns ``(hold_reasons, pass_head_sha)``. ``pass_head_sha`` is the PR head
+    when the latest independent verdict at that head is PASS, else empty.
+    """
     _repo_root_on_path()
     from shared_scripts.independent_exact_head_review import (  # noqa: PLC0415
         author_model_from_commit_messages,
         author_model_from_labels,
         independent_review_hold_reason,
+        latest_independent_verdict_at_head,
         parse_issue_comments,
     )
 
@@ -445,15 +456,17 @@ def _independent_review_reasons(run: CommandRunner, repo: str, pr: int, pull: _P
         comments = _issue_comments(run, repo, pr)
         messages = _commit_messages(run, repo, pr)
     except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError):
-        return ["independent exact-head review state is unreadable"]
+        return ["independent exact-head review state is unreadable"], ""
     author_model = author_model_from_labels(pull.labels) or author_model_from_commit_messages(messages)
     reviews = parse_issue_comments(comments)
-    return independent_review_hold_reason(
+    reasons = independent_review_hold_reason(
         reviews,
         head_sha=pull.head_sha,
         author_model=author_model,
         labels=pull.labels,
     )
+    verdict, _detail = latest_independent_verdict_at_head(reviews, head_sha=pull.head_sha, author_model=author_model)
+    return reasons, (pull.head_sha if verdict == "PASS" and not reasons else "")
 
 
 def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> bool:
@@ -469,8 +482,8 @@ def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> bool:
 def disarm_if_held(repo: str, pr: int, *, runner: CommandRunner | None = None) -> HoldVerdict:
     """Re-check holds on an already-armed PR; disarm when a hold applies (#4315).
 
-    Post: returns the current :func:`evaluate_hold` verdict. When ``held``, one
-  ``DELETE .../ccr/auto_merge`` is attempted (author-bot / scheduled paths).
+      Post: returns the current :func:`evaluate_hold` verdict. When ``held``, one
+    ``DELETE .../ccr/auto_merge`` is attempted (author-bot / scheduled paths).
     """
     run = runner or _default_runner
     verdict = evaluate_hold(repo, pr, runner=run)
@@ -499,7 +512,7 @@ def _deletion_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest
     return [f"diff deletes {len(removed)} tracked file(s) with no acknowledgement: {sample}{more}"]
 
 
-def _verdict_from(raw: dict[str, Any], pull: _PullRequest, reasons: list[str]) -> HoldVerdict:
+def _verdict_from(raw: dict[str, Any], pull: _PullRequest, reasons: list[str], pass_head_sha: str = "") -> HoldVerdict:
     """Build the verdict, carrying the PR facts later merge steps pin to."""
     head, base = _obj(raw.get("head")), _obj(raw.get("base"))
     head_repo = str(_obj(head.get("repo")).get("full_name") or "").lower()
@@ -512,6 +525,7 @@ def _verdict_from(raw: dict[str, Any], pull: _PullRequest, reasons: list[str]) -
         node_id=str(raw.get("node_id") or ""),
         head_ref=str(head.get("ref") or ""),
         head_in_base_repo=bool(head_repo) and head_repo == base_repo,
+        pass_head_sha="" if reasons else pass_head_sha,
     )
 
 
@@ -542,11 +556,12 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
             reasons.append("PR is a draft (mark ready first)")
         reasons += _disarm_reasons(run, repo, pr, pull.head_sha)
         reasons += _deletion_reasons(run, repo, pr, pull)
-        reasons += _independent_review_reasons(run, repo, pr, pull)
+        review_reasons, pass_head_sha = _independent_review_state(run, repo, pr, pull)
+        reasons += review_reasons
     except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
         # Fail closed. An unknown state is not a licence to arm.
         return HoldVerdict(True, (), error=str(exc))
-    return _verdict_from(raw, pull, reasons)
+    return _verdict_from(raw, pull, reasons, pass_head_sha)
 
 
 def _deletions_acknowledged(lowered_labels: set[str], body: str) -> bool:
@@ -800,6 +815,8 @@ def arm_auto_merge(
     *,
     strategy: str = "squash",
     delete_branch: bool = False,
+    match_head_commit: str = "",
+    require_pass: bool = False,
     runner: CommandRunner | None = None,
 ) -> ArmResult:
     """Arm auto-merge on ``repo#pr`` unless a reviewer has held it back.
@@ -821,14 +838,49 @@ def arm_auto_merge(
     unless the base branch has a merge queue (or that cannot be determined), in
     which case one GraphQL ``enqueuePullRequest`` is attempted and never a
     direct merge.
+
+    Head pin (#4249 B-02): the arm carries ``--match-head-commit`` set to the
+    head the hold verdict was computed against, so GitHub refuses it if the head
+    moved. A caller's ``match_head_commit`` must name that same head. With
+    ``require_pass`` no arm is attempted unless an independent PASS is recorded
+    at that head; without it a missing PASS only sets ``pass_missing``.
     """
     run = runner or _default_runner
     verdict = disarm_if_held(repo, pr, runner=run)
     if verdict.held:
         logger.warning("Refusing to arm auto-merge on %s#%s: %s", repo, pr, verdict.describe())
         return ArmResult(False, verdict, "held")
+    refusal = _pin_refusal(verdict, match_head_commit, require_pass=require_pass)
+    if refusal:
+        logger.warning("Refusing to arm auto-merge on %s#%s: %s", repo, pr, refusal)
+        return ArmResult(False, verdict, refusal)
+    result = _arm_pinned(repo, pr, strategy, delete_branch, verdict, run)
+    if (result.armed or result.merged) and not verdict.pass_head_sha:
+        return replace(result, pass_missing=True)
+    return result
 
+
+def _pin_refusal(verdict: HoldVerdict, match_head_commit: str, *, require_pass: bool) -> str:
+    """Why a not-held PR still may not be armed at its evaluated head, or ``""``."""
+    _repo_root_on_path()
+    from shared_scripts.independent_exact_head_review import head_sha_matches  # noqa: PLC0415
+
+    if not verdict.head_sha:
+        return "PR head SHA is unknown; the arm cannot be pinned to a head"
+    wanted = match_head_commit.strip()
+    if wanted and not head_sha_matches(wanted, verdict.head_sha):
+        return f"head moved (expected {wanted}, evaluated {verdict.head_sha})"
+    if require_pass and not verdict.pass_head_sha:
+        return f"no independent PASS recorded at head {verdict.head_sha}"
+    return ""
+
+
+def _arm_pinned(
+    repo: str, pr: int, strategy: str, delete_branch: bool, verdict: HoldVerdict, run: CommandRunner
+) -> ArmResult:
+    """Arm a not-held PR, pinned to ``verdict.head_sha`` (see :func:`arm_auto_merge`)."""
     cmd = ["gh", "pr", "merge", str(pr), "--repo", repo, f"--{strategy}", "--auto"]
+    cmd += ["--match-head-commit", verdict.head_sha]
     if delete_branch:
         cmd.append("--delete-branch")
     proc = run(cmd)
@@ -856,6 +908,9 @@ def arm_auto_merge(
                 if may_be_on:
                     logger.error("DANGER %s#%s: %s", repo, pr, full)
                 return ArmResult(False, verdict, full, auto_merge_may_be_on=may_be_on)
+            moved = _rest_arm_head_moved(repo, pr, verdict, run)
+            if moved is not None:
+                return moved
         elif CLEAN_STATUS_MARKER in (proc.stderr + proc.stdout).lower():
             if _base_has_merge_queue(repo, verdict.base_ref, run):
                 return _enqueue_clean_pr(repo, pr, strategy, verdict, run)
@@ -867,6 +922,21 @@ def arm_auto_merge(
 
     logger.info("Auto-merge armed on %s#%s (%s).", repo, pr, strategy)
     return ArmResult(True, verdict, "armed")
+
+
+def _rest_arm_head_moved(repo: str, pr: int, verdict: HoldVerdict, run: CommandRunner) -> ArmResult | None:
+    """The REST arm route takes no head pin, so re-read the head and revoke on drift."""
+    head = _current_head_sha(repo, pr, run)
+    if head == verdict.head_sha:
+        return None
+    detail = f"head moved (evaluated {verdict.head_sha}, now {head or 'unknown'})"
+    revoked, may_be_on = _revoke_rest_arm(repo, pr, run)
+    full = f"{detail}; {revoked}"
+    if may_be_on:
+        logger.error("DANGER %s#%s: %s", repo, pr, full)
+    else:
+        logger.warning("Not armed on %s#%s: %s", repo, pr, full)
+    return ArmResult(False, verdict, full, auto_merge_may_be_on=may_be_on)
 
 
 def enqueue_stalled_pr(
@@ -918,6 +988,16 @@ def _import_arm_cap_module() -> Any:
     return arm_cap
 
 
+#: Set to 1/true/yes to make ``--arm`` require an independent PASS at the head.
+REQUIRE_PASS_ENV = "AUTOMERGE_GUARD_REQUIRE_PASS"
+
+
+def pass_required(env: Mapping[str, str] | None = None) -> bool:
+    """True when the environment asks every arm to require a PASS at the head."""
+    source = os.environ if env is None else env
+    return source.get(REQUIRE_PASS_ENV, "").strip().lower() in {"1", "true", "yes"}
+
+
 def _current_head_sha(repo: str, pr: int, run: CommandRunner) -> str:
     proc = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".head.sha"])
     return proc.stdout.strip() if proc.returncode == 0 else ""
@@ -933,6 +1013,7 @@ def _arm_cli(
     dispatch_kind: str,
     repo_root: str,
     match_head_commit: str = "",
+    require_pass: bool = False,
     runner: CommandRunner | None = None,
 ) -> int:
     """Run ``--arm`` with optional WIP-cap reservation (RD-CI-005)."""
@@ -970,7 +1051,14 @@ def _arm_cli(
             if admit.shadow_would_block:
                 _emit(f"SHADOW would-block {repo}#{pr}: {admit.reason}")
 
-    result = arm_auto_merge(repo, pr, strategy=strategy, delete_branch=delete_branch)
+    result = arm_auto_merge(
+        repo,
+        pr,
+        strategy=strategy,
+        delete_branch=delete_branch,
+        match_head_commit=match_head_commit,
+        require_pass=require_pass,
+    )
     if arm_cap is not None and cap_token:
         store_path = (
             arm_cap.resolve_store_path() if hasattr(arm_cap, "resolve_store_path") else arm_cap.DEFAULT_STORE_PATH
@@ -983,6 +1071,8 @@ def _arm_cli(
     if result.in_flight_hold_after_completion:
         _emit(f"IN-FLIGHT HOLD {repo}#{pr}: {result.reason()}")
         return EXIT_IN_FLIGHT_HOLD
+    if result.pass_missing:
+        _emit(f"SHADOW would-block {repo}#{pr}: no independent PASS recorded at head {result.verdict.head_sha}")
     if result.armed:
         _emit(f"armed {repo}#{pr}")
         return 0
@@ -1041,6 +1131,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="refuse to arm unless the PR head SHA matches (merge shepherd pin)",
     )
     parser.add_argument(
+        "--require-pass",
+        action="store_true",
+        help=f"refuse to arm without an independent PASS at the head (also {REQUIRE_PASS_ENV}=1)",
+    )
+    parser.add_argument(
         "--disarm-if-held",
         action="store_true",
         help="disarm an already-armed PR when a hold applies (author-bot safety path)",
@@ -1062,6 +1157,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             dispatch_kind=args.dispatch_kind,
             repo_root=args.repo_root,
             match_head_commit=args.match_head_commit,
+            require_pass=args.require_pass or pass_required(),
         )
 
     if args.disarm_if_held:

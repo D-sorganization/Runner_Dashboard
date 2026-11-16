@@ -32,7 +32,7 @@ def test_pr_remediator_yaml_passes_schema_validation_and_loads_into_roster(tmp_p
     assert all(perms[k] for k in ("lease", "push_branch", "open_pr"))
     assert not any(perms[k] for k in ("merge", "host_shell", "notify_user"))
     assert spec_raw["reports_to"] == "night-watch" and spec_raw["surface"] == "dashboard"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity"]
+    assert spec_raw["providers"] == ["codex", "cursor-agent", "claude"]
     scope = spec_raw["scope"]
     assert scope["targets"] == list(pr_.PR_REMEDIATOR_TARGETS) and scope["skips"] == list(pr_.PR_REMEDIATOR_SKIPS)
     assert scope["max_lease_hours"] == 2
@@ -45,29 +45,21 @@ def test_pr_remediator_yaml_passes_schema_validation_and_loads_into_roster(tmp_p
     assert slots["nightly_remediation"].startswith("2026-11-02T01:00:00")
 
 
-def test_pr_remediator_declarative_fallback_matches_real_role_yaml(tmp_path: Path) -> None:
+def test_pr_remediator_failover_chain_matches_approved_policy(tmp_path: Path) -> None:
     pr_.write_pr_remediator_role_yaml(tmp_path)
-    assert validate_provider_fallback_rules_data(pr_.load_pr_remediator_role_spec(tmp_path, raw=True)) == []
     spec = pr_.load_pr_remediator_role_spec(tmp_path)
-    assert spec.failover_chain == () and len(spec.provider_fallbacks) == 1
-    rule = spec.provider_fallbacks[0]
-    assert rule.from_provider == "codex" and rule.target.provider == "antigravity"
-    assert rule.target.model == "gemini-3.8-flash-high"
-    fb = spec.provider_fallbacks
-    assert match_provider_fallback(fb, "provider_capacity", "codex", retries_exhausted=False) is rule
-    assert match_provider_fallback(fb, "rate_limited", "codex", retries_exhausted=False) is None
-    assert match_provider_fallback(fb, "rate_limited", "codex", retries_exhausted=True) is rule
+    assert [s.provider for s in spec.failover_chain] == ["codex", "cursor-agent", "claude"]
+    assert spec.provider_fallbacks == ()
 
 
 def test_pr_remediator_rd_barb_provider_chain_has_no_cursor_agent_step() -> None:
-    assert rp.select({}, role="pr-remediator") == rp.Decision("claude", "opus", False)
-    chain = (FailoverStep("claude", "opus"), FailoverStep("codex", None), FailoverStep("antigravity", None))
-    assert rp.chain({}, role="pr-remediator") == chain
+    assert rp.select({}, role="pr-remediator") == rp.Decision("codex", "gpt-6.1-sol", False)
+    assert rp.chain({}, role="pr-remediator") == pr_.PR_REMEDIATOR_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
-    args = ["--role", "pr-remediator", "next", "--current", "claude", "--failure", "rate_limited"]
+    args = ["--role", "pr-remediator", "next", "--current", "codex", "--failure", "rate_limited"]
     rc = rp.main(args, config={}, notify=sent.append)
     assert rc == 0 and len(sent) == 1
-    assert sent[0]["sender_role"] == "pr-remediator" and "codex" in sent[0]["summary"]
+    assert sent[0]["sender_role"] == "pr-remediator" and "cursor-agent" in sent[0]["summary"]
 
 
 def test_pr_remediator_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:

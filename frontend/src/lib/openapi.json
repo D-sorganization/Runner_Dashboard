@@ -255,6 +255,8 @@
               "agent_bus",
               "recorder",
               "desktop_adapter",
+              "claude_desktop_adapter",
+              "codex_desktop_adapter",
               "checkin",
               "job_board",
               "github"
@@ -484,14 +486,133 @@
             "type": "boolean"
           },
           "ttl_sec": {
-            "default": 3600,
-            "maximum": 14400.0,
+            "default": 14400,
+            "maximum": 86400.0,
             "minimum": 60.0,
             "title": "Ttl Sec",
             "type": "integer"
           }
         },
         "title": "BarbLeaseCheckoutRequest",
+        "type": "object"
+      },
+      "BarbLeaseHandoffRequest": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Blockers",
+            "type": "array"
+          },
+          "completed_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Completed Items",
+            "type": "array"
+          },
+          "holder": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "in_progress_items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "In Progress Items",
+            "type": "array"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "mode": {
+            "default": "",
+            "maxLength": 16,
+            "title": "Mode",
+            "type": "string"
+          },
+          "next_actions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Next Actions",
+            "type": "array"
+          },
+          "next_holder": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Holder"
+          },
+          "next_machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Next Machine",
+            "type": "string"
+          },
+          "next_persona": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Next Persona",
+            "type": "string"
+          },
+          "persona": {
+            "default": "rd-barb",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "maxLength": 500,
+            "title": "Reason",
+            "type": "string"
+          },
+          "scope": {
+            "default": "barb:front-door",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "summary": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "takeover": {
+            "default": false,
+            "title": "Takeover",
+            "type": "boolean"
+          },
+          "ttl_sec": {
+            "default": 14400,
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["summary"],
+        "title": "BarbLeaseHandoffRequest",
         "type": "object"
       },
       "BarbLeaseHeartbeatRequest": {
@@ -520,8 +641,8 @@
             "type": "string"
           },
           "ttl_sec": {
-            "default": 3600,
-            "maximum": 14400.0,
+            "default": 14400,
+            "maximum": 86400.0,
             "minimum": 60.0,
             "title": "Ttl Sec",
             "type": "integer"
@@ -593,6 +714,61 @@
         },
         "required": ["scope"],
         "title": "BarbLeaseReleaseRequest",
+        "type": "object"
+      },
+      "BarbLeaseRenewRequest": {
+        "properties": {
+          "holder": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder"
+          },
+          "machine": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Machine",
+            "type": "string"
+          },
+          "persona": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Persona",
+            "type": "string"
+          },
+          "scope": {
+            "default": "barb:front-door",
+            "maxLength": 64,
+            "title": "Scope",
+            "type": "string"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "ttl_sec": {
+            "default": 14400,
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "title": "BarbLeaseRenewRequest",
         "type": "object"
       },
       "BarbSurfaceClassifyRequest": {
@@ -1048,6 +1224,11 @@
       "CIFixDispatchRequest": {
         "description": "Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).",
         "properties": {
+          "allow_strong_escalation": {
+            "default": false,
+            "title": "Allow Strong Escalation",
+            "type": "boolean"
+          },
           "attempt_number": {
             "anyOf": [
               {
@@ -1124,6 +1305,12 @@
             "default": false,
             "title": "From Queue",
             "type": "boolean"
+          },
+          "head_sha": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Head Sha",
+            "type": "string"
           },
           "kind": {
             "default": "ci_failure",
@@ -2491,21 +2678,6 @@
       },
       "FleetRunTokenRequest": {
         "properties": {
-          "repositories": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 8,
-            "minItems": 1,
-            "title": "Repositories",
-            "type": "array"
-          },
-          "role": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Role",
-            "type": "string"
-          },
           "run_id": {
             "maxLength": 80,
             "minLength": 1,
@@ -2513,7 +2685,7 @@
             "type": "string"
           }
         },
-        "required": ["run_id", "role", "repositories"],
+        "required": ["run_id"],
         "title": "FleetRunTokenRequest",
         "type": "object"
       },
@@ -3098,6 +3270,69 @@
         "title": "HostSettingsPutBody",
         "type": "object"
       },
+      "HubSessionRegisterBody": {
+        "additionalProperties": false,
+        "description": "Register or heartbeat a hub-local session (Cursor cloud lane, Barb, external agent).",
+        "properties": {
+          "machine": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Machine",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "role": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "ttl_hours": {
+            "default": 2.0,
+            "maximum": 24.0,
+            "minimum": 0.1,
+            "title": "Ttl Hours",
+            "type": "number"
+          }
+        },
+        "required": ["session", "role", "provider", "machine"],
+        "title": "HubSessionRegisterBody",
+        "type": "object"
+      },
       "InitializeExecutorPayload": {
         "additionalProperties": false,
         "description": "Children always come from the filed plan; the caller may only tune execution.",
@@ -3264,6 +3499,14 @@
       },
       "LeaderLeaseBody": {
         "properties": {
+          "handled": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 200,
+            "title": "Handled",
+            "type": "object"
+          },
           "machine": {
             "maxLength": 80,
             "minLength": 1,
@@ -6008,6 +6251,11 @@
       "RunBody": {
         "description": "POST body for a dispatch. DbC: exactly the fields the runner understands.",
         "properties": {
+          "authority_code_read_only": {
+            "default": false,
+            "title": "Authority Code Read Only",
+            "type": "boolean"
+          },
           "claim_override_reason": {
             "default": "",
             "maxLength": 500,
@@ -6154,6 +6402,11 @@
             "title": "Standards Extra",
             "type": "string"
           },
+          "strict_provider": {
+            "default": false,
+            "title": "Strict Provider",
+            "type": "boolean"
+          },
           "surface": {
             "anyOf": [
               {
@@ -6202,12 +6455,6 @@
       },
       "RunJwtRequest": {
         "properties": {
-          "principal_id": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Principal Id",
-            "type": "string"
-          },
           "run_id": {
             "maxLength": 80,
             "minLength": 1,
@@ -6215,7 +6462,7 @@
             "type": "string"
           }
         },
-        "required": ["run_id", "principal_id"],
+        "required": ["run_id"],
         "title": "RunJwtRequest",
         "type": "object"
       },
@@ -6443,7 +6690,7 @@
             "type": "string"
           },
           "status": {
-            "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+            "enum": ["live", "idle", "stale", "ended", "uncaptured", "blocked"],
             "title": "Status",
             "type": "string"
           }
@@ -7097,6 +7344,11 @@
           },
           "lifted_when": {
             "title": "Lifted When",
+            "type": "string"
+          },
+          "set_by": {
+            "default": "",
+            "title": "Set By",
             "type": "string"
           },
           "set_on": {
@@ -9960,7 +10212,7 @@
     },
     "/_drain": {
       "post": {
-        "description": "Activate process-local draining and reject new mutations with HTTP 503.\n\n``/readyz`` reports unready while draining. Requests already admitted are\nallowed to finish; this flag does not cancel or wait for in-flight work.\n\nPre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).\nPost-condition: _drain_mode is True after successful call.",
+        "description": "Activate process-local draining and reject new mutations with HTTP 503.\n\n``/readyz`` reports unready while draining. Requests already admitted are\nallowed to finish; this flag does not cancel or wait for in-flight work.\n\nRequires the ``admin`` scope and the CSRF ``X-Requested-With`` sentinel (#4274 F-04).\nPost-condition: _drain_mode is True after successful call.",
         "operationId": "drain_endpoint__drain_post",
         "responses": {
           "200": {
@@ -9976,7 +10228,70 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
         "summary": "Drain Endpoint"
+      }
+    },
+    "/_undrain": {
+      "post": {
+        "description": "Clear process-local draining and resume normal mutation admission (#4274 F-04).",
+        "operationId": "undrain_endpoint__undrain_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Undrain Endpoint  Undrain Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Undrain Endpoint"
+      }
+    },
+    "/api/admin/agent-principals/reload": {
+      "post": {
+        "description": "Ingest new agent principals and token files without a hub restart; admin only, ids only (#4256).",
+        "operationId": "reload_agent_principals_route_api_admin_agent_principals_reload_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Reload Agent Principals Route",
+        "tags": ["admin"]
       }
     },
     "/api/admin/principals": {
@@ -13819,6 +14134,53 @@
         "tags": ["coordination"]
       }
     },
+    "/api/coordination/sessions/register": {
+      "post": {
+        "description": "Register or heartbeat a hub-local session for cloud lanes and external agents (#4458).",
+        "operationId": "post_sessions_register_api_coordination_sessions_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubSessionRegisterBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Sessions Register Api Coordination Sessions Register Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Sessions Register",
+        "tags": ["coordination"]
+      }
+    },
     "/api/credentials": {
       "get": {
         "description": "Probe provider credential and connectivity state. Never exposes secret values.",
@@ -15672,6 +16034,72 @@
         ],
         "summary": "Api Dispatch To Issues",
         "tags": ["remediation", "agents", "remediation"]
+      }
+    },
+    "/api/kanban/github": {
+      "get": {
+        "description": "Return projected kanban cards from cached GitHub sources with freshness metadata.",
+        "operationId": "get_kanban_github_board_api_kanban_github_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "owner",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Owner",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "repo",
+            "required": true,
+            "schema": {
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Repo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "force_cold",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Force Cold",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Kanban Github Board Api Kanban Github Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Kanban Github Board",
+        "tags": ["kanban"]
       }
     },
     "/api/launchers/generate": {
@@ -22198,7 +22626,14 @@
             "schema": {
               "anyOf": [
                 {
-                  "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+                  "enum": [
+                    "live",
+                    "idle",
+                    "stale",
+                    "ended",
+                    "uncaptured",
+                    "blocked"
+                  ],
                   "type": "string"
                 },
                 {
@@ -23682,6 +24117,65 @@
         "tags": ["fleet-state-audit"]
       }
     },
+    "/api/v1/kanban/columns/waiting-on-dieter": {
+      "get": {
+        "description": "Read-only Waiting-on-Dieter column from holds, owner labels, and pending approvals.",
+        "operationId": "get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "repo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Waiting On Dieter Column Api V1 Kanban Columns Waiting On Dieter Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Waiting On Dieter Column",
+        "tags": ["kanban"]
+      }
+    },
     "/api/v1/library/browse": {
       "get": {
         "operationId": "library_browse_route_api_v1_library_browse_get",
@@ -24800,6 +25294,7 @@
     },
     "/api/v1/memory/context-pack": {
       "get": {
+        "description": "Return a scoped memory snapshot. Deprecated for Barb session startup \u2014 use Barb continuity + priorities/holds.",
         "operationId": "get_context_pack_api_v1_memory_context_pack_get",
         "responses": {
           "200": {
@@ -26915,6 +27410,55 @@
         "tags": ["staff-barb"]
       }
     },
+    "/api/v1/staff/barb/leases/handoff": {
+      "post": {
+        "operationId": "post_barb_lease_handoff_api_v1_staff_barb_leases_handoff_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseHandoffRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Handoff Api V1 Staff Barb Leases Handoff Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Atomic Barb lease turnover, release, transfer, or takeover",
+        "tags": ["staff-barb"]
+      }
+    },
     "/api/v1/staff/barb/leases/heartbeat": {
       "post": {
         "operationId": "post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post",
@@ -27010,6 +27554,55 @@
           }
         ],
         "summary": "Release a scoped Barb lease with turnover compliance check",
+        "tags": ["staff-barb"]
+      }
+    },
+    "/api/v1/staff/barb/leases/renew": {
+      "post": {
+        "operationId": "post_barb_lease_renew_api_v1_staff_barb_leases_renew_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BarbLeaseRenewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Barb Lease Renew Api V1 Staff Barb Leases Renew Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Renew or re-acquire a scoped Barb lease in one call",
         "tags": ["staff-barb"]
       }
     },
@@ -27410,6 +28003,85 @@
         ],
         "summary": "Context Agents Sync V1",
         "tags": ["staff-v1", "staff-context"]
+      }
+    },
+    "/api/v1/staff/dispatch-sessions": {
+      "get": {
+        "operationId": "list_dispatch_sessions_api_v1_staff_dispatch_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Dispatch Sessions Api V1 Staff Dispatch Sessions Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Dispatch Sessions",
+        "tags": ["staff-dispatch-sessions"]
+      }
+    },
+    "/api/v1/staff/dispatch-sessions/{session_id}": {
+      "delete": {
+        "operationId": "release_dispatch_session_api_v1_staff_dispatch_sessions__session_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Release Dispatch Session Api V1 Staff Dispatch Sessions  Session Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Release Dispatch Session",
+        "tags": ["staff-dispatch-sessions"]
       }
     },
     "/api/v1/staff/dispatcher/ledger": {
@@ -31664,6 +32336,57 @@
         ],
         "summary": "Export Thread Markdown Endpoint",
         "tags": ["staff-export"]
+      }
+    },
+    "/api/v1/staff/threads/{thread_id}/loop-guard/reset": {
+      "post": {
+        "description": "Reset loop-guard pause state for a thread (operators or Barb seats only).",
+        "operationId": "reset_thread_loop_guard_api_v1_staff_threads__thread_id__loop_guard_reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reset Thread Loop Guard Api V1 Staff Threads  Thread Id  Loop Guard Reset Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Reset Thread Loop Guard",
+        "tags": ["staff-threads"]
       }
     },
     "/api/v1/staff/threads/{thread_id}/messages": {

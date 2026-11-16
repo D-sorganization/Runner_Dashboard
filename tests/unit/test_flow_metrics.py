@@ -55,6 +55,8 @@ async def test_collect_flow_metrics_uses_injected_fetcher() -> None:
 
     async def fake_gh(args: list[str], timeout: int) -> tuple[int, str, str]:
         path = args[-1] if args and args[0] == "api" else ""
+        if args[0:2] == ["api", "--paginate"] and "/pulls?state=open" in path:
+            return 0, '[{"created_at":"2026-10-30T00:00:00Z"}]', ""
         if path.endswith("/pulls?state=open&per_page=100"):
             return 0, '[{"created_at":"2026-10-30T00:00:00Z"}]', ""
         if "state=closed" in path:

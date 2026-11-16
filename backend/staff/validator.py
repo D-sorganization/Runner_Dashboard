@@ -97,6 +97,7 @@ OPTIONAL_PERMISSION_KEYS: tuple[str, ...] = (
     "approvals",
     "action_approvals",
     "code_read_only",
+    "occupies_paths",
 )
 PERMISSION_KEYS: tuple[str, ...] = REQUIRED_PERMISSION_KEYS
 BUDGET_KEYS: tuple[str, ...] = ("usd_per_run", "usd_per_day")
@@ -214,8 +215,25 @@ def _validate_collections(data: dict[str, Any]) -> list[str]:
             problems.extend(_string_list_problems(key, data[key]))
 
     holds = data.get("holds")
-    if not isinstance(holds, list) or any(not isinstance(h, str) or not h.strip() for h in holds):
-        problems.append("holds must be a list of non-empty strings")
+    if holds is not None:
+        if not isinstance(holds, list):
+            problems.append("holds must be a list of non-empty strings or hold mappings")
+        else:
+            for index, item in enumerate(holds):
+                if isinstance(item, str):
+                    if not item.strip():
+                        problems.append(f"holds[{index}] must be a non-empty string")
+                elif isinstance(item, dict):
+                    text = str(item.get("text") or "").strip()
+                    if not text:
+                        problems.append(f"holds[{index}].text is required")
+                    applies = item.get("applies_to")
+                    if applies is not None and (
+                        not isinstance(applies, list) or any(not isinstance(t, str) or not t.strip() for t in applies)
+                    ):
+                        problems.append(f"holds[{index}].applies_to must be a list of non-empty strings")
+                else:
+                    problems.append(f"holds[{index}] must be a string or mapping")
     return problems
 
 
@@ -268,6 +286,8 @@ def _validate_dicts(data: dict[str, Any]) -> list[str]:
                 problems.append(f"unknown permissions key {key!r}")
         if "code_read_only" in permissions and not isinstance(permissions["code_read_only"], bool):
             problems.append("permissions.code_read_only must be a boolean")
+        if "occupies_paths" in permissions and not isinstance(permissions["occupies_paths"], bool):
+            problems.append("permissions.occupies_paths must be a boolean")
         problems.extend(_validate_fleet_actions_and_approvals(permissions))
     return problems
 
@@ -432,7 +452,20 @@ def validate_role_data(data: Any) -> list[str]:
         problems.extend(validate_role_tier(str(tier)))
     problems.extend(_validate_retry_block(data))
     problems.extend(_validate_avatar_field(data))
+    from staff.read_only_failover import code_read_only_chain_warnings  # noqa: PLC0415
+
+    for warning in code_read_only_chain_warnings(data):
+        # Chain head warnings are surfaced on /roles/health; YAML may still list codex first
+        # when later steps are read-only-capable and dispatch skips non-RO providers.
+        if warning.startswith("code_read_only failover_chain[0]"):
+            continue
+        problems.append(f"warning: {warning}")
     return problems
+
+
+def validate_role_data_errors_only(data: Any) -> list[str]:
+    """Like :func:`validate_role_data` but drops ``warning:`` entries (invalidation only)."""
+    return [p for p in validate_role_data(data) if not str(p).startswith("warning:")]
 
 
 def _validate_avatar_field(data: dict[str, Any]) -> list[str]:

@@ -19,13 +19,15 @@ import fnmatch
 import json
 import logging
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from time_utils import utc_now_iso
+from dispatch_session_policy import max_sessions_per_repo, session_idle_ttl_seconds
+from time_utils import parse_github_ts, utc_now, utc_now_iso
 
 log = logging.getLogger("dashboard.dispatch.routing")
 
@@ -83,7 +85,11 @@ class ActiveSession:
     model: str
     pr_number: int | None = None
     dispatched_at: str = field(default_factory=utc_now_iso)
+    last_activity_at: str = field(default_factory=utc_now_iso)
     status: str = "active"
+    role: str | None = None
+    run_id: str | None = None
+    occupies_paths: bool = True
 
 
 @dataclass(slots=True)
@@ -100,6 +106,8 @@ class QueuedDispatchItem:
     reason: str
     blocking_session_id: str
     queued_at: str = field(default_factory=utc_now_iso)
+    # overlapping_paths | same_target | repo_session_cap (#4492)
+    block_reason: str = "overlapping_paths"
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,6 +309,21 @@ def paths_overlap(paths_a: Iterable[str], paths_b: Iterable[str]) -> bool:
     return False
 
 
+TARGET_CLAIM_PREFIX = "#target/"
+
+
+def target_claim_paths(paths: list[str], target: int | None) -> list[str]:
+    """Narrow a whole-repo ``*`` claim to the dispatch's own PR / issue (#4492).
+
+    A prompt that names no files claims ``*``; when the dispatch names its target, it
+    claims only ``#target/<n>`` so sessions on other PRs / issues are not blocked. Explicit
+    paths and target-less dispatches are returned unchanged.
+    """
+    if target is not None and paths == ["*"]:
+        return [f"{TARGET_CLAIM_PREFIX}{int(target)}"]
+    return paths
+
+
 # ─── Concurrency & Queue Manager ─────────────────────────────────────────────
 
 
@@ -311,6 +334,13 @@ class DispatchQueueManager:
         self._active_sessions: dict[str, ActiveSession] = {}
         self._queued_items: list[QueuedDispatchItem] = []
 
+    def _blocking_sessions(self, repository: str | None = None) -> list[ActiveSession]:
+        sessions = [s for s in self._active_sessions.values() if s.status == "active" and s.occupies_paths]
+        if repository:
+            repo_norm = repository.strip().lower()
+            return [s for s in sessions if s.repository.strip().lower() == repo_norm]
+        return sessions
+
     def get_active_sessions(self, repository: str | None = None) -> list[ActiveSession]:
         sessions = [s for s in self._active_sessions.values() if s.status == "active"]
         if repository:
@@ -318,19 +348,119 @@ class DispatchQueueManager:
             return [s for s in sessions if s.repository.strip().lower() == repo_norm]
         return sessions
 
+    def touch_session(self, session_id: str, *, at: str | None = None) -> bool:
+        session = self._active_sessions.get(session_id)
+        if not session or session.status != "active":
+            return False
+        session.last_activity_at = at or utc_now_iso()
+        return True
+
+    def bind_run(self, session_id: str, run_id: str) -> None:
+        session = self._active_sessions.get(session_id)
+        if session:
+            session.run_id = run_id
+            session.last_activity_at = utc_now_iso()
+
+    def list_session_rows(self) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for s in self.get_active_sessions():
+            rows.append(
+                {
+                    "session_id": s.session_id,
+                    "repo": s.repository,
+                    "role": s.role,
+                    "declared_paths": list(s.declared_paths),
+                    "dispatched_at": s.dispatched_at,
+                    "last_activity": s.last_activity_at,
+                    "run_id": s.run_id,
+                    "number": s.number,
+                    "occupies_paths": s.occupies_paths,
+                }
+            )
+        return sorted(rows, key=lambda r: (r["repo"] or "", r["dispatched_at"] or ""))
+
+    def expire_stale_sessions(
+        self,
+        *,
+        now: datetime | None = None,
+        ttl_seconds: float | None = None,
+        run_live: Callable[[str], bool | None] | None = None,
+    ) -> list[tuple[str, str]]:
+        """Release idle or orphaned overlap sessions; returns (session_id, reason) pairs."""
+        clock = now or utc_now()
+        ttl = ttl_seconds if ttl_seconds is not None else session_idle_ttl_seconds()
+        released: list[tuple[str, str]] = []
+        for sid, session in list(self._active_sessions.items()):
+            if session.status != "active" or not session.occupies_paths:
+                continue
+            reason: str | None = None
+            skip_idle_ttl = False
+            if session.run_id and run_live is not None:
+                live = run_live(session.run_id)
+                if live is False:
+                    reason = "bound_run_terminal"
+                else:
+                    # None = store miss / probe error; True = run still active — keep overlap lock.
+                    skip_idle_ttl = True
+            last = parse_github_ts(session.last_activity_at) or parse_github_ts(session.dispatched_at)
+            if reason is None and not skip_idle_ttl and last is not None and (clock - last).total_seconds() > ttl:
+                reason = "idle_ttl_exceeded"
+            if reason:
+                log.info(
+                    "dispatch session expired session_id=%s repo=%s run_id=%s reason=%s",
+                    sid,
+                    session.repository,
+                    session.run_id,
+                    reason,
+                )
+                self.release_session(sid, outcome=reason)
+                released.append((sid, reason))
+        return released
+
     def get_queued_items(self, repository: str | None = None) -> list[QueuedDispatchItem]:
         if repository:
             repo_norm = repository.strip().lower()
             return [q for q in self._queued_items if q.repository.strip().lower() == repo_norm]
         return list(self._queued_items)
 
-    def can_dispatch(self, repository: str, declared_paths: list[str]) -> tuple[bool, str | None]:
+    def can_dispatch(
+        self,
+        repository: str,
+        declared_paths: list[str],
+        *,
+        run_live: Callable[[str], bool | None] | None = None,
+    ) -> tuple[bool, str | None]:
         """Check if a dispatch is allowed or if overlapping sessions exist."""
-        active = self.get_active_sessions(repository)
+        allowed, blocker, _reason = self.admission(repository, declared_paths, run_live=run_live)
+        return allowed, blocker
+
+    def admission(
+        self,
+        repository: str,
+        declared_paths: list[str],
+        *,
+        targets: Iterable[int] = (),
+        run_live: Callable[[str], bool | None] | None = None,
+    ) -> tuple[bool, str | None, str]:
+        """``(allowed, blocking_session_id, reason)`` for a new path-occupying session (#4492).
+
+        Refuses the same PR / issue (``same_target``), overlapping claims (``overlapping_paths``)
+        and a repo already at :func:`max_sessions_per_repo` (``repo_session_cap``).
+        """
+        self.expire_stale_sessions(run_live=run_live)
+        active = self._blocking_sessions(repository)
+        wanted = {int(t) for t in targets if t is not None}
+        if wanted:
+            for session in active:
+                if wanted & {n for n in (session.number, session.pr_number) if n is not None}:
+                    return False, session.session_id, "same_target"
         for session in active:
             if paths_overlap(session.declared_paths, declared_paths):
-                return False, session.session_id
-        return True, None
+                return False, session.session_id, "overlapping_paths"
+        if len(active) >= max_sessions_per_repo(repository):
+            oldest = min(active, key=lambda s: s.dispatched_at)
+            return False, oldest.session_id, "repo_session_cap"
+        return True, None, ""
 
     def try_dispatch(
         self,
@@ -341,11 +471,20 @@ class DispatchQueueManager:
         labels: Iterable[str] = (),
         declared_paths: list[str] | None = None,
         requested_model: str = "",
+        occupies_paths: bool = True,
+        role: str | None = None,
+        run_live: Callable[[str], bool | None] | None = None,
+        pr_number: int | None = None,
     ) -> DispatchAttemptResult:
-        """Attempt to dispatch. If overlapping session exists, queue it."""
-        paths = declared_paths or extract_declared_paths(prompt)
+        """Attempt to dispatch. If an overlapping session or the repo cap blocks it, queue it."""
+        if not occupies_paths:
+            return DispatchAttemptResult(dispatched=True, session=None)
+
+        target = pr_number if pr_number is not None else number
+        paths = target_claim_paths(declared_paths or extract_declared_paths(prompt), target)
         decision = resolve_model_routing(labels, prompt, requested_model)
-        allowed, blocker_id = self.can_dispatch(repository, paths)
+        targets = [n for n in (number, pr_number) if n is not None]
+        allowed, blocker_id, block_reason = self.admission(repository, paths, targets=targets, run_live=run_live)
 
         if allowed:
             session_id = uuid4().hex
@@ -356,6 +495,9 @@ class DispatchQueueManager:
                 declared_paths=paths,
                 tier=decision.tier,
                 model=decision.model,
+                role=role,
+                occupies_paths=True,
+                pr_number=pr_number,
             )
             self._active_sessions[session_id] = session
             return DispatchAttemptResult(dispatched=True, session=session)
@@ -371,6 +513,7 @@ class DispatchQueueManager:
             model=decision.model,
             reason=decision.reason,
             blocking_session_id=blocker_id or "",
+            block_reason=block_reason or "overlapping_paths",
         )
         self._queued_items.append(queued)
         return DispatchAttemptResult(dispatched=False, queued_item=queued)
@@ -418,6 +561,11 @@ class DispatchQueueManager:
         for sid in matching_sessions:
             all_dequeued.extend(self.release_session(sid, outcome=outcome))
         return all_dequeued
+
+    def reset_state_for_tests(self) -> None:
+        """Clear active sessions and queued items (pytest isolation only)."""
+        self._active_sessions.clear()
+        self._queued_items.clear()
 
 
 # Global singleton instance for dashboard process

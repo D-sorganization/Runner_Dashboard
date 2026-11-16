@@ -33,6 +33,7 @@ from ci_fix_events import (
     verify_github_signature,
 )
 from ci_fix_service import (
+    CIFixAttemptCapError,
     CIFixBusyError,
     CIFixDispatchRequest,
     CIFixLaunchUnavailableError,
@@ -152,6 +153,8 @@ async def dispatch_ci_fix_endpoint(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except CIFixLaunchUnavailableError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except CIFixAttemptCapError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
 
 
 class CIFixSweepRequest(BaseModel):

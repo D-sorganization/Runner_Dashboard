@@ -10,12 +10,19 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from staff import cli_projects, workspace
-from staff import worktree_hygiene as hygiene
 from staff.store import RunRecord, RunStore
 
+from staff import cli_projects, workspace
+from staff import worktree_hygiene as hygiene
 
-def _record(run_id: str, tree: Path) -> RunRecord:
+
+def _reseed_finished_run(store: RunStore, tree: Path, *, status: str, **fields: object) -> None:
+    with store._lock:
+        store._conn.execute("DELETE FROM runs WHERE id = ?", ("run-finished",))
+    store.create_run(_record("run-finished", tree, status=status, **fields))
+
+
+def _record(run_id: str, tree: Path, *, status: str = "succeeded", **fields: object) -> RunRecord:
     return RunRecord(
         run_id,
         "test",
@@ -26,8 +33,9 @@ def _record(run_id: str, tree: Path) -> RunRecord:
         "issue",
         "#2646",
         "task",
-        status="succeeded",
+        status=status,
         workdir=str(tree),
+        **fields,
     )
 
 
@@ -97,12 +105,12 @@ def test_uncertain_finished_tree_keeps_original(candidate, monkeypatch, entrypoi
     elif hazard == "mismatched-workdir":
         store.update_run("run-finished", workdir=str(tree.parent / "another"))
     elif hazard == "active":
-        store.update_run("run-finished", status="running")
+        _reseed_finished_run(store, tree, status="running")
     elif hazard == "live-pid":
         store.update_run("run-finished", pid=12345)
         monkeypatch.setattr(hygiene, "_pid_is_running", lambda pid: True)
     elif hazard == "orphaned":
-        store.update_run("run-finished", status="failed", failure_class="orphaned")
+        _reseed_finished_run(store, tree, status="failed", failure_class="orphaned")
     elif hazard == "linked":
         original = Path.is_symlink
         monkeypatch.setattr(Path, "is_symlink", lambda path: path == tree or original(path))

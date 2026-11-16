@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from typing import Any
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -659,12 +660,17 @@ def test_start_scheduler_respects_env_gate(monkeypatch: pytest.MonkeyPatch) -> N
     from staff import reconcile as reconcile_mod  # noqa: PLC0415
 
     started: list[bool] = []
+    reconcile_kwargs: list[dict[str, Any]] = []
 
     class _S:
         def start(self) -> None:
             started.append(True)
 
-    monkeypatch.setattr(reconcile_mod, "reconcile_orphaned_runs", lambda *_a, **_k: [])
+    def _record_reconcile(*_a: Any, **k: Any) -> list[str]:
+        reconcile_kwargs.append(k)
+        return []
+
+    monkeypatch.setattr(reconcile_mod, "reconcile_orphaned_runs", _record_reconcile)
     monkeypatch.setattr(schedule_router, "get_scheduler", lambda: _S())
     monkeypatch.setenv("STAFF_SCHEDULER_ENABLED", "false")
     schedule_router.start_scheduler()
@@ -676,6 +682,7 @@ def test_start_scheduler_respects_env_gate(monkeypatch: pytest.MonkeyPatch) -> N
     if schedule_router._bootstrap_thread is not None:
         schedule_router._bootstrap_thread.join(timeout=2)
     assert started == [True]
+    assert reconcile_kwargs and reconcile_kwargs[0].get("requeue_queued") is True
 
 
 @pytest.mark.unit

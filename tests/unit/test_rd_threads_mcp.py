@@ -38,7 +38,9 @@ def test_each_tool_delegates_to_barb_cli(tool: str) -> None:
     getattr(cli, tool).return_value = {"ok": True, "verb": tool}
     result = _rpc(mcp.RdThreadsMCP(cli), "tools/call", {"name": tool, "arguments": ARGS[tool]})["result"]
     getattr(cli, tool).assert_called_once_with(**ARGS[tool])
-    assert json.loads(result["content"][0]["text"]) == {"ok": True, "verb": tool} and result["isError"] is False
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["ok"] is True and payload["verb"] == tool and result["isError"] is False
+    assert payload.get("contract_version")
 
 
 def test_unknown_tool_bad_args_and_failures_are_errors_not_crashes() -> None:

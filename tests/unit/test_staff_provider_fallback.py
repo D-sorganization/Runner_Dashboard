@@ -16,6 +16,8 @@ from staff.provider_fallback import (
     validate_provider_fallback_rules,
     validate_provider_fallback_rules_data,
 )
+from staff.classifier import classify_run_failure
+from staff.failover_dispatch import FAILOVER_FAILURE_CLASSES, is_failover_failure
 from staff.retry import is_retryable_class, should_retry
 from staff.roles import RoleSpec
 from staff.validator import validate_role_data
@@ -116,6 +118,15 @@ def test_match_immediate_on_capacity() -> None:
     hit = match_provider_fallback(rules, "provider_capacity", "codex", retries_exhausted=False)
     assert hit is not None
     assert hit.target.provider == "antigravity"
+
+
+@pytest.mark.unit
+def test_fleet_failover_chain_treats_usage_denial_not_task_failures() -> None:
+    """#2047: cross-check declarative fallback vs fleet-wide chain failure classes."""
+    assert {"rate_limited", "quota_exhausted", "provider_capacity"} <= FAILOVER_FAILURE_CLASSES
+    diag = classify_run_failure("codex", 1, output_text="STAFF_RESULT: tests failed in test_foo.py")
+    assert not is_failover_failure(diag.failure_class)
+    assert is_failover_failure(classify_run_failure("codex", 1, output_text="429 rate limit").failure_class)
 
 
 @pytest.mark.unit

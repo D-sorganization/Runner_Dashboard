@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 from coordination import claims as claims_mod
 from coordination import jobs as jobs_mod
-from coordination_fake_rm import FakeRM, bot, claim_status, install, lease_result, release_result
+from coordination_fake_rm import FakeRM, bot, claim_status, install, lease_result, patch_gh_list_fetch, release_result
 from coordination_fake_rm import issue as _issue
 from coordination_fake_rm import pr as _pr
 from fastapi.testclient import TestClient
@@ -29,9 +29,18 @@ def _fake_evidence(issues: dict[str, list[dict[str, Any]]], pulls: dict[str, lis
     def fetch(path: str) -> Any:
         calls.append(path)
         for repo_full, repo_issues in issues.items():
-            if path == f"/repos/{repo_full}/issues?state=open&per_page=100":
+            if path in (
+                f"/repos/{repo_full}/issues?state=open&per_page=100",
+                f"/repos/{repo_full}/issues?state=open",
+            ):
                 return repo_issues
-        return next((p for r, p in pulls.items() if path == f"/repos/{r}/pulls?state=all&per_page=100"), [])
+        for repo_full, repo_pulls in pulls.items():
+            if path in (
+                f"/repos/{repo_full}/pulls?state=all&per_page=100",
+                f"/repos/{repo_full}/pulls?state=all",
+            ):
+                return repo_pulls
+        return []
 
     fetch.calls = calls  # type: ignore[attr-defined]
     return fetch
@@ -63,7 +72,7 @@ def test_jobs_excludes_claimed_labelled_pr_and_hold_issues_with_reason(
         ]
     }
     pulls = {TOOLS: [_pr(50, closes=12)]}
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _fake_evidence(issues, pulls))
+    patch_gh_list_fetch(monkeypatch, _fake_evidence(issues, pulls))
     rm.respond("check_agent_claim", claim_status(False))
 
     body = client.get("/api/coordination/jobs?repo=Tools&include_excluded=true").json()
@@ -81,7 +90,7 @@ def test_jobs_claim_check_fail_open_is_excluded_with_warning(
     rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     issues = {TOOLS: [_issue(20)]}
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _fake_evidence(issues, {}))
+    patch_gh_list_fetch(monkeypatch, _fake_evidence(issues, {}))
     rm.respond("check_agent_claim", claim_status(False, "", "error:RuntimeError: GitHub unreachable"))
 
     body = client.get("/api/coordination/jobs?repo=Tools&include_excluded=true").json()
@@ -102,7 +111,7 @@ def test_jobs_sorted_by_priority_then_board(rm: FakeRM, client: TestClient, monk
             _issue(33),
         ]
     }
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _fake_evidence(issues, {}))
+    patch_gh_list_fetch(monkeypatch, _fake_evidence(issues, {}))
     rm.respond("check_agent_claim", claim_status(False))
     monkeypatch.setattr(priorities_service, "top_priorities", lambda limit: [{"item": "ship it", "scope": "Tools #32"}])
 
@@ -119,7 +128,7 @@ def test_jobs_repo_filter_and_limit_bounds(rm: FakeRM, client: TestClient, monke
         GAMES: [_issue(42, repo="Games")],
     }
     fetch = _fake_evidence(issues, {})
-    monkeypatch.setattr(claims_mod, "evidence_fetch", fetch)
+    patch_gh_list_fetch(monkeypatch, fetch)
     rm.respond("check_agent_claim", claim_status(False))
 
     body = client.get("/api/coordination/jobs?repo=Tools").json()
@@ -160,7 +169,7 @@ def test_jobs_claim_ineligible_409(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) 
     from coordination import jobs as jobs_mod
     from coordination.jobs import JobIneligibleError
 
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(55, labels=["blocked"]))
+    patch_gh_list_fetch(monkeypatch, _claim_fetch(55, labels=["blocked"]))
     rm.respond("check_agent_claim", claim_status(False))
     with pytest.raises(JobIneligibleError, match="blocked"):
         jobs_mod.claim_job("Tools", 55, agent="codex", session="codex-55", intent="ship")
@@ -172,7 +181,7 @@ def test_jobs_claim_fail_open_502(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -
     from coordination import jobs as jobs_mod
     from coordination.board import RMScriptError
 
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(56))
+    patch_gh_list_fetch(monkeypatch, _claim_fetch(56))
     rm.respond("check_agent_claim", claim_status(False, "", "error:Timeout"))
     with pytest.raises(RMScriptError):
         jobs_mod.claim_job("Tools", 56, agent="codex", session="codex-56", intent="ship")
@@ -185,7 +194,7 @@ def test_jobs_claim_post_write_check_unavailable_is_not_success(rm: FakeRM, monk
     from coordination import jobs as jobs_mod
     from coordination.board import RMScriptError
 
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(58))
+    patch_gh_list_fetch(monkeypatch, _claim_fetch(58))
     rm.respond("post_agent_lease", lease_result())
     posted = {"n": 0}
     real_post_lease = claims_mod.post_lease
@@ -205,6 +214,12 @@ def test_jobs_claim_post_write_check_unavailable_is_not_success(rm: FakeRM, monk
     with pytest.raises(RMScriptError):
         jobs_mod.claim_job("Tools", 58, agent="codex", session="codex-58", intent="ship")
     assert jobs_mod._current_fence("Tools", 58) == 0
+    from coordination import claim_state as claim_state_mod
+
+    claim_state_mod.reset_claim_state_store()
+    store = claim_state_mod.get_store()
+    assert store.read("Tools", 58) is None
+    assert store.try_acquire("Tools", 58, agent="agy", session="agy-58").acquired
 
 
 @pytest.mark.unit
@@ -213,7 +228,7 @@ def test_jobs_claim_post_write_check_unheld_is_not_success(rm: FakeRM, monkeypat
     from coordination import jobs as jobs_mod
     from coordination.board import RMScriptError
 
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(59))
+    patch_gh_list_fetch(monkeypatch, _claim_fetch(59))
     rm.respond("post_agent_lease", lease_result())
     monkeypatch.setattr(
         claims_mod,
@@ -231,7 +246,7 @@ def test_jobs_concurrent_claim_one_wins(rm: FakeRM, monkeypatch: pytest.MonkeyPa
     from coordination import jobs as jobs_mod
     from coordination.jobs import JobIneligibleError
 
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _claim_fetch(57))
+    patch_gh_list_fetch(monkeypatch, _claim_fetch(57))
     rm.respond("post_agent_lease", lease_result())
     rm.respond("release_agent_lease", release_result())
     posts = {"n": 0}
@@ -278,11 +293,15 @@ def _ttl_fetch(number: int) -> Any:
     payload = _claim_issue(number)
 
     def fetch(path: str) -> Any:
-        if path == f"/repos/{TOOLS}/issues?state=open&per_page=100":
+        open_issues = (
+            f"/repos/{TOOLS}/issues?state=open&per_page=100",
+            f"/repos/{TOOLS}/issues?state=open",
+        )
+        if path in open_issues:
             return [payload]
         if path.endswith(f"/issues/{number}"):
             return payload
-        if path.endswith("/pulls?state=all&per_page=100"):
+        if path.endswith("/pulls?state=all") or path.endswith("/pulls?state=all&per_page=100"):
             return []
         return []
 
@@ -295,7 +314,7 @@ def _post_claim(client: TestClient, rm: FakeRM, monkeypatch: pytest.MonkeyPatch,
     Only patches ``claims_mod.check`` for the claim call itself (via a scoped ``MonkeyPatch``), so callers
     are free to drive later reads (sweep, re-list) through ``rm.respond("check_agent_claim", ...)`` as before.
     """
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _ttl_fetch(number))
+    patch_gh_list_fetch(monkeypatch, _ttl_fetch(number))
     rm.respond("post_agent_lease", lease_result())
     posted = {"n": 0}
     real_post_lease = claims_mod.post_lease
@@ -343,7 +362,7 @@ def test_jobs_ttl_sweep_relists_unheartbeated(rm: FakeRM, client: TestClient, mo
     rm.respond("release_agent_lease", release_result())
     assert jobs_mod.sweep_expired_job_claims(now=datetime.now(UTC) + timedelta(hours=1))["released"] == 1
     rm.respond("check_agent_claim", claim_status(False))
-    monkeypatch.setattr(claims_mod, "evidence_fetch", _ttl_fetch(70))
+    patch_gh_list_fetch(monkeypatch, _ttl_fetch(70))
     assert any(j["issue"] == 70 for j in client.get("/api/coordination/jobs?repo=Tools").json()["jobs"])
 
 

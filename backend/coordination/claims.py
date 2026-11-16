@@ -19,6 +19,7 @@ RM shapes this module relies on (``shared_scripts/agent_coordination.py``):
 from __future__ import annotations
 
 import json
+import logging
 import re
 import threading
 from collections.abc import Callable, Iterator, Sequence
@@ -27,6 +28,8 @@ from typing import Any
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
+from coordination import claim_state as claim_state_mod
+from coordination import gh_cli
 from coordination.board import BOARD_COMMENT_LIMIT, RMScriptError
 from coordination.board_pagination import board_config
 from coordination.gh_cli import gh_api_json
@@ -35,6 +38,7 @@ from coordination.rm_scripts import ScriptResult, run_module
 from staff.claim_guard import closing_pr_for, full_repo
 from staff.workspace import rm_root
 
+log = logging.getLogger("dashboard.coordination.claims")
 FAIL_OPEN_PREFIX = "error:"
 _BRANCH_FOR_ISSUE = re.compile(r"(?:^|/)(\d+)(?:-|$)")
 
@@ -49,7 +53,7 @@ evidence_fetch: EvidenceFetch = gh_api_json
 
 def _landed_pr(repo_full: str, issue: int) -> dict[str, Any] | None:
     """An open or merged PR whose title/body closes ``issue`` (closed-unmerged doesn't count)."""
-    pulls = evidence_fetch(f"/repos/{repo_full}/pulls?state=all&per_page=100")
+    pulls = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=all")
     candidates = [
         pr for pr in (pulls if isinstance(pulls, list) else []) if pr.get("state") != "closed" or pr.get("merged_at")
     ]
@@ -58,7 +62,7 @@ def _landed_pr(repo_full: str, issue: int) -> dict[str, Any] | None:
 
 def _pushed_branch(repo_full: str, issue: int) -> str | None:
     """Remote branch whose last path segment is ``<issue>-...`` (the fleet's lane-branch convention)."""
-    branches = evidence_fetch(f"/repos/{repo_full}/branches?per_page=100")
+    branches = gh_cli.gh_api_json_all(f"/repos/{repo_full}/branches")
     for entry in branches if isinstance(branches, list) else []:
         name = str(entry.get("name") or "") if isinstance(entry, dict) else ""
         match = _BRANCH_FOR_ISSUE.search(name)
@@ -126,6 +130,7 @@ def reset_locks() -> None:
     """Forget per-issue locks (tests)."""
     with _locks_guard:
         _issue_locks.clear()
+    claim_state_mod.reset_claim_state_store()
 
 
 @contextmanager
@@ -231,6 +236,9 @@ def check(repo: str, issue: int) -> dict[str, Any]:
     }
 
 
+ROLLBACK_ATTEMPTS = 2  # bounded: runs under the per-issue lock
+
+
 def _is_own(status: dict[str, Any], agent: str, session: str) -> bool:
     """Renewal needs the same agent AND session; an unknown holder or session counts as someone else."""
     holder, holder_session = status.get("agent") or "", status.get("session") or ""
@@ -250,9 +258,44 @@ def _write_result(script: str, res: ScriptResult) -> dict[str, Any]:
     raise RMScriptError(f"{script} failed: {'; '.join(errors) or res.failure()}")
 
 
+def _rollback_failed_lease_write(repo: str, issue: int, agent: str, session: str) -> str | None:
+    """Remove an orphan ``claim:*`` label when the lease comment never posted (#4270 B-08).
+
+    RM's release removes a label only for a lease comment it can find. With no comment it
+    answers ``already_released`` and changes nothing; that answer also says no lease is
+    current on the issue, so the label is an orphan and is deleted here directly.
+
+    Post: ``None`` once the label is gone (RM reported ``label_updated``, or the direct
+    delete succeeded); otherwise the last failure reason after ``ROLLBACK_ATTEMPTS`` tries
+    (never raises, so the original lease error still propagates).
+    """
+    args = ("--repo", repo, "--issue", str(issue), "--agent", agent, "--session", session)
+    failure = "not attempted"
+    for attempt in range(1, ROLLBACK_ATTEMPTS + 1):
+        try:
+            res = run_module("release_agent_lease", *args, "--reason", "rollback: lease comment failed")
+            data = res.json() or {}
+            if data.get("label_updated"):
+                return None
+            if data.get("already_released"):
+                gh_cli.remove_issue_label(full_repo(repo), issue, f"claim:{agent}")
+                return None
+            failure = res.failure()
+        except Exception as exc:  # noqa: BLE001 — reported to the caller via the return value
+            failure = f"{type(exc).__name__}: {exc}"
+        log.warning(
+            "claims: rollback release_agent_lease attempt %s/%s failed for %s#%s: %s",
+            attempt,
+            ROLLBACK_ATTEMPTS,
+            repo,
+            issue,
+            failure,
+        )
+    return failure
+
+
 def _post(repo: str, issue: int, agent: str, session: str, intent: str) -> dict[str, Any]:
-    args = ("--repo", repo, "--issue", str(issue), "--agent", agent, "--session", session, "--intent", intent)
-    return _write_result("post_agent_lease", run_module("post_agent_lease", *args))
+    return post_lease(repo, issue, agent, session, intent, rollback_orphan_label=True)
 
 
 def post_lease(
@@ -263,8 +306,15 @@ def post_lease(
     intent: str,
     *,
     ttl_hours: float | None = None,
+    rollback_orphan_label: bool = False,
 ) -> dict[str, Any]:
-    """Post an RM lease comment and ``claim:*`` label (same subprocess as :func:`claim`)."""
+    """Post an RM lease comment and ``claim:*`` label (same subprocess as :func:`claim`).
+
+    ``rollback_orphan_label`` is for a NEW claim only: when the post set the label but never
+    posted the lease comment, the label is removed again (#4270 B-08) and a failed removal is
+    named in the raised ``RMScriptError``. Renewals (heartbeat) leave it False so a failed
+    post never releases the valid lease being renewed.
+    """
     args: list[str] = [
         "--repo",
         repo,
@@ -279,7 +329,18 @@ def post_lease(
     ]
     if ttl_hours is not None:
         args += ["--ttl-hours", str(float(ttl_hours))]
-    return _write_result("post_agent_lease", run_module("post_agent_lease", *args))
+    res = run_module("post_agent_lease", *args)
+    try:
+        return _write_result("post_agent_lease", res)
+    except RMScriptError as exc:
+        data = res.json()
+        # No JSON (timeout or crash) means the label may have been written before the script died.
+        label_orphaned = data is None or (data.get("label_updated") and not data.get("comment_posted"))
+        if rollback_orphan_label and label_orphaned:
+            failure = _rollback_failed_lease_write(repo, issue, agent, session)
+            if failure is not None:
+                raise RMScriptError(f"{exc}; orphan claim label rollback failed: {failure}") from exc
+        raise
 
 
 def claim(
@@ -326,7 +387,25 @@ def claim(
             aging_block = claim_blocked_by_aging_prs(agent, claim_repo=repo, claim_paths=paths, fetch=evidence_fetch)
             if aging_block is not None:
                 raise AgingPrBlockedError(aging_block)
-        posted = _post(repo, issue, agent, session, intent)
+        cas = claim_state_mod.acquire_compare_and_set(repo, issue, agent=agent, session=session)
+        if not cas.acquired:
+            held_status = claim_state_mod.holder_status_from_row(repo, issue, cas)
+            record_job_claim_activity(
+                kind="conflict",
+                repo=repo,
+                issue=issue,
+                agent=agent,
+                session=session,
+                holder_principal=holder_principal,
+                fencing_token=fencing_token,
+                extra={"reason": held_status.get("reason", ""), "storage_backend": "claim_state.sqlite"},
+            )
+            raise ClaimHeldError(held_status)
+        try:
+            posted = _post(repo, issue, agent, session, intent)
+        except Exception:
+            claim_state_mod.get_store().abandon_acquire(repo, issue, agent=agent, session=session)
+            raise
         receipt = str(posted["result"].get("receipt") or "")
         record_job_claim_activity(
             kind="claim",
@@ -367,6 +446,7 @@ def release(
     )
     with _issue_lock(repo, issue):
         done = _write_result("release_agent_lease", run_module("release_agent_lease", *args))
+        claim_state_mod.get_store().release(repo, issue, agent=agent, session=session)
         receipt = str(done["result"].get("receipt") or "")
         kind: str = "expiry" if "expired" in reason.lower() else "release"
         record_job_claim_activity(

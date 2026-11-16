@@ -40,6 +40,11 @@ class Price:
 # wins), so ``claude-opus-5``, ``opus-5`` and ``claude-opus-5-20260401`` all hit
 # the same row. Order inside a provider does not matter.
 PRICE_TABLE: dict[str, dict[str, Price]] = {
+    # Peak, cache-miss rates from https://api-docs.deepseek.com/quick_start/pricing/ (2026-11-09).
+    "deepseek-api": {
+        "deepseek-flash": Price(0.30, 1.20, estimate=True),
+        "deepseek-v4-pro": Price(1.32, 3.96, estimate=True),
+    },
     "claude": {
         "fable-5.2": Price(8.0, 40.0),
         "fable-5-2": Price(8.0, 40.0),
@@ -86,6 +91,7 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
     "claude-ollama": {},
     "cursor-agent": {},
     "grok": {},
+    "qwen": {},
 }
 
 # The anthropic-api provider (issue #3123) bills the same Anthropic Messages
@@ -104,6 +110,7 @@ DEFAULT_MODEL: dict[str, str] = {
     "anthropic-api": "opus-5",
     "cursor-agent": "composer-2.5",
     "grok": "grok-4.7-high",
+    "qwen": "qwen3.8-flash",
 }
 
 # Providers that never carry per-token cost regardless of model.
@@ -115,6 +122,7 @@ WALL_TIME_USD_PER_MINUTE: dict[str, float] = {
     "antigravity": 0.0,
     "cursor-agent": 0.0,
     "grok": 0.0,
+    "qwen": 0.0,
     "ollama": 0.0,
     "claude-ollama": 0.0,
     "gemini": 0.0,

@@ -21,6 +21,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from identity import Principal, require_scope
+from middleware import limit_body_size
 
 logger = logging.getLogger("dashboard.voice")
 router = APIRouter(prefix="/api/v1/voice", tags=["voice"])
@@ -186,6 +187,7 @@ async def get_voice_status(response: Response, _peer: Principal = Depends(_VOICE
 
 
 @router.post("/transcribe")
+@limit_body_size(MAX_AUDIO_BYTES)  # explicit larger-than-default cap (#4274 F-07)
 async def transcribe_voice(
     request: Request, response: Response, _peer: Principal = Depends(_VOICE_CHAT)
 ) -> dict[str, Any]:

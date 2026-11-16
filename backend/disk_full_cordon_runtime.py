@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import subprocess
+import threading
 from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
@@ -14,6 +15,7 @@ from typing import Any
 from disk_full_cordon import (
     CordonAction,
     CordonActionKind,
+    CordonPhase,
     DiskFullCordonState,
     RunnerSnapshot,
     plan_cordon_tick,
@@ -25,6 +27,9 @@ from runner_disk_guard_policy import (
 )
 
 log = logging.getLogger("dashboard.disk_full_cordon_runtime")
+
+# Stay below typical WatchdogSec=120 (#4273 J-04).
+DEFAULT_CORDON_CLEANUP_TIMEOUT_S = int(os.environ.get("CORDON_CLEANUP_TIMEOUT_S", "90"))
 
 _STATE_PATH = Path(
     os.environ.get(
@@ -112,6 +117,7 @@ def _run_cleanup_commands(
     config: RunnerDiskGuardConfig,
     *,
     dry_run: bool,
+    timeout_s: int = DEFAULT_CORDON_CLEANUP_TIMEOUT_S,
 ) -> None:
     if dry_run:
         log.info("disk-full cordon: dry-run skip cleanup commands")
@@ -124,7 +130,7 @@ def _run_cleanup_commands(
             subprocess.run(
                 argv,
                 check=False,
-                timeout=1800,
+                timeout=timeout_s,
                 capture_output=True,
                 text=True,
             )
@@ -139,12 +145,23 @@ def _run_cleanup_commands(
         log.debug("disk-full cordon: stale worktree sweep skipped: %s", exc)
 
 
+def _schedule_cleanup_commands(config: RunnerDiskGuardConfig, *, dry_run: bool) -> None:
+    if dry_run:
+        log.info("disk-full cordon: dry-run skip cleanup commands")
+        return
+
+    def _worker() -> None:
+        _run_cleanup_commands(config, dry_run=False, timeout_s=DEFAULT_CORDON_CLEANUP_TIMEOUT_S)
+
+    threading.Thread(target=_worker, name="disk-cordon-cleanup", daemon=True).start()
+
+
 def apply_cordon_actions(
     actions: tuple[CordonAction, ...],
     *,
     config: RunnerDiskGuardConfig,
     dry_run: bool,
-    stop_unit: Callable[[str, str], None],
+    stop_unit: Callable[..., None],
 ) -> None:
     """Apply planned cordon actions (injectable for tests and autoscaler)."""
     for action in actions:
@@ -155,13 +172,17 @@ def apply_cordon_actions(
             if not dry_run:
                 _set_maintenance(False)
         elif action.kind == CordonActionKind.RUN_DISK_CLEANUP:
-            _run_cleanup_commands(config, dry_run=dry_run)
-        elif action.kind == CordonActionKind.STOP_RUNNER and action.unit:
-            reason = "disk-full cordon (forced)" if action.force else "disk-full cordon drain"
+            if dry_run:
+                _run_cleanup_commands(config, dry_run=True, timeout_s=DEFAULT_CORDON_CLEANUP_TIMEOUT_S)
+            else:
+                _schedule_cleanup_commands(config, dry_run=False)
+        elif action.kind in (CordonActionKind.STOP_RUNNER, CordonActionKind.STOP_RUNNER_FORCE) and action.unit:
+            forced = action.kind == CordonActionKind.STOP_RUNNER_FORCE or action.force
+            reason = "disk-full cordon (forced)" if forced else "disk-full cordon drain"
             if dry_run:
                 log.info("disk-full cordon: dry-run stop %s (%s)", action.unit, reason)
             else:
-                stop_unit(action.unit, reason)
+                stop_unit(action.unit, reason, force=forced)
 
 
 def build_runner_snapshots(
@@ -186,11 +207,14 @@ def process_disk_full_cordon_tick(
     """Run one cordon tick. Returns True when normal autoscaler scaling should be skipped."""
     active_policy = policy or load_runner_disk_guard_policy()
 
-    host = probe_host_volume()
-    free_gb = float(host.get("free_gb", 0.0))
-    used_percent = float(host.get("percent", 0.0))
-
     state = load_cordon_state(state_path)
+    host = probe_host_volume()
+    if host.get("status") == "unknown":
+        log.warning("disk-full cordon: host volume probe unknown — not tripping on false 0GB")
+        return state.phase not in ("normal", CordonPhase.NORMAL.value)
+
+    free_gb = float(host.get("free_gb") or 0.0)
+    used_percent = float(host.get("percent") or 0.0)
     runners = build_runner_snapshots(units, unit_is_active, runner_is_busy)
     result = plan_cordon_tick(
         state,

@@ -11,6 +11,8 @@ import pytest
 from fleet_client import FleetAPIError, FleetArgumentError, FleetClient
 from fleet_fixtures import _clean_fleet_env, fake_api  # noqa: F401
 from fleet_rec import (
+    CLI_AGENT_MAP,
+    SUPPORTED_CLIS,
     default_recorder_spool_path,
     flush_recorder_spool,
     normalize_cli_name,
@@ -20,6 +22,31 @@ from fleet_rec import (
     run_pty_process,
     run_recorded_cli,
 )
+
+
+def test_supported_clis_each_have_default_agent_mapping() -> None:
+    """Regression: fleet-rec must resolve agent for every supported CLI without FLEET_AGENT (#4374)."""
+    assert set(SUPPORTED_CLIS) <= set(CLI_AGENT_MAP)
+
+
+def test_qwen_recording_uses_default_agent_without_fleet_agent_env(
+    fake_api: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FLEET_REC_ENABLED", "1")
+    monkeypatch.delenv("FLEET_AGENT", raising=False)
+    spool = tmp_path / "qwen-spool.json"
+    sid = "qwen-node-01-20261112-abc123"
+    fake_api.respond("POST", "/api/v1/activity/events", 200, [{"ok": True}])
+    fake_api.respond("POST", f"/api/v1/activity/sessions/{sid}/chunks", 200, {"ok": True})
+
+    def pty_run(argv: list[str], on_output: Any) -> int:
+        assert argv[0] == "qwen"
+        return 0
+
+    rc = run_recorded_cli(["qwen", "--version"], url=fake_api.url, session=sid, spool_file=spool, pty_runner=pty_run)
+    start = fake_api.requests[0].body[0]
+    assert rc == 0 and start["kind"] == "session_start" and start["payload"] == {"cli": "qwen"}
+    assert start["principal"] == "agent-qwen"
 
 
 def test_opt_in_disabled_by_default_passes_through_without_hub_or_spool(
@@ -221,6 +248,6 @@ def test_windows_and_wsl_spool_coexistence_and_powershell_profile(
     assert normalize_cli_name("D:/tools/cursor-agent.cmd") == "cursor-agent"
     assert normalize_cli_name("agy.ps1") == "agy"
     snippet = render_powershell_profile_snippet()
-    for cli in ("claude", "codex", "agy", "cursor-agent"):
+    for cli in ("claude", "codex", "agy", "cursor-agent", "qwen"):
         assert f"function Invoke-FleetRec-{cli}" in snippet or f"function {cli}" in snippet
     assert "FLEET_REC_ENABLED" in snippet and "--platform windows" in snippet

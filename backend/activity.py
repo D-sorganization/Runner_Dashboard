@@ -28,6 +28,8 @@ ActivitySource = Literal[
     "agent_bus",
     "recorder",
     "desktop_adapter",
+    "claude_desktop_adapter",
+    "codex_desktop_adapter",
     "checkin",
     "job_board",
     "github",

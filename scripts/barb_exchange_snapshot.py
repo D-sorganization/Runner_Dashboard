@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """rd-barb -> Barbara memory snapshot (docs/agents/barb-exchange.md).
 
-rd-barb reads the hub's context pack (``GET /api/v1/memory/context-pack``), cleans it here and
-writes the result to ``context-pack/latest.json`` in the private exchange repo, where the Claude
-planner reads it. The hub stays tailnet-only (ADR 0007); only this cleaned copy leaves it.
+Legacy exchange bridge: rd-barb may still fetch the hub context pack (``GET /api/v1/memory/context-pack``),
+clean it here and write the result to ``context-pack/latest.json`` in the private exchange repo for the
+proposed Claude planner. Barb agents normally use hub continuity plus priorities/holds instead (retired
+2026-11-12). The hub stays tailnet-only (ADR 0007); only this cleaned copy leaves it.
 
 Cleaning is strip-then-recheck (DbC: :func:`clean` and :func:`verify` never raise and list every
 problem). Only the allowlisted sections survive; ``barb-only`` and transcript entries are dropped;

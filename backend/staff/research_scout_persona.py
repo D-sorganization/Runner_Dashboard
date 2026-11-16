@@ -47,9 +47,9 @@ RESEARCH_SCOUT_SCHEDULE_ENTRIES: Mapping[str, str] = {
 # (no per-step override) -- preserved as-is rather than the 4-step chain used by
 # the invented personas, which do not have a prior real role file to match.
 RESEARCH_SCOUT_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
-    FailoverStep("claude", None),
-    FailoverStep("antigravity", None),
-    FailoverStep("cursor-agent", None),
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("antigravity", "gemini-3.8-flash-high"),
 )
 
 
@@ -73,7 +73,7 @@ def research_scout_role_data() -> dict[str, Any]:
             "under `proposals.write`, capped at 3 per run. Schedule: 0 8 * * 5 (weekly_scan, Friday 8 "
             "AM) in America/Los_Angeles. Cite sources so findings are reproducible; never invent papers."
         ),
-        "providers": ["claude", "antigravity", "cursor-agent"],
+        "providers": ["codex", "claude", "antigravity"],
         "model": "default",
         "schedule": "0 8 * * 5",
         "window": None,

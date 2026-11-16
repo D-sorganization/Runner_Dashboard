@@ -29,10 +29,12 @@ _CHAT_READ_ONLY_FLAGS: dict[str, tuple[str, ...]] = {
     "claude": ("--permission-mode", "default"),
     "claude-ollama": ("--permission-mode", "default"),
     "anthropic-api": ("--permission-mode", "default"),
+    "deepseek-api": ("--permission-mode", "default"),
     "codex": ("--sandbox", "read-only"),
     "ollama": ("--sandbox", "read-only"),
     "antigravity": ("--mode", "plan"),
     "gemini": ("--approval-mode", "plan"),
+    "qwen": ("--approval-mode", "plan"),
     "cursor-agent": ("--mode", "ask"),
 }
 # Flags and flag values that switch a CLI's permission checks off. No staff argv,

@@ -34,7 +34,7 @@ def test_fleet_critic_yaml_passes_schema_validation_and_loads_into_roster(tmp_pa
     assert spec_raw["permissions"]["merge"] is False
     assert spec_raw["window"] is None
     assert spec_raw["reports_to"] == "barb" and spec_raw["surface"] == "both"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity", "cursor-agent"]
+    assert spec_raw["providers"] == ["claude", "codex", "cursor-agent"]
     clear_roles_cache()
     role = load_roles(tmp_path)["fleet-critic"]
     assert role.valid
@@ -46,12 +46,10 @@ def test_fleet_critic_yaml_passes_schema_validation_and_loads_into_roster(tmp_pa
 def test_fleet_critic_resolved_chain_has_no_model_override(tmp_path: Path) -> None:
     fc.write_fleet_critic_role_yaml(tmp_path)
     resolved = resolve_failover_chain(fc.load_fleet_critic_role_spec(tmp_path))
-    assert resolved == fc.FLEET_CRITIC_FAILOVER_CHAIN == (FailoverStep("claude", None), *resolved[1:])
-    assert [s.provider for s in resolved] == ["claude", "codex", "antigravity", "cursor-agent"]
-    # rd_barb_provider.chain() defaults a bare claude head to "opus" when nothing overrides it.
-    assert rp.select({}, role="fleet-critic") == rp.Decision("claude", "opus", False)
-    tail = fc.FLEET_CRITIC_FAILOVER_CHAIN[1:]
-    assert rp.chain({}, role="fleet-critic") == (FailoverStep("claude", "opus"), *tail)
+    assert resolved == fc.FLEET_CRITIC_FAILOVER_CHAIN
+    assert [s.provider for s in resolved] == ["claude", "codex", "cursor-agent"]
+    assert rp.select({}, role="fleet-critic") == rp.Decision("claude", "claude-opus-5-5", False)
+    assert rp.chain({}, role="fleet-critic") == fc.FLEET_CRITIC_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
     args = ["--role", "fleet-critic", "next", "--current", "claude", "--failure", "rate_limited"]
     rc = rp.main(args, config={}, notify=sent.append)

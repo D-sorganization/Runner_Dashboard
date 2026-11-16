@@ -31,7 +31,6 @@ from fastapi.responses import StreamingResponse
 from identity import Principal, format_caller, require_scope
 from pydantic import BaseModel, Field, field_validator
 from routers.staff_dispatch import run_dispatch
-from staff import fleet as staff_fleet
 from staff.activity_summary import ActivitySummaryUnavailable, activity_summary_counts
 from staff.adapters import ADAPTERS, available_providers, chat_only_providers, unattended_providers
 from staff.audit import (
@@ -63,6 +62,8 @@ from staff.scheduler import get_scheduler
 from staff.store import ACTIVE_STATUSES, RUN_STATUSES, default_db_path
 from staff.summary_view import build_staff_summary
 
+from staff import fleet as staff_fleet
+
 log = logging.getLogger("dashboard.staff")
 router = APIRouter(prefix="/api/staff", tags=["staff"])
 
@@ -86,6 +87,8 @@ class RunBody(BaseModel):
     work_item_id: str | None = Field(default=None, max_length=120)
     origin_node: str | None = Field(default=None, max_length=60)
     dry_run: bool = False
+    strict_provider: bool = False
+    authority_code_read_only: bool = False
     # Run even when the role's budget or the provider's plan window is spent (#1588); audited.
     ignore_budget: bool = False
     # Operator-only: dispatch despite a foreign claim:* label / closing PR; needs a reason; audited (#2562).

@@ -22,8 +22,9 @@ import subprocess
 from collections.abc import Callable
 from typing import Any
 
-from staff.roles import RoleSpec
 from staff.workspace import ORG
+
+from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.consolidation")
 

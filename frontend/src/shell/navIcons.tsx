@@ -82,6 +82,14 @@ export const ActivityIcon = svg(
   <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />,
 );
 
+export const KanbanIcon = svg(
+  <>
+    <rect x="3" y="4" width="5" height="16" rx="1" />
+    <rect x="10" y="4" width="5" height="11" rx="1" />
+    <rect x="17" y="4" width="5" height="14" rx="1" />
+  </>,
+);
+
 export const ClockIcon = svg(
   <>
     <circle cx="12" cy="12" r="10" />

@@ -11,7 +11,7 @@ import time
 from typing import Annotated, Any
 
 from agent_bus.models import AckBody, ClaimTrackBody, HandoffBody, HeartbeatBody, RegisterBody, SendBody
-from agent_bus.store import AgentBusStore, get_store
+from agent_bus.store import AgentBusStore, LiveSessionConflictError, get_store
 from coordination.auth import WRITE_SCOPE, _is_loopback_request, _reject_unauthenticated_bearer
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
@@ -95,15 +95,21 @@ async def post_register(
         agent = principal.id.removeprefix("agent-")
         if body.role != agent and not body.session.startswith(f"{agent}-"):
             raise HTTPException(status_code=403, detail={"error": "session must match registering agent"})
-    return _store().register(
-        session_id=body.session,
-        role=body.role,
-        provider=body.provider,
-        node=body.node,
-        principal=principal,
-        lease_seconds=body.lease_seconds,
-        mint_token=mint,
-    )
+    try:
+        return _store().register(
+            session_id=body.session,
+            role=body.role,
+            provider=body.provider,
+            node=body.node,
+            principal=principal,
+            lease_seconds=body.lease_seconds,
+            mint_token=mint,
+        )
+    except LiveSessionConflictError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "live session already registered", "session": exc.session_id},
+        ) from exc
 
 
 @router.post("/heartbeat")

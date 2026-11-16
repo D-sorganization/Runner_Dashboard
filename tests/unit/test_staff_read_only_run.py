@@ -27,6 +27,8 @@ def test_role_spec_code_read_only_is_explicit_opt_in() -> None:
         return RoleSpec(name="r", title="R", permissions=dict(perms))
 
     assert role(code_read_only=True, push_branch=False, open_pr=False).code_read_only is True
+    assert role(code_read_only=True).occupies_paths is False
+    assert role(occupies_paths=False).occupies_paths is False
     # Not derived: code-reviewer / maintenance push nothing yet still write reviews or call write APIs.
     assert role(push_branch=False, open_pr=False).code_read_only is False
     assert role().code_read_only is False
@@ -176,9 +178,13 @@ def test_staff_runner_resolve_provider_read_only(tmp_path: Path, staff_cli_insta
     plan = runner.plan(RunRequest(role="barb", prompt="read only"))
     assert plan.provider == "claude"
 
-    # Raises ValueError when caller specifies a non-read-only provider
+    # Substitutes to a read-only provider when caller names a non-read-only provider (#4452)
+    plan_forced = runner.plan(RunRequest(role="barb", provider="codex", prompt="read only"))
+    assert plan_forced.provider == "claude"
+    assert plan_forced.requested_provider == "codex"
+
     with pytest.raises(ValueError, match="runs code-read-only; provider 'codex' has no read-only unattended mode"):
-        runner.plan(RunRequest(role="barb", provider="codex", prompt="read only"))
+        runner.plan(RunRequest(role="barb", provider="codex", prompt="read only", strict_provider=True))
 
 
 @pytest.mark.unit

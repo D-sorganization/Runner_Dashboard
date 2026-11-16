@@ -34,8 +34,8 @@ def test_sanitation_yaml_passes_schema_validation_and_loads_into_roster(tmp_path
     assert spec_raw["permissions"]["merge"] is False
     assert spec_raw["window"] == {"start": "22:00", "end": "06:00"}
     assert spec_raw["reports_to"] == "night-watch" and spec_raw["surface"] == "dashboard"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity"]
-    assert "retry" not in spec_raw
+    assert spec_raw["providers"] == ["codex", "claude", "cursor-agent"]
+    assert "failover_chain" in spec_raw["retry"]
     clear_roles_cache()
     role = load_roles(tmp_path)["sanitation"]
     assert role.valid
@@ -53,14 +53,13 @@ def test_sanitation_rd_barb_provider_chain_has_no_cursor_agent_step() -> None:
     # rd-barb (the one adapter that decides "which CLI runs next") relies on the static
     # PERSONA_ROLE_CHAINS entry, matching the real file's 3-provider list (no cursor-agent).
     # rd_barb_provider.chain() defaults a bare claude head to "opus" when nothing overrides it.
-    assert rp.select({}, role="sanitation") == rp.Decision("claude", "opus", False)
-    expected_chain = (FailoverStep("claude", None), FailoverStep("codex", None), FailoverStep("antigravity", None))
-    assert rp.chain({}, role="sanitation") == (FailoverStep("claude", "opus"), *expected_chain[1:])
+    assert rp.select({}, role="sanitation") == rp.Decision("codex", "gpt-6.1-sol", False)
+    assert rp.chain({}, role="sanitation") == sp.SANITATION_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
-    args = ["--role", "sanitation", "next", "--current", "claude", "--failure", "rate_limited"]
+    args = ["--role", "sanitation", "next", "--current", "codex", "--failure", "rate_limited"]
     rc = rp.main(args, config={}, notify=sent.append)
     assert rc == 0 and len(sent) == 1
-    assert sent[0]["sender_role"] == "sanitation" and "codex" in sent[0]["summary"]
+    assert sent[0]["sender_role"] == "sanitation" and "claude" in sent[0]["summary"]
 
 
 def test_sanitation_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:

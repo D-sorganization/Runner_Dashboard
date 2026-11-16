@@ -15,17 +15,18 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from activity_producers import emit_activity
-from coordination import board, claims, roster
+from coordination import board, claims, hub_sessions, roster
 from coordination import jobs as jobs_mod
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
 from coordination.models import (
     AckBody,
     ClaimBody,
     ClaimReleaseBody,
+    HubSessionRegisterBody,
     JobClaimBody,
     JobHeartbeatBody,
     JobReleaseBody,
@@ -33,7 +34,8 @@ from coordination.models import (
     PresenceBody,
     ReleaseBody,
 )
-from coordination.staff_view import staff_runs
+from coordination.staff_runs_cache import record_staff_runs_snapshot, snapshot_staff_runs
+from coordination.staff_view import staff_run_as_session, staff_runs
 from staff.rm_sync import stale_source_warning
 
 __all__ = ["ImpersonationError", "MissingAgentError", "NotRegisteredError", "UnknownAgentError"]
@@ -114,7 +116,13 @@ async def sessions(repo: str | None) -> dict[str, Any]:
         except Exception:  # noqa: BLE001 — independent upstream failure must not fail this endpoint
             runs, staff_warnings = [], ["staff runs unavailable: read failed"]
     else:
-        runs, staff_warnings = [], ["staff runs read timed out"]
+        cached_runs, _cached_warnings, had_cache = snapshot_staff_runs()
+        runs = cached_runs if had_cache else []
+        staff_warnings = (
+            ["staff runs read timed out; serving cached snapshot"] if had_cache else ["staff runs read timed out"]
+        )
+    if staff_future.done() and runs:
+        record_staff_runs_snapshot(runs, staff_warnings)
     if repo:
         wanted = repo.casefold()
         if data.get("available"):
@@ -126,6 +134,19 @@ async def sessions(repo: str | None) -> dict[str, Any]:
     source_warning = stale_source_warning()
     if source_warning:
         warnings.append(source_warning)
+    hub_rows = hub_sessions.list_sessions(repo)
+    staff_session_rows = [staff_run_as_session(r) for r in runs]
+    merged_sessions = [*data.get("sessions", []), *staff_session_rows, *hub_rows]
+    # de-dupe by (session, repo)
+    seen: set[tuple[str, str]] = set()
+    sessions_out: list[dict[str, Any]] = []
+    for row in merged_sessions:
+        key = (str(row.get("session") or ""), str(row.get("repo") or "").casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        sessions_out.append(row)
+    data = {**data, "sessions": sessions_out}
     return _stamp({**data, "staff_runs": runs, "warnings": [*data.get("warnings", []), *warnings, *staff_warnings]})
 
 
@@ -169,6 +190,38 @@ def _unavailable_sessions(reason: str) -> dict[str, Any]:
 
 def inbox(session: str, repo: str) -> dict[str, Any]:
     return _stamp(board.read_inbox(session, repo))
+
+
+def register_hub_session(body: HubSessionRegisterBody, caller: Caller) -> dict[str, Any]:
+    """Upsert a hub-local coordination session (no RM subprocess)."""
+    _bind(caller, body.session)
+    expires = (datetime.now(UTC) + timedelta(hours=float(body.ttl_hours))).isoformat().replace("+00:00", "Z")
+    row = hub_sessions.upsert(
+        {
+            "session": body.session,
+            "role": body.role,
+            "provider": body.provider,
+            "machine": body.machine,
+            "repo": body.repo or "",
+            "target": body.target or "",
+            "expires": expires,
+            "agent": body.role,
+            "issue": 0,
+            "branch": "",
+            "paths": [],
+            "goals": {},
+            "started_at": now_iso(),
+        }
+    )
+    emit_activity(
+        source="coordination",
+        session_id=body.session,
+        node=body.machine,
+        kind="hub_session_register",
+        repo=body.repo,
+        payload={"role": body.role, "provider": body.provider},
+    )
+    return _stamp({"ok": True, "session": row})
 
 
 def register_presence(body: PresenceBody, caller: Caller) -> dict[str, Any]:

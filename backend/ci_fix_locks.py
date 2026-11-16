@@ -21,17 +21,23 @@ from time_utils import utc_now_iso
 
 __all__ = ["DEFAULT_LOCK_DB_PATH", "DEFAULT_LOCK_TTL_SECONDS", "GLOBAL_CI_FIX_LOCK_MGR", "CIFixLockManager"]
 
-# #1881: a lock outlives neither its staff run nor this TTL (default 2 h, the lease length).
-DEFAULT_LOCK_TTL_SECONDS = float(os.environ.get("CI_FIX_LOCK_TTL_SECONDS", "7200"))
-DEFAULT_LOCK_DB_PATH = Path(
-    os.environ.get(
-        "CI_FIX_LOCK_DB",
-        str(
-            Path(os.environ.get("RUNNER_DASHBOARD_DATA_DIR", Path.home() / ".local" / "share" / "runner-dashboard"))
-            / "ci_fix_locks.db"
-        ),
-    )
-)
+# #1881 / #4273: TTL covers a staff run wall clock plus margin (E-04); default matches STAFF_RUN_TIMEOUT.
+_STAFF_RUN_TIMEOUT_SECONDS = float(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
+_CI_FIX_LOCK_MARGIN_SECONDS = float(os.environ.get("CI_FIX_LOCK_TTL_MARGIN_SECONDS", "600"))
+_DEFAULT_TTL_FROM_RUN = _STAFF_RUN_TIMEOUT_SECONDS + _CI_FIX_LOCK_MARGIN_SECONDS
+DEFAULT_LOCK_TTL_SECONDS = float(os.environ.get("CI_FIX_LOCK_TTL_SECONDS", str(_DEFAULT_TTL_FROM_RUN)))
+
+
+def _resolve_lock_data_dir() -> Path:
+    """Hub-backed lock store when the fleet hub data dir is configured (#4273 E-04)."""
+    for key in ("RUNNER_DASHBOARD_HUB_DATA_DIR", "RUNNER_DASHBOARD_DATA_DIR"):
+        raw = os.environ.get(key, "").strip()
+        if raw:
+            return Path(raw)
+    return Path.home() / ".local" / "share" / "runner-dashboard"
+
+
+DEFAULT_LOCK_DB_PATH = Path(os.environ.get("CI_FIX_LOCK_DB", str(_resolve_lock_data_dir() / "ci_fix_locks.db")))
 
 
 class CIFixLockManager:

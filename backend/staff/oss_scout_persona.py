@@ -44,9 +44,9 @@ OSS_SCOUT_SCHEDULE_ENTRIES: Mapping[str, str] = {
 # Real staff/roles/oss-scout.yml lists only 3 providers and "model: default" (no per-step
 # override) -- identical shape to Research Scout's real role file, preserved as-is.
 OSS_SCOUT_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
-    FailoverStep("claude", None),
-    FailoverStep("antigravity", None),
-    FailoverStep("cursor-agent", None),
+    FailoverStep("codex", "gpt-6.1-sol"),
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("antigravity", "gemini-3.8-flash-high"),
 )
 
 
@@ -71,7 +71,7 @@ def oss_scout_role_data() -> dict[str, Any]:
             "(weekly_scan, Friday 9 AM) in America/Los_Angeles. Name exact package "
             "versions and repo URLs so a non-bot agent can verify."
         ),
-        "providers": ["claude", "antigravity", "cursor-agent"],
+        "providers": ["codex", "claude", "antigravity"],
         "model": "default",
         "schedule": "0 9 * * 5",
         "window": None,

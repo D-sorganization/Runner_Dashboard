@@ -11,6 +11,7 @@ from email.utils import parsedate_to_datetime
 from hashlib import sha256
 from typing import Any
 
+import github_rate_governor as _github_governor
 from cache_utils import cache_get, cache_set
 from dashboard_config import DEPLOYMENT_FILE, HOSTNAME, VERSION
 from dashboard_config.cache_ttls import CacheTtl
@@ -101,6 +102,15 @@ def _looks_rate_limited(text: str) -> bool:
 
 
 def _raise_if_circuit_open(endpoint: str) -> None:
+    governor_wait = _github_governor.get_governor().backoff_remaining_seconds()
+    if governor_wait > 0:
+        key = _rate_limit_key(endpoint)
+        raise RateLimitedError(
+            retry_after_seconds=int(governor_wait) + 1,
+            endpoint=endpoint,
+            resource_class=key[1],
+            detail="GitHub API rate limit governor backoff is active",
+        )
     key = _rate_limit_key(endpoint)
     retry_until = _rate_limit_breakers.get(key)
     if retry_until is None:
@@ -119,6 +129,7 @@ def _raise_if_circuit_open(endpoint: str) -> None:
 def _record_rate_limit(endpoint: str, retry_after_seconds: int) -> RateLimitedError:
     key = _rate_limit_key(endpoint)
     retry_after_seconds = max(1, retry_after_seconds)
+    _github_governor.record_github_rate_limit(retry_after_seconds=retry_after_seconds)
     _rate_limit_breakers[key] = time.monotonic() + retry_after_seconds
     return RateLimitedError(
         retry_after_seconds=retry_after_seconds,
@@ -184,6 +195,19 @@ def _map_gh_client_error(endpoint: str, exc: Exception) -> None:
     raise exc
 
 
+async def _acquire_governor_or_raise(endpoint: str) -> None:
+    try:
+        await _github_governor.acquire_before_github_call_async()
+    except _github_governor.GitHubGovernorExhausted as exc:
+        key = _rate_limit_key(endpoint)
+        raise RateLimitedError(
+            retry_after_seconds=int(exc.retry_after_seconds) + 1,
+            endpoint=endpoint,
+            resource_class=key[1],
+            detail="GitHub API rate limit governor exhausted",
+        ) from exc
+
+
 async def gh_api(endpoint: str) -> dict:
     """Call the GitHub API, preferring the pooled httpx client over subprocess.
 
@@ -206,6 +230,7 @@ async def gh_api(endpoint: str) -> dict:
         _map_gh_client_error(endpoint, exc)
 
     # ── Fallback: subprocess gh CLI ─────────────────────────────────────────
+    await _acquire_governor_or_raise(endpoint)
     code, stdout, stderr = await run_cmd(["gh", "api", endpoint])
     if code != 0:
         output = "\n".join(part for part in (stderr, stdout) if part)
@@ -247,6 +272,7 @@ async def gh_api_write(endpoint: str, method: str = "POST", json_body: Any = Non
         raise HTTPException(status_code=502, detail=f"GitHub API error ({exc.status_code}): {exc}") from exc
 
     # Fallback: subprocess gh CLI
+    await _acquire_governor_or_raise(endpoint)
     args = ["gh", "api", endpoint, "--method", method.upper()]
     pf = None
     if json_body is not None:
@@ -302,6 +328,8 @@ async def get_cached_org_runners(org: str) -> dict:
 
 async def gh_api_raw(endpoint: str) -> str:
     """Call the GitHub API via gh CLI and return the raw body text."""
+    _raise_if_circuit_open(endpoint)
+    await _acquire_governor_or_raise(endpoint)
     code, stdout, stderr = await run_cmd(["gh", "api", "-H", "Accept: application/vnd.github.raw", endpoint])
     if code != 0:
         raise HTTPException(status_code=502, detail=f"GitHub API error: {stderr}")

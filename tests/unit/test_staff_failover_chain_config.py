@@ -38,7 +38,7 @@ def test_role_failover_override_must_stay_in_providers() -> None:
     # RoleSpec gains failover_chain in slice 5b; resolve_failover_chain only needs attributes.
     role = SimpleNamespace(
         providers=("codex",),
-        failover_chain=(FailoverStep("codex", "gpt-6-luna"),),
+        failover_chain=(FailoverStep("codex", "gpt-6.1-sol"),),
         model=None,
     )
-    assert resolve_failover_chain(role) == (FailoverStep("codex", "gpt-6-luna"),)
+    assert resolve_failover_chain(role) == (FailoverStep("codex", "gpt-6.1-sol"),)

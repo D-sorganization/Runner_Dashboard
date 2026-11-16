@@ -16,26 +16,23 @@ from node_auto_deploy.runner import CycleConfig, CycleDeps, evaluate_cycle  # no
 from node_auto_deploy.staleness import assess_release_staleness  # noqa: E402
 from node_auto_deploy.state import record_event  # noqa: E402
 
+from required_context_helper import success_runs_for_required_contexts  # noqa: E402
+
 NOW = datetime(2026, 10, 25, 12, 0, tzinfo=timezone.utc)  # noqa: UP017
 SHAS = [f"{i:x}" * 40 for i in range(1, 8)]  # newest first
 RELEASED = SHAS[-1]
 
 
-def _run(sha: str, conclusion: str) -> dict[str, Any]:
-    return {
-        "id": int(sha[0], 16),
-        "head_sha": sha,
-        "name": "quality-gate",
-        "status": "completed",
-        "conclusion": conclusion,
-        "app": {"id": 1},
-        "check_suite": {"id": int(sha[0], 16)},
-        "started_at": "2026-01-01T00:00:00Z",
-    }
-
-
 def _fetch(red: frozenset[str] = frozenset()):
-    return lambda sha: [_run(sha, "failure" if sha in red else "success")]
+    def getter(sha: str) -> list[dict[str, Any]]:
+        runs = success_runs_for_required_contexts(sha)
+        if sha in red:
+            for run in runs:
+                if run.get("name") == "quality-gate":
+                    run["conclusion"] = "failure"
+        return runs
+
+    return getter
 
 
 def _scan(red: frozenset[str] = frozenset(), released: set[str] | None = None):
@@ -136,7 +133,8 @@ def _deps(age_hours: float) -> CycleDeps:
                 for s in SHAS
             ]
         sha = path.split("/commits/")[1].split("/")[0]
-        return {"total_count": 1, "check_runs": [_run(sha, "success")]}
+        runs = success_runs_for_required_contexts(sha)
+        return {"total_count": len(runs), "check_runs": runs}
 
     release = {
         "draft": False,

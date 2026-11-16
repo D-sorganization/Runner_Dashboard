@@ -104,24 +104,15 @@ def _convene() -> str:
 
 
 @pytest.mark.asyncio
-async def test_owner_asks_barb_to_convene_the_board_and_it_just_runs() -> None:
+async def test_owner_message_without_confirm_leaves_board_convene_pending() -> None:
+    """E-18: merely asking Barb must not auto-run model-proposed board.convene."""
     _as(OWNER)
     tid = await _ask_barb("Take PR #1776 to the Board", _convene())
 
     store = get_conversation_store()
     (prop,) = store.list_proposals(thread_id=tid)
     assert prop.action == "board.convene"
-    assert prop.state == "done"
-    board_threads = [t for t in store.list_threads() if t.meta.get("group") == "board"]
-    assert len(board_threads) == 1
-    # The card shows the outcome, not a pending Approve button.
-    card = None
-    for _ in range(60):
-        card = store.get_message(prop.message_id)
-        if card is not None and card.meta.get("proposal", {}).get("status") != "pending":
-            break
-        await asyncio.sleep(0.05)
-    assert card is not None and card.meta["proposal"]["status"] != "pending"
+    assert prop.state == "proposed"
 
 
 @pytest.mark.asyncio

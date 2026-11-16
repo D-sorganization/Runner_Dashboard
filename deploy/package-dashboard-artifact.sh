@@ -156,6 +156,8 @@ if command -v rsync >/dev/null 2>&1; then
 else
     cp -r "${SCRIPT_DIR}/deploy/." "${STAGE_DIR}/deploy/"
 fi
+chmod 0755 "${STAGE_DIR}/deploy/host-metrics-probe.py" 2>/dev/null || true
+find "${STAGE_DIR}/deploy" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} + 2>/dev/null || true
 
 # 5. Config (if present)
 if [[ -d "${SCRIPT_DIR}/config" ]]; then
@@ -189,6 +191,19 @@ else
     find "${STAGE_DIR}/shared_scripts" -type f -name '*.pyc' -delete 2>/dev/null || true
 fi
 
+# 5d. Fleet client library (#4426). scripts/cursor_cloud_handoff.py, which
+# backend/ci_fix_service.py imports on demand, puts clients/fleet on sys.path
+# and imports fleet_client from it.
+mkdir -p "${STAGE_DIR}/clients/fleet"
+if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='.pytest_cache' \
+        "${SCRIPT_DIR}/clients/fleet/" "${STAGE_DIR}/clients/fleet/"
+else
+    cp -r "${SCRIPT_DIR}/clients/fleet/." "${STAGE_DIR}/clients/fleet/"
+    find "${STAGE_DIR}/clients/fleet" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+    find "${STAGE_DIR}/clients/fleet" -type f -name '*.pyc' -delete 2>/dev/null || true
+fi
+
 # 6. Generate deployment.json from a second identity check after the build.
 METADATA_ARGS=(
     --repo-root "${SCRIPT_DIR}" --version "${VERSION}" --python-minor "${PYTHON_MINOR}"
@@ -218,7 +233,7 @@ bash "${SCRIPT_DIR}/deploy/install-dashboard-artifact.sh" --artifact "${ARTIFACT
 ARTIFACT_ROOT="${TMP_DIR}/test-install"
 export ARTIFACT_ROOT
 "${ARTIFACT_ROOT}/.venv/bin/python" -c 'import fastapi, httpx, psutil, uvicorn, yaml'
-echo "==> Verifying backend can import repo-root scripts/ from the staged artifact layout..."
+echo "==> Verifying backend can import repo-root scripts/ and clients/fleet from the staged artifact layout..."
 "${ARTIFACT_ROOT}/.venv/bin/python" "${SCRIPT_DIR}/deploy/artifact_backend_import_smoke.py"
 
 echo "✓ Successfully built immutable artifact: ${ARTIFACT_PATH}"

@@ -30,12 +30,10 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from staff import claim_guard, consolidation, verification
 from staff.barb_continuity import BarbContinuityStore, get_barb_continuity_store
 from staff.budget import BudgetGuard
 from staff.holds import HoldsList
 from staff.role_capsule import RoleCapsuleStore
-from staff.roles import RoleSpec
 from staff.runner import RunRequest, StaffRunner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
@@ -47,6 +45,9 @@ from staff.scheduler_leader_lease import (
     leader_chain,
     lease_allows_firing,
     lease_ttl_seconds,
+    report_handled_slots,
+    skip_slots_handled_by_peer,
+    slot_key,
 )
 from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
@@ -56,6 +57,9 @@ from staff.scheduler_named_jobs import named_jobs, queue_due_slot
 from staff.scheduler_persona_guards import persona_fire_guard
 from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
+
+from staff import claim_guard, consolidation, verification
+from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.scheduler")
 
@@ -229,7 +233,12 @@ class StaffScheduler:
         return lease_ttl_seconds(self.tick_seconds)
 
     def acquire_leader_lease(
-        self, machine: str, *, now: datetime | None = None, ttl_seconds: float | None = None
+        self,
+        machine: str,
+        *,
+        now: datetime | None = None,
+        ttl_seconds: float | None = None,
+        handled: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         """Acquire/renew this scheduler lease on the local authority state file.
 
@@ -239,10 +248,19 @@ class StaffScheduler:
         now = now or self._clock()
         ttl = ttl_seconds if ttl_seconds is not None and ttl_seconds > 0 else self._lease_ttl_seconds()
         with self._lock:
-            return _lease_acquire_leader_lease(self._load_state, self._save_state, machine, now=now, ttl_seconds=ttl)
+            return _lease_acquire_leader_lease(
+                self._load_state, self._save_state, machine, now=now, ttl_seconds=ttl, handled=handled
+            )
 
     def _lease_allows_firing(self, now: datetime) -> bool:
-        return lease_allows_firing(self.acquire_leader_lease, self.runner.machine, now, self._lease_ttl_seconds())
+        ttl = self._lease_ttl_seconds()
+        return lease_allows_firing(self.acquire_leader_lease, self.runner.machine, now, ttl, self._skip_peer_slots)
+
+    def _skip_peer_slots(self, decision: dict[str, Any], now: datetime) -> None:
+        """Never re-fire a slot another leader already handled (#4274 D-13)."""
+        with self._lock:
+            if skip_slots_handled_by_peer(self._load_state(), self.runner.roles(), decision, now, self._tz):
+                self._save_state()
 
     def leader_status(self, now: datetime | None = None) -> dict[str, Any]:
         now = now or self._clock()
@@ -370,8 +388,23 @@ class StaffScheduler:
                     self._queue_due_slot(role, now, decisions, pending_fires)
             if decisions:
                 self._save_state()
+        # Cursors for these slots have moved; tell the lease authority so a later leader skips them.
+        keys = [slot_key(str(d["role"]), d.get("job")) for d in decisions]
+        keys += [slot_key(p["name"], p.get("job")) for p in pending_fires]
+        report_handled_slots(self.acquire_leader_lease, self.runner.machine, now, self._lease_ttl_seconds(), keys)
         for pending in pending_fires:
-            decisions.append(self._fire_pending_slot(now, **pending))
+            try:
+                decisions.append(self._fire_pending_slot(now, **pending))
+            except Exception:  # noqa: BLE001
+                log.exception("staff scheduler: slot fire failed for %s", pending.get("name"))
+                decisions.append(
+                    {
+                        "role": pending.get("name"),
+                        "slot": pending.get("due"),
+                        "fired": False,
+                        "reason": "slot_fire_error",
+                    }
+                )
         if pending_fires:
             with self._lock:
                 self._save_state()
@@ -450,18 +483,22 @@ class StaffScheduler:
             return fired
 
         claimed = claim_guard.scheduler_blocker(repo, req.issue, req.pr, name) if repo else ""
+        if claimed:
+            with self._lock:
+                entry = self._load_state().setdefault(key, {})
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=claimed)
+            log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
+            return _result({"role": name, "slot": due, "fired": False, "reason": claimed})
+        try:
+            rec = self.runner.submit(req)
+        except ValueError as exc:
+            with self._lock:
+                entry = self._load_state().setdefault(key, {})
+                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc))
+            log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
+            return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
         with self._lock:
             entry = self._load_state().setdefault(key, {})
-            if claimed:
-                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=claimed)
-                log.info("staff scheduler: %s slot %s skipped - %s", name, due, claimed)
-                return _result({"role": name, "slot": due, "fired": False, "reason": claimed})
-            try:
-                rec = self.runner.submit(req)
-            except ValueError as exc:
-                record_scheduled_skip(entry, role=name, job=job, slot=due, machine=self.runner.machine, reason=str(exc))
-                log.warning("staff scheduler: %s slot %s rejected by runner — %s", name, due, exc)
-                return _result({"role": name, "slot": due, "fired": False, "reason": str(exc)})
             record_scheduled_fire(entry, slot=due, run_id=rec.id, fired_at=now.isoformat(), role=name, job=job)
             if cartographer_job:
                 self._cartographer_pending[rec.id] = {"job": cartographer_job, "slot": due}

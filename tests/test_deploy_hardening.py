@@ -73,6 +73,19 @@ def test_refresh_token_requires_more_than_prefix() -> None:
     assert "[A-Za-z0-9_]{30,}" in content
 
 
+def test_node_self_heal_probes_unauthenticated_health_endpoint() -> None:
+    content = _read(_DEPLOY / "node-self-heal.sh")
+    assert "/health" in content
+    assert "/api/version" not in content
+
+
+def test_node_self_heal_checks_env_file_before_restart() -> None:
+    content = _read(_DEPLOY / "node-self-heal.sh")
+    assert "runner_dashboard_env_check.py" in content
+    assert "alert:env_file_corrupt" in content
+    assert 'env_file_ok}" -eq 1' in content
+
+
 def test_setup_prefers_python_311_for_runtime_service() -> None:
     content = _read(_DEPLOY / "setup.sh")
     assert "command -v python3.11 || command -v python3" in content

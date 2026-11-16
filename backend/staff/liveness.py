@@ -33,10 +33,11 @@ from pathlib import Path
 from typing import Any, Final, Protocol
 
 from fleet_events import FleetEvent, get_event_store
-from staff.roles import RoleSpec
 from staff.schedule import DEFAULT_TZ, next_fire, parse_cron
 from staff.scheduler import state_path
 from staff.store import ACTIVE_STATUSES, RunRecord
+
+from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.liveness")
 

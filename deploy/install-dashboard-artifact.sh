@@ -275,6 +275,7 @@ chmod +x "${DEPLOY_DIR}/refresh-token.sh"
 chmod +x "${DEPLOY_DIR}/wsl-mirrored-port-helper.sh"
 if [[ -d "${DEPLOY_DIR}/deploy" ]]; then
     find "${DEPLOY_DIR}/deploy" -maxdepth 1 -type f -name '*.sh' -exec chmod +x {} +
+    [[ -f "${DEPLOY_DIR}/deploy/host-metrics-probe.py" ]] && chmod 0755 "${DEPLOY_DIR}/deploy/host-metrics-probe.py"
 fi
 find "${DEPLOY_DIR}/backend" -maxdepth 2 -type f \
     \( -name '*.yml' -o -name '*.yaml' -o -name '*.json' \) \

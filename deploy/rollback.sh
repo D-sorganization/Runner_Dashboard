@@ -10,6 +10,7 @@
 # Exit codes:
 #   0  — success
 #   1  — failure (integrity check, health probe, DB migration, or service error)
+#   2  — invalid CLI usage (unknown flag)
 #
 set -euo pipefail
 # shellcheck source=deploy/lib.sh
@@ -34,7 +35,7 @@ while [[ $# -gt 0 ]]; do
         --deploy-dir)     DEPLOY_DIR="$2"; shift 2 ;;
         --dry-run)        DRY_RUN=true; shift ;;
         --skip-db)        SKIP_DB_MIGRATION=true; shift ;;
-        *) warn "Unknown option: $1"; shift ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
     esac
 done
 
@@ -64,7 +65,7 @@ if [[ "$LIST_ONLY" == "true" ]]; then
     info "Available backups for $DEPLOY_DIR:"
     # fix: ls -d also matches *.manifest.sha256 files, which then fail the
     # require_dir check downstream. find -type d is the correct filter.
-    backups=$(find "$(dirname "$DEPLOY_DIR")" -maxdepth 1 -type d -name "$(basename "$DEPLOY_DIR").bak.*" 2>/dev/null | sort -r || true)
+    backups=$(find_deploy_backups "$DEPLOY_DIR" || true)
     if [[ -z "$backups" ]]; then
         warn "No backups found for $DEPLOY_DIR"
         exit 0
@@ -89,7 +90,7 @@ fi
 # ─── Select backup ────────────────────────────────────────────────────────────
 
 if [[ -z "$BACKUP_PATH" ]]; then
-    BACKUP_PATH=$(find "$(dirname "$DEPLOY_DIR")" -maxdepth 1 -type d -name "$(basename "$DEPLOY_DIR").bak.*" 2>/dev/null | sort -r | head -1 || true)
+    BACKUP_PATH=$(latest_deploy_backup "$DEPLOY_DIR" || true)
     [[ -n "$BACKUP_PATH" ]] || fail "No backup found. Run update-deployed.sh first."
     info "Auto-selected: $BACKUP_PATH"
 fi
@@ -144,7 +145,7 @@ fi
 
 # ─── DB migration rollback ────────────────────────────────────────────────────
 
-if [[ "$SKIP_DB_MIGRATION" != "true" ]]; then
+if [[ "$SKIP_DB_MIGRATION" != "true" && "$DRY_RUN" != "true" ]]; then
     ALEMBIC_BIN="$DEPLOY_DIR/backend/.venv/bin/alembic"
     ALEMBIC_INI="$DEPLOY_DIR/backend/alembic.ini"
 

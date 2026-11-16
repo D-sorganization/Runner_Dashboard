@@ -38,9 +38,8 @@ BOARD_SECRETARY_SCHEDULE_ENTRIES: Mapping[str, str] = {
 
 # Real staff/roles/board-secretary.yml: 4 providers, "model: default" (no per-step override).
 BOARD_SECRETARY_FAILOVER_CHAIN: tuple[FailoverStep, ...] = (
-    FailoverStep("claude", None),
-    FailoverStep("codex", None),
-    FailoverStep("antigravity", None),
+    FailoverStep("claude", "claude-opus-5-5"),
+    FailoverStep("codex", "gpt-6.1-sol"),
     FailoverStep("cursor-agent", None),
 )
 
@@ -75,7 +74,7 @@ def board_secretary_role_data() -> dict[str, Any]:
             "th_ ids means single-seat. Never writes seat reports itself; coordinates with Orchestrator, "
             "Fleet-Dispatcher, Fleet-Critic and Librarian; does not steal claims or merge without green CI."
         ),
-        "providers": ["claude", "codex", "antigravity", "cursor-agent"],
+        "providers": ["claude", "codex", "cursor-agent"],
         "model": "default",
         "schedule": "0 20 * * 5",
         "window": None,

@@ -76,8 +76,10 @@ describe("PersonaEditor (#3499)", () => {
     fireEvent.click(screen.getByTestId("persona-editor-cancel-name-btn"));
     expect(nameInput).toHaveValue("Test Operator");
     fireEvent.click(screen.getByTestId("persona-editor-reset-name-btn"));
-    await waitFor(() => { expect(mockApiRequest).toHaveBeenCalled(); });
-    expect(nameInput).toHaveValue("");
+    await waitFor(() => {
+      expect(mockApiRequest).toHaveBeenCalled();
+      expect(nameInput).toHaveValue("");
+    });
   });
 
   it("rejects display name exceeding 80 characters or containing control characters", () => {

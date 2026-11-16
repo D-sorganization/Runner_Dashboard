@@ -40,10 +40,50 @@ export interface paths {
          *     ``/readyz`` reports unready while draining. Requests already admitted are
          *     allowed to finish; this flag does not cancel or wait for in-flight work.
          *
-         *     Pre-condition: caller must be on loopback (127.0.0.1, ::1, or localhost).
+         *     Requires the ``admin`` scope and the CSRF ``X-Requested-With`` sentinel (#4274 F-04).
          *     Post-condition: _drain_mode is True after successful call.
          */
         post: operations["drain_endpoint__drain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/_undrain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Undrain Endpoint
+         * @description Clear process-local draining and resume normal mutation admission (#4274 F-04).
+         */
+        post: operations["undrain_endpoint__undrain_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/agent-principals/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reload Agent Principals Route
+         * @description Ingest new agent principals and token files without a hub restart; admin only, ids only (#4256).
+         */
+        post: operations["reload_agent_principals_route_api_admin_agent_principals_reload_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1673,6 +1713,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/sessions/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Sessions Register
+         * @description Register or heartbeat a hub-local session for cloud lanes and external agents (#4458).
+         */
+        post: operations["post_sessions_register_api_coordination_sessions_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/credentials": {
         parameters: {
             query?: never;
@@ -2776,6 +2836,26 @@ export interface paths {
          * @description Dispatch agents to one or more issues.
          */
         post: operations["api_dispatch_to_issues_api_issues_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/kanban/github": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Kanban Github Board
+         * @description Return projected kanban cards from cached GitHub sources with freshness metadata.
+         */
+        get: operations["get_kanban_github_board_api_kanban_github_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6101,6 +6181,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/kanban/columns/waiting-on-dieter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Waiting On Dieter Column
+         * @description Read-only Waiting-on-Dieter column from holds, owner labels, and pending approvals.
+         */
+        get: operations["get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/library/browse": {
         parameters: {
             query?: never;
@@ -6341,7 +6441,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Context Pack */
+        /**
+         * Get Context Pack
+         * @description Return a scoped memory snapshot. Deprecated for Barb session startup — use Barb continuity + priorities/holds.
+         */
         get: operations["get_context_pack_api_v1_memory_context_pack_get"];
         put?: never;
         post?: never;
@@ -6962,6 +7065,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/barb/leases/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Atomic Barb lease turnover, release, transfer, or takeover */
+        post: operations["post_barb_lease_handoff_api_v1_staff_barb_leases_handoff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/barb/leases/heartbeat": {
         parameters: {
             query?: never;
@@ -6990,6 +7110,23 @@ export interface paths {
         put?: never;
         /** Release a scoped Barb lease with turnover compliance check */
         post: operations["post_barb_lease_release_api_v1_staff_barb_leases_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/barb/leases/renew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Renew or re-acquire a scoped Barb lease in one call */
+        post: operations["post_barb_lease_renew_api_v1_staff_barb_leases_renew_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7126,6 +7263,40 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/dispatch-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Dispatch Sessions */
+        get: operations["list_dispatch_sessions_api_v1_staff_dispatch_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/staff/dispatch-sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Release Dispatch Session */
+        delete: operations["release_dispatch_session_api_v1_staff_dispatch_sessions__session_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -8523,6 +8694,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/threads/{thread_id}/loop-guard/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset Thread Loop Guard
+         * @description Reset loop-guard pause state for a thread (operators or Barb seats only).
+         */
+        post: operations["reset_thread_loop_guard_api_v1_staff_threads__thread_id__loop_guard_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/threads/{thread_id}/messages": {
         parameters: {
             query?: never;
@@ -9311,7 +9502,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "checkin" | "job_board" | "github";
+            source: "staff_run" | "coordination" | "agent_bus" | "recorder" | "desktop_adapter" | "claude_desktop_adapter" | "codex_desktop_adapter" | "checkin" | "job_board" | "github";
             /**
              * Ts
              * Format: date-time
@@ -9431,7 +9622,69 @@ export interface components {
             takeover: boolean;
             /**
              * Ttl Sec
-             * @default 3600
+             * @default 14400
+             */
+            ttl_sec: number;
+        };
+        /** BarbLeaseHandoffRequest */
+        BarbLeaseHandoffRequest: {
+            /** Blockers */
+            blockers?: string[];
+            /** Completed Items */
+            completed_items?: string[];
+            /** Holder */
+            holder?: string | null;
+            /** In Progress Items */
+            in_progress_items?: string[];
+            /**
+             * Machine
+             * @default
+             */
+            machine: string;
+            /**
+             * Mode
+             * @default
+             */
+            mode: string;
+            /** Next Actions */
+            next_actions?: string[];
+            /** Next Holder */
+            next_holder?: string | null;
+            /**
+             * Next Machine
+             * @default
+             */
+            next_machine: string;
+            /**
+             * Next Persona
+             * @default
+             */
+            next_persona: string;
+            /**
+             * Persona
+             * @default rd-barb
+             */
+            persona: string;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /**
+             * Scope
+             * @default barb:front-door
+             */
+            scope: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Takeover
+             * @default false
+             */
+            takeover: boolean;
+            /**
+             * Ttl Sec
+             * @default 14400
              */
             ttl_sec: number;
         };
@@ -9445,7 +9698,7 @@ export interface components {
             scope: string;
             /**
              * Ttl Sec
-             * @default 3600
+             * @default 14400
              */
             ttl_sec: number;
         };
@@ -9473,6 +9726,33 @@ export interface components {
              * @default
              */
             turnover_summary: string;
+        };
+        /** BarbLeaseRenewRequest */
+        BarbLeaseRenewRequest: {
+            /** Holder */
+            holder?: string | null;
+            /**
+             * Machine
+             * @default
+             */
+            machine: string;
+            /**
+             * Persona
+             * @default
+             */
+            persona: string;
+            /**
+             * Scope
+             * @default barb:front-door
+             */
+            scope: string;
+            /** Summary */
+            summary?: string | null;
+            /**
+             * Ttl Sec
+             * @default 14400
+             */
+            ttl_sec: number;
         };
         /** BarbSurfaceClassifyRequest */
         BarbSurfaceClassifyRequest: {
@@ -9690,6 +9970,11 @@ export interface components {
          * @description Flat, validated input of one CI-fix dispatch (DbC for ``POST /dispatch`` and the webhook).
          */
         CIFixDispatchRequest: {
+            /**
+             * Allow Strong Escalation
+             * @default false
+             */
+            allow_strong_escalation: boolean;
             /** Attempt Number */
             attempt_number?: number | null;
             /**
@@ -9710,6 +9995,11 @@ export interface components {
              * @default false
              */
             from_queue: boolean;
+            /**
+             * Head Sha
+             * @default
+             */
+            head_sha: string;
             /**
              * Kind
              * @default ci_failure
@@ -10352,10 +10642,6 @@ export interface components {
         ExecutorTier: "ollama" | "cli" | "strong";
         /** FleetRunTokenRequest */
         FleetRunTokenRequest: {
-            /** Repositories */
-            repositories: string[];
-            /** Role */
-            role: string;
             /** Run Id */
             run_id: string;
         };
@@ -10638,6 +10924,29 @@ export interface components {
             schema_version: number;
         };
         /**
+         * HubSessionRegisterBody
+         * @description Register or heartbeat a hub-local session (Cursor cloud lane, Barb, external agent).
+         */
+        HubSessionRegisterBody: {
+            /** Machine */
+            machine: string;
+            /** Provider */
+            provider: string;
+            /** Repo */
+            repo?: string | null;
+            /** Role */
+            role: string;
+            /** Session */
+            session: string;
+            /** Target */
+            target?: string | null;
+            /**
+             * Ttl Hours
+             * @default 2
+             */
+            ttl_hours: number;
+        };
+        /**
          * InitializeExecutorPayload
          * @description Children always come from the filed plan; the caller may only tune execution.
          */
@@ -10718,6 +11027,10 @@ export interface components {
         };
         /** LeaderLeaseBody */
         LeaderLeaseBody: {
+            /** Handled */
+            handled?: {
+                [key: string]: string;
+            };
             /** Machine */
             machine: string;
             /** Ttl Seconds */
@@ -11924,6 +12237,11 @@ export interface components {
          */
         RunBody: {
             /**
+             * Authority Code Read Only
+             * @default false
+             */
+            authority_code_read_only: boolean;
+            /**
              * Claim Override Reason
              * @default
              */
@@ -11988,6 +12306,11 @@ export interface components {
              * @default
              */
             standards_extra: string;
+            /**
+             * Strict Provider
+             * @default false
+             */
+            strict_provider: boolean;
             /** Surface */
             surface?: string | null;
             /**
@@ -12002,8 +12325,6 @@ export interface components {
         };
         /** RunJwtRequest */
         RunJwtRequest: {
-            /** Principal Id */
-            principal_id: string;
             /** Run Id */
             run_id: string;
         };
@@ -12100,7 +12421,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "live" | "idle" | "stale" | "ended" | "uncaptured";
+            status: "live" | "idle" | "stale" | "ended" | "uncaptured" | "blocked";
         };
         /**
          * SessionTelemetryPayload
@@ -12437,6 +12758,11 @@ export interface components {
             kind: "guardrail" | "schedule";
             /** Lifted When */
             lifted_when: string;
+            /**
+             * Set By
+             * @default
+             */
+            set_by: string;
             /** Set On */
             set_on: string;
             /** Text */
@@ -13963,6 +14289,48 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    undrain_endpoint__undrain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    reload_agent_principals_route_api_admin_agent_principals_reload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
                 };
             };
         };
@@ -16577,6 +16945,41 @@ export interface operations {
             };
         };
     };
+    post_sessions_register_api_coordination_sessions_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HubSessionRegisterBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_credentials_api_credentials_get: {
         parameters: {
             query?: never;
@@ -17959,6 +18362,41 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_kanban_github_board_api_kanban_github_get: {
+        parameters: {
+            query: {
+                owner: string;
+                repo: string;
+                force_cold?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -22020,7 +22458,7 @@ export interface operations {
         parameters: {
             query?: {
                 node?: string | null;
-                status?: ("live" | "idle" | "stale" | "ended" | "uncaptured") | null;
+                status?: ("live" | "idle" | "stale" | "ended" | "uncaptured" | "blocked") | null;
                 repo?: string | null;
                 limit?: number;
             };
@@ -22892,6 +23330,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_waiting_on_dieter_column_api_v1_kanban_columns_waiting_on_dieter_get: {
+        parameters: {
+            query?: {
+                repo?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -24753,6 +25224,41 @@ export interface operations {
             };
         };
     };
+    post_barb_lease_handoff_api_v1_staff_barb_leases_handoff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbLeaseHandoffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     post_barb_lease_heartbeat_api_v1_staff_barb_leases_heartbeat_post: {
         parameters: {
             query?: never;
@@ -24798,6 +25304,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["BarbLeaseReleaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_barb_lease_renew_api_v1_staff_barb_leases_renew_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BarbLeaseRenewRequest"];
             };
         };
         responses: {
@@ -25054,6 +25595,61 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_dispatch_sessions_api_v1_staff_dispatch_sessions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    release_dispatch_session_api_v1_staff_dispatch_sessions__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -27511,6 +28107,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reset_thread_loop_guard_api_v1_staff_threads__thread_id__loop_guard_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */

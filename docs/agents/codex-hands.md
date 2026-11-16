@@ -1,6 +1,6 @@
 # Codex hands (computer control)
 
-**Dots** is the Codex-based hands agent: it executes concrete work (UI automation, repo operations via staff dispatch) and reports back through shared memory. Tone matches Barb's stern-dry house style; name and voice stay distinct from Barb.
+**Dots** is the Codex-based hands agent: it executes concrete work (UI automation, repo operations via staff dispatch) and reports back through staff threads and Barb turnover. Tone matches Barb's stern-dry house style; name and voice stay distinct from Barb.
 
 Principal: **`agent-codex-hands`**
 
@@ -8,7 +8,7 @@ Principal: **`agent-codex-hands`**
 
 - `fleet.read` — priorities, coordination reads, fleet status
 - `staff.dispatch` — `POST /api/staff/{role}/run` (including `dry_run`)
-- `memory.read` / `memory.write` — shared context bank
+- `staff.read` — Barb continuity reads; `memory.read` / `memory.write` remain on the principal for legacy lesson/task APIs only (not session startup)
 - `staff.read`, `priorities.write` (directives), `staff.holds.write` (holds; change only when Dieter approves, then apply directly via `PUT /api/staff/holds`)
 - **Not granted:** admin or token-issuing scopes
 
@@ -35,56 +35,24 @@ Restart **runner-dashboard** on the hub if it does not auto-reload identity (`sy
 export FLEET_API_TOKEN="$(cat ~/.config/runner-dashboard/agent-tokens/agent-codex-hands.token)"
 ```
 
-## Memory recipes
+## Session startup
 
-Read the context pack at session start:
+Shared-memory context-pack reads are retired for session startup (owner decision 2026-11-12). Read continuity,
+priorities, and holds instead:
 
 ```bash
 curl -s -H "Authorization: Bearer $FLEET_API_TOKEN" \
-  "$FLEET_API_URL/api/v1/memory/context-pack"
+  "$FLEET_API_URL/api/v1/staff/barb/continuity"
+
+curl -s -H "Authorization: Bearer $FLEET_API_TOKEN" \
+  "$FLEET_API_URL/api/priorities"
+
+curl -s -H "Authorization: Bearer $FLEET_API_TOKEN" \
+  "$FLEET_API_URL/api/v1/staff/holds"
 ```
 
-Write a session digest at end or checkpoint:
-
-```bash
-curl -s -X POST "$FLEET_API_URL/api/v1/memory" \
-  -H "Authorization: Bearer $FLEET_API_TOKEN" \
-  -H "X-Requested-With: XMLHttpRequest" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "entry_type": "session_digest",
-    "source_product": "codex",
-    "tags": ["Runner_Dashboard"],
-    "body": {
-      "summary": "What we did",
-      "decisions": ["..."],
-      "open_items": ["..."]
-    }
-  }'
-```
-
-Update a task (supersede the previous row when status changes):
-
-```bash
-curl -s -X POST "$FLEET_API_URL/api/v1/memory" \
-  -H "Authorization: Bearer $FLEET_API_TOKEN" \
-  -H "X-Requested-With: XMLHttpRequest" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "entry_type": "task",
-    "source_product": "codex",
-    "supersedes_id": "mem_PREVIOUS_ID",
-    "body": {
-      "title": "Fix CI on PR 2087",
-      "owner": "dots",
-      "status": "in_progress",
-      "recommendation": "wait for green",
-      "since": "2026-10-21",
-      "last_nudged": ""
-    }
-  }'
-```
+Post status to a staff thread or log Barb turnover when handing off scoped work (see [grok.md](grok.md)).
 
 ## Routing Dieter-facing work
 
-Do **not** DM or notify Dieter directly. Post to **memory** or open a **staff thread** with Barb; Barb remains the front door for owner notifications.
+Do **not** DM or notify Dieter directly. Open a **staff thread** with Barb (and turnover when on a Barb lease); Barb remains the front door for owner notifications.

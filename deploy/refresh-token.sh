@@ -14,10 +14,17 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECRETS_FILE="${HOME}/.config/runner-dashboard/env"
+ENV_CHECK="${SCRIPT_DIR}/runner_dashboard_env_check.py"
+PYTHON_BIN="${RUNNER_DASHBOARD_PYTHON:-python3}"
 mkdir -p "$(dirname "${SECRETS_FILE}")"
 touch "${SECRETS_FILE}"
 chmod 600 "${SECRETS_FILE}"
+
+if [[ -f "${ENV_CHECK}" ]]; then
+    "${PYTHON_BIN}" "${ENV_CHECK}" --env-file "${SECRETS_FILE}" --warn 2>&1 || true
+fi
 
 if grep -Eq '^GITHUB_APP_ID=.+$' "${SECRETS_FILE}" \
     && grep -Eq '^GITHUB_APP_INSTALLATION_ID=.+$' "${SECRETS_FILE}" \
@@ -58,8 +65,15 @@ if [[ -z "${TOKEN}" ]]; then
     exit 0
 fi
 
-# Update GH_TOKEN line, preserve everything else (FLEET_NODES etc.)
-sed -i '/^GH_TOKEN=/d' "${SECRETS_FILE}"
-printf 'GH_TOKEN=%s\n' "${TOKEN}" >> "${SECRETS_FILE}"
+# Update GH_TOKEN atomically (temp file in the same dir, fsync, rename); preserve mode 0600.
+if [[ -f "${ENV_CHECK}" ]]; then
+    printf '%s' "${TOKEN}" | "${PYTHON_BIN}" "${ENV_CHECK}" --env-file "${SECRETS_FILE}" --set-gh-token-stdin
+else
+    tmp="${SECRETS_FILE}.refresh.$$.tmp"
+    grep -v '^GH_TOKEN=' "${SECRETS_FILE}" 2>/dev/null | grep -v '^export GH_TOKEN=' > "${tmp}" || true
+    printf 'GH_TOKEN=%s\n' "${TOKEN}" >> "${tmp}"
+    chmod 600 "${tmp}"
+    mv -f "${tmp}" "${SECRETS_FILE}"
+fi
 
 echo "[refresh-token] GH_TOKEN refreshed from gh credentials" >&2

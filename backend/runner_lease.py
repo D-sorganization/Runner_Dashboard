@@ -35,31 +35,31 @@ except ImportError:  # pragma: no cover - Windows development/runtime path.
     fcntl = None  # type: ignore[assignment]
 
 
+def _lease_lock_path(data_path: Path) -> Path:
+    """Stable sidecar for flock; data file may be swapped with os.replace (#4273 J-08)."""
+    return data_path.with_name(data_path.name + ".lock")
+
+
 @contextlib.contextmanager
-def _locked_yaml_file(path: Path, mode: str = "r+"):
-    """Open path and hold an exclusive fcntl lock for the duration of the block.
-
-    Yields the open file object so callers can read/write without releasing
-    the lock between operations, preventing concurrent-write corruption (#327).
-
-    Degrades gracefully on platforms that lack fcntl (e.g. Windows dev env).
-    """
-    path.touch()
-    with open(path, mode) as fh:
-        flock = getattr(fcntl, "flock", None) if fcntl is not None else None
-        lock_ex = getattr(fcntl, "LOCK_EX", None) if fcntl is not None else None
-        lock_un = getattr(fcntl, "LOCK_UN", None) if fcntl is not None else None
+def _locked_lease_store(data_path: Path):
+    """Hold an exclusive flock on a stable sidecar while reading/writing leases.yml."""
+    data_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = _lease_lock_path(data_path)
+    flock = getattr(fcntl, "flock", None) if fcntl is not None else None
+    lock_ex = getattr(fcntl, "LOCK_EX", None) if fcntl is not None else None
+    lock_un = getattr(fcntl, "LOCK_UN", None) if fcntl is not None else None
+    with lock_path.open("a+", encoding="utf-8") as lock_fh:
         if flock is not None and lock_ex is not None:
             try:
-                flock(fh, lock_ex)
+                flock(lock_fh, lock_ex)
             except OSError:
                 pass
         try:
-            yield fh
+            yield
         finally:
             if flock is not None and lock_un is not None:
                 try:
-                    flock(fh, lock_un)
+                    flock(lock_fh, lock_un)
                 except OSError:
                     pass
 
@@ -156,9 +156,11 @@ class LeaseManager:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         validate_config_path(self.leases_path.parent)
 
-        with _locked_yaml_file(self.leases_path, "r+") as fh:
-            fh.seek(0)
-            raw = fh.read()
+        with _locked_lease_store(self.leases_path):
+            if self.leases_path.exists():
+                raw = self.leases_path.read_text(encoding="utf-8")
+            else:
+                raw = ""
             if raw.strip():
                 data = yaml.safe_load(raw) or {}
                 records = [LeaseRecord(**rec) for rec in data.get("leases", [])]
@@ -188,13 +190,6 @@ class LeaseManager:
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as tmp_fh:
                     yaml.dump(payload, tmp_fh)
-                # On platforms without fcntl (Windows dev/test) there is no real
-                # advisory lock and an open handle blocks os.replace over the
-                # target. Close the lock handle before replacing there. On POSIX
-                # we keep the handle open across the replace so the advisory lock
-                # is held for the entire read-modify-write window.
-                if fcntl is None:
-                    fh.close()
                 os.replace(tmp_path, self.leases_path)
             except (OSError, yaml.YAMLError):
                 with contextlib.suppress(OSError):

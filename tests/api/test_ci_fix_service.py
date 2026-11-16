@@ -86,10 +86,17 @@ def launcher(monkeypatch: pytest.MonkeyPatch) -> FakeLauncher:
 
 
 @pytest.fixture
-def locks(monkeypatch: pytest.MonkeyPatch) -> CIFixLockManager:
-    mgr = CIFixLockManager()
+def locks(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> CIFixLockManager:
+    db = tmp_path / "ci_fix_locks.db"
+    mgr = CIFixLockManager(path=db)
     monkeypatch.setattr(ci_fix_service, "GLOBAL_CI_FIX_LOCK_MGR", mgr)
     monkeypatch.setattr(remediation_ci_fix, "GLOBAL_CI_FIX_LOCK_MGR", mgr)
+    import ci_fix_attempt_store as attempt_mod
+    from ci_fix_attempt_store import CIFixAttemptStore
+
+    attempt_store = CIFixAttemptStore(db)
+    monkeypatch.setattr(attempt_mod, "_GLOBAL_ATTEMPT_STORE", attempt_store)
+    monkeypatch.setattr(ci_fix_service, "global_ci_fix_attempt_store", lambda: attempt_store)
     return mgr
 
 
@@ -437,7 +444,7 @@ def test_dispatch_endpoint_launches_and_attaches_run(
     assert locks.get_lock_info("Runner_Dashboard", 303)["run_id"] == "run-fake1"
 
 
-def test_dispatch_falls_back_when_routed_provider_is_missing_and_reports_actual_run(
+def test_dispatch_returns_501_when_routed_provider_missing(
     operator_client: TestClient,
     locks: CIFixLockManager,
     audit_file: Path,
@@ -448,22 +455,6 @@ def test_dispatch_falls_back_when_routed_provider_is_missing_and_reports_actual_
         "available_providers",
         lambda: {"claude": True, "codex": False, "antigravity": False},
     )
-    commands = []
-
-    async def launch(cmd: Any, caller: Principal) -> dict[str, Any]:
-        commands.append(cmd)
-        # The common staff dispatcher may choose an alternate during planning.
-        return {
-            "dry_run": False,
-            "run": {
-                "id": "run-fallback",
-                "status": "queued",
-                "provider": "claude",
-                "model": "sonnet",
-            },
-        }
-
-    monkeypatch.setattr(ci_fix_service, "dispatch_staff_run", launch)
     resp = operator_client.post(
         "/api/remediation/ci-fix/dispatch",
         json={
@@ -475,15 +466,10 @@ def test_dispatch_falls_back_when_routed_provider_is_missing_and_reports_actual_
         },
     )
 
-    assert resp.status_code == 200, resp.text
-    data = resp.json()
-    assert commands[0].provider == "codex"
-    assert commands[0].model_tier == "routine"
-    assert data["launched_provider"] == "claude"
-    assert data["launched_model"] == "sonnet"
-    audit = json.loads(audit_file.read_text())[0]
-    assert audit["provider"] == "claude"
-    assert audit["model"] == "sonnet"
+    assert resp.status_code == 501
+    assert "codex" in resp.json()["detail"]
+    assert not locks.is_locked("Runner_Dashboard", 308)
+    assert not audit_file.exists()
 
 
 def test_dispatch_endpoint_501_when_provider_missing(
@@ -507,7 +493,7 @@ def test_dispatch_endpoint_501_when_provider_missing(
         },
     )
     assert resp.status_code == 501
-    assert "No CI-fix provider is installed" in resp.json()["detail"]
+    assert "not installed" in resp.json()["detail"]
     assert launcher.commands == []
     assert not locks.is_locked("Runner_Dashboard", 304)  # a failed launch releases the lock
     assert not audit_file.exists()
@@ -521,30 +507,38 @@ def test_dispatch_endpoint_validates_body(
     assert launcher.commands == []
 
 
-def test_dispatch_escalates_after_three_recorded_attempts(
+def test_dispatch_escalates_only_with_operator_approval(
     operator_client: TestClient, launcher: FakeLauncher, locks: CIFixLockManager, audit_file: Path
 ) -> None:
     body = {
         "repo": "Runner_Dashboard",
         "pr_number": 305,
         "branch": "feat/x",
+        "head_sha": "deadbeef",
         "workflow_name": "CI Standard",
         "log_tail": "FAILED t.py::x",
     }
     tiers = []
-    for log_tail in ("FAILED t.py::x", "FAILED t.py::x", "FAILED t.py::x", "FAILED t.py::other"):
-        resp = operator_client.post("/api/remediation/ci-fix/dispatch", json={**body, "log_tail": log_tail})
+    for _ in range(2):
+        resp = operator_client.post("/api/remediation/ci-fix/dispatch", json=body)
         assert resp.status_code == 200, resp.text
         tiers.append(resp.json()["route"]["tier"])
         locks.release("Runner_Dashboard", 305)
-    # The third consecutive identical failure escalates; a new failure starts a fresh streak.
-    assert tiers == ["cli", "cli", "strong", "cli"]
-    assert [command.model_tier for command in launcher.commands] == [
-        "standard",
-        "standard",
-        "complex",
-        "standard",
-    ]
+    cap = operator_client.post("/api/remediation/ci-fix/dispatch", json=body)
+    assert cap.status_code == 429
+    assert "per-head" in cap.json()["detail"]
+    strong = operator_client.post(
+        "/api/remediation/ci-fix/dispatch",
+        json={
+            **body,
+            "pr_number": 306,
+            "allow_strong_escalation": True,
+            "attempt_number": 2,
+        },
+    )
+    assert strong.status_code == 200, strong.text
+    assert strong.json()["route"]["tier"] == "strong"
+    assert tiers == ["cli", "cli"]
 
 
 def test_dispatch_launches_on_the_pr_head_and_pushes_to_it(
@@ -636,6 +630,32 @@ def test_webhook_path_is_exempt_from_operator_perimeter_only() -> None:
 # ─── #2766: cancelled supersession, cursor-authored PRs, infra routing, sweep ───────────────
 
 
+def test_webhook_skips_stale_run_head_sha(
+    client: TestClient,
+    webhook_env: None,
+    launcher: FakeLauncher,
+    locks: CIFixLockManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    gh = FakeGitHub(
+        {
+            "/repos/D-sorganization/Runner_Dashboard/pulls/42": {
+                "number": 42,
+                "state": "open",
+                "draft": False,
+                "auto_merge": {"merge_method": "squash"},
+                "head": {"ref": "feat/x", "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+                "base": {"ref": "main"},
+            },
+            "/repos/D-sorganization/Runner_Dashboard/actions/runs/555/jobs": {"jobs": []},
+        }
+    )
+    monkeypatch.setattr(ci_fix_service, "gh_client", gh)
+    resp = _post(client, "workflow_run", _workflow_run(head_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"))
+    assert resp.json()["accepted"] is True
+    assert launcher.commands == []
+
+
 def test_webhook_cancelled_run_superseded_by_newer_run_is_not_dispatched(
     client: TestClient,
     webhook_env: None,
@@ -693,14 +713,14 @@ def test_webhook_cancelled_run_not_superseded_is_dispatched(
     assert len(launcher.commands) == 1
 
 
-def test_cursor_authored_pr_is_not_launched_locally(
+def test_cursor_authored_pr_dispatches_cursor_cloud_handoff(
     client: TestClient,
     webhook_env: None,
     launcher: FakeLauncher,
     locks: CIFixLockManager,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#2766 item 3: a cursor/* branch is routed to a Cursor cloud follow-up, never a local CLI."""
+    """#4273 E-21: cursor/* branches emit a Cursor cloud handoff instead of a local CLI session."""
     gh = FakeGitHub(
         {
             "/repos/D-sorganization/Runner_Dashboard/pulls/42": {
@@ -708,18 +728,31 @@ def test_cursor_authored_pr_is_not_launched_locally(
                 "state": "open",
                 "draft": False,
                 "auto_merge": {"merge_method": "squash"},
-                "head": {"ref": "cursor/fix-red-ci"},
+                "head": {"ref": "cursor/fix-red-ci", "sha": "cccccccccccccccccccccccccccccccccccccccc"},
                 "base": {"ref": "main"},
             },
             "/repos/D-sorganization/Runner_Dashboard/actions/runs/555/jobs": {"jobs": []},
         }
     )
     monkeypatch.setattr(ci_fix_service, "gh_client", gh)
-    resp = _post(client, "workflow_run", _workflow_run(head_branch="cursor/fix-red-ci"))
+
+    class Handoff:
+        @staticmethod
+        def emit(*_a: object, **_k: object) -> dict[str, object]:
+            return {"ok": True, "delivered": 1}
+
+    monkeypatch.setattr("scripts.cursor_cloud_handoff.emit_handoff_checkin", Handoff.emit)
+    resp = _post(
+        client,
+        "workflow_run",
+        _workflow_run(
+            head_branch="cursor/fix-red-ci",
+            head_sha="cccccccccccccccccccccccccccccccccccccccc",
+        ),
+    )
     data = resp.json()
     assert data["accepted"] is True
-    assert launcher.commands == []  # no local CLI session was launched
-    assert not locks.is_locked("Runner_Dashboard", 42)  # the lock was released on refusal
+    assert launcher.commands == []
 
 
 def test_infra_failure_dispatches_to_night_watch_role(

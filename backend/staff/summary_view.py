@@ -11,8 +11,6 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from staff import fleet as staff_fleet
-from staff import friction_store
 from staff.anthropic_api_alerts import summary_fields as anthropic_api_summary_fields
 from staff.classifier import format_attention_items
 from staff.credential_mirror_health import attention_items_from_mirror_health
@@ -29,6 +27,9 @@ from staff.provider_auth_preflight import (
 )
 from staff.runner import get_runner
 from staff.standards_registry import load_fleet_standards
+
+from staff import fleet as staff_fleet
+from staff import friction_store
 
 __all__ = ["build_staff_summary"]
 

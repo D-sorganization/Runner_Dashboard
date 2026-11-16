@@ -17,7 +17,8 @@ from fleet_validators import FleetAPIError, _check, _opt_text, _positive_int, _t
 BARB_PREFIX = "/api/v1/staff/barb"
 _SCOPE = re.compile(r"^barb:[a-z0-9][a-z0-9._-]{0,57}$")
 MIN_TTL_SEC = 60
-MAX_TTL_SEC = 14400  # the store clamps to 4h; reject larger values instead of silently shortening
+MAX_TTL_SEC = 86400
+DEFAULT_TTL_SEC = 14400
 
 
 def _scope(value: Any) -> str:
@@ -68,9 +69,17 @@ class BarbSeatMixin:
             )
             raise FleetAPIError(409, {"detail": message, "conflict": True, "lease": lease}) from None
 
-    def barb_seat_heartbeat(self, scope: str, epoch: int) -> Any:
+    def barb_seat_heartbeat(
+        self, scope: str, epoch: int, *, ttl_sec: int | None = None, holder: str | None = None
+    ) -> Any:
         """Extend the lease. Needs a hub with POST /barb/leases/heartbeat; a 404 is reported as such."""
-        body = {"scope": _scope(scope), "epoch": _positive_int(epoch, "epoch")}
+        body: dict[str, Any] = {"scope": _scope(scope), "epoch": _positive_int(epoch, "epoch")}
+        if ttl_sec is not None:
+            ttl = _positive_int(ttl_sec, "ttl_sec")
+            _check(MIN_TTL_SEC <= ttl <= MAX_TTL_SEC, f"ttl_sec must be between {MIN_TTL_SEC} and {MAX_TTL_SEC}")
+            body["ttl_sec"] = ttl
+        if holder is not None:
+            body["holder"] = _text(holder, "holder", 128, form="line")
         try:
             return self.request("POST", f"{BARB_PREFIX}/leases/heartbeat", body=body)
         except FleetAPIError as exc:
@@ -82,6 +91,86 @@ class BarbSeatMixin:
                 "Re-run barb seat status; do not assume the seat is still yours."
             )
             raise FleetAPIError(404, {"detail": message, "original": exc.body}) from None
+
+    def barb_seat_renew(
+        self,
+        scope: str,
+        *,
+        ttl_sec: int | None = None,
+        holder: str | None = None,
+        persona: str | None = None,
+        machine: str | None = None,
+        summary: str | None = None,
+    ) -> Any:
+        """One-call lease renew or re-acquire (no epoch token)."""
+        body: dict[str, Any] = {"scope": _scope(scope)}
+        if ttl_sec is not None:
+            ttl = _positive_int(ttl_sec, "ttl_sec")
+            _check(MIN_TTL_SEC <= ttl <= MAX_TTL_SEC, f"ttl_sec must be between {MIN_TTL_SEC} and {MAX_TTL_SEC}")
+            body["ttl_sec"] = ttl
+        else:
+            body["ttl_sec"] = DEFAULT_TTL_SEC
+        if holder is not None:
+            body["holder"] = _text(holder, "holder", 128, form="line")
+        if persona is not None:
+            body["persona"] = _text(persona, "persona", 64, form="line")
+        if machine is not None:
+            body["machine"] = _text(machine, "machine", 64, form="line")
+        if summary is not None:
+            body["summary"] = _text(summary, "summary", 500)
+        return self.request("POST", f"{BARB_PREFIX}/leases/renew", body=body)
+
+    def barb_seat_handoff_lease(
+        self,
+        scope: str,
+        summary: str,
+        *,
+        holder: str | None = None,
+        persona: str | None = None,
+        machine: str | None = None,
+        completed_items: list[str] | None = None,
+        in_progress_items: list[str] | None = None,
+        next_actions: list[str] | None = None,
+        blockers: list[str] | None = None,
+        next_holder: str | None = None,
+        next_persona: str | None = None,
+        next_machine: str | None = None,
+        takeover: bool = False,
+        reason: str | None = None,
+        ttl_sec: int | None = None,
+        mode: str | None = None,
+    ) -> Any:
+        """Atomic lease turnover with release, direct transfer, or contested takeover."""
+        body: dict[str, Any] = {
+            "scope": _scope(scope),
+            "summary": _text(summary, "summary", 2000),
+            "completed_items": completed_items or [],
+            "in_progress_items": in_progress_items or [],
+            "next_actions": next_actions or [],
+            "blockers": blockers or [],
+            "takeover": bool(takeover),
+        }
+        if holder is not None:
+            body["holder"] = _text(holder, "holder", 128, form="line")
+        if persona is not None:
+            body["persona"] = _text(persona, "persona", 64, form="line")
+        if machine is not None:
+            body["machine"] = _text(machine, "machine", 64, form="line")
+        if next_holder is not None:
+            body["next_holder"] = _text(next_holder, "next_holder", 128, form="line")
+        if next_persona is not None:
+            body["next_persona"] = _text(next_persona, "next_persona", 64, form="line")
+        if next_machine is not None:
+            body["next_machine"] = _text(next_machine, "next_machine", 64, form="line")
+        if reason is not None:
+            body["reason"] = _text(reason, "reason", 500)
+        if mode is not None:
+            body["mode"] = _text(mode, "mode", 16, form="line")
+        if ttl_sec is not None:
+            ttl = _positive_int(ttl_sec, "ttl_sec")
+            _check(MIN_TTL_SEC <= ttl <= MAX_TTL_SEC, f"ttl_sec must be between {MIN_TTL_SEC} and {MAX_TTL_SEC}")
+            body["ttl_sec"] = ttl
+        return self.request("POST", f"{BARB_PREFIX}/leases/handoff", body=body)
 
     def barb_seat_turnover(
         self,

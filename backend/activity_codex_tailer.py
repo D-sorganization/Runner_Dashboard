@@ -138,6 +138,7 @@ class CodexSessionTailer(ClaudeSessionTailer):
     """Opt-in per-node Codex CLI/desktop JSONL tailer sharing T5a's tailer core."""
 
     ADAPTER_NAME: str = "codex"
+    ACTIVITY_SOURCE: str = "codex_desktop_adapter"
     SESSION_PREFIX: str = "codex"
     DEFAULT_PRINCIPAL: str = "agent-codex"
     DEFAULT_CHECKPOINT_FILENAME: str = "codex_tailer_checkpoints.json"

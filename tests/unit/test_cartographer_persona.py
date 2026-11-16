@@ -35,7 +35,7 @@ def test_cartographer_yaml_passes_schema_validation_and_loads_into_roster(tmp_pa
     assert spec_raw["permissions"]["merge"] is False
     assert spec_raw["window"] == dict(cp.CARTOGRAPHER_WINDOW)
     assert spec_raw["reports_to"] == "barb" and spec_raw["surface"] == "dashboard"
-    assert spec_raw["providers"] == ["claude", "codex", "antigravity"]
+    assert spec_raw["providers"] == ["claude", "codex", "cursor-agent"]
     clear_roles_cache()
     role = load_roles(tmp_path)["cartographer"]
     assert role.valid
@@ -53,15 +53,12 @@ def test_cartographer_resolved_chain_has_no_model_override(tmp_path: Path) -> No
     cp.write_cartographer_role_yaml(tmp_path)
     resolved = resolve_failover_chain(cp.load_cartographer_role_spec(tmp_path))
     assert resolved == cp.CARTOGRAPHER_FAILOVER_CHAIN
-    assert resolved[0] == FailoverStep("claude", None)
-    assert [s.provider for s in resolved] == ["claude", "codex", "antigravity"]
+    assert resolved[0] == FailoverStep("claude", 'claude-opus-5-5')
+    assert [s.provider for s in resolved] == ["claude", "codex", "cursor-agent"]
     # rd_barb_provider.chain() defaults a bare claude head to "opus" when nothing overrides it
     # (shared DEFAULT_PROVIDER/DEFAULT_MODEL rule, not something this role's own chain sets).
-    assert rp.select({}, role="cartographer") == rp.Decision("claude", "opus", False)
-    assert rp.chain({}, role="cartographer") == (
-        FailoverStep("claude", "opus"),
-        *cp.CARTOGRAPHER_FAILOVER_CHAIN[1:],
-    )
+    assert rp.select({}, role="cartographer") == rp.Decision("claude", "claude-opus-5-5", False)
+    assert rp.chain({}, role="cartographer") == cp.CARTOGRAPHER_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
     rc = rp.main(
         ["--role", "cartographer", "next", "--current", "claude", "--failure", "rate_limited"],

@@ -84,6 +84,7 @@ export interface RoleDetail {
 
 export interface ThreadContextData {
   thread_id: string;
+  loop_guard_paused?: boolean;
   linked_work_items?: RecentWorkItemSummary[];
   linked_runs?: ActiveRunSummary[];
   linked_issues?: string[];

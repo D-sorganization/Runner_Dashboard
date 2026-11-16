@@ -33,8 +33,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from staff.roles import RoleSpec, load_roles
 from staff.store import _config_dir, _now
+
+from staff.roles import RoleSpec, load_roles
 
 log = logging.getLogger("dashboard.staff.holds")
 
@@ -44,9 +45,19 @@ FAIL_CLOSED_HOLD_ID = "hold-fail-closed"
 HoldKind = Literal["guardrail", "schedule"]
 HOLD_KINDS: frozenset[str] = frozenset({"guardrail", "schedule"})
 
+RD_DEPLOY_RELEASE_HOLD_PREFIX = "RD deploy/release HOLD:"
+RD_DEPLOY_RELEASE_HOLD_TEXT = (
+    "RD deploy/release HOLD: no new deploy or release feature slices on Runner_Dashboard "
+    "until Main CI auto-release passes on two consecutive main commits with zero cancelled runs. "
+    "Bug fixes to auto-release itself are allowed."
+)
+
 _metrics_lock = threading.Lock()
 _holds_load_errors_total = 0
 _corrupt_paths: set[str] = set()
+
+# One lock for all on-disk holds mutations across HoldsList instances (#4271).
+_FILE_LOCK = threading.RLock()
 
 
 def _record_load_error(path: Path) -> None:
@@ -130,6 +141,7 @@ class Hold:
     applies_to: list[str] = field(default_factory=lambda: ["*"])
     active: bool = True
     kind: HoldKind = "schedule"
+    set_by: str = ""
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], default_kind: HoldKind = "schedule") -> Hold:
@@ -170,14 +182,17 @@ class Hold:
             kind = raw_kind.strip().lower()  # type: ignore[assignment]
             if kind not in HOLD_KINDS:
                 raise ValueError(f"kind must be 'guardrail' or 'schedule', got {raw_kind!r}")
+        created = str(data.get("created") or data.get("set_on") or "").strip()
+        lifted = str(data.get("lifted_when") or data.get("lift_condition") or "")
         hold = cls(
             id=str(data.get("id") or _hold_id(text)),
             text=text,
-            set_on=str(data.get("set_on") or _now()),
-            lifted_when=str(data.get("lifted_when") or ""),
+            set_on=created or _now(),
+            lifted_when=lifted,
             applies_to=[t.strip() for t in raw_targets],
             active=raw_active,
             kind=kind,
+            set_by=str(data.get("set_by") or ""),
         )
         assert hold.kind in HOLD_KINDS  # noqa: S101 — DbC boundary check (#1726)
         return hold
@@ -206,15 +221,31 @@ def seed_from_roles(roles: dict[str, RoleSpec]) -> list[Hold]:
     """
     by_text: dict[str, Hold] = {}
     for name in sorted(roles):
-        for text in roles[name].holds:
-            key = text.strip().lower()
+        entries = roles[name].parsed_holds
+        for entry in entries:
+            text = entry.text.strip()
+            key = text.lower()
             if not key:
                 continue
             hold = by_text.get(key)
             if hold is None:
-                by_text[key] = Hold(id=_hold_id(text), text=text.strip(), applies_to=[name], kind="guardrail")
-            elif name not in hold.applies_to:
-                hold.applies_to.append(name)
+                applies = list(entry.applies_to) if entry.applies_to else [name]
+                by_text[key] = Hold(
+                    id=_hold_id(text),
+                    text=text,
+                    applies_to=applies,
+                    kind="guardrail",
+                    set_on=entry.created or _now(),
+                    lifted_when=entry.lifted_when,
+                    set_by=entry.set_by,
+                )
+            else:
+                if name not in hold.applies_to and not entry.applies_to:
+                    hold.applies_to.append(name)
+                if entry.lifted_when and not hold.lifted_when:
+                    hold.lifted_when = entry.lifted_when
+                if entry.set_by and not hold.set_by:
+                    hold.set_by = entry.set_by
     return list(by_text.values())
 
 
@@ -301,10 +332,24 @@ class HoldsList:
             if hold.id in seen:
                 raise ValueError(f"duplicate hold id {hold.id}")
             seen.add(hold.id)
-        with self._lock:
-            self._write(holds)
+        with _FILE_LOCK:
+            self._write_unlocked(holds)
             _clear_corrupt_path(self.path)
         return holds
+
+    def upsert_hold(self, hold: Hold) -> list[Hold]:
+        """Atomically load, merge one hold, and persist (#4271)."""
+        with _FILE_LOCK:
+            holds = self.load()
+            existing = next((h for h in holds if h.id == hold.id or h.text.lower() == hold.text.lower()), None)
+            if existing:
+                existing.active = hold.active
+                existing.applies_to = list(set(existing.applies_to + hold.applies_to))
+            else:
+                holds.append(hold)
+            self._write_unlocked(holds)
+            _clear_corrupt_path(self.path)
+            return holds
 
     def blocking(self, role: str, repo: str = "") -> Hold | None:
         """First active *schedule*-kind hold matching the role/repo, or None.
@@ -316,10 +361,14 @@ class HoldsList:
         return next((h for h in self.load() if h.kind == "schedule" and matches(h, role, repo)), None)
 
     def _write(self, holds: list[Hold]) -> None:
+        with _FILE_LOCK:
+            self._write_unlocked(holds)
+
+    def _write_unlocked(self, holds: list[Hold]) -> None:
         path = self.path
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {"holds": [h.to_dict() for h in holds], "updated_at": _now()}
-        tmp = path.with_suffix(".tmp")
+        tmp = path.with_name(f"{path.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         os.replace(tmp, path)
 
@@ -327,3 +376,21 @@ class HoldsList:
 def active_holds() -> list[dict[str, Any]]:
     """Active holds as plain dicts, for read-only views such as ``GET /api/staff/summary``."""
     return [h.to_dict() for h in HoldsList().load() if h.active]
+
+
+def refusal_detail(hold: Hold) -> dict[str, Any]:
+    """The 409 body for a dispatch refused by an active hold."""
+    return {
+        "code": "dispatch_hold",
+        "hold_id": hold.id,
+        "reason": hold.text,
+        "lifted_when": hold.lifted_when,
+        "message": hold.text,
+    }
+
+
+def refuse_dispatch_if_held(role: str, repo: str, prompt: str) -> Hold | None:
+    """Return the blocking hold when dispatch must be refused, else None."""
+    from staff.hold_dispatch import blocking_dispatch_hold  # noqa: PLC0415
+
+    return blocking_dispatch_hold(HoldsList(), role, repo, prompt)

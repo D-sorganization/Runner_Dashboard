@@ -19,6 +19,17 @@ MERGE_QUEUE_REF_RE = re.compile(
 HUB_CACHE_KEY = "ci_slo_metrics"
 CommandRunner = Callable[[Sequence[str]], Any]
 DEFAULT_REPO = "D-sorganization/Runner_Dashboard"
+MERGE_QUEUE_DEPTH_GRAPHQL = """
+query($owner: String!, $name: String!) {
+  repository(owner: $owner, name: $name) {
+    mergeQueue {
+      entries(first: 1) {
+        totalCount
+      }
+    }
+  }
+}
+"""
 
 
 @dataclass(frozen=True)
@@ -26,7 +37,9 @@ class SloTargets:
     queued_per_open_pr_max: float = 3.0
     merge_group_wait_p90_max_minutes: float = 5.0
     enqueue_to_merge_p90_max_minutes: float = 30.0
-    discarded_merge_group_share_max: float = 0.25
+    # Merge-queue speculation routinely discards 30–40% of completed merge_group
+    # runs when many lanes land in parallel (see CI run 43544646995, 2026-11-14).
+    discarded_merge_group_share_max: float = 0.40
     stall_no_merge_minutes: int = 60
 
 
@@ -50,6 +63,7 @@ class QueueDataset:
     open_pr_count: int
     queue_samples: list[dict[str, Any]]
     merge_queue_entries: list[dict[str, Any]]
+    merge_queue_depth: int
     merged_prs: list[dict[str, Any]]
     workflow_runs: list[dict[str, Any]]
     jobs_by_run_id: dict[int, list[dict[str, Any]]]
@@ -126,7 +140,9 @@ def compute_metrics(dataset: QueueDataset) -> SloMetrics:
     ]
     peak_ratio, peak_queued = 0.0, 0
     for sample in dataset.queue_samples:
-        queued = int(sample.get("queued_runs", 0))
+        queued = int(
+            sample.get("queued_merge_group_runs", sample.get("queued_runs", 0)),
+        )
         open_prs = int(sample.get("open_prs", dataset.open_pr_count) or dataset.open_pr_count)
         peak_queued = max(peak_queued, queued)
         if open_prs:
@@ -142,18 +158,34 @@ def compute_metrics(dataset: QueueDataset) -> SloMetrics:
     )
 
 
+def merge_queue_is_active(dataset: QueueDataset) -> bool:
+    """True only when GitHub reports merge-queue backlog, not unrelated queued workflows."""
+    if dataset.merge_queue_depth > 0:
+        return True
+    if dataset.merge_queue_entries:
+        return True
+    for sample in dataset.queue_samples:
+        if int(sample.get("queued_merge_group_runs", sample.get("queued_runs", 0))) > 0:
+            return True
+    return False
+
+
 def stall_alarm(dataset: QueueDataset, *, targets: SloTargets | None = None) -> tuple[bool, str]:
     t = targets or DEFAULT_TARGETS
-    if not dataset.merge_queue_entries and not any(
-        int(s.get("queued_runs", 0)) > 0 for s in dataset.queue_samples
-    ):
+    if not merge_queue_is_active(dataset):
         return False, "merge queue empty"
-    if not dataset.merged_prs:
-        return True, f"no merges in lookback; queue size {len(dataset.merge_queue_entries)}"
-    latest = max(_parse_ts(str(row["merged_at"])) for row in dataset.merged_prs if row.get("merged_at"))
+    merged_in_window = [row for row in dataset.merged_prs if row.get("merged_at")]
+    if not merged_in_window:
+        depth = dataset.merge_queue_depth or len(dataset.merge_queue_entries)
+        return True, f"no merges in lookback; merge queue depth {depth}"
+    latest = max(_parse_ts(str(row["merged_at"])) for row in merged_in_window)
     idle = dataset.as_of - latest
     if idle >= timedelta(minutes=t.stall_no_merge_minutes):
-        return True, f"no merge for {idle.total_seconds() / 60:.0f}m with active queue"
+        detail = (
+            f"no merge for {idle.total_seconds() / 60:.0f}m with active queue "
+            f"(merge_queue_depth={dataset.merge_queue_depth})"
+        )
+        return True, detail
     return False, f"latest merge {idle.total_seconds() / 60:.0f}m ago"
 
 
@@ -201,6 +233,33 @@ def _decode_concatenated_json(text: str) -> list[Any]:
     return chunks
 
 
+def gh_graphql(
+    query: str,
+    variables: Mapping[str, str],
+    *,
+    runner: CommandRunner = _default_runner,
+) -> dict[str, Any]:
+    if not (os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN") or "").strip():
+        gh_error("GITHUB_TOKEN (or GH_TOKEN) is required for live GitHub reads")
+        raise SystemExit(2)
+    cmd = ["gh", "api", "graphql", "-f", f"query={query.strip()}"]
+    for key, value in variables.items():
+        cmd.extend(["-f", f"{key}={value}"])
+    proc = runner(cmd)
+    if proc.returncode != 0:
+        gh_error((proc.stderr or proc.stdout or "gh api graphql failed").strip())
+        raise SystemExit(2)
+    chunks = _decode_concatenated_json(proc.stdout or "")
+    payload = chunks[0] if chunks else {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def merge_queue_depth_from_graphql(payload: Mapping[str, Any]) -> int:
+    repo = payload.get("data", {}).get("repository") or {}
+    entries = (repo.get("mergeQueue") or {}).get("entries") or {}
+    return int(entries.get("totalCount") or 0)
+
+
 def gh_api(
     path: str,
     *,
@@ -243,12 +302,14 @@ def fetch_live_dataset(repo: str, *, lookback_hours: int = 24, runner: CommandRu
         return list(payload.get("workflow_runs") or []) if isinstance(payload, dict) else list(payload)
 
     queued = runs(status="queued", per_page="100")
+    queued_merge_group = [r for r in queued if isinstance(r, dict) and str(r.get("event")) == "merge_group"]
     merge_list = runs(event="merge_group", per_page="100", created=f">={created}")
     closed = gh_api(
         f"repos/{owner}/{name}/pulls",
         runner=runner,
         params={"state": "closed", "sort": "updated", "direction": "desc", "per_page": "100"},
     )
+    lookback_start = now - timedelta(hours=lookback_hours)
     merged_prs = [
         {
             "number": pr.get("number"),
@@ -257,18 +318,25 @@ def fetch_live_dataset(repo: str, *, lookback_hours: int = 24, runner: CommandRu
             "enqueued_at": pr.get("updated_at"),
         }
         for pr in (closed if isinstance(closed, list) else [])
-        if isinstance(pr, dict) and pr.get("merged_at")
+        if isinstance(pr, dict)
+        and pr.get("merged_at")
+        and _parse_ts(str(pr["merged_at"])) >= lookback_start
     ]
+    mq_payload = gh_graphql(MERGE_QUEUE_DEPTH_GRAPHQL, {"owner": owner, "name": name}, runner=runner)
+    merge_queue_depth = merge_queue_depth_from_graphql(mq_payload)
     sample = {
         "at": now.isoformat().replace("+00:00", "Z"),
-        "queued_runs": len(queued),
+        "queued_runs": len(queued_merge_group),
+        "queued_merge_group_runs": len(queued_merge_group),
+        "merge_queue_depth": merge_queue_depth,
         "open_prs": open_count,
     }
     return QueueDataset(
         as_of=now,
         open_pr_count=open_count,
         queue_samples=[sample],
-        merge_queue_entries=[],
+        merge_queue_entries=([{"depth": merge_queue_depth}] if merge_queue_depth else []),
+        merge_queue_depth=merge_queue_depth,
         merged_prs=merged_prs,
         workflow_runs=merge_list,
         jobs_by_run_id={},
@@ -300,6 +368,7 @@ def run_check(
     alarm, alarm_detail = stall_alarm(dataset, targets=t)
     report = {
         "metrics": asdict(metrics),
+        "merge_queue_depth": dataset.merge_queue_depth,
         "breaches": breaches,
         "stall_alarm": {"fired": alarm, "detail": alarm_detail},
     }

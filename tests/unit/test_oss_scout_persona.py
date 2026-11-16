@@ -31,7 +31,7 @@ def test_oss_scout_yaml_passes_schema_validation_and_loads_into_roster(tmp_path:
     assert spec_raw["permissions"]["code_read_only"] is True
     assert not any(spec_raw["permissions"][k] for k in ("open_pr", "merge", "lease", "notify_user"))
     assert spec_raw["reports_to"] == "barb" and spec_raw["surface"] == "both"
-    assert spec_raw["providers"] == ["claude", "antigravity", "cursor-agent"]
+    assert spec_raw["providers"] == ["codex", "claude", "antigravity"]
     clear_roles_cache()
     scout = load_roles(tmp_path)["oss-scout"]
     assert scout.valid and scout.code_read_only is True
@@ -40,27 +40,23 @@ def test_oss_scout_yaml_passes_schema_validation_and_loads_into_roster(tmp_path:
     assert slots["weekly_scan"].startswith("2026-11-06T09:00:00")
 
 
-def test_oss_scout_resolved_chain_has_no_codex_step_and_no_model_override(tmp_path: Path) -> None:
+def test_oss_scout_resolved_chain_matches_approved_policy(tmp_path: Path) -> None:
     os_.write_oss_scout_role_yaml(tmp_path)
     resolved = resolve_failover_chain(os_.load_oss_scout_role_spec(tmp_path))
     assert resolved == os_.OSS_SCOUT_FAILOVER_CHAIN
-    assert resolved[0] == FailoverStep("claude", None)
-    assert all(step.provider != "codex" for step in resolved)
+    assert resolved[0] == FailoverStep("codex", "gpt-6.1-sol")
     # rd_barb_provider.chain() defaults a bare claude head to "opus" when nothing overrides it
     # (shared DEFAULT_PROVIDER/DEFAULT_MODEL rule, not something this role's own chain sets).
-    assert rp.select({}, role="oss-scout") == rp.Decision("claude", "opus", False)
-    assert rp.chain({}, role="oss-scout") == (
-        FailoverStep("claude", "opus"),
-        *os_.OSS_SCOUT_FAILOVER_CHAIN[1:],
-    )
+    assert rp.select({}, role="oss-scout") == rp.Decision("codex", "gpt-6.1-sol", False)
+    assert rp.chain({}, role="oss-scout") == os_.OSS_SCOUT_FAILOVER_CHAIN
     sent: list[dict[str, Any]] = []
     rc = rp.main(
-        ["--role", "oss-scout", "next", "--current", "claude", "--failure", "rate_limited"],
+        ["--role", "oss-scout", "next", "--current", "codex", "--failure", "rate_limited"],
         config={},
         notify=sent.append,
     )
     assert rc == 0 and len(sent) == 1
-    assert sent[0]["sender_role"] == "oss-scout" and "antigravity" in sent[0]["summary"]
+    assert sent[0]["sender_role"] == "oss-scout" and "claude" in sent[0]["summary"]
 
 
 def test_oss_scout_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:

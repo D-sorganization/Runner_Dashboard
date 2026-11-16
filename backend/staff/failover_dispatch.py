@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import dataclass
 from typing import Any
 
-from staff import quota as quota_mod
 from staff.adapters import READ_ONLY_RUN_PROVIDERS, ProviderAdapter
 from staff.plan import RunRequest
 from staff.provider_cooldown import (
@@ -16,13 +16,46 @@ from staff.provider_cooldown import (
     provider_in_cooldown,
 )
 from staff.provider_failover_config import FailoverStep, resolve_failover_chain
-from staff.roles import RoleSpec
+from staff.run_status import RunStatus, mark_run_blocked
 from staff.runner_ops import can_run_unattended, read_only_kwargs
+
+from staff import quota as quota_mod
+from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.failover_dispatch")
 
-FAILOVER_FAILURE_CLASSES = frozenset({"provider_capacity", "quota_exhausted", "rate_limited"})
-IMMEDIATE_FAILOVER_CLASSES = frozenset({"provider_capacity", "quota_exhausted"})
+
+@dataclass(frozen=True)
+class ProviderPick:
+    """Resolved provider + model for dispatch planning (#2047, #4452)."""
+
+    provider: str
+    model: str | None
+    tier: str
+    auth_skipped: list[dict[str, str]]
+    requested_provider: str | None = None
+    substitution_reason: str | None = None
+
+    def __iter__(self) -> Iterator[str | list[dict[str, str]] | None]:
+        yield self.provider
+        yield self.model
+        yield self.tier
+        yield self.auth_skipped
+
+
+FAILOVER_FAILURE_CLASSES = frozenset(
+    {
+        "provider_capacity",
+        "quota_exhausted",
+        "rate_limited",
+        "auth_expired",
+        "auth_stale",
+        "upstream_unavailable",
+    }
+)
+IMMEDIATE_FAILOVER_CLASSES = frozenset(
+    {"provider_capacity", "quota_exhausted", "auth_expired", "auth_stale", "upstream_unavailable"}
+)
 
 
 def is_failover_failure(failure_class: str) -> bool:
@@ -119,7 +152,7 @@ def pick_machine_for_chain(
 ) -> str:
     """Choose an online machine with a healthy chain provider; least loaded wins."""
     cooling = machine_cooldowns or {}
-    best: tuple[int, int, int, str] | None = None
+    best: tuple[int, int, float, float, int, str] | None = None
     for name, node in (board.get("machines") or {}).items():
         if node.get("status") != "online":
             continue
@@ -135,11 +168,14 @@ def pick_machine_for_chain(
             break
         if pick_idx is None:
             continue
-        load = len(node.get("running", [])) + len(node.get("queued", []))
-        rank = (pick_idx, load, 0 if name == local_name else 1, name)
+        from staff.fleet import _placement_load  # noqa: PLC0415
+
+        runs, cpu, mem = _placement_load(node)
+        local_tie = 1 if name == local_name else 0
+        rank = (pick_idx, runs, cpu, mem, local_tie, name)
         if best is None or rank < best:
             best = rank
-    return best[3] if best else local_name
+    return best[5] if best else local_name
 
 
 def tried_slots_for_root(store: Any, root_id: str) -> set[str]:
@@ -171,7 +207,6 @@ def try_chain_failover(
     retries_exhausted: bool,
 ) -> bool:
     """Schedule the next provider in the fleet failover chain when appropriate."""
-    from staff.plan import RunPlan  # noqa: PLC0415
     from staff.retry import _claim, _provenance, _schedule, attempt_run_id  # noqa: PLC0415
     from staff.store import RunRecord  # noqa: PLC0415
 
@@ -197,7 +232,7 @@ def try_chain_failover(
         tier=active_tier,
     )
 
-    chain = resolve_failover_chain(role, requested_provider=None)
+    chain = resolve_failover_chain(role, requested_provider=None, repo=str(getattr(plan, "repo", "") or ""))
     tried_slots = tried_slots_for_root(runner.store, root_id)
     next_step: FailoverStep | None = None
     next_tier = active_tier
@@ -244,24 +279,15 @@ def try_chain_failover(
     argv = runner._adapters[next_step.provider].build_command(
         plan.prompt, "<workdir>", target_model, **read_only_kwargs(role)
     )
-    fallback_plan = RunPlan(
-        role=plan.role,
+    from staff.plan import derive_run_plan  # noqa: PLC0415
+
+    fallback_plan = derive_run_plan(
+        plan,
         provider=next_step.provider,
         model=target_model,
         model_tier=resolved_tier,
-        repo=plan.repo,
-        target_kind=plan.target_kind,
-        target_ref=plan.target_ref,
-        operator_prompt=plan.operator_prompt,
-        prompt=plan.prompt,
         argv=argv,
         branch=next_branch,
-        lease_ritual=plan.lease_ritual,
-        consolidation=plan.consolidation,
-        focus=plan.focus,
-        head_ref=plan.head_ref,
-        dispatch_bundle=plan.dispatch_bundle,
-        library_references=plan.library_references,
     )
     fallback_rec = RunRecord(
         id=attempt_id,
@@ -299,25 +325,18 @@ def try_chain_failover(
 def _mark_providers_exhausted(store: Any, latest: Any, root_id: str, plan: Any) -> None:
     reset_at = earliest_cooldown_reset() or ""
     msg = f"All providers in failover chain exhausted; earliest reset {reset_at or 'unknown'}"
-    store.update_run(
-        latest.id,
-        status="blocked",
-        failure_class="providers_exhausted",
-        retryable=False,
-        remediation=msg,
-        error=msg,
-        next_attempt_at=reset_at or None,
-    )
+    blocked_fields = {
+        "failure_class": "providers_exhausted",
+        "retryable": False,
+        "remediation": msg,
+        "error": msg,
+        "next_attempt_at": reset_at or None,
+    }
+    mark_run_blocked(store, latest.id, RunStatus(latest.status), **blocked_fields)
     if root_id != latest.id:
-        store.update_run(
-            root_id,
-            status="blocked",
-            failure_class="providers_exhausted",
-            retryable=False,
-            remediation=msg,
-            error=msg,
-            next_attempt_at=reset_at or None,
-        )
+        root = store.get_run(root_id)
+        if root is not None:
+            mark_run_blocked(store, root_id, RunStatus(root.status), **blocked_fields)
     store.append_event(root_id, "providers_exhausted", msg)
 
 
@@ -344,18 +363,73 @@ def run_completion_summary(
     return str(chain_note or summary or "")
 
 
+def _read_only_explicit_substitution(
+    adapters: Mapping[str, ProviderAdapter],
+    machine: str,
+    req: RunRequest,
+    role: RoleSpec,
+    *,
+    ceiling: float | None,
+    headroom: Callable[[str, float | None], bool],
+) -> ProviderPick:
+    from staff.read_only_failover import explain_read_only_chain_exhausted, read_only_substitution_skips
+
+    requested = req.provider
+    assert requested is not None
+    skip = read_only_substitution_skips(req)
+    try:
+        provider, model, tier, skipped = select_provider_from_chain(
+            adapters,
+            role,
+            req=req,
+            requested_provider=requested,
+            ceiling=ceiling,
+            quota_headroom=headroom,
+            machine=machine,
+            skip_providers=skip,
+        )
+    except ValueError as exc:
+        if "no provider available" in str(exc):
+            raise ValueError(
+                explain_read_only_chain_exhausted(adapters, role, req, machine=machine, skip_providers=skip)
+            ) from exc
+        raise
+    if provider not in READ_ONLY_RUN_PROVIDERS:
+        raise ValueError(explain_read_only_chain_exhausted(adapters, role, req, machine=machine, skip_providers=skip))
+    return ProviderPick(
+        provider=provider,
+        model=model,
+        tier=tier,
+        auth_skipped=skipped,
+        requested_provider=requested,
+        substitution_reason="code_read_only",
+    )
+
+
 def resolve_provider_and_model(
     adapters: Mapping[str, ProviderAdapter],
     machine: str,
     req: RunRequest,
     role: RoleSpec,
-) -> tuple[str, str | None, str, list[dict[str, str]]]:
+) -> ProviderPick:
     """Pick provider and optional chain model for a staff run (#2047)."""
     import provider_switch as provider_switch_mod
 
     if role.code_read_only and req.provider and req.provider not in READ_ONLY_RUN_PROVIDERS:
-        raise ValueError(
-            f"role '{role.name}' runs code-read-only; provider {req.provider!r} has no read-only unattended mode"
+        if req.strict_provider:
+            raise ValueError(
+                f"role '{role.name}' runs code-read-only; provider {req.provider!r} has no read-only unattended mode"
+            )
+        ceiling = quota_mod.ceiling_percent(role.budget_max_window_percent)
+        return _read_only_explicit_substitution(
+            adapters,
+            machine,
+            req,
+            role,
+            ceiling=ceiling,
+            headroom=lambda pid, lim: quota_mod.headroom(
+                pid, lim if lim is not None else quota_mod.ceiling_percent(None)
+            )[0],
         )
     ceiling = quota_mod.ceiling_percent(role.budget_max_window_percent)
 
@@ -389,7 +463,7 @@ def resolve_provider_and_model(
                 quota_headroom=_headroom,
                 machine=machine,
             )
-            return provider, model, tier, _skipped
+            return ProviderPick(provider, model, tier, _skipped)
     else:
         provider, model, tier, skipped = select_provider_from_chain(
             adapters,
@@ -400,7 +474,7 @@ def resolve_provider_and_model(
             quota_headroom=_headroom,
             machine=machine,
         )
-        return provider, model, tier, skipped
+        return ProviderPick(provider, model, tier, skipped)
     if provider not in adapters:
         raise ValueError(f"unknown provider '{provider}'")
     if req.provider and req.provider not in role.providers and role.name != "ad-hoc":
@@ -420,7 +494,7 @@ def resolve_provider_and_model(
         step=None,
         active_tier=role_base_tier(role),
     )
-    return provider, model, tier, []
+    return ProviderPick(provider, model, tier, [])
 
 
 def select_provider_from_chain(
@@ -432,12 +506,18 @@ def select_provider_from_chain(
     ceiling: float | None,
     quota_headroom: Callable[[str, float | None], bool],
     machine: str = "local",
+    skip_providers: frozenset[str] | None = None,
 ) -> tuple[str, str | None, str, list[dict[str, str]]]:
     """Resolve provider + model + tier for launch using failover chain and cooldown skip."""
     from staff.failover_model import resolve_launch_model, role_base_tier
 
     auth_skipped: list[dict[str, str]] = []
-    chain = resolve_failover_chain(role, requested_provider=requested_provider)
+    repo = ""
+    if req is not None:
+        repo = str(getattr(req, "repo", "") or "")
+    chain = resolve_failover_chain(
+        role, requested_provider=requested_provider, repo=repo, skip_providers=skip_providers
+    )
     step = pick_launch_step(chain, adapters, role, skip_cooling=True, machine=machine, auth_skipped=auth_skipped)
     if step is None:
         step = pick_launch_step(chain, adapters, role, skip_cooling=False, machine=machine, auth_skipped=auth_skipped)
@@ -491,5 +571,6 @@ def select_provider_from_chain(
         adapter=adapter,
         step=step,
         active_tier=role_base_tier(role),
+        trust_failover_step_model=role.code_read_only,
     )
     return provider, model, tier, auth_skipped

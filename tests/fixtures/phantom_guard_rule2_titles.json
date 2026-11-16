@@ -1,0 +1,20 @@
+{
+  "ordinary_pass": [
+    "fix(scripts): guard regex and claim docs (H-05, H-01)",
+    "fix(ci): anti-phantom guard Rule 2 regex false-positives",
+    "docs: coordination subsystem and lease API",
+    "chore: implement test fixture for guard titles",
+    "refactor: query engine timeout handling",
+    "test: framework for flaky integration tests",
+    "ci: systemd unit and monitoring subsystem paths",
+    "merge queue: rebase subsystem labels"
+  ],
+  "feature_claim_fail_when_no_code": [
+    "feat: add weekly summary endpoint",
+    "feat(scope): ship new dashboard tab",
+    "Implement fleet-wide auth gateway",
+    "System redesign for coordination API",
+    "Engine rewrite for dispatch router",
+    "Framework for multi-tenant runner pools"
+  ]
+}

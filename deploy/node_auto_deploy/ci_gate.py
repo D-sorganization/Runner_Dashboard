@@ -13,6 +13,10 @@ from node_auto_deploy.check_runs import (
     run_is_pending,
     validate_check_run_record,
 )
+from node_auto_deploy.required_contexts import (
+    RequiredContextsPolicyError,
+    load_required_deploy_contexts,
+)
 
 DEFAULT_MAIN_HISTORY_LIMIT = 20
 
@@ -38,6 +42,7 @@ NON_BLOCKING_DEPLOY_CHECK_NAMES = frozenset(
         "preview",  # Taxonomy rollout dry-run
         "apply",  # Taxonomy rollout apply
         "slo",  # CI Queue SLO Check (schedule); queue health, not code quality
+        "shepherd",  # Merge shepherd pass (schedule); bot maintenance, not code quality
     }
 )
 
@@ -46,9 +51,18 @@ def filter_non_blocking_check_runs(check_runs: list[dict[str, Any]]) -> list[dic
     return [r for r in check_runs if str(r.get("name") or "") not in NON_BLOCKING_DEPLOY_CHECK_NAMES]
 
 
-def ci_gate_for_deploy_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
+def ci_gate_for_deploy_commit(
+    check_runs: list[dict[str, Any]],
+    expected_sha: str,
+    *,
+    required_contexts: tuple[str, ...] | None = None,
+) -> tuple[bool, str]:
     """Deploy/release gate: required CI checks only (excludes publisher and fleet hygiene jobs)."""
-    return ci_gate_for_commit(filter_non_blocking_check_runs(check_runs), expected_sha)
+    return ci_gate_for_commit(
+        filter_non_blocking_check_runs(check_runs),
+        expected_sha,
+        required_contexts=required_contexts,
+    )
 
 
 def parse_check_runs_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -58,12 +72,21 @@ def parse_check_runs_payload(payload: dict[str, Any]) -> list[dict[str, Any]]:
     return [r for r in runs if isinstance(r, dict)]
 
 
-def ci_gate_for_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> tuple[bool, str]:
+def ci_gate_for_commit(
+    check_runs: list[dict[str, Any]],
+    expected_sha: str,
+    *,
+    required_contexts: tuple[str, ...] | None = None,
+) -> tuple[bool, str]:
     """Return (passed, detail).
 
     Pre: ``check_runs`` is a list of GitHub check-run dicts; ``expected_sha`` is a git commit id.
-    Post: when passed, every check *name* for that sha has no failing runs and at least one
-    success or skipped run; pending runs fail closed.
+    Post: when passed, no checks are still pending; for every observed check name the latest
+    attempt of each (app, check suite) is counted and none of them failed (a superseded attempt
+    does not block; a newer failure does); every required branch-protection context is present
+    with a success, or with a skip that ``SKIPPED_CONCLUSION_ALLOWLIST`` names. A name that is
+    not a required context passes when it only skipped; cancelled-only and neutral-only names
+    fail (#4419, #4425, board ruling C1 of 2026-11-13).
     """
     if not isinstance(check_runs, list):
         return False, "check_runs must be a list"
@@ -92,7 +115,23 @@ def ci_gate_for_commit(check_runs: list[dict[str, Any]], expected_sha: str) -> t
     for run in relevant:
         by_name[run["name"]].append(run)
 
-    failing_names = sorted(name for name, runs in by_name.items() if not check_name_passes(runs))
+    if required_contexts is not None:
+        required = required_contexts
+    else:
+        try:
+            required = load_required_deploy_contexts()
+        except RequiredContextsPolicyError as exc:
+            return False, f"required checks policy error: {exc}"
+    blocking_required = [name for name in required if name not in NON_BLOCKING_DEPLOY_CHECK_NAMES]
+    missing_required = sorted(name for name in blocking_required if name not in by_name)
+    if missing_required:
+        names = ", ".join(missing_required[:5])
+        return False, f"required checks missing: {names}"
+
+    required_names = frozenset(blocking_required)
+    failing_names = sorted(
+        name for name, runs in by_name.items() if not check_name_passes(runs, required=name in required_names)
+    )
     if failing_names:
         names = ", ".join(failing_names[:5])
         return False, f"checks failed: {names}"

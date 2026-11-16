@@ -14,7 +14,8 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from identity import Principal, require_fleet_peer, require_scope
+from identity import Principal, require_scope
+from staff.tokens import authorization_headers_for_run
 from routers import staff_threads
 from routers.staff_barb import router as barb_router
 from routers.staff_threads import router as threads_router
@@ -48,20 +49,29 @@ def _run(thread_id: str, run_id: str = "run-1", machine: str = "worker") -> RunR
 @pytest.fixture
 def authority_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
     """An authority app (real store + routes) reachable through a switchable in-process network."""
+    monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "staff_runs.sqlite3"))
+    from staff import runner as runner_mod
+    from staff import store as store_mod
+    from staff.runner import get_runner
+
+    store_mod.reset_store()
+    runner_mod.reset_runner()
     store = ConversationStore(tmp_path / "authority.sqlite3")
     thread = store.create_thread(title="t", kind="direct", role="librarian", created_by="user:d")
+    get_runner().store.create_run(_run(thread.id, "r1"))
     monkeypatch.setattr(staff_threads, "_get_store_or_503", lambda: store)
     monkeypatch.setattr(staff_threads, "get_thread_bus", lambda: ThreadEventBus())
     app = FastAPI()
     app.include_router(threads_router, prefix="/api/v1/staff")
-    app.dependency_overrides[require_fleet_peer] = lambda: "peer"
     client = TestClient(app)
+    run_rec = get_runner().store.get_run("r1")
+    assert run_rec is not None
     monkeypatch.setenv("BARB_AUTHORITY_NODE", "CT")
     monkeypatch.setenv("BARB_AUTHORITY_URL", "http://ct:8321")
     monkeypatch.setenv("BARB_AUTHORITY_EPOCH", str(EPOCH))
     monkeypatch.setattr(barb_runtime, "local_node_name", lambda: "CT")
     barb_runtime.reset_authority_config()
-    yield {"store": store, "thread": thread, "client": client, "monkeypatch": monkeypatch}
+    yield {"store": store, "thread": thread, "client": client, "monkeypatch": monkeypatch, "run": run_rec}
     barb_runtime.reset_authority_config()
 
 
@@ -78,13 +88,23 @@ class Net:
             local_node="CT",
         )
         try:
-            resp = self.client.post(url.split("ct:8321")[1], json=body, headers=headers)
+            from staff.runner import get_runner as _get_runner
+
+            run_id = body.get("run_id", "r1")
+            rec = _get_runner().store.get_run(run_id)
+            assert rec is not None
+            auth = authorization_headers_for_run(rec)
+            resp = self.client.post(url.split("ct:8321")[1], json=body, headers={**headers, **auth})
         finally:
             barb_runtime._config = replica_cfg
         if self.lose_response:
             self.lose_response -= 1
             raise ConnectionError("response lost")
         return resp.status_code, resp.json()
+
+
+def _relay_hdr(env: dict[str, Any]) -> dict[str, str]:
+    return authorization_headers_for_run(env["run"])
 
 
 def _become_replica(env: dict[str, Any]) -> None:
@@ -96,9 +116,10 @@ def _become_replica(env: dict[str, Any]) -> None:
 @pytest.mark.unit
 def test_ingest_applies_once_and_dedupes_a_replay(authority_env: dict[str, Any]) -> None:
     c, tid, store = authority_env["client"], authority_env["thread"].id, authority_env["store"]
-    body = {"run_id": "r1", "role": "librarian", "status": "succeeded", "version": 2, "epoch": EPOCH}
-    first = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body)
-    again = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body)
+    body = {"run_id": "r1", "role": "librarian", "status": "succeeded", "node": "worker", "version": 2, "epoch": EPOCH}
+    headers = _relay_hdr(authority_env)
+    first = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body, headers=headers)
+    again = c.post(f"/api/v1/staff/threads/{tid}/relay-card", json=body, headers=headers)
     assert first.status_code == again.status_code == 200
     assert len(store.list_messages(tid)) == 1
 
@@ -106,19 +127,23 @@ def test_ingest_applies_once_and_dedupes_a_replay(authority_env: dict[str, Any])
 @pytest.mark.unit
 def test_ingest_refuses_a_stale_epoch_and_a_stale_version(authority_env: dict[str, Any]) -> None:
     c, tid, store = authority_env["client"], authority_env["thread"].id, authority_env["store"]
+    relay_hdr = _relay_hdr(authority_env)
     old = c.post(
         f"/api/v1/staff/threads/{tid}/relay-card",
-        json={"run_id": "r1", "role": "x", "status": "running", "version": 1, "epoch": EPOCH - 1},
+        json={"run_id": "r1", "role": "x", "status": "running", "node": "worker", "version": 1, "epoch": EPOCH - 1},
+        headers=relay_hdr,
     )
     assert old.status_code == 409 and old.json()["code"] == "stale_authority_epoch"
     assert store.list_messages(tid) == []
     c.post(
         f"/api/v1/staff/threads/{tid}/relay-card",
-        json={"run_id": "r1", "role": "x", "status": "succeeded", "version": 5, "epoch": EPOCH},
+        json={"run_id": "r1", "role": "x", "status": "succeeded", "node": "worker", "version": 5, "epoch": EPOCH},
+        headers=relay_hdr,
     )
     late = c.post(
         f"/api/v1/staff/threads/{tid}/relay-card",
-        json={"run_id": "r1", "role": "x", "status": "running", "version": 3, "epoch": EPOCH},
+        json={"run_id": "r1", "role": "x", "status": "running", "node": "worker", "version": 3, "epoch": EPOCH},
+        headers=relay_hdr,
     )
     assert late.status_code == 409 and late.json()["code"] == "stale_version"
     assert store.get_message(run_card_id("r1")).meta["status"] == "succeeded"  # type: ignore[union-attr]
@@ -130,7 +155,8 @@ def test_a_replica_refuses_to_ingest(authority_env: dict[str, Any]) -> None:
     tid = authority_env["thread"].id
     resp = authority_env["client"].post(
         f"/api/v1/staff/threads/{tid}/relay-card",
-        json={"run_id": "r1", "role": "x", "status": "running", "version": 1, "epoch": EPOCH},
+        json={"run_id": "r1", "role": "x", "status": "running", "node": "worker", "version": 1, "epoch": EPOCH},
+        headers=_relay_hdr(authority_env),
     )
     assert resp.status_code == 503 and resp.json()["code"] == "not_authority"
     assert authority_env["store"].list_messages(tid) == []
@@ -145,7 +171,9 @@ def test_legacy_unversioned_relay_still_works_without_authority(
     barb_runtime.reset_authority_config()
     tid = authority_env["thread"].id
     resp = authority_env["client"].post(
-        f"/api/v1/staff/threads/{tid}/relay-card", json={"run_id": "r1", "role": "x", "status": "running"}
+        f"/api/v1/staff/threads/{tid}/relay-card",
+        json={"run_id": "r1", "role": "x", "status": "running", "node": "worker"},
+        headers=_relay_hdr(authority_env),
     )
     assert resp.status_code == 200 and len(authority_env["store"].list_messages(tid)) == 1
 
@@ -157,6 +185,9 @@ def replica(authority_env: dict[str, Any], tmp_path: Path, monkeypatch: pytest.M
     runs = RunStore(tmp_path / "runs.sqlite3")
     tid = authority_env["thread"].id
     runs.create_run(_run(tid))
+    from staff.runner import get_runner
+
+    get_runner().store.create_run(_run(tid, "run-1"))
     _become_replica(authority_env)
     monkeypatch.setattr(barb_runtime, "get_conversation_store", lambda: worker)
     monkeypatch.setattr(barb_runtime, "get_store", lambda: runs)

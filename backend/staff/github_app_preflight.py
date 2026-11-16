@@ -16,6 +16,7 @@ from github_app_auth import (
     normalize_permissions_for_mint,
 )
 from staff.github_run_env import github_permissions_for_role
+
 from staff.roles import RoleSpec
 
 log = logging.getLogger("dashboard.staff.github_app_preflight")

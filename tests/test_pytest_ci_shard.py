@@ -94,7 +94,8 @@ def test_collection_modifyitems_noop_when_single_shard() -> None:
     config.hook.pytest_deselected.assert_not_called()
 
 
-def test_ci_standard_tests_matrix_two_shards_on_merge_group_only() -> None:
+def test_ci_standard_tests_matrix_single_shard_on_merge_group_for_coverage() -> None:
+    """merge_group uses one shard so full-suite coverage can enforce fail_under (#4299)."""
     from pathlib import Path
 
     import yaml
@@ -106,8 +107,7 @@ def test_ci_standard_tests_matrix_two_shards_on_merge_group_only() -> None:
     assert isinstance(include, str), "tests matrix must use a dynamic include expression"
     compact = include.replace(" ", "")
     assert "merge_group" in compact
-    assert '"shards":2' in compact
-    assert '"shard":1' in compact and '"shard":2' in compact
+    assert '"shards":2' not in compact
     assert '"shards":1' in compact
 
 

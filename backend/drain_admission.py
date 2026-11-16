@@ -9,6 +9,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 _MUTATION_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 _READ_METHODS = frozenset({"GET", "HEAD"})
+_DRAIN_CONTROL_PATHS = frozenset({"/_drain", "/_undrain"})
 
 
 class DrainAdmissionMiddleware:
@@ -22,7 +23,7 @@ class DrainAdmissionMiddleware:
         if scope["type"] == "http" and self.is_draining():
             method = scope["method"].upper()
             path = scope["path"]
-            reject_mutation = method in _MUTATION_METHODS and path != "/_drain"
+            reject_mutation = method in _MUTATION_METHODS and path not in _DRAIN_CONTROL_PATHS
             reject_readiness = method in _READ_METHODS and path == "/readyz"
             if reject_mutation or reject_readiness:
                 response = JSONResponse(

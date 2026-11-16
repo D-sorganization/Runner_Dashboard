@@ -82,10 +82,16 @@ def test_reaper_releases_tracked_claim_when_lease_expires(
 
     get_store().expire_session(sess)
     released: list[tuple[str, int, str]] = []
+    release_agents: list[str] = []
 
     def fake_release(repo: str, issue: int, *, agent: str, session: str, reason: str) -> dict:
         released.append((repo, issue, reason))
+        release_agents.append(agent)
         return {"released": True, "result": {}, "warnings": []}
+
+    # The reaper releases as the lease holder RM reports, not as the bus role (#4270 B-10).
+    held = {"available": True, "held": True, "agent": "codex", "session": sess, "reason": "", "expires_at": None}
+    monkeypatch.setattr("coordination.claims.check", lambda _repo, _issue: held)
 
     from agent_bus import reaper
 
@@ -94,6 +100,7 @@ def test_reaper_releases_tracked_claim_when_lease_expires(
         summary = reaper.reap_once()
     assert summary["released_claims"] >= 1
     assert ("Tools", 42, "agent_bus lease expired") in released
+    assert release_agents == ["codex"]
 
 
 @pytest.mark.unit

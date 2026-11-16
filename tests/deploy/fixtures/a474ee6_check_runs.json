@@ -84,7 +84,7 @@
     {
       "name": "guard",
       "status": "completed",
-      "conclusion": "skipped"
+      "conclusion": "success"
     },
     {
       "name": "lint",
@@ -108,6 +108,21 @@
     },
     {
       "name": "tests (3.11)",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "frontend-required",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "api-contract-regeneration",
+      "status": "completed",
+      "conclusion": "success"
+    },
+    {
+      "name": "Adversarial redaction gate fixtures",
       "status": "completed",
       "conclusion": "success"
     }

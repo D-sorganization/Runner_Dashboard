@@ -29,9 +29,9 @@ if [[ "$DEPLOY_SCOPE" == "user" ]]; then
     deployment_user_manager_require "$SERVICE"
 fi
 
-# Find most-recent backup if not specified
+# Find most-recent backup if not specified (same location as backup_dir() in lib.sh)
 if [[ -z "$BACKUP_DIR" ]]; then
-    BACKUP_DIR=$(ls -1dt /var/backups/runner-dashboard/* 2>/dev/null | head -1 || echo "")
+    BACKUP_DIR=$(latest_deploy_backup "$DEPLOY_DIR" || true)
 fi
 
 [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR" ]] || fail "No backup directory found"

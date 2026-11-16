@@ -128,3 +128,23 @@ def test_merge_provisions_agent_cursor_as_checkin_only_without_read_or_chat(
     ):
         assert not principal_has_scope(prin, forbidden)
     assert mgr.verify_token("svc_test_cursor_checkin") is prin
+
+
+@pytest.mark.parametrize("pid", ("agent-grok", "agent-grok-vm"))
+def test_grok_principals_have_explicit_runners_control(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pid: str
+) -> None:
+    """#4490: agent-grok and agent-grok-vm carry runners.control as a direct scope."""
+    monkeypatch.setenv("DASHBOARD_AGENT_PRINCIPALS_FILE", str(_defaults_path()))
+    id_dir = tmp_path / "id"
+    tok_dir = id_dir / "agent-tokens"
+    tok_dir.mkdir(parents=True)
+    (tok_dir / f"{pid}.token").write_text(f"svc_test_{pid.replace('-', '_')}_ctrl\n", encoding="utf-8")
+
+    mgr = IdentityManager(config_dir=id_dir)
+    merge_agent_principal_defaults(mgr)
+
+    prin = mgr.principals[pid]
+    assert "runners.control" in (prin.scopes or [])
+    assert principal_has_scope(prin, "runners.control")
+

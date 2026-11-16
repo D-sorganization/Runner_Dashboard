@@ -11,7 +11,6 @@ import logging
 import threading
 from typing import Any
 
-from staff import claim_guard
 from staff.barb_fence import FencedAuthorityError
 from staff.barb_runtime import enqueue_run_card, get_authority_config, relay_payload
 from staff.barb_versions import ApplyOutcome, ApplyResult
@@ -21,6 +20,8 @@ from staff.conversations import get_conversation_store
 from staff.plan import RunRequest
 from staff.store import RunRecord
 from staff.thread_bus import get_thread_bus
+
+from staff import claim_guard
 
 log = logging.getLogger("dashboard.staff.run_link")
 
@@ -33,6 +34,7 @@ _CARD_STATUS = {
     "succeeded": "completed",
     "failed": "failed",
     "cancelled": "cancelled",
+    "blocked": "failed",  # never started or out of providers; the card has no ``blocked`` state
 }
 
 
@@ -93,8 +95,8 @@ def format_run_card_body(
     elif status == "succeeded":
         res = summary or run.outcome or "Completed successfully."
         lines.append(f"\n✅ **Result**: {res}")
-    elif status == "failed":
-        err_msg = run.error or "Run failed."
+    elif status in ("failed", "blocked"):
+        err_msg = run.error or ("Run blocked." if status == "blocked" else "Run failed.")
         cls_msg = f" [{run.failure_class}]" if run.failure_class else ""
         lines.append(f"\n❌ **Error**{cls_msg}: {err_msg}")
         if run.remediation:
@@ -200,6 +202,46 @@ def post_run_card(
         return None
 
 
+# Terminal run statuses that end a run without finishing the work (#4269 D-08).
+_UNFINISHED_TERMINAL_STATUSES = frozenset({"failed", "blocked", "cancelled"})
+# Work item states a run holds while it works; any other state was set by something later.
+_RUN_HELD_WORK_ITEM_STATES = frozenset({"open", "in_progress", "waiting_on_user"})
+_WORK_ITEM_REASON_LIMIT = 400
+
+
+def _unfinished_run_reason(run: RunRecord, status: str) -> str:
+    detail = ": ".join(
+        part for part in (getattr(run, "failure_class", "") or "", getattr(run, "error", "") or "") if part
+    )
+    reason = f"Run {run.id} {status}" + (f": {detail}" if detail else "")
+    return reason[:_WORK_ITEM_REASON_LIMIT]
+
+
+def _settle_work_item_after_unfinished_run(wi_store: Any, work_item_id: str, run: RunRecord, status: str) -> None:
+    """Move the work item off ``in_progress`` when its run ended without finishing (#4269 D-08).
+
+    Pre: ``status`` is failed, blocked or cancelled, and ``run`` is already linked to the item.
+    Post: if ``run`` is the item's most recent run and the item is still in a state a run
+    holds, a failed or blocked run leaves it ``blocked`` and a cancelled run leaves it
+    ``open``; the run id and the reason go to the transition's audit event.
+    """
+    wi = wi_store.get_work_item(work_item_id)
+    if wi is None or wi.state not in _RUN_HELD_WORK_ITEM_STATES:
+        return
+    runs = wi.links.get("runs") or []
+    if not runs or runs[-1] != run.id:
+        return  # a newer run is working this item; its outcome decides
+    target = "open" if status == "cancelled" else "blocked"
+    if target != wi.state:
+        wi_store.transition_state(
+            work_item_id,
+            target,
+            actor=run.role,
+            reason=_unfinished_run_reason(run, status),
+            run_release=True,
+        )
+
+
 def update_linked_work_item(run: RunRecord, status: str, summary: str | None = None) -> None:
     """Update linked work item state and links from run status change."""
     work_item_id = getattr(run, "work_item_id", "") or ""
@@ -216,6 +258,7 @@ def update_linked_work_item(run: RunRecord, status: str, summary: str | None = N
         if status in ("preparing", "running") and wi.state in (
             "open",
             "waiting_on_user",
+            "blocked",  # a retry picks up an item an earlier run left blocked (#4269 D-08)
         ):
             wi_store.transition_state(
                 work_item_id,
@@ -246,6 +289,8 @@ def update_linked_work_item(run: RunRecord, status: str, summary: str | None = N
                     actor=run.role,
                     reason=f"Run {run.id} succeeded with artifact {artifact or 'none'}",
                 )
+        elif status in _UNFINISHED_TERMINAL_STATUSES:
+            _settle_work_item_after_unfinished_run(wi_store, work_item_id, run, status)
     except Exception as exc:  # noqa: BLE001
         log.warning(
             "staff.run_link: failed to update work item %s for run %s: %s",
@@ -282,7 +327,13 @@ def relay_run_card_to_origin(
         return False
 
     payload = relay_payload(run, status, question, summary)
-    headers = staff_fleet.fleet_headers()
+    try:
+        from staff.tokens import authorization_headers_for_run  # noqa: PLC0415
+
+        headers = authorization_headers_for_run(run)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("staff.run_link: cannot mint relay auth for %s: %s", run.id, exc)
+        return False
     target_url = f"{origin_url}/api/v1/staff/threads/{thread_id}/relay-card"
     try:
         if relay_fn is not None:
@@ -324,6 +375,11 @@ def handle_run_status_change(
     relay_fn: Any = None,
 ) -> MessageRecord | None:
     """Handler called on run transition (queued, running, needs_input, succeeded, failed)."""
+    from dispatch_queue_link import release_run_session, touch_run_session  # noqa: PLC0415
+
+    touch_run_session(run.id)
+    if status in claim_guard.TERMINAL_STATUSES:
+        release_run_session(run.id, outcome=status)
     if status in claim_guard.TERMINAL_STATUSES and run.target_kind == "issue":
         # Drop the claim label this run applied (#2562); off-thread so a slow `gh` never delays the status change.
         threading.Thread(target=claim_guard.release_claim, args=(run.id, status), daemon=True).start()

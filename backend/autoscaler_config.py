@@ -77,6 +77,8 @@ RECOVERY_MIN_ONLINE = _env_int("AUTOSCALER_RECOVERY_MIN_ONLINE", 4, minimum=0)
 MAX_STEP = _env_int("AUTOSCALER_MAX_SCALE_STEP", 2, minimum=0)
 ACTION_COOLDOWN_SECONDS = _env_int("AUTOSCALER_ACTION_COOLDOWN_SECONDS", 120, minimum=0)
 DRY_RUN = bool(_env_int("AUTOSCALER_DRY_RUN", 0, minimum=0))
+# Default pool capacity is owned by runner-scheduler (#4311); autoscaler stays advisory.
+DEFAULT_POOL_MUTATE = bool(_env_int("AUTOSCALER_DEFAULT_POOL_MUTATE", 0, minimum=0))
 RUNNER_SCHEDULER_BIN = os.environ.get("RUNNER_SCHEDULER_BIN", "/usr/local/bin/runner-scheduler")
 RUNNER_SCHEDULE_CONFIG = os.path.expanduser(
     os.environ.get(

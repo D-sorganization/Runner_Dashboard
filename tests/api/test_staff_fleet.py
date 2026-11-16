@@ -59,7 +59,7 @@ def test_choose_machine_prefers_least_loaded_with_provider_and_ties_to_local() -
     assert fleet_mod.choose_machine(board, "claude", "Desk") == "OG"
     assert fleet_mod.choose_machine(board, "codex", "Desk") == "CT"
     board["machines"]["OG"]["running"] = board["machines"]["Desk"]["running"]
-    assert fleet_mod.choose_machine(board, "claude", "Desk") == "Desk"  # tie → local
+    assert fleet_mod.choose_machine(board, "claude", "Desk") == "OG"  # equal load → peer over hub (#4357)
     assert fleet_mod.choose_machine(board, "gemini", "Desk") == "Desk"  # nothing qualifies → local
 
 

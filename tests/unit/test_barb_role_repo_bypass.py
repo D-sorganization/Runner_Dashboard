@@ -51,9 +51,11 @@ def test_barb_bypass_skips_role_repo_allowlist(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr("staff.workspace.compose_prompt", lambda *a, **k: "prompt")
     monkeypatch.setattr("staff.lifecycle_fence.assert_fence_consumed", lambda *_a, **_k: None)
     monkeypatch.setattr("staff.provider_failover_config.resolve_failover_chain", lambda *_a, **_k: ())
+    from staff.failover_dispatch import ProviderPick
+
     monkeypatch.setattr(
         "staff.failover_dispatch.resolve_provider_and_model",
-        lambda *_a, **_k: ("claude", None, "", ()),
+        lambda *_a, **_k: ProviderPick("claude", None, "", ()),
     )
     monkeypatch.setattr(
         "staff.failover_model.resolve_launch_model",

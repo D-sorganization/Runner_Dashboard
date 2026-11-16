@@ -6,11 +6,15 @@ from typing import Any
 
 import pytest
 from coordination import claims
+from coordination_fake_rm import patch_gh_list_fetch
 
 
 @pytest.fixture(autouse=True)
 def _no_live_github(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(claims, "evidence_fetch", lambda _path: pytest.fail("unexpected gh call"))
+    def boom(_path: str) -> Any:
+        pytest.fail("unexpected gh call")
+
+    patch_gh_list_fetch(monkeypatch, boom)
 
 
 def _fetch(pulls: list[dict[str, Any]], branches: list[dict[str, Any]]) -> claims.EvidenceFetch:
@@ -26,7 +30,7 @@ def _fetch(pulls: list[dict[str, Any]], branches: list[dict[str, Any]]) -> claim
 
 @pytest.mark.unit
 def test_no_pr_and_no_branch_is_abandoned_with_agents_reason_kept(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(claims, "evidence_fetch", _fetch([], []))
+    patch_gh_list_fetch(monkeypatch, _fetch([], []))
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
     assert result == "abandoned: no PR or branch found for #12; agent reported: work completed"
 
@@ -34,7 +38,7 @@ def test_no_pr_and_no_branch_is_abandoned_with_agents_reason_kept(monkeypatch: p
 @pytest.mark.unit
 def test_open_pr_closing_the_issue_is_completed_and_linked(monkeypatch: pytest.MonkeyPatch) -> None:
     pr = {"number": 88, "state": "open", "title": "fix: x", "body": "Closes #12", "html_url": "https://x/pr/88"}
-    monkeypatch.setattr(claims, "evidence_fetch", _fetch([pr], []))
+    patch_gh_list_fetch(monkeypatch, _fetch([pr], []))
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
     assert result == "completed: PR #88 https://x/pr/88"
 
@@ -49,7 +53,7 @@ def test_merged_pr_closing_the_issue_is_completed(monkeypatch: pytest.MonkeyPatc
         "body": "Fixes #12",
         "html_url": "https://x/pr/88",
     }
-    monkeypatch.setattr(claims, "evidence_fetch", _fetch([pr], []))
+    patch_gh_list_fetch(monkeypatch, _fetch([pr], []))
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
     assert result == "completed: PR #88 https://x/pr/88"
 
@@ -57,21 +61,21 @@ def test_merged_pr_closing_the_issue_is_completed(monkeypatch: pytest.MonkeyPatc
 @pytest.mark.unit
 def test_closed_unmerged_pr_does_not_count_as_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
     pr = {"number": 88, "state": "closed", "merged_at": None, "title": "fix: x", "body": "Closes #12"}
-    monkeypatch.setattr(claims, "evidence_fetch", _fetch([pr], []))
+    patch_gh_list_fetch(monkeypatch, _fetch([pr], []))
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
     assert result.startswith("abandoned:")
 
 
 @pytest.mark.unit
 def test_pushed_branch_with_no_pr_is_completed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(claims, "evidence_fetch", _fetch([], [{"name": "claude/12-fix-release-outcome"}]))
+    patch_gh_list_fetch(monkeypatch, _fetch([], [{"name": "claude/12-fix-release-outcome"}]))
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
     assert result == "completed: branch claude/12-fix-release-outcome pushed"
 
 
 @pytest.mark.unit
 def test_branch_for_a_different_issue_does_not_count(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(claims, "evidence_fetch", _fetch([], [{"name": "claude/120-other-issue"}]))
+    patch_gh_list_fetch(monkeypatch, _fetch([], [{"name": "claude/120-other-issue"}]))
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
     assert result.startswith("abandoned:")
 
@@ -81,7 +85,7 @@ def test_evidence_lookup_unavailable_fails_closed_to_abandoned(monkeypatch: pyte
     def boom(_path: str) -> Any:
         raise RuntimeError("gh api: rate limited")
 
-    monkeypatch.setattr(claims, "evidence_fetch", boom)
+    patch_gh_list_fetch(monkeypatch, boom)
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
     assert result.startswith("abandoned: evidence lookup unavailable")
     assert "agent reported: work completed" in result

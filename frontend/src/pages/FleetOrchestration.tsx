@@ -21,6 +21,7 @@
  * preserved here verbatim.
  */
 import React, { useState } from "react";
+import { useSubmit } from "../hooks/useSubmit";
 import { Stat } from "../components/Stat";
 import { PlayGlyph, RefreshGlyph } from "./decompIcons";
 import { SortTh } from "./decompSortTh";
@@ -83,8 +84,14 @@ export interface FleetOrchestrationProps {
   loading?: boolean;
   error?: string | null;
   onRefresh: () => void;
-  onDispatch: (payload: OrchestrationDispatchPayload) => Promise<{ audit_id?: string }>;
-  onDeploy: (payload: OrchestrationDeployPayload) => Promise<{ message?: string }>;
+  onDispatch: (
+    payload: OrchestrationDispatchPayload,
+    options?: { idempotencyKey?: string },
+  ) => Promise<{ audit_id?: string }>;
+  onDeploy: (
+    payload: OrchestrationDeployPayload,
+    options?: { idempotencyKey?: string },
+  ) => Promise<{ message?: string }>;
 }
 
 // Legacy `principal` was out of scope here → always "anonymous" (see header).
@@ -126,17 +133,13 @@ export function FleetOrchestrationTab({
   const [dispatchWorkflow, setDispatchWorkflow] = useState("");
   const [dispatchBranch, setDispatchBranch] = useState("main");
   const [dispatchMachineTarget, setDispatchMachineTarget] = useState("");
-  const [dispatchLoading, setDispatchLoading] = useState(false);
-  const [dispatchError, setDispatchError] = useState<string | null>(null);
-  const [dispatchSuccess, setDispatchSuccess] = useState<string | null>(null);
+  const workflowDispatch = useSubmit<{ audit_id?: string }>();
+  const machineDeploy = useSubmit<{ message?: string }>();
 
   // Deploy section state
   const [deployMachine, setDeployMachine] = useState("");
   const [deployAction, setDeployAction] = useState("restart_runner");
   const [deployConfirm, setDeployConfirm] = useState(false);
-  const [deployLoading, setDeployLoading] = useState(false);
-  const [deployError, setDeployError] = useState<string | null>(null);
-  const [deploySuccess, setDeploySuccess] = useState<string | null>(null);
 
   const [machineSort, setMachineSort] = useState<SortState>({
     key: "machine",
@@ -144,66 +147,58 @@ export function FleetOrchestrationTab({
   });
   const sortedMachines = sortRows(machines, machineSort, MACHINE_ACCESSORS);
 
-  // `dispatchSuccess` mirrors the legacy state but, as in the original, it is
-  // only ever surfaced via the closed modal flow; referenced here to keep the
-  // setter meaningful without altering behaviour.
-  void dispatchSuccess;
+  const [dispatchFormError, setDispatchFormError] = useState<string | null>(null);
+  const [deployFormError, setDeployFormError] = useState<string | null>(null);
 
   function handleDispatch(): void {
     if (!dispatchRepo || !dispatchWorkflow) {
-      setDispatchError("Repo and workflow are required.");
+      setDispatchFormError("Repo and workflow are required.");
       return;
     }
-    setDispatchLoading(true);
-    setDispatchError(null);
-    setDispatchSuccess(null);
-    onDispatch({
-      repo: dispatchRepo,
-      workflow: dispatchWorkflow,
-      ref: dispatchBranch || "main",
-      machine_target: dispatchMachineTarget,
-      approved_by: ACTOR,
-    })
-      .then((resp) => {
-        setDispatchSuccess("Dispatched! audit_id=" + (resp.audit_id || ""));
-        setDispatchLoading(false);
-        setDispatchModalOpen(false);
-        onRefresh();
-      })
-      .catch((e: { message?: string }) => {
-        setDispatchError((e && e.message) || "Dispatch failed.");
-        setDispatchLoading(false);
-      });
+    if (workflowDispatch.isSubmitting) return;
+    setDispatchFormError(null);
+    workflowDispatch.submit(async ({ idempotencyKey }) => {
+      const resp = await onDispatch(
+        {
+          repo: dispatchRepo,
+          workflow: dispatchWorkflow,
+          ref: dispatchBranch || "main",
+          machine_target: dispatchMachineTarget,
+          approved_by: ACTOR,
+        },
+        { idempotencyKey },
+      );
+      setDispatchModalOpen(false);
+      onRefresh();
+      return resp;
+    });
   }
 
   function handleDeploy(): void {
     if (!deployMachine) {
-      setDeployError("Select a machine.");
+      setDeployFormError("Select a machine.");
       return;
     }
     if (!deployConfirm) {
-      setDeployError("Check the confirmation box before deploying.");
+      setDeployFormError("Check the confirmation box before deploying.");
       return;
     }
-    setDeployLoading(true);
-    setDeployError(null);
-    setDeploySuccess(null);
-    onDeploy({
-      machine: deployMachine,
-      action: deployAction,
-      confirmed: true,
-      requested_by: ACTOR,
-    })
-      .then((resp) => {
-        setDeploySuccess(resp.message || "Deployed successfully.");
-        setDeployLoading(false);
-        setDeployConfirm(false);
-        onRefresh();
-      })
-      .catch((e: { message?: string }) => {
-        setDeployError((e && e.message) || "Deploy failed.");
-        setDeployLoading(false);
-      });
+    if (machineDeploy.isSubmitting) return;
+    setDeployFormError(null);
+    machineDeploy.submit(async ({ idempotencyKey }) => {
+      const resp = await onDeploy(
+        {
+          machine: deployMachine,
+          action: deployAction,
+          confirmed: true,
+          requested_by: ACTOR,
+        },
+        { idempotencyKey },
+      );
+      setDeployConfirm(false);
+      onRefresh();
+      return resp;
+    });
   }
 
   const onlineCount = d.online_count || 0;
@@ -241,9 +236,9 @@ export function FleetOrchestrationTab({
         <button
           className="btn"
           onClick={() => {
+            workflowDispatch.reset();
+            setDispatchFormError(null);
             setDispatchModalOpen(true);
-            setDispatchError(null);
-            setDispatchSuccess(null);
           }}
           title="Open the workflow dispatch dialog"
         >
@@ -458,35 +453,37 @@ export function FleetOrchestrationTab({
           />
           I confirm this action against the selected machine
         </label>
-        {deployError ? (
+        {deployFormError || machineDeploy.failureText ? (
           <div
+            role="alert"
             style={{
               color: "var(--accent-red)",
               fontSize: 12,
               marginBottom: 8,
             }}
           >
-            {deployError}
+            {deployFormError || machineDeploy.failureText}
           </div>
         ) : null}
-        {deploySuccess ? (
+        {machineDeploy.state.status === "succeeded" ? (
           <div
+            role="status"
             style={{
               color: "var(--accent-green)",
               fontSize: 12,
               marginBottom: 8,
             }}
           >
-            {deploySuccess}
+            {machineDeploy.state.value.message || "Deployed successfully."}
           </div>
         ) : null}
         <button
           className="btn"
           onClick={handleDeploy}
-          disabled={deployLoading || !deployConfirm}
+          disabled={machineDeploy.isSubmitting || !deployConfirm}
           title="Deploy the dashboard to selected fleet nodes"
         >
-          {deployLoading ? "Deploying…" : "Deploy"}
+          {machineDeploy.isSubmitting ? "Deploying…" : "Deploy"}
         </button>
       </div>
       <div
@@ -726,15 +723,16 @@ export function FleetOrchestrationTab({
                 </select>
               </div>
             </div>
-            {dispatchError ? (
+            {dispatchFormError || workflowDispatch.failureText ? (
               <div
+                role="alert"
                 style={{
                   color: "var(--accent-red)",
                   fontSize: 12,
                   marginTop: 12,
                 }}
               >
-                {dispatchError}
+                {dispatchFormError || workflowDispatch.failureText}
               </div>
             ) : null}
             <div
@@ -748,16 +746,17 @@ export function FleetOrchestrationTab({
               <button
                 className="btn"
                 onClick={() => setDispatchModalOpen(false)}
+                disabled={workflowDispatch.isSubmitting}
               >
                 Cancel
               </button>
               <button
                 className="btn btn-primary"
                 onClick={handleDispatch}
-                disabled={dispatchLoading}
+                disabled={workflowDispatch.isSubmitting}
                 title="Trigger the workflow on GitHub Actions"
               >
-                {dispatchLoading ? "Dispatching…" : "Dispatch"}
+                {workflowDispatch.isSubmitting ? "Dispatching…" : "Dispatch"}
               </button>
             </div>
           </div>

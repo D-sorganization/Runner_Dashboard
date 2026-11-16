@@ -39,10 +39,18 @@ class DispatchBundle:
     fallback_status: str = "ok"
     standards: FleetStandards | None = None
 
-    def context_stamp(self, *, prompt: str = "", lessons_tokens: int = 0) -> dict[str, Any]:
+    def context_stamp(
+        self,
+        *,
+        prompt: str = "",
+        lessons_tokens: int = 0,
+        skills_tokens: int | None = None,
+        context_degraded: bool = False,
+        context_trimmed: tuple[str, ...] | list[str] | None = None,
+    ) -> dict[str, Any]:
         t0 = self.standards_tokens or estimate_tokens(self.standards_block)
-        t1_skills = estimate_tokens(self.skill_block)
-        return {
+        t1_skills = skills_tokens if skills_tokens is not None else estimate_tokens(self.skill_block)
+        stamp = {
             "pack_version": self.standards_version,
             "content_digest": self.content_digest,
             "source_revision": self.source_revision,
@@ -63,6 +71,10 @@ class DispatchBundle:
             "context_accounting_version": 2,
             "estimator_version": ESTIMATOR_VERSION,
         }
+        if context_degraded:
+            stamp["context_degraded"] = True
+            stamp["context_trimmed"] = list(context_trimmed or ())
+        return stamp
 
 
 def _task_matches(skill_tasks: tuple[str, ...], task_type: str) -> bool:

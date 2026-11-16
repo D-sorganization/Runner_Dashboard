@@ -25,7 +25,6 @@ def test_release_job_repeats_signing_permissions() -> None:
 
 
 def test_release_workflow_allowlisted_in_local_only_guard() -> None:
-    text = (ROOT / ".github" / "workflows" / "local-only-runner-guard.yml").read_text(
-        encoding="utf-8"
-    )
-    assert '"release.yml"' in text
+    from scripts import local_only_runner_guard as guard
+
+    assert "release.yml" in guard._HOSTED_WORKFLOW_ALLOWLIST

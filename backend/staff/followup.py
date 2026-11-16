@@ -23,7 +23,6 @@ from staff.conversation_models import ActionProposalRecord
 from staff.conversations import ConversationStore, get_conversation_store
 from staff.decision_sla import apply_decision_defaults, overdue_decisions
 from staff.followup_ledger import FollowupLedger, LedgerRecord, SweepBacklog, stamp
-from staff.roles import load_roles
 from staff.store import RunRecord, RunStore, get_run_store
 from staff.work_items import (
     TERMINAL_STATES,
@@ -32,6 +31,8 @@ from staff.work_items import (
     active_cursor,
     get_work_item_store,
 )
+
+from staff.roles import load_roles
 
 log = logging.getLogger("dashboard.staff.followup")
 DEFAULT_SWEEP_INTERVAL_SECONDS = int(os.environ.get("BARB_SWEEP_INTERVAL_SECONDS", "300"))
@@ -345,7 +346,16 @@ class FollowupEngine:
         runner = self._runner()
         if run.status != "failed":
             runner.cancel(run.id)
-            self.run_store.update_run(run.id, status="failed", failure_class="stalled", ended_at=now_iso)
+            from staff.run_status import RunStatus, transition
+
+            transition(
+                self.run_store,
+                run.id,
+                RunStatus(run.status),
+                RunStatus.FAILED,
+                failure_class="stalled",
+                ended_at=now_iso,
+            )
             self.run_store.append_event(run.id, "stalled", "reconciled by Barb's follow-up before a retry")
         decision = launch_retry(
             runner, run, source="followup", holds=self._holds(), allow_classes=frozenset({"stalled"})

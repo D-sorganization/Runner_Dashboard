@@ -215,9 +215,10 @@ def verify_staff_dispatch(res: ActionResult, params: dict[str, Any], ctx: Action
 
 
 def execute_review_pr(params: dict[str, Any], ctx: ActionContext) -> ActionResult:
-    from staff import review, roles
     from staff.actions import ActionResult
     from staff.runner import get_runner
+
+    from staff import review, roles
 
     repo = str(params.get("repo") or "").strip()
     if not repo or not params.get("pr"):

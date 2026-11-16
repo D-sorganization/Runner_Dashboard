@@ -32,11 +32,11 @@ def test_recorded_87fa0117_must_not_release() -> None:
     runs = _runs(REPO / "tests/deploy/fixtures/87fa011_check_runs.json", _FAIL_SHA)
     ok, detail = commit_passes_main_ci_gate(runs, _FAIL_SHA)
     assert ok is False
-    assert "Vitest" in detail or "failed" in detail
+    assert "Vitest" in detail or "failed" in detail or "required checks" in detail
 
 
 def test_recorded_3ee37e4a_must_not_release() -> None:
     runs = _runs(REPO / "tests/deploy/fixtures/3ee37e4_check_runs.json", _CANCEL_SHA)
     ok, detail = commit_passes_main_ci_gate(runs, _CANCEL_SHA)
     assert ok is False
-    assert "cancelled" in detail.lower() or "failed" in detail
+    assert "cancelled" in detail.lower() or "failed" in detail or "required checks" in detail

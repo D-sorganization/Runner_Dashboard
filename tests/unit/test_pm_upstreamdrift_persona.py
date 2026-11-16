@@ -53,7 +53,7 @@ def test_pm_upstreamdrift_resolved_chain_puts_opus_5_5_first_and_override_emits_
         notify=sent.append,
     )
     assert rc == 0 and len(sent) == 1
-    assert sent[0]["sender_role"] == "pm-upstreamdrift" and "antigravity" in sent[0]["summary"]
+    assert sent[0]["sender_role"] == "pm-upstreamdrift" and "codex" in sent[0]["summary"]
 
 
 def test_pm_upstreamdrift_capsule_schema_validation_and_persistence(tmp_path: Path) -> None:

@@ -96,7 +96,7 @@ def test_versioned_parser_ingests_v1_cli_and_desktop_jsonl_with_redaction_before
 
     events = activity_store.read(session_id="claude-cli-01").items
     assert len(events) == 2 and all(
-        e.source == "desktop_adapter" and e.redaction_version == REDACTION_VERSION for e in events
+        e.source == "claude_desktop_adapter" and e.redaction_version == REDACTION_VERSION for e in events
     )
 
 

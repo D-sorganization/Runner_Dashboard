@@ -17,7 +17,7 @@ from staff.verification import GhCliPrProbe
 log = logging.getLogger("dashboard.staff.review")
 
 DEFAULT_REVIEW_FOCUS = "code review"
-DEFAULT_REVIEWER_PROVIDERS: tuple[str, ...] = ("claude", "codex", "gemini", "antigravity")
+DEFAULT_REVIEWER_PROVIDERS: tuple[str, ...] = ("codex", "claude", "cursor-agent")
 REVIEWER_ROLE = "code-reviewer"
 AUTO_REVIEW_REQUESTER = "staff:auto-review"
 # Carried in the review prompt so the runner, which only sees the run record, knows the
@@ -29,12 +29,14 @@ RUN_LOOKUP_LIMIT = 200
 PROVIDER_FAMILY: dict[str, str] = {
     "claude": "anthropic",
     "claude-ollama": "anthropic",
+    "anthropic-api": "anthropic",
     "codex": "openai",
     "gemini": "google",
     "antigravity": "google",
     "cursor-agent": "cursor",
     "ollama": "local",
-    "grok-chat": "xai",
+    "grok": "xai",
+    "grok-chat": "xai",  # legacy author ids on pre-registry runs
 }
 
 # Alternates must be CLI-accepted ids or aliases; a provider without an entry reviews on its default model.
@@ -78,7 +80,7 @@ FORBIDDEN_REVIEW_KEYS: frozenset[str] = frozenset(
 )
 
 _VERDICT_RE = re.compile(
-    r"STAFF_RESULT:\s*review\s+(approve|changes|escalate)\s+#(\d+)",
+    r"STAFF_RESULT:\s*review\s+(approve|changes|escalate)\s+#(\d+)(?:\s+@([0-9a-fA-F]{7,40}))?",
     re.IGNORECASE,
 )
 
@@ -91,6 +93,8 @@ _TRAILER_RE = re.compile(
 class CommitTrailerProbe(Protocol):
     def get_commit_messages(self, repo: str, pr_number: int) -> list[str]: ...
 
+    def get_pull_head_sha(self, repo: str, pr_number: int) -> str: ...
+
 
 class GhCliCommitProbe(GhCliPrProbe):
     """Reads a PR's commit messages with one scoped ``gh api`` REST call.
@@ -102,6 +106,14 @@ class GhCliCommitProbe(GhCliPrProbe):
         full = repo if "/" in repo else f"{self.org}/{repo}"
         commits = self._api(f"/repos/{full}/pulls/{int(pr_number)}/commits?per_page=100") or []
         return [str((c.get("commit") or {}).get("message") or "") for c in commits]
+
+    def get_pull_head_sha(self, repo: str, pr_number: int) -> str:
+        full = repo if "/" in repo else f"{self.org}/{repo}"
+        pr = self._api(f"/repos/{full}/pulls/{int(pr_number)}")
+        sha = str((pr.get("head") or {}).get("sha") or "").strip().lower()
+        if not sha:
+            raise ValueError(f"PR #{pr_number} on {repo} has no head SHA")
+        return sha
 
 
 @dataclass(frozen=True)
@@ -118,34 +130,59 @@ class ReviewVerdict:
     outcome: str
     status: str  # "succeeded" | "failed" | "needs_input"
     same_provider: bool = False
+    head_sha: str = ""
     error: str | None = None
 
 
 def select_reviewer_provider(
     author_provider: str | None,
     role_providers: list[str] | None = None,
+    *,
+    role_spec: Any = None,
 ) -> ReviewSelection:
-    """Pick a reviewer provider that differs in provider family from the author.
+    """Pick the first provider in the role failover chain that is not the PR author.
 
-    If only one provider family is available, uses an alternate model and flags same-provider.
-    If the author is unknown, uses the first listed provider in role_providers.
+    Walks ``retry.failover_chain`` order when ``role_spec`` is set, else ``role_providers``.
+    If only the author's provider family remains, uses an alternate model and flags same-provider.
     """
-    providers = list(role_providers or DEFAULT_REVIEWER_PROVIDERS)
+    from staff.provider_failover_config import resolve_failover_chain
+
+    chain: tuple[Any, ...] = ()
+    healthy = list(role_providers or []) if role_providers else None
+    if role_spec is not None:
+        skip = frozenset({author_provider}) if author_provider else None
+        chain = resolve_failover_chain(role_spec, skip_providers=skip)
+        if healthy is not None:
+            allowed = frozenset(healthy)
+            chain = tuple(s for s in chain if s.provider in allowed)
+        providers = [s.provider for s in chain] or list(healthy or DEFAULT_REVIEWER_PROVIDERS)
+    else:
+        providers = list(healthy or DEFAULT_REVIEWER_PROVIDERS)
     if not providers:
         return ReviewSelection(provider="claude", model=None, same_provider=False)
 
     if not author_provider:
-        return ReviewSelection(provider=providers[0], model=None, same_provider=False)
+        head = chain[0] if role_spec is not None and chain else None
+        model = head.model if head is not None else None
+        return ReviewSelection(provider=providers[0], model=model, same_provider=False)
 
     author_family = PROVIDER_FAMILY.get(author_provider, author_provider)
+    steps = chain if role_spec is not None else []
+    if steps:
+        for step in steps:
+            p = step.provider
+            p_family = PROVIDER_FAMILY.get(p, p)
+            if p != author_provider and p_family != author_family:
+                return ReviewSelection(provider=p, model=step.model, same_provider=False)
     for p in providers:
         p_family = PROVIDER_FAMILY.get(p, p)
         if p != author_provider and p_family != author_family:
             return ReviewSelection(provider=p, model=None, same_provider=False)
 
-    # Only the author's provider or provider family is available
     fallback_provider = providers[0]
     alt_model = ALTERNATE_MODELS.get(fallback_provider)
+    if role_spec is not None and steps:
+        alt_model = steps[0].model or alt_model
     return ReviewSelection(provider=fallback_provider, model=alt_model, same_provider=True)
 
 
@@ -182,6 +219,13 @@ def detect_author_provider(
         except Exception:
             log.warning("Failed to inspect commit trailers for PR #%s in repo %s", pr_number, repo, exc_info=True)
 
+    from staff.role_provider_chains import infer_author_provider_from_branch
+
+    if branch:
+        from_branch = infer_author_provider_from_branch(branch)
+        if from_branch:
+            return from_branch
+
     return None
 
 
@@ -204,14 +248,17 @@ def parse_review_verdict(text: str, *, same_provider: bool = False) -> ReviewVer
     if match is not None:
         verdict = match.group(1).lower()
         pr = int(match.group(2))
+        head_sha = (match.group(3) or "").lower()
         suffix = " (same-provider)" if same_provider else ""
-        outcome = f"review {verdict} #{pr}{suffix}"
+        at_sha = f" @{head_sha[:7]}" if head_sha else ""
+        outcome = f"review {verdict} #{pr}{at_sha}{suffix}"
         return ReviewVerdict(
             verdict=verdict,
             pr_number=pr,
             outcome=outcome,
             status="succeeded",
             same_provider=same_provider,
+            head_sha=head_sha,
         )
 
     return ReviewVerdict(
@@ -277,7 +324,8 @@ def prepare_review_params(
     clean_params["role"] = role
     prompt = (
         f"Review PR #{pr} in {repo}. Focus: {focus}. "
-        f"Advisory only: post a comment review ending in 'STAFF_RESULT: review approve|changes|escalate #{pr}'. "
+        f"Advisory only: post a comment review ending in "
+        f"'STAFF_RESULT: review approve|changes|escalate #{pr} @<head_sha7>'. "
         "Never request changes or block."
     )
     if role == REVIEWER_ROLE:
@@ -287,11 +335,19 @@ def prepare_review_params(
         clean_params["skill"] = "fleet-review"
 
     if not clean_params.get("provider"):
+        branch = str(clean_params.get("branch") or clean_params.get("head_ref") or "")
         author = (
-            detect_author_provider(repo=repo, pr_number=int(pr), store=store, gh_probe=gh_probe)
+            detect_author_provider(
+                repo=repo,
+                pr_number=int(pr),
+                branch=branch,
+                store=store,
+                gh_probe=gh_probe,
+            )
             if pr and repo
             else None
         )
+        role_spec = roster.get(role) if roster is not None else None
         candidates = list(_role_providers(roster, role) or DEFAULT_REVIEWER_PROVIDERS)
         healthy, skipped = _fail_fast_unhealthy_providers(candidates)
         if skipped:
@@ -300,7 +356,7 @@ def prepare_review_params(
                 skipped,
             )
             clean_params["skipped_providers"] = skipped
-        sel = select_reviewer_provider(author, healthy)
+        sel = select_reviewer_provider(author, healthy, role_spec=role_spec)
         clean_params["provider"] = sel.provider
         if sel.model:
             clean_params["model"] = sel.model
@@ -339,18 +395,85 @@ def _review_claim(store: Any) -> Iterator[None]:
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
 
 
-def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = REVIEWER_ROLE) -> bool:
-    """Whether this PR needs no new ``role`` review run; ``role`` is the resolved reviewer.
+def _verdict_text_from_run(run: Any) -> str:
+    return str(getattr(run, "outcome", "") or getattr(run, "last_line", "") or "")
 
-    A review that is queued, running, done or cancelled counts, and so does one the
-    runner is still retrying. A review that ended ``failed`` does not, so the PR's next
-    verification queues one more attempt, up to MAX_AUTO_REVIEW_ATTEMPTS (#1662).
+
+def _recorded_verdict_head_sha(run: Any) -> str:
+    parsed = parse_review_verdict(_verdict_text_from_run(run))
+    return parsed.head_sha if parsed.status == "succeeded" else ""
+
+
+def _review_run_satisfies_obligation(run: Any, head_sha: str | None) -> bool:
+    """Whether ``run`` counts as a review for the current head (#4249).
+
+      Queued or running runs always block. A succeeded verdict bound to another head does
+    not block after the PR head moves. Without ``head_sha``, behaviour matches the legacy
+    PR-only dedupe.
+    """
+    status = str(getattr(run, "status", "") or "")
+    if status == "failed":
+        return False
+    if status in ("queued", "running"):
+        return True
+    if not head_sha:
+        return True
+    recorded = _recorded_verdict_head_sha(run)
+    if recorded:
+        from coordination.merge_shepherd_exact_head import head_sha_matches  # noqa: PLC0415
+
+        return head_sha_matches(recorded, head_sha)
+    return False
+
+
+def _resolve_pr_head_sha(repo: str, pr_number: int, gh_probe: CommitTrailerProbe | None) -> str | None:
+    if gh_probe is None:
+        return None
+    getter = getattr(gh_probe, "get_pull_head_sha", None)
+    if not callable(getter):
+        return None
+    try:
+        sha = getter(repo, int(pr_number))
+    except Exception:
+        log.warning("auto-review: could not read PR #%s head on %s", pr_number, repo, exc_info=True)
+        return None
+    text = str(sha or "").strip().lower()
+    return text or None
+
+
+def _already_reviewed(
+    store: Any,
+    repo: str,
+    pr_number: int,
+    role: str = REVIEWER_ROLE,
+    *,
+    head_sha: str | None = None,
+) -> bool:
+    """Whether this PR needs no new ``role`` review run at ``head_sha`` (#4249).
+
+    A review that is queued, running, or succeeded at the same head counts. A succeeded
+    verdict at an older head does not. A review that ended ``failed`` does not block, so
+    the PR's next verification queues one more attempt, up to MAX_AUTO_REVIEW_ATTEMPTS
+    (#1662), counting failures at the same head when ``head_sha`` is known.
     """
     target = f"PR #{pr_number}"
     runs = store.list_runs_for_target(role=role, repo=repo, target_ref=target)  # retries included
-    if any(r.status != "failed" for r in runs):
+    if any(_review_run_satisfies_obligation(r, head_sha) for r in runs):
         return True
-    attempts = [r for r in runs if not getattr(r, "retry_of", "")]  # runner retries share one attempt
+    attempts: list[Any] = []
+    for run in runs:
+        if getattr(run, "retry_of", ""):
+            continue
+        if str(getattr(run, "status", "") or "") != "failed":
+            continue
+        if head_sha:
+            recorded = _recorded_verdict_head_sha(run)
+            if recorded:
+                from coordination.merge_shepherd_exact_head import head_sha_matches  # noqa: PLC0415
+
+                if not head_sha_matches(recorded, head_sha):
+                    continue
+        attempts.append(run)
     return len(attempts) >= MAX_AUTO_REVIEW_ATTEMPTS
 
 
@@ -426,9 +549,17 @@ def auto_review_if_eligible(
         from staff.plan import RunRequest
 
         reviewer = params["role"]  # code-reviewer, or its fleet-critic fallback
+        probe = gh_probe if gh_probe is not None else GhCliCommitProbe()
+        head_sha = _resolve_pr_head_sha(repo, int(pr_number), probe)
         with _review_claim(store):
-            if _already_reviewed(store, repo, int(pr_number), role=reviewer):
-                log.info("auto-review: PR #%s on %s already has a %s run; skipped", pr_number, repo, reviewer)
+            if _already_reviewed(store, repo, int(pr_number), role=reviewer, head_sha=head_sha):
+                log.info(
+                    "auto-review: PR #%s on %s already has a %s run at head %s; skipped",
+                    pr_number,
+                    repo,
+                    reviewer,
+                    (head_sha[:7] if head_sha else "?"),
+                )
                 return False
             run = runner.submit(
                 RunRequest(
@@ -580,6 +711,58 @@ def finalize_code_reviewer_run(
             error=review_verdict.error or "Malformed review verdict line",
             remediation="Review completed with a malformed STAFF_RESULT line.",
         )
+    if review_verdict.status == "succeeded" and review_verdict.verdict == "approve" and expected_pr_number is None:
+        return CodeReviewerRunOutcome(
+            status="failed",
+            failure_class="invalid_output",
+            retryable=False,
+            error="Approve STAFF_RESULT on a review run that targets no pull request",
+            remediation="An approve verdict needs a PR-targeted run, so that it can be published and read back.",
+        )
+    if review_verdict.status == "succeeded" and review_verdict.verdict == "approve" and expected_pr_number is not None:
+        from coordination.merge_shepherd_exact_head import head_sha_matches  # noqa: PLC0415
+        from staff.independent_exact_head_verdict import (  # noqa: PLC0415
+            VerdictPostError,
+            fetch_pull_head_sha,
+        )
+        from staff.staff_github_pr_review import (  # noqa: PLC0415
+            build_advisory_approve_review_body,
+            ensure_runner_dashboard_formal_approve,
+        )
+
+        try:
+            head_sha = fetch_pull_head_sha(repo, expected_pr_number)
+            if review_verdict.head_sha and not head_sha_matches(review_verdict.head_sha, head_sha):
+                return CodeReviewerRunOutcome(
+                    status="failed",
+                    failure_class="invalid_output",
+                    retryable=False,
+                    error=(f"STAFF_RESULT head @{review_verdict.head_sha} does not match the PR head @{head_sha}"),
+                    remediation="STAFF_RESULT must name this run's PR and current head SHA.",
+                )
+            body = build_advisory_approve_review_body(pr_number=expected_pr_number, head_sha=head_sha)
+            ensure_runner_dashboard_formal_approve(
+                repo=repo,
+                pr_number=expected_pr_number,
+                head_sha=head_sha,
+                body=body,
+            )
+        except VerdictPostError as exc:
+            msg = str(exc)
+            rem = (
+                "Advisory approve verdict could not be posted as a formal GitHub APPROVE "
+                "review with the Runner Dashboard App identity."
+            )
+            if exc.http_status == 403:
+                rem += " (HTTP 403 — missing pull_requests:write or wrong App identity.)"
+            return CodeReviewerRunOutcome(
+                status="failed",
+                failure_class="provider_error",
+                retryable=False,
+                error=msg,
+                remediation=rem,
+                error_event=msg,
+            )
     return CodeReviewerRunOutcome(status, failure_class, retryable, error, remediation)
 
 

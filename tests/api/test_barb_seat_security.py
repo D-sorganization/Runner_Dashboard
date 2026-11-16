@@ -128,8 +128,9 @@ def test_takeover_requires_barb_or_operator_reason_and_audits(client: TestClient
 
 
 def test_ttl_over_cap_rejected(client: TestClient) -> None:
-    assert _checkout(client, "alpha", ttl_sec=86400).status_code == 422
-    assert _checkout(client, "alpha", ttl_sec=14400).status_code == 200
+    assert _checkout(client, "alpha", ttl_sec=90000).status_code == 422
+    assert _checkout(client, "alpha", ttl_sec=86400).status_code == 200
+    assert _checkout(client, "alpha", scope="barb:ci-shepherd", ttl_sec=14400).status_code == 200
 
 
 def test_heartbeat_extends_own_lease_only(client: TestClient) -> None:

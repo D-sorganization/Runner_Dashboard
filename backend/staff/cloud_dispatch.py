@@ -26,6 +26,7 @@ API_KEY_ENV_VARS: frozenset[str] = frozenset(
         "OPENAI_API_KEY",
         "GEMINI_API_KEY",
         "GOOGLE_API_KEY",
+        "DEEPSEEK_API_KEY",
     }
 )
 
