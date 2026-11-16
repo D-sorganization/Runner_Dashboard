@@ -22,6 +22,7 @@ from fastapi import HTTPException
 from fleet_autoconfig import resolve_hub_public_origin_from_registry
 from identity import IdentityManager
 from machine_registry import load_machine_registry
+from staff.fleet_run_mint_policy import principal_mint_scope_denied
 from staff.fleet_run_token_service import assert_registered_fleet_node
 
 log = logging.getLogger("dashboard.staff.run_jwt")
@@ -142,6 +143,8 @@ def mint_run_jwt(
     principal = identity_manager.get_principal(str(principal_id or "").strip())
     if principal is None:
         raise HTTPException(status_code=422, detail=f"unknown principal {principal_id!r}")
+    if principal_mint_scope_denied(principal):
+        raise HTTPException(status_code=403, detail="principal cannot receive run JWT")
     if not run_jwt_signing_key_configured():
         raise HTTPException(status_code=503, detail="RUN_JWT_SIGNING_KEY is not configured on the hub")
 
