@@ -16,9 +16,12 @@ import logging
 import os
 import subprocess
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from agent_active_workdirs import active_staff_workdirs
 from staff.repo_roots import repos_roots
@@ -38,12 +41,30 @@ class WorktreeEntry:
     locked: bool = False
 
 
+_ISOLATE_GIT_CONFIG: ContextVar[bool] = ContextVar("isolate_git_config", default=False)
+
+
+@contextmanager
+def isolated_git_config() -> Iterator[None]:
+    """Run ``_git`` without system/global config, for repos in shared scratch roots (#4440)."""
+    token = _ISOLATE_GIT_CONFIG.set(True)
+    try:
+        yield
+    finally:
+        _ISOLATE_GIT_CONFIG.reset(token)
+
+
 def _git(cwd: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"):
         env.pop(key, None)
+    if _ISOLATE_GIT_CONFIG.get():
+        env["GIT_CONFIG_NOSYSTEM"] = "1"
+        env["GIT_CONFIG_GLOBAL"] = os.devnull
+    # Repo-local config must never run code (fsmonitor, hooks) for any caller of this read-only helper.
+    hardening = ["-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}"]
     return subprocess.run(  # noqa: S603
-        ["git", "-C", str(cwd), *args],
+        ["git", *hardening, "-C", str(cwd), *args],
         check=False,
         capture_output=True,
         text=True,
@@ -207,9 +228,8 @@ def worktree_entry_is_eligible(
         return False, "stat_failed"
     if age_h < min_age_hours:
         return False, "too_young"
-    if active_workdirs is ...:
-        active_workdirs = active_staff_workdirs()
-    session_reason = _active_session_reason(wt.path, active_workdirs)
+    workdirs = active_staff_workdirs() if active_workdirs is ... else cast("set[Path] | None", active_workdirs)
+    session_reason = _active_session_reason(wt.path, workdirs)
     if session_reason:
         return False, session_reason
     if not _worktree_clean(wt.path):
@@ -263,7 +283,10 @@ def _refresh_origin(checkout: Path, origin_url: str) -> None:
 def _git_subcommand(exc: subprocess.TimeoutExpired) -> str:
     """The git subcommand of a timed-out ``_git`` call (``git -C <cwd> <subcommand> ...``)."""
     cmd = exc.cmd if isinstance(exc.cmd, (list, tuple)) else []
-    return str(cmd[3]) if len(cmd) > 3 else "unknown"
+    if "-C" in cmd:
+        idx = list(cmd).index("-C") + 2
+        return str(cmd[idx]) if idx < len(cmd) else "unknown"
+    return "unknown"
 
 
 def _worktree_timeout_reason(worktree: Path, exc: subprocess.TimeoutExpired) -> str:

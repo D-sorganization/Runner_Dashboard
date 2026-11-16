@@ -27,7 +27,7 @@ import shutil
 import time
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from agent_active_workdirs import active_staff_workdirs
 from agent_worktree_hygiene import (
@@ -38,6 +38,7 @@ from agent_worktree_hygiene import (
     _origin_url,
     _submodule_problem,
     is_protected_repo,
+    isolated_git_config,
 )
 
 DEFAULT_SCRATCH_MIN_AGE_HOURS = 24.0
@@ -120,6 +121,22 @@ def _in_use(clone: Path, busy: Iterable[Path]) -> bool:
     return any(resolved == cwd.resolve() or resolved in cwd.resolve().parents for cwd in busy)
 
 
+def _foreign_owned(child: Path) -> bool:
+    """True when ``child`` or its ``.git`` is owned by another user (it could plant repo-local config)."""
+    if not hasattr(os, "getuid"):
+        return False
+    me = os.getuid()
+    for target in (child, child / ".git"):
+        try:
+            if target.lstat().st_uid != me:
+                return True
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return True
+    return False
+
+
 def _holds_work(clone: Path) -> str:
     """Why ``clone`` may hold work that exists nowhere else, or ``""`` (fail-closed)."""
     worktrees = _git(clone, "worktree", "list", "--porcelain")
@@ -190,9 +207,30 @@ def plan_scratch_clones(
     active_workdirs: set[Path] | None | object = ...,
 ) -> dict[str, Any]:
     """List git clones directly under each root; optionally remove reclaimable ones."""
+    with isolated_git_config():
+        return _plan_scratch_clones(
+            roots,
+            apply=apply,
+            min_age_hours=min_age_hours,
+            protected_repos=protected_repos,
+            now=now,
+            busy_dirs=busy_dirs,
+            active_workdirs=active_workdirs,
+        )
+
+
+def _plan_scratch_clones(
+    roots: Iterable[Path],
+    *,
+    apply: bool,
+    min_age_hours: float,
+    protected_repos: tuple[str, ...],
+    now: float | None,
+    busy_dirs: BusyDirs | None,
+    active_workdirs: set[Path] | None | object,
+) -> dict[str, Any]:
     ts = now if now is not None else time.time()
-    if active_workdirs is ...:
-        active_workdirs = active_staff_workdirs()
+    workdirs = active_staff_workdirs() if active_workdirs is ... else cast("set[Path] | None", active_workdirs)
     busy_probe = busy_dirs or process_working_directories
     reclaimable: list[dict[str, Any]] = []
     kept: list[dict[str, str]] = []
@@ -209,10 +247,11 @@ def plan_scratch_clones(
                 continue
             if not git_entry.is_dir():
                 continue
+            if _foreign_owned(child):
+                kept.append({"path": str(child), "reason": "foreign_owned"})
+                continue
             age = _age_hours(child, ts)
-            reason = _keep_reason(
-                child, age, min_age_hours, protected_repos, busy_probe, active_workdirs=active_workdirs
-            )
+            reason = _keep_reason(child, age, min_age_hours, protected_repos, busy_probe, active_workdirs=workdirs)
             if reason:
                 kept.append({"path": str(child), "reason": reason})
                 continue
@@ -220,7 +259,7 @@ def plan_scratch_clones(
             reclaimable.append({**row, "origin": _origin_url(child)})
             if not apply:
                 continue
-            if _keep_reason(child, age, min_age_hours, protected_repos, busy_probe, active_workdirs=active_workdirs):
+            if _keep_reason(child, age, min_age_hours, protected_repos, busy_probe, active_workdirs=workdirs):
                 kept.append({"path": str(child), "reason": "re_check_failed"})
                 reclaimable.pop()
                 continue
@@ -237,6 +276,17 @@ def plan_scratch_clones(
     }
 
 
+def _in_use_reason(folder: Path, active_workdirs: set[Path] | None, busy_probe: BusyDirs) -> str:
+    """Why ``folder`` must not be removed right now, or ``""``; an unreadable busy probe counts as in use."""
+    session = _active_session_reason(folder, active_workdirs)
+    if session:
+        return session
+    busy = busy_probe()
+    if busy is None:
+        return "in_use_unknown"
+    return "in_use" if _in_use(folder, busy) else ""
+
+
 def plan_aged_task_folders(
     roots: Iterable[Path],
     *,
@@ -249,10 +299,10 @@ def plan_aged_task_folders(
 ) -> dict[str, Any]:
     """List (and optionally remove) task-output folders past ``min_age_hours`` with no active session."""
     ts = now if now is not None else time.time()
-    if active_workdirs is ...:
-        active_workdirs = active_staff_workdirs()
+    workdirs = active_staff_workdirs() if active_workdirs is ... else cast("set[Path] | None", active_workdirs)
     busy_probe = busy_dirs or process_working_directories
     aged: list[dict[str, Any]] = []
+    kept: list[dict[str, str]] = []
     removed = 0
     for root in roots:
         for child in _children(root):
@@ -260,11 +310,12 @@ def plan_aged_task_folders(
                 continue
             if not any(fnmatch.fnmatchcase(child.name, pattern) for pattern in patterns):
                 continue
-            session = _active_session_reason(child, active_workdirs)
-            if session:
+            if _foreign_owned(child):
+                kept.append({"path": str(child), "reason": "foreign_owned"})
                 continue
-            busy = busy_probe()
-            if busy is not None and _in_use(child, busy):
+            in_use = _in_use_reason(child, workdirs, busy_probe)
+            if in_use:
+                kept.append({"path": str(child), "reason": in_use})
                 continue
             infos = list(_walk_files(child))
             try:
@@ -276,10 +327,18 @@ def plan_aged_task_folders(
                 continue
             size = sum(info.st_size for info in infos)
             aged.append({"path": str(child), "size_bytes": size, "age_hours": round(age, 1)})
-            if apply and _remove_tree(child):
+            if not apply:
+                continue
+            in_use = _in_use_reason(child, workdirs, busy_probe)
+            if in_use:
+                kept.append({"path": str(child), "reason": "re_check_failed"})
+                aged.pop()
+                continue
+            if _remove_tree(child):
                 removed += 1
     return {
         "dry_run": not apply,
+        "kept": kept,
         "patterns": list(patterns),
         "min_age_hours": min_age_hours,
         "aged": aged,

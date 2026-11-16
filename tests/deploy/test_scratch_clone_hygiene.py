@@ -13,8 +13,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-import pytest
 import agent_active_workdirs
+import pytest
 import scratch_clone_hygiene as scratch
 
 HOUR = 3600.0
@@ -188,7 +188,7 @@ def test_aged_task_folders_are_listed_by_newest_file(tmp_path: Path) -> None:
     now = time.time() + 72 * HOUR
     os.utime(fresh / "nested" / "out.log", (now - HOUR, now - HOUR))
 
-    report = scratch.plan_aged_task_folders([root], patterns=("claude-*",), min_age_hours=48.0, now=now)
+    report = scratch.plan_aged_task_folders([root], patterns=("claude-*",), min_age_hours=48.0, now=now, busy_dirs=set)
 
     assert [Path(row["path"]).name for row in report["aged"]] == ["claude-1000"]
     assert report["aged"][0]["size_bytes"] > 0 and report["aged_bytes"] == report["aged"][0]["size_bytes"]
@@ -234,3 +234,107 @@ def test_cli_reports_scratch_roots_only_when_asked(
     gone = {"review-clean", "review-busy", "review-young"}
     assert gone.isdisjoint(p.name for p in scratch_root["root"].iterdir())
     assert sorted(p.name for p in scratch_root["root"].iterdir()) == [n for n in before if n not in gone]
+
+
+def _aged_folder(root: Path, name: str = "claude-task") -> Path:
+    folder = root / name
+    folder.mkdir(parents=True)
+    (folder / "out.txt").write_text("x\n", encoding="utf-8")
+    old = time.time() - 100 * HOUR
+    os.utime(folder / "out.txt", (old, old))
+    os.utime(folder, (old, old))
+    return folder
+
+
+@pytest.mark.parametrize("apply", [False, True])
+def test_task_folder_kept_when_busy_state_unknown(tmp_path: Path, apply: bool) -> None:
+    root = tmp_path / "scratch"
+    folder = _aged_folder(root)
+    report = scratch.plan_aged_task_folders(
+        [root], apply=apply, now=time.time(), busy_dirs=lambda: None, active_workdirs=set()
+    )
+    assert folder.exists()
+    assert report["aged"] == [] and report["removed"] == 0
+    assert report["kept"] == [{"path": str(folder), "reason": "in_use_unknown"}]
+
+
+def test_task_folder_rechecked_before_removal(tmp_path: Path) -> None:
+    root = tmp_path / "scratch"
+    folder = _aged_folder(root)
+    answers = iter([set(), None])  # readable at planning, unreadable at the re-check
+    report = scratch.plan_aged_task_folders(
+        [root], apply=True, now=time.time(), busy_dirs=lambda: next(answers), active_workdirs=set()
+    )
+    assert folder.exists() and report["removed"] == 0 and report["aged"] == []
+    assert report["kept"][0]["reason"] == "re_check_failed"
+
+
+def _fake_foreign(monkeypatch: pytest.MonkeyPatch, foreign: Path) -> None:
+    """Make only ``foreign`` look owned by another uid; no real chown needed."""
+    monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)
+    real_lstat = Path.lstat
+
+    def lstat(self: Path) -> os.stat_result:
+        info = real_lstat(self)
+        uid = 4242 if foreign in (self, *self.parents) else 1000
+        return os.stat_result((info.st_mode, info.st_ino, info.st_dev, info.st_nlink, uid, 0, info.st_size, 0, 0, 0))
+
+    monkeypatch.setattr(Path, "lstat", lstat)
+
+
+def test_foreign_owned_clone_kept_without_running_git(
+    scratch_root: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = scratch_root["clean"]
+    _fake_foreign(monkeypatch, target)
+    calls: list[Path] = []
+    real_git = scratch._git
+
+    def spy(cwd: Path, *args: str, **kw: Any) -> Any:
+        calls.append(cwd)
+        return real_git(cwd, *args, **kw)
+
+    monkeypatch.setattr(scratch, "_git", spy)
+    monkeypatch.setattr(scratch, "_origin_url", lambda p: calls.append(p) or "")
+    report = scratch.plan_scratch_clones(
+        [scratch_root["root"]],
+        apply=True,
+        min_age_hours=0,
+        now=time.time(),
+        busy_dirs=lambda: set(),
+        active_workdirs=set(),
+    )
+    assert target.exists()
+    assert {"path": str(target), "reason": "foreign_owned"} in report["kept"]
+    assert target not in calls
+
+
+def test_foreign_owned_task_folder_kept(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = tmp_path / "scratch"
+    folder = _aged_folder(root)
+    _fake_foreign(monkeypatch, folder)
+    report = scratch.plan_aged_task_folders(
+        [root], apply=True, now=time.time(), busy_dirs=lambda: set(), active_workdirs=set()
+    )
+    assert folder.exists() and report["removed"] == 0
+    assert report["kept"] == [{"path": str(folder), "reason": "foreign_owned"}]
+
+
+def test_scratch_git_calls_are_hardened(scratch_root: dict[str, Path], monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[tuple[list[str], dict[str, str]]] = []
+    real_run = subprocess.run
+
+    def spy(cmd: list[str], **kw: Any) -> Any:
+        seen.append((cmd, kw["env"]))
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr("agent_worktree_hygiene.subprocess.run", spy)
+    scratch.plan_scratch_clones(
+        [scratch_root["root"]], min_age_hours=0, now=time.time(), busy_dirs=lambda: set(), active_workdirs=set()
+    )
+    assert seen
+    for cmd, env in seen:
+        assert "core.fsmonitor=false" in cmd
+        assert f"core.hooksPath={os.devnull}" in cmd
+        assert env["GIT_CONFIG_NOSYSTEM"] == "1" and env["GIT_CONFIG_GLOBAL"] == os.devnull
+    assert not any("safe.directory" in part for cmd, _ in seen for part in cmd)
