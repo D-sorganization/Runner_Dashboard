@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from staff import verification as v
 from staff.store import RunRecord, RunStore
+from staff.verification_types import CommitInfo
 
 NOW = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
 
@@ -727,9 +728,9 @@ class PushProbe(FakeProbe):
         self.committed_at, self.committer = committed_at, committer
         self.commit_calls: list[tuple[str, str]] = []
 
-    def commit_info(self, repo: str, sha: str) -> v.CommitInfo:
+    def commit_info(self, repo: str, sha: str) -> CommitInfo:
         self.commit_calls.append((repo, sha))
-        return v.CommitInfo(sha=sha, committed_at=self.committed_at, committer=self.committer)
+        return CommitInfo(sha=sha, committed_at=self.committed_at, committer=self.committer)
 
 
 def _push_rec(**overrides: Any) -> RunRecord:
@@ -807,7 +808,7 @@ def test_closed_target_pr_with_new_head_is_not_credited() -> None:
 
 def test_commit_lookup_error_leaves_run_unverified() -> None:
     class Boom(PushProbe):
-        def commit_info(self, repo: str, sha: str) -> v.CommitInfo:
+        def commit_info(self, repo: str, sha: str) -> CommitInfo:
             raise v.GitHubLookupError("timeout")
 
     target = v.PullRequest(2952, "open", "green", head_sha="x")
@@ -840,4 +841,4 @@ def test_gh_probe_commit_info_reads_committer_date() -> None:
 
     info = v.GhCliPrProbe(run=run).commit_info("Repository_Management", "abc")
 
-    assert info == v.CommitInfo(sha="abc", committed_at="2026-11-16T13:30:00Z", committer="dieterolson")
+    assert info == CommitInfo(sha="abc", committed_at="2026-11-16T13:30:00Z", committer="dieterolson")
