@@ -138,9 +138,9 @@ def decide(c: Candidate, held_prs: frozenset[tuple[str, int]] = HELD_PRS) -> Dec
         return Decision("skip", "already_reviewed_or_queued")
     if c.prior_runs >= 4:
         return Decision("escalate", "round_cap")
-    if not c.author_provider:
+    if c.author_provider not in PROVIDER_FAMILY:
         return Decision("escalate", "unknown_author")
-    author_family = PROVIDER_FAMILY.get(c.author_provider, c.author_provider)
+    author_family = PROVIDER_FAMILY[c.author_provider]
     for provider in c.providers:
         if provider in {"codex", "claude"} and PROVIDER_FAMILY[provider] != author_family:
             return Decision("review", "independent_reviewer", provider)

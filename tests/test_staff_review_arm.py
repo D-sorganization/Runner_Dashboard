@@ -86,8 +86,12 @@ def test_hold_source_error_fails_closed():
     assert decide(candidate(holds_available=False)).reason == "holds_unavailable"
 
 
-def test_unknown_author_escalates():
-    assert decide(candidate(author_provider="")).action == "escalate"
+@pytest.mark.parametrize("author_provider", ["", "Codex", "gpt", "codxe", "unknown"])
+def test_unknown_author_escalates(author_provider):
+    decision = decide(candidate(author_provider=author_provider))
+    assert decision.action == "escalate"
+    assert decision.reason == "unknown_author"
+    assert decision.provider == ""
 
 
 def test_provider_is_independent_and_only_codex_or_claude():
