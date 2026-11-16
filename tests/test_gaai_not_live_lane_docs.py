@@ -1,8 +1,8 @@
 """User-facing docs must not advertise GAAI as a live remediation lane (RM #2726, epic #2720).
 
-GAAI is quarantined: the Runner Dashboard has no live GAAI provider, and the roster keeps
-``gaai`` only as a ``phased_out`` identity for attribution history (child #7). These checks
-cover the README, the SPEC and the C4 map. The roster and priority lists are not scanned.
+GAAI is retired (RM #2725 / #2727): the Runner Dashboard has no live GAAI provider and
+the roster no longer includes a ``gaai`` identity. These checks cover the README, the
+SPEC, the C4 map, and the roster file.
 """
 
 from __future__ import annotations
@@ -29,6 +29,10 @@ def test_doc_does_not_list_gaai_as_dispatch_agent(relative_path: str) -> None:
     assert not hits, "GAAI is quarantined (RM #2720); remove it from dispatch copy:\n" + "\n".join(hits)
 
 
-def test_roster_keeps_gaai_as_phased_out_identity() -> None:
+def test_roster_does_not_include_gaai() -> None:
     roster = (REPO_ROOT / "backend" / "coordination" / "roster.py").read_text(encoding="utf-8")
-    assert '"gaai"' in roster, "child #7 owns dropping gaai; this scrub must keep it"
+    assert '"gaai"' not in roster
+    identity = (
+        REPO_ROOT / ".github" / "fleet-pr-cap" / "shared_scripts" / "agent_identity.py"
+    ).read_text(encoding="utf-8")
+    assert '"gaai"' not in identity

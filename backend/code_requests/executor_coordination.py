@@ -1,7 +1,7 @@
 """Multi-agent coordination for Code Request executor stage (CR-5, #1287).
 
 Enforces fleet coordination invariants:
-- Roster priority: user > maxwell-daemon > claude > codex > conductor > jules > local > gaai.
+- Roster priority: user > maxwell-daemon > claude > codex > conductor > jules > local.
 - Claim check (check_agent_claim): skip held issues, never touch issues held by
   higher-priority agents.
 - Never touch issues with `do-not-automate` label (humans only).
@@ -28,7 +28,6 @@ ROSTER_PRIORITY: tuple[str, ...] = (
     "conductor",
     "jules",
     "local",
-    "gaai",
 )
 
 FIXES_ISSUE_RE = re.compile(r"(?:fixes|closes|resolves)\s+#(\d+)", re.IGNORECASE)

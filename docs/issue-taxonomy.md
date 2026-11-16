@@ -160,7 +160,7 @@ sub-issue edges can be unlinked, and the manifest is editable.
 Managed by the lease-reaper workflow. Do not set by hand.
 
 `claim:user`, `claim:maxwell-daemon`, `claim:claude`, `claim:codex`,
-`claim:jules`, `claim:local`, `claim:gaai`.
+`claim:jules`, `claim:local`.
 
 ---
 
