@@ -15,6 +15,8 @@ from machine_registry import build_machine_registry_index, load_machine_registry
 
 log = logging.getLogger("dashboard.runner_target")
 
+RUNNERS_SCALE_MAX_UNTIL = timedelta(hours=24)
+
 # Normalized fleet host tokens (public examples: hub-a, node-b, node-a).
 DEFAULT_HOST_CAPS: dict[str, int] = {
     "huba": 6,
@@ -162,3 +164,27 @@ def format_until_for_storage(until: str | None, *, now: datetime | None = None) 
         return None
     parsed = parse_until(until, now=now)
     return parsed.isoformat() if parsed else until.strip()
+
+
+def validate_runners_scale_request(
+    *,
+    runners: int,
+    host: str,
+    until: str | None,
+    reason: str | None,
+    now: datetime | None = None,
+) -> None:
+    """DbC: narrow ``runners.scale`` payloads must stay inside cap semantics (#2889)."""
+    anchor = now or datetime.now(UTC)
+    cap = host_runner_cap(host)
+    if runners > cap:
+        raise ValueError(f"runners {runners} exceeds host cap {cap}")
+    if until is None or not str(until).strip():
+        raise ValueError("until is required for runners.scale")
+    parsed = parse_until(until, now=anchor)
+    if parsed is None:
+        raise ValueError("until must be ISO-8601 or HH:MM")
+    if parsed > anchor + RUNNERS_SCALE_MAX_UNTIL:
+        raise ValueError("until must be within 24 hours")
+    if not (reason or "").strip():
+        raise ValueError("reason is required for runners.scale")

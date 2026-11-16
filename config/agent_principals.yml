@@ -28,6 +28,8 @@ assistant_profile:
     - bot
 
 agents:
+  # Optional narrow role (``runner-scaler`` preset) grants ``runners.scale`` without ``barb``
+  # (#2889). Default stays ``bot`` + ``barb`` until the owner removes ``barb``.
   - id: agent-grok
     kind: grokbot
     name: Barb (Grok fleet secretary)
