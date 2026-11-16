@@ -30,18 +30,25 @@ assistant_profile:
 agents:
   # Optional narrow role (``runner-scaler`` preset) grants ``runners.scale`` without ``barb``
   # (#2889). Default stays ``bot`` + ``barb`` until the owner removes ``barb``.
+  # Explicit ``runners.control`` on agent-grok and agent-grok-vm (#4490, t1799u)
+  # so the grant is visible on /api/auth/me and survives a narrower barb preset.
+  # This scope also authorizes start/stop/restart of individual runners.
   - id: agent-grok
     kind: grokbot
     name: Barb (Grok fleet secretary)
     roles:
       - bot
       - barb
+    scopes:
+      - runners.control
   - id: agent-grok-vm
     kind: grokbot
     name: Barb on barb-worker VM (Grok, revocable separately from agent-grok)
     roles:
       - bot
       - barb
+    scopes:
+      - runners.control
   - id: grok-barb
     kind: grokbot
     name: Grok Barb persona principal

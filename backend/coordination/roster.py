@@ -20,7 +20,7 @@ from staff.workspace import rm_root
 #: RM ``AGENT_IDS`` as of 2026-09-23 plus ``gemini`` / ``cursor-agent`` from RM PR #1707.
 STATIC_ROSTER: tuple[str, ...] = (
     "user", "orchestrator", "maxwell-daemon", "claude", "codex", "antigravity", "conductor", "night-watch",
-    "cartographer", "sanitation", "pr-remediator", "issue-remediator", "jules", "grok-pm", "local", "gaai",
+    "cartographer", "sanitation", "pr-remediator", "issue-remediator", "jules", "grok-pm", "local",
     "gemini", "cursor-agent", "grok", "qwen", "anthropic-api",
 )  # fmt: skip
 FALLBACK_SECONDS = 300.0

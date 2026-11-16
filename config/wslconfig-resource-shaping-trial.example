@@ -1,0 +1,15 @@
+# Optional WSL trial for Runner_Dashboard#4312 — NOT applied by automation.
+#
+# Requires Dieter's approval and a planned `wsl --shutdown` window.
+# Merge only the keys you intend to trial into %USERPROFILE%\.wslconfig
+# (or the path from `platform_utils.wsl_paths._candidate_wslconfig_paths`).
+#
+# autoMemoryReclaim=gradual helps return guest RAM when idle (measured separately
+# from systemd CPUWeight/IOWeight/Nice, which need no WSL restart).
+#
+[wsl2]
+# memory=48GB
+# processors=12
+
+[experimental]
+autoMemoryReclaim=gradual

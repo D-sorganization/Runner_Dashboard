@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -39,6 +40,7 @@ def _load_raw() -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def failover_cooldown_seconds() -> dict[str, float]:
+    """Return finite, nonnegative durations; invalid overrides use a safe fallback."""
     raw = _load_raw().get("cooldown_seconds") or {}
     defaults = {"provider_capacity": 600.0, "quota_exhausted": 3600.0, "rate_limited": 120.0}
     if not isinstance(raw, dict):
@@ -46,8 +48,11 @@ def failover_cooldown_seconds() -> dict[str, float]:
     out = dict(defaults)
     for key, val in raw.items():
         try:
-            out[str(key)] = float(val)
-        except (TypeError, ValueError):
+            seconds = float(val)
+            if not math.isfinite(seconds) or seconds < 0:
+                raise ValueError("cooldown duration must be finite and nonnegative")
+            out[str(key)] = seconds
+        except (TypeError, ValueError, OverflowError):
             log.warning("unparseable cooldown_seconds[%s]=%r; using fail-closed maximum", key, val)
             out[str(key)] = max(out.get(str(key), 0.0), 3600.0)
     return out
