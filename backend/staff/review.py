@@ -93,6 +93,8 @@ _TRAILER_RE = re.compile(
 class CommitTrailerProbe(Protocol):
     def get_commit_messages(self, repo: str, pr_number: int) -> list[str]: ...
 
+    def get_pull_head_sha(self, repo: str, pr_number: int) -> str: ...
+
 
 class GhCliCommitProbe(GhCliPrProbe):
     """Reads a PR's commit messages with one scoped ``gh api`` REST call.
@@ -104,6 +106,14 @@ class GhCliCommitProbe(GhCliPrProbe):
         full = repo if "/" in repo else f"{self.org}/{repo}"
         commits = self._api(f"/repos/{full}/pulls/{int(pr_number)}/commits?per_page=100") or []
         return [str((c.get("commit") or {}).get("message") or "") for c in commits]
+
+    def get_pull_head_sha(self, repo: str, pr_number: int) -> str:
+        full = repo if "/" in repo else f"{self.org}/{repo}"
+        pr = self._api(f"/repos/{full}/pulls/{int(pr_number)}")
+        sha = str((pr.get("head") or {}).get("sha") or "").strip().lower()
+        if not sha:
+            raise ValueError(f"PR #{pr_number} on {repo} has no head SHA")
+        return sha
 
 
 @dataclass(frozen=True)
@@ -314,7 +324,8 @@ def prepare_review_params(
     clean_params["role"] = role
     prompt = (
         f"Review PR #{pr} in {repo}. Focus: {focus}. "
-        f"Advisory only: post a comment review ending in 'STAFF_RESULT: review approve|changes|escalate #{pr}'. "
+        f"Advisory only: post a comment review ending in "
+        f"'STAFF_RESULT: review approve|changes|escalate #{pr} @<head_sha7>'. "
         "Never request changes or block."
     )
     if role == REVIEWER_ROLE:
@@ -384,18 +395,85 @@ def _review_claim(store: Any) -> Iterator[None]:
                 fcntl.flock(fh.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
 
 
-def _already_reviewed(store: Any, repo: str, pr_number: int, role: str = REVIEWER_ROLE) -> bool:
-    """Whether this PR needs no new ``role`` review run; ``role`` is the resolved reviewer.
+def _verdict_text_from_run(run: Any) -> str:
+    return str(getattr(run, "outcome", "") or getattr(run, "last_line", "") or "")
 
-    A review that is queued, running, done or cancelled counts, and so does one the
-    runner is still retrying. A review that ended ``failed`` does not, so the PR's next
-    verification queues one more attempt, up to MAX_AUTO_REVIEW_ATTEMPTS (#1662).
+
+def _recorded_verdict_head_sha(run: Any) -> str:
+    parsed = parse_review_verdict(_verdict_text_from_run(run))
+    return parsed.head_sha if parsed.status == "succeeded" else ""
+
+
+def _review_run_satisfies_obligation(run: Any, head_sha: str | None) -> bool:
+    """Whether ``run`` counts as a review for the current head (#4249).
+
+      Queued or running runs always block. A succeeded verdict bound to another head does
+    not block after the PR head moves. Without ``head_sha``, behaviour matches the legacy
+    PR-only dedupe.
+    """
+    status = str(getattr(run, "status", "") or "")
+    if status == "failed":
+        return False
+    if status in ("queued", "running"):
+        return True
+    if not head_sha:
+        return True
+    recorded = _recorded_verdict_head_sha(run)
+    if recorded:
+        from coordination.merge_shepherd_exact_head import head_sha_matches  # noqa: PLC0415
+
+        return head_sha_matches(recorded, head_sha)
+    return False
+
+
+def _resolve_pr_head_sha(repo: str, pr_number: int, gh_probe: CommitTrailerProbe | None) -> str | None:
+    if gh_probe is None:
+        return None
+    getter = getattr(gh_probe, "get_pull_head_sha", None)
+    if not callable(getter):
+        return None
+    try:
+        sha = getter(repo, int(pr_number))
+    except Exception:
+        log.warning("auto-review: could not read PR #%s head on %s", pr_number, repo, exc_info=True)
+        return None
+    text = str(sha or "").strip().lower()
+    return text or None
+
+
+def _already_reviewed(
+    store: Any,
+    repo: str,
+    pr_number: int,
+    role: str = REVIEWER_ROLE,
+    *,
+    head_sha: str | None = None,
+) -> bool:
+    """Whether this PR needs no new ``role`` review run at ``head_sha`` (#4249).
+
+    A review that is queued, running, or succeeded at the same head counts. A succeeded
+    verdict at an older head does not. A review that ended ``failed`` does not block, so
+    the PR's next verification queues one more attempt, up to MAX_AUTO_REVIEW_ATTEMPTS
+    (#1662), counting failures at the same head when ``head_sha`` is known.
     """
     target = f"PR #{pr_number}"
     runs = store.list_runs_for_target(role=role, repo=repo, target_ref=target)  # retries included
-    if any(r.status != "failed" for r in runs):
+    if any(_review_run_satisfies_obligation(r, head_sha) for r in runs):
         return True
-    attempts = [r for r in runs if not getattr(r, "retry_of", "")]  # runner retries share one attempt
+    attempts: list[Any] = []
+    for run in runs:
+        if getattr(run, "retry_of", ""):
+            continue
+        if str(getattr(run, "status", "") or "") != "failed":
+            continue
+        if head_sha:
+            recorded = _recorded_verdict_head_sha(run)
+            if recorded:
+                from coordination.merge_shepherd_exact_head import head_sha_matches  # noqa: PLC0415
+
+                if not head_sha_matches(recorded, head_sha):
+                    continue
+        attempts.append(run)
     return len(attempts) >= MAX_AUTO_REVIEW_ATTEMPTS
 
 
@@ -471,9 +549,17 @@ def auto_review_if_eligible(
         from staff.plan import RunRequest
 
         reviewer = params["role"]  # code-reviewer, or its fleet-critic fallback
+        probe = gh_probe if gh_probe is not None else GhCliCommitProbe()
+        head_sha = _resolve_pr_head_sha(repo, int(pr_number), probe)
         with _review_claim(store):
-            if _already_reviewed(store, repo, int(pr_number), role=reviewer):
-                log.info("auto-review: PR #%s on %s already has a %s run; skipped", pr_number, repo, reviewer)
+            if _already_reviewed(store, repo, int(pr_number), role=reviewer, head_sha=head_sha):
+                log.info(
+                    "auto-review: PR #%s on %s already has a %s run at head %s; skipped",
+                    pr_number,
+                    repo,
+                    reviewer,
+                    (head_sha[:7] if head_sha else "?"),
+                )
                 return False
             run = runner.submit(
                 RunRequest(
