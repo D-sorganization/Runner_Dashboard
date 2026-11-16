@@ -8,9 +8,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from staff.store import RunRecord, RunStore
+
 from staff import cli_projects, workspace
 from staff import worktree_hygiene as hygiene
-from staff.store import RunRecord, RunStore
 
 
 @pytest.fixture
@@ -64,6 +65,27 @@ def linked_tree(tmp_path, monkeypatch):
     store.close()
 
 
+def _reseed_finished_run(store: RunStore, tree: Path, *, status: str, **fields: object) -> None:
+    with store._lock:
+        store._conn.execute("DELETE FROM runs WHERE id = ?", ("run-finished",))
+    store.create_run(
+        RunRecord(
+            "run-finished",
+            "test",
+            "codex",
+            None,
+            "fixture",
+            "Tools",
+            "issue",
+            "#4224",
+            "task",
+            status=status,
+            workdir=str(tree),
+            **fields,
+        )
+    )
+
+
 @pytest.mark.parametrize("entrypoint", ["remove", "finalize", "sweep", "cordon"])
 def test_finished_tracked_gaai_links_are_unlinked_without_following(linked_tree, monkeypatch, entrypoint):
     c = linked_tree
@@ -76,6 +98,7 @@ def test_finished_tracked_gaai_links_are_unlinked_without_following(linked_tree,
         assert hygiene.sweep_stale_worktrees(c.store)["removed"] == 1
     else:
         from disk_full_cordon_runtime import _run_cleanup_commands
+
         from staff import store as staff_store
 
         c.store.create_run(
@@ -141,11 +164,11 @@ def test_unsafe_links_are_visible_and_preserved(linked_tree, monkeypatch, caplog
 def test_tracked_gaai_exception_keeps_existing_guards(linked_tree, guard):
     c = linked_tree
     if guard == "active":
-        c.store.update_run("run-finished", status="running")
+        _reseed_finished_run(c.store, c.tree, status="running")
     elif guard in {"blocked", "needs_input"}:
-        c.store.update_run("run-finished", status=guard)
+        _reseed_finished_run(c.store, c.tree, status=guard)
     elif guard == "orphaned":
-        c.store.update_run("run-finished", status="failed", failure_class="orphaned")
+        _reseed_finished_run(c.store, c.tree, status="failed", failure_class="orphaned")
     elif guard == "unpushed":
         subprocess.run(
             [

@@ -255,16 +255,19 @@ def test_store_accepts_every_canonical_literal(tmp_path: Path) -> None:
         store.close()
 
 
-def test_unconditional_update_run_allows_cancelled_to_running(tmp_path: Path) -> None:
-    """D-05: no compare-and-set today — cancelled can flip back to running."""
+def test_unconditional_update_run_rejects_reopening_cancelled(tmp_path: Path) -> None:
+    """D-05: a terminal row cannot bypass ``transition()`` via ``update_run``."""
+    from staff.run_status import IllegalRunStatusTransitionError  # noqa: PLC0415
+
     store = RunStore(tmp_path / "runs.sqlite3")
     try:
         store.create_run(RunRecord("reopen", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="queued"))
         store.update_run("reopen", status="cancelled", ended_at="2026-11-11T00:00:00Z")
-        store.update_run("reopen", status="running")
+        with pytest.raises(IllegalRunStatusTransitionError):
+            store.update_run("reopen", status="running")
         got = store.get_run("reopen")
         assert got is not None
-        assert got.status == "running"
+        assert got.status == "cancelled"
     finally:
         store.close()
 

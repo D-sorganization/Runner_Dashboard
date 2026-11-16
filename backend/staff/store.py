@@ -16,7 +16,12 @@ from staff.dispatcher_metrics import dispatcher_origin
 from staff.redaction import redact_value
 from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
 from staff.run_schema import _ADDED_COLUMNS, _SCHEMA
-from staff.run_status import ACTIVE_STATUSES, RUN_STATUSES  # noqa: F401 — re-exported for importers
+from staff.run_status import (  # noqa: F401 — re-exported for importers
+    ACTIVE_STATUSES,
+    RUN_STATUSES,
+    TERMINAL_STATUSES,
+    IllegalRunStatusTransitionError,
+)
 from staff.run_store_usage import USAGE_GROUPS  # noqa: F401 — re-exported for importers
 
 
@@ -197,6 +202,11 @@ class RunStore:
             )  # noqa: S608
         return rec
 
+    def _run_status_locked(self, run_id: str) -> str | None:
+        with self._lock:
+            row = self._conn.execute("SELECT status FROM runs WHERE id = ?", (run_id,)).fetchone()
+        return None if row is None else str(row[0])
+
     def update_run(self, run_id: str, **fields: Any) -> None:
         if not fields:
             return
@@ -204,6 +214,13 @@ class RunStore:
         assert not unknown, f"unknown columns: {unknown}"  # noqa: S101
         if "status" in fields:
             assert fields["status"] in RUN_STATUSES, fields["status"]  # noqa: S101
+            current = self._run_status_locked(run_id)
+            if current is not None:
+                new_status = str(fields["status"])
+                if new_status != current and current in {s.value for s in TERMINAL_STATUSES}:
+                    raise IllegalRunStatusTransitionError(
+                        f"illegal run status transition {run_id}: {current!r} → {new_status!r}"
+                    )
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self._lock:
             values = tuple(_redacted(k, v) for k, v in fields.items())
