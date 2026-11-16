@@ -45,8 +45,25 @@ fi
 '@
 
 if ($PSCmdlet.ShouldProcess($Distro, 'Install host-metrics-probe timer inside WSL')) {
-    # Feed bash on stdin: PS 5.1 strips embedded quotes from native -c arguments (#4465).
-    $bashScript | wsl.exe -d $Distro -e bash -s -- $DeployDir
-    Write-Output "Host-metrics probe install invoked in WSL distro '$Distro'."
-    Write-Output "If the dashboard uses a system unit, the bash installer will prompt for sudo inside WSL."
+    # Native stdin from Windows PowerShell 5.1 adds CRLF. Write UTF-8 without
+    # BOM and LF only, then let WSL read the file directly (no bash -c quoting).
+    $scriptPath = [System.IO.Path]::GetTempFileName()
+    try {
+        [System.IO.File]::WriteAllText(
+            $scriptPath, $bashScript.Replace("`r", ""),
+            (New-Object System.Text.UTF8Encoding($false))
+        )
+        $wslScriptPath = wsl.exe -d $Distro -e wslpath -u $scriptPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not translate temporary script path for WSL distro '$Distro'."
+        }
+        wsl.exe -d $Distro -e bash $wslScriptPath $DeployDir
+        if ($LASTEXITCODE -ne 0) {
+            throw "Host-metrics probe install failed in WSL distro '$Distro' (exit $LASTEXITCODE)."
+        }
+        Write-Output "Host-metrics probe install invoked in WSL distro '$Distro'."
+        Write-Output "If the dashboard uses a system unit, the bash installer will prompt for sudo inside WSL."
+    } finally {
+        Remove-Item -LiteralPath $scriptPath -Force
+    }
 }

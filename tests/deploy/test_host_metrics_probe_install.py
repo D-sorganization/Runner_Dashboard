@@ -52,11 +52,17 @@ def test_windows_wsl_install_helper_exists() -> None:
     assert '\\"${DeployDir}\\"' not in text
 
 
-def test_windows_wsl_install_feeds_bash_via_stdin_not_c_arg() -> None:
+def test_windows_wsl_install_uses_utf8_file_not_native_stdin() -> None:
     """Windows PowerShell 5.1 breaks multi-line bash -c strings that contain quotes (#4465)."""
     helper = DEPLOY / "windows" / "install-host-metrics-probe-wsl.ps1"
     text = helper.read_text(encoding="utf-8")
-    assert "bash -s" in text
+    assert "[System.IO.File]::WriteAllText" in text
+    assert '$bashScript.Replace("`r", "")' in text
+    assert "New-Object System.Text.UTF8Encoding($false)" in text
+    assert "-e bash $wslScriptPath $DeployDir" in text
+    assert "$bashScript | wsl.exe" not in text
+    assert "finally {" in text
+    assert "Remove-Item -LiteralPath $scriptPath" in text
     assert "bash -c $bashScript" not in text
 
 
@@ -64,3 +70,37 @@ def test_install_skips_probe_copy_when_source_is_deploy_tree() -> None:
     install = (DEPLOY / "install-host-metrics-probe.sh").read_text(encoding="utf-8")
     assert 'realpath "${PROBE_SRC}"' in install
     assert 'realpath "${PROBE_DEST}"' in install
+
+
+def test_windows_wsl_install_checks_native_exit_codes() -> None:
+    text = (DEPLOY / "windows" / "install-host-metrics-probe-wsl.ps1").read_text(encoding="utf-8")
+    assert text.count("if ($LASTEXITCODE -ne 0)") == 2
+    assert 'throw "Host-metrics probe install failed' in text
+
+
+def test_windows_wsl_bash_payload_handles_lf_file_and_installer_failure() -> None:
+    import subprocess
+    import tempfile
+
+    text = (DEPLOY / "windows" / "install-host-metrics-probe-wsl.ps1").read_text(encoding="utf-8")
+    payload = text.split("$bashScript = @'\n", 1)[1].split("\n'@", 1)[0]
+    with tempfile.TemporaryDirectory(prefix="probe path ") as directory:
+        root = Path(directory)
+        installer = root / "deploy" / "install-host-metrics-probe.sh"
+        installer.parent.mkdir()
+        # The real installer receives the root through the environment.
+        installer.write_text('test -d "$RUNNER_DASHBOARD_DEPLOY_DIR/deploy"\n', encoding="utf-8")
+        script = root / "wrapper.sh"
+        script.write_bytes(payload.replace("\r", "").encode("utf-8"))
+        assert subprocess.run(["bash", str(script), str(root)], check=False).returncode == 0
+        installer.write_text("exit 23\n", encoding="utf-8")
+        assert subprocess.run(["bash", str(script), str(root)], check=False).returncode == 23
+        # Reproduce the old Windows PowerShell native-stdin line endings.
+        broken = subprocess.run(
+            ["bash", "-s", "--", str(root)],
+            input=payload.replace("\n", "\r\n"),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert broken.returncode != 0
