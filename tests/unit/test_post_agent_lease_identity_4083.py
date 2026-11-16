@@ -88,6 +88,37 @@ def test_posted_comment_uses_the_rm_lease_wire_contract(
     assert datetime.fromisoformat(json.loads(capsys.readouterr().out)["expires_at"]) == expires
 
 
+@pytest.mark.parametrize("failed_operation", ["comment", "edit"])
+def test_post_agent_lease_reports_partial_failure_without_orphan_label(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], failed_operation: str
+) -> None:
+    """A failed comment cannot create a label, and a failed label cannot report success."""
+    from scripts import post_agent_lease as pal
+
+    fake = FakeExec()
+
+    def execute(cmd: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        result = fake(cmd, env)
+        if cmd[1:3] == ["issue", failed_operation]:
+            return subprocess.CompletedProcess(cmd, 1, "", "fixture write failed")
+        return result
+
+    monkeypatch.setattr(pal, "resolve_fleet_gh", lambda: "/fixture/gh")
+    monkeypatch.setattr(pal, "_exec_gh", execute)
+    assert (
+        pal.main(["--repo", "Runner_Dashboard", "--issue", "4270", "--agent", "codex", "--session", "fixture-session"])
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["label_updated"] is False
+    assert payload["comment_posted"] is (failed_operation != "comment")
+    assert payload["errors"] == ["fixture write failed"]
+    if failed_operation == "comment":
+        assert [cmd[1:3] for cmd in fake.mutations] == [["issue", "comment"]]
+        assert payload["receipt"] == ""
+
+
 def test_post_agent_lease_refuses_when_only_personal_account_present(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
