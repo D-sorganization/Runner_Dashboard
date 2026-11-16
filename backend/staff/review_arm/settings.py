@@ -19,7 +19,8 @@ class Settings:
     @classmethod
     def from_env(cls, env: Mapping[str, str], *, machine: str) -> Settings:
         requested = env.get("RD_REVIEW_ARM_ENABLED", "").casefold() in {"1", "true", "yes"}
-        dry_run = env.get("RD_REVIEW_ARM_DRY_RUN", "true").casefold() in {"1", "true", "yes"}
+        # Fail closed: only an explicit opt-out leaves dry-run; blank or misspelled stays dry.
+        dry_run = env.get("RD_REVIEW_ARM_DRY_RUN", "").strip().casefold() not in {"0", "false", "no"}
         interval = int(env.get("RD_REVIEW_ARM_INTERVAL_MINUTES", "10"))
         if not 1 <= interval <= 1440:
             raise ValueError("review-arm interval must be 1..1440 minutes")

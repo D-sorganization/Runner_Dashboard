@@ -261,6 +261,19 @@ def test_settings_off_by_default_and_only_controltower():
     assert Settings.from_env({}, machine="ControlTower").interval_seconds == 600
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [(None, True), ("", True), ("ture", True), ("1", True), ("false", False), (" NO ", False), ("0", False)],
+)
+def test_settings_dry_run_only_disabled_by_explicit_opt_out(raw, expected):
+    from staff.review_arm.settings import Settings
+
+    env = (
+        {"RD_REVIEW_ARM_ENABLED": "1"} if raw is None else {"RD_REVIEW_ARM_ENABLED": "1", "RD_REVIEW_ARM_DRY_RUN": raw}
+    )
+    assert Settings.from_env(env, machine="ControlTower").dry_run is expected
+
+
 def test_settings_extend_holds_without_removing_seeds():
     from staff.review_arm.settings import Settings
 
@@ -350,3 +363,11 @@ def test_intake_does_not_treat_optional_rollup_failure_as_required_failure():
     source.confirm.return_value = candidate()
     assert list(Intake(source, repos=("Runner_Dashboard",)).candidates()) == [candidate()]
     source.confirm.assert_called_once()
+
+
+def test_list_query_requests_completeness_evidence():
+    """The str.replace patches on the shepherd query must apply, or every cycle fails closed silently."""
+    from staff.review_arm.github_source import LIST_QUERY
+
+    assert "labels(first: 100) { pageInfo { hasNextPage }" in LIST_QUERY
+    assert LIST_QUERY.count("pageInfo { hasNextPage }") == 2
