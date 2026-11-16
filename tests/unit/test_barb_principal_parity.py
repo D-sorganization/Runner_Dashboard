@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 import yaml
 from agent_principal_defaults import merge_agent_principal_defaults
-from identity import BARB_ROLE_SCOPES, SCOPE_PRESETS, IdentityManager, principal_has_scope
+from identity import BARB_ROLE_SCOPES, SCOPE_PRESETS, IdentityManager, Principal, principal_has_scope
 from staff.barb_lease_fence import BARB_SEAT_IDS, is_barb_seat
 
 BARB_PRINCIPAL_IDS = (
@@ -126,6 +126,14 @@ def _default_principal_entries() -> list[dict[str, object]]:
 
 def test_barb_role_scope_set_is_pinned() -> None:
     assert frozenset(BARB_ROLE_SCOPES) == REVIEWED_BARB_ROLE_SCOPES
+
+
+def test_runner_scaler_preset_is_narrow_and_separate_from_barb() -> None:
+    assert "runners.scale" not in BARB_ROLE_SCOPES
+    scaler = Principal(id="scaler", type="bot", name="Scaler", roles=["runner-scaler"], scopes=[])
+    assert principal_has_scope(scaler, "runners.scale")
+    for forbidden in ("fleet.control", "runners.control", "fleet.maintain"):
+        assert not principal_has_scope(scaler, forbidden)
 
 
 def test_parity_list_covers_every_barb_role_principal() -> None:

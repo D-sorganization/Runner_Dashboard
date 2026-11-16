@@ -511,7 +511,7 @@ LOOPBACK_SCOPES = frozenset(
 # Operator preset scopes (whitespace-separated to keep this module under the cap).
 _OPERATOR_PRESET_SCOPES: tuple[str, ...] = tuple(
     (
-        "workflows.dispatch workflows.control runners.control runners.scale fleet.control remediation.dispatch "
+        "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
         "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute "
         "assessments.dispatch code-requests.manage feature-requests.manage system.control "
         "coordination.write priorities.write proposals.write "

@@ -17,7 +17,6 @@ from identity import (
     require_any_scope,
     require_fleet_peer,
     require_principal,
-    require_scope,
 )
 from routers import fleet_target_routes as routes
 from routers import orchestration_schedule_routes as sched
@@ -117,9 +116,7 @@ def test_scale_only_rejects_over_cap(target_client: TestClient) -> None:
         {"host": "hub-a", "runners": 2, "until": None, "reason": "missing"},
     ],
 )
-def test_scale_only_rejects_bad_until(
-    target_client: TestClient, payload: dict[str, object]
-) -> None:
+def test_scale_only_rejects_bad_until(target_client: TestClient, payload: dict[str, object]) -> None:
     if "until" not in payload:
         payload["until"] = None
     payload.setdefault("apply", False)
@@ -137,9 +134,7 @@ def test_scale_only_rejects_empty_reason(target_client: TestClient) -> None:
     assert response.status_code == 400
 
 
-def test_no_target_scope_receives_403_and_writes_no_override(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_no_target_scope_receives_403_and_writes_no_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     override = tmp_path / "target-override.json"
     monkeypatch.setattr(rtc, "TARGET_OVERRIDE_PATH", override)
     app = FastAPI()
@@ -194,9 +189,7 @@ def test_target_audit_entry_visible_by_principal_filter(tmp_path: Path, monkeypa
     assert rows[0]["auth_scope"] == "runners.scale"
 
 
-def test_scale_only_forbidden_on_fleet_control_routes(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_scale_only_forbidden_on_fleet_control_routes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Scale-only principal must not invoke other fleet.control endpoints."""
     from routers import fleet_maintenance_routes as maint
 

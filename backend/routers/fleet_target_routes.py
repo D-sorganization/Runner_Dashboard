@@ -126,9 +126,7 @@ def _auth_scope_for_target(principal: Principal) -> str:
 
 
 def _narrow_runners_scale_only(principal: Principal) -> bool:
-    return principal_has_scope(principal, "runners.scale") and not principal_has_scope(
-        principal, "fleet.control"
-    )
+    return principal_has_scope(principal, "runners.scale") and not principal_has_scope(principal, "fleet.control")
 
 
 def _scheduled_desired_from_scheduler() -> int:
