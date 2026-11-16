@@ -33,6 +33,7 @@ from staff.verification_diag import record_role_open_pr_diagnostic
 from staff.verification_probe import GhCliPrProbe
 from staff.verification_types import (
     GH_TIMEOUT_SECONDS,
+    CommitInfo,
     GitHubLookupError,
     PrProbe,
     PullRequest,
@@ -65,6 +66,12 @@ NO_COMMIT_ACTION_MARKERS = ("rerun", "re-run", "update-branch", "update branch",
 RESULT_PREFIX = "STAFF_RESULT:"
 CI_RED_DETAIL = "head CI is failing"
 RECHECK_BATCH = 20
+# Committers that are GitHub itself (web "Update branch", merge queue), never the run's own push (#4492).
+GITHUB_COMMITTERS = ("web-flow", "github")
+# Clock skew allowed between the run's host and the committing host when crediting a PR-branch push.
+PUSH_CLOCK_SKEW = timedelta(minutes=2)
+
+__all__ = ["CommitInfo", "GhCliPrProbe", "GitHubLookupError", "PrProbe", "PullRequest", "Verdict"]
 
 
 def verify_mode() -> str:
@@ -181,6 +188,37 @@ def _target_pr_number(rec: RunRecord) -> int | None:
     return None
 
 
+def _parse_ts(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def pushed_to_target_branch(rec: RunRecord, target: PullRequest, probe: PrProbe, now: datetime) -> bool:
+    """True when the target PR's head was committed during this run, i.e. the run pushed to the PR's own branch.
+
+    #4492: pr-remediator runs often push fixes straight to the existing PR head branch instead of their
+    ``staff/...`` branch, so the staff branch is never ahead of main. The head commit's committer date must
+    fall inside ``[started_at - skew, ended_at + skew]`` and the committer must not be GitHub itself (an
+    "Update branch" merge). Needs the probe's optional ``commit_info``; without it (or without a start time
+    or head SHA) the answer is False. Raises GitHubLookupError when the commit lookup fails.
+    """
+    commit_info = getattr(probe, "commit_info", None)
+    start = _parse_ts(getattr(rec, "started_at", None))
+    if not callable(commit_info) or not target.head_sha or start is None:
+        return False
+    end = _parse_ts(rec.ended_at) or now
+    info = commit_info(rec.repo, target.head_sha)
+    committed = _parse_ts(info.committed_at)
+    if committed is None or info.committer.strip().lower() in GITHUB_COMMITTERS:
+        return False
+    return start - PUSH_CLOCK_SKEW <= committed <= end + PUSH_CLOCK_SKEW
+
+
 def remote_deliverable_present(rec: RunRecord, probe: PrProbe) -> bool:
     """True when the run's staff branch has an open/merged PR or unpushed remote commits (#2773)."""
     if not rec.repo or not rec.branch:
@@ -231,28 +269,45 @@ def evaluate(
                 target = get_pr(rec.repo, target_pr)
             except GitHubLookupError as exc:
                 return Verdict("unverified", f"GitHub lookup failed: {exc}")
-            if remote_ahead_by == 0 and target.state == "merged":
+            if remote_ahead_by == 0 and target.state in ("open", "merged"):
+                try:
+                    pushed = pushed_to_target_branch(rec, target, probe, now)
+                except GitHubLookupError as exc:
+                    return Verdict("unverified", f"GitHub lookup failed: {exc}")
+                if pushed:
+                    pr = target
+            if pr is None and remote_ahead_by == 0 and target.state == "merged":
                 return Verdict(
                     "not_applicable",
                     f"PR #{target_pr} already merged; no commits pushed",
                     target_pr,
                     ARTIFACT_PR_MERGED,
                 )
-            if remote_ahead_by == 0 and target.state == "open" and is_no_commit_action_result(result_text):
+            if (
+                pr is None
+                and remote_ahead_by == 0
+                and target.state == "open"
+                and is_no_commit_action_result(result_text)
+            ):
                 return Verdict(
                     "not_applicable",
                     f"PR #{target_pr} is still open; run reported a confirmed no-commit action",
                     target_pr,
                     ARTIFACT_PR_OPEN,
                 )
-            if remote_ahead_by == 0 and target.state == "open" and (target.auto_merge_armed or target.in_merge_queue):
+            if (
+                pr is None
+                and remote_ahead_by == 0
+                and target.state == "open"
+                and (target.auto_merge_armed or target.in_merge_queue)
+            ):
                 return Verdict(
                     "not_applicable",
                     f"PR #{target_pr} is still open with auto-merge armed or queued; no commits pushed",
                     target_pr,
                     ARTIFACT_PR_OPEN,
                 )
-            if remote_ahead_by > 0:
+            if pr is None and remote_ahead_by > 0:
                 pr = target
     verdict = decide(
         claimed=claimed,

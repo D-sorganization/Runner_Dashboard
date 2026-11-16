@@ -314,17 +314,26 @@ async def dispatch_staff_run(
                 requested_model=cmd.model or "",
                 occupies_paths=occupies,
                 role=cmd.role,
+                pr_number=cmd.pr,
             )
             if not attempt.dispatched:
-                blocker = attempt.queued_item.blocking_session_id if attempt.queued_item else ""
-                raise HTTPException(
-                    status_code=409,
-                    detail={
+                queued = attempt.queued_item
+                blocker = queued.blocking_session_id if queued else ""
+                block_reason = getattr(queued, "block_reason", "overlapping_paths") if queued else "overlapping_paths"
+                if block_reason == "repo_session_cap":
+                    detail = {
+                        "code": "queued_repo_session_cap",
+                        "reason": f"{cmd.repo} is at its concurrent session cap (oldest active session {blocker})",
+                        "message": "waiting for a session in this repository to finish",
+                    }
+                else:
+                    what = "same target as" if block_reason == "same_target" else "overlapping paths with"
+                    detail = {
                         "code": "queued_overlapping_paths",
-                        "reason": f"overlapping paths with active session {blocker} on {cmd.repo}",
+                        "reason": f"{what} active session {blocker} on {cmd.repo}",
                         "message": "waiting for active session PR to merge or close",
-                    },
-                )
+                    }
+                raise HTTPException(status_code=409, detail=detail)
             if attempt.session is not None:
                 overlap_session_id = attempt.session.session_id
 
