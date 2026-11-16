@@ -110,3 +110,33 @@ def test_verify_unhold_reports_a_still_active_hold(holds: HoldsList, ctx: Action
     _seed(holds, Hold(id="hold-x", text="Freeze", applies_to=["*"]))
     res = ActionResult(success=True, result={"hold_id": "hold-x", "lifted": True})
     assert verify_staff_unhold(res, {"hold_id": "hold-x"}, ctx) == (False, "Hold still active")
+
+
+@pytest.mark.parametrize("lifted", [False, True])
+def test_promoted_guardrail_survives_role_reconcile(
+    holds: HoldsList, ctx: ActionContext, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, lifted: bool
+) -> None:
+    from staff.holds import seed_from_roles
+    from staff.rm_reconcile import reconcile_holds
+
+    from staff.roles import parse_role
+
+    monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "reconcile-audit.sqlite3"))
+    roles = {"barb": parse_role({"name": "barb", "providers": ["fake"], "holds": ["No deploys"]})}
+    (seeded,) = seed_from_roles(roles)
+    _seed(holds, seeded)
+    assert execute_staff_hold({"text": seeded.text, "applies_to": ["*"]}, ctx).success
+    if lifted:
+        assert execute_staff_unhold({"hold_id": seeded.id}, ctx).success
+    before = holds.load()[0].to_dict()
+    roles["worker"] = parse_role({"name": "worker", "providers": ["fake"], "holds": ["Never merge"]})
+
+    diff = reconcile_holds(roles=roles, commit_sha="sync1", holds=holds)
+    assert diff.added == ["Never merge"]
+    assert diff.unchanged == [seeded.text]
+    assert not reconcile_holds(roles=roles, commit_sha="sync2", holds=holds).changed
+    saved = holds.load()
+    assert len(saved) == 2
+    assert next(h for h in saved if h.id == seeded.id).to_dict() == before
+    assert (holds.blocking("any-role") is None) == lifted
+    assert next(h for h in saved if h.text == "Never merge").kind == "guardrail"
