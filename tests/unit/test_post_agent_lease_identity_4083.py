@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import subprocess
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
+import yaml
 
 BOT_STATUS = (
     "github.com\n"
@@ -55,6 +57,35 @@ class FakeExec:
     @property
     def mutations(self) -> list[list[str]]:
         return [c for c, _ in self.calls if len(c) >= 2 and c[1:3] not in (["auth", "status"], ["api", "user"])]
+
+
+def test_posted_comment_uses_the_rm_lease_wire_contract(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """RM can discover the holder and expiry only in its canonical flat lease block."""
+    from scripts import post_agent_lease as pal
+
+    fake = FakeExec()
+    monkeypatch.setattr(pal, "resolve_fleet_gh", lambda: "/fixture/gh")
+    monkeypatch.setattr(pal, "_exec_gh", fake)
+    assert (
+        pal.main(["--repo", "Runner_Dashboard", "--issue", "4270", "--agent", "codex", "--session", "fixture-session"])
+        == 0
+    )
+
+    comment = next(cmd for cmd in fake.mutations if cmd[1:3] == ["issue", "comment"])
+    body = comment[comment.index("--body") + 1]
+    assert body.startswith("<!-- agent-lease v1 -->\n```yaml\n")
+    assert body.endswith("\n```")
+    fields = yaml.safe_load(body.split("```yaml\n", 1)[1].rsplit("\n```", 1)[0])
+    assert fields["agent"] == "codex"
+    assert fields["session"] == "fixture-session"
+    assert fields["intent"] == "implement"
+    claimed = datetime.fromisoformat(str(fields["claimed_at"]))
+    expires = datetime.fromisoformat(str(fields["expires_at"]))
+    assert claimed.tzinfo is not None
+    assert expires - claimed == timedelta(hours=2)
+    assert datetime.fromisoformat(json.loads(capsys.readouterr().out)["expires_at"]) == expires
 
 
 def test_post_agent_lease_refuses_when_only_personal_account_present(
