@@ -25,7 +25,7 @@ FLEET_ACTION_SCOPES: Final[dict[str, tuple[str, ...]]] = {
     "runner.start": ("runners.control", "fleet.maintain"),
     "runner.stop": ("runners.control", "fleet.maintain"),
     "runner.restart": ("runners.control", "fleet.maintain"),
-    "runner.scale": ("runners.control", "fleet.control", "fleet.maintain"),
+    "runner.scale": ("runners.scale",),
     "fleet.node_up": ("fleet.control", "fleet.maintain"),
     "fleet.node_down": ("fleet.control", "fleet.maintain"),
     "queue.purge_stale": ("workflows.control", "fleet.maintain"),

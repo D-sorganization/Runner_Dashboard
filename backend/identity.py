@@ -497,6 +497,7 @@ FLEET_PEER_SCOPES = frozenset(
         "fleet.run_credential.mint",
         "memory.read",
         "activity.read",
+        "runners.scale",
     }
 )
 LOOPBACK_SCOPES = frozenset(
@@ -510,7 +511,7 @@ LOOPBACK_SCOPES = frozenset(
 # Operator preset scopes (whitespace-separated to keep this module under the cap).
 _OPERATOR_PRESET_SCOPES: tuple[str, ...] = tuple(
     (
-        "workflows.dispatch workflows.control runners.control fleet.control remediation.dispatch "
+        "workflows.dispatch workflows.control runners.control runners.scale fleet.control remediation.dispatch "
         "heavy-tests.dispatch tests.rerun github.dispatch assistant.chat assistant.execute "
         "assessments.dispatch code-requests.manage feature-requests.manage system.control "
         "coordination.write priorities.write proposals.write "
@@ -536,6 +537,8 @@ SCOPE_PRESETS = {
         "staff.read staff.chat staff.dispatch staff.cancel memory.read memory.shared.summarize"
     ).split(),
     "fleet-peer": sorted(FLEET_PEER_SCOPES),
+    # Agent-safe runner count target only (#2889); pair with ``bot`` for staff surfaces.
+    "runner-scaler": ["runners.scale", "fleet.read", "staff.read", "staff.chat"],
     "loopback": sorted(LOOPBACK_SCOPES),
     # A Tailscale sign-in from another tailnet device, e.g. the owner's phone (#1770).
     "tailnet-approver": ["staff.approve"],

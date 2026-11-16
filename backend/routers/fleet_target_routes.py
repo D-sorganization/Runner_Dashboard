@@ -19,7 +19,7 @@ import proxy_utils
 import runner_target_contract as target_contract
 from dashboard_config import FLEET_NODES, HOSTNAME, MACHINE_ROLE
 from fastapi import APIRouter, Depends, HTTPException, Request
-from identity import Principal, require_fleet_peer, require_scope
+from identity import Principal, principal_has_scope, require_any_scope, require_fleet_peer
 from machine_registry import build_machine_registry_index, load_machine_registry, resolve_local_identity
 from pydantic import BaseModel, ConfigDict, Field
 from routers import orchestration_schedule_routes as _schedule
@@ -30,6 +30,7 @@ log = logging.getLogger("dashboard.fleet_target")
 router = APIRouter(tags=["orchestration"])
 
 _APPLY_TIMEOUT_S = 45
+_TARGET_AUTH = require_any_scope("runners.scale", "fleet.control")
 
 
 class FleetTargetSetRequest(BaseModel):
@@ -104,6 +105,7 @@ def _audit_entry(
         "orchestration_type": "fleet_target",
         "action": "fleet.target.set",
         "phase": phase,
+        "principal": principal.id,
         "requested_by": principal.id,
         "recorded_at": _dt.datetime.now(_dt.UTC).isoformat().replace("+00:00", "Z"),
         "host": payload["host"],
@@ -113,6 +115,20 @@ def _audit_entry(
         "reason": payload.get("reason"),
         **extra,
     }
+
+
+def _auth_scope_for_target(principal: Principal) -> str:
+    if principal_has_scope(principal, "fleet.control"):
+        return "fleet.control"
+    if principal_has_scope(principal, "runners.scale"):
+        return "runners.scale"
+    return "unknown"
+
+
+def _narrow_runners_scale_only(principal: Principal) -> bool:
+    return principal_has_scope(principal, "runners.scale") and not principal_has_scope(
+        principal, "fleet.control"
+    )
 
 
 def _scheduled_desired_from_scheduler() -> int:
@@ -185,17 +201,36 @@ async def _apply_scheduler() -> dict[str, Any]:
         return {"stdout": result.stdout.strip()[:1000]}
 
 
-async def _apply_target_local(payload: dict[str, Any], principal: Principal) -> dict[str, Any]:
+async def _apply_target_local(
+    payload: dict[str, Any],
+    principal: Principal,
+    *,
+    raw_until: str | None,
+    raw_reason: str | None,
+) -> dict[str, Any]:
     cap = target_contract.host_runner_cap(payload["host"])
     before_record = target_contract.load_target_override()
     if before_record:
         before = int(before_record["runners"])
     else:
         before = await asyncio.to_thread(_scheduled_desired_from_scheduler)
-    clamped = target_contract.clamp_runners(payload["runners"], payload["host"], cap)
+    narrow = _narrow_runners_scale_only(principal)
+    if narrow:
+        try:
+            target_contract.validate_runners_scale_request(
+                runners=payload["runners"],
+                host=payload["host"],
+                until=raw_until,
+                reason=raw_reason,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        runners = int(payload["runners"])
+    else:
+        runners = target_contract.clamp_runners(payload["runners"], payload["host"], cap)
     until_store = target_contract.format_until_for_storage(payload.get("until"))
     record = target_contract.write_target_override(
-        runners=clamped,
+        runners=runners,
         reason=payload["reason"],
         actor=principal.id,
         before=before,
@@ -204,15 +239,17 @@ async def _apply_target_local(payload: dict[str, Any], principal: Principal) -> 
     apply_state: dict[str, Any] | None = None
     if payload["apply"]:
         apply_state = await _apply_scheduler()
-    return {
+    result = {
         "host": HOSTNAME,
         "saved": True,
-        "clamped_to": cap,
-        "runners": clamped,
+        "runners": runners,
         "target_override": record,
         "apply_state": apply_state,
         "before": record["before"],
     }
+    if not narrow:
+        result["clamped_to"] = cap
+    return result
 
 
 async def _proxy_target_to_node(url: str, payload: dict[str, Any]) -> dict[str, Any]:
@@ -248,10 +285,11 @@ async def fleet_target(
     request: Request,
     body: FleetTargetSetRequest,
     *,
-    principal: Principal = Depends(require_scope("fleet.control")),
+    principal: Principal = Depends(_TARGET_AUTH),
 ) -> dict[str, Any]:
     """Set an expiring runner-count override for a fleet host."""
     payload = body.validated_payload()
+    auth_scope = _auth_scope_for_target(principal)
 
     if proxy_utils.should_proxy_fleet_to_hub(request):
         return await proxy_utils.proxy_to_hub(request)
@@ -263,10 +301,23 @@ async def fleet_target(
         payload["runners"],
         sanitize_log_value(principal.id),
     )
-    await _audit.append_orchestration_audit(_audit_entry(audit_id, "requested", principal, payload))
+    await _audit.append_orchestration_audit(
+        _audit_entry(
+            audit_id,
+            "requested",
+            principal,
+            payload,
+            auth_scope=auth_scope,
+        )
+    )
 
     if _host_matches_local(payload["host"]):
-        result = await _apply_target_local(payload, principal)
+        result = await _apply_target_local(
+            payload,
+            principal,
+            raw_until=body.until,
+            raw_reason=body.reason,
+        )
     else:
         if MACHINE_ROLE != "hub":
             raise HTTPException(status_code=400, detail="target host is not this machine; call from the hub")
@@ -284,6 +335,7 @@ async def fleet_target(
             before=result.get("before"),
             after=result.get("runners"),
             outcome="ok",
+            auth_scope=auth_scope,
         )
     )
     result["audit_id"] = audit_id
