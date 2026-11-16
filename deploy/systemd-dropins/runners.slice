@@ -1,0 +1,7 @@
+# Shared cgroup slice for self-hosted runners during the resource-shaping trial (#4312).
+# Install to /etc/systemd/system/runners.slice when the trial is enabled.
+[Unit]
+Description=GitHub Actions self-hosted runners (resource-shaping trial cgroup)
+Before=slices.target
+
+[Slice]
