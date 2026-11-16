@@ -16,7 +16,12 @@ from staff.dispatcher_metrics import dispatcher_origin
 from staff.redaction import redact_value
 from staff.run_events import MAX_EVENT_TEXT_CHARS, latest_result_line, migrate_event_evidence, prepare_lesson_evidence
 from staff.run_schema import _ADDED_COLUMNS, _SCHEMA
-from staff.run_status import ACTIVE_STATUSES, RUN_STATUSES  # noqa: F401 — re-exported for importers
+from staff.run_status import (  # noqa: F401 — re-exported for importers
+    ACTIVE_STATUSES,
+    RUN_STATUSES,
+    TERMINAL_STATUSES,
+    IllegalRunStatusTransitionError,
+)
 from staff.run_store_usage import USAGE_GROUPS  # noqa: F401 — re-exported for importers
 
 
@@ -202,10 +207,15 @@ class RunStore:
             return
         unknown = set(fields) - set(_COLUMNS)
         assert not unknown, f"unknown columns: {unknown}"  # noqa: S101
-        if "status" in fields:
-            assert fields["status"] in RUN_STATUSES, fields["status"]  # noqa: S101
         sets = ", ".join(f"{k} = ?" for k in fields)
         with self._lock:
+            if "status" in fields:
+                assert fields["status"] in RUN_STATUSES, fields["status"]  # noqa: S101
+                row = self._conn.execute("SELECT status FROM runs WHERE id = ?", (run_id,)).fetchone()
+                if row is not None and row[0] in TERMINAL_STATUSES and fields["status"] != row[0]:
+                    raise IllegalRunStatusTransitionError(
+                        f"illegal run status transition {run_id}: {row[0]!r} → {fields['status']!r}"
+                    )
             values = tuple(_redacted(k, v) for k, v in fields.items())
             self._conn.execute(f"UPDATE runs SET {sets} WHERE id = ?", (*values, run_id))  # noqa: S608
 

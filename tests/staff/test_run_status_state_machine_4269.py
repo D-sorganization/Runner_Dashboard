@@ -271,14 +271,15 @@ def test_mark_run_blocked_transitions_non_terminal_to_blocked(tmp_path: Path) ->
 
 
 @pytest.mark.unit
-def test_raw_update_run_still_allows_cancelled_to_running(tmp_path: Path) -> None:
-    """Characterization: unconditional ``update_run`` remains for non-transition callers."""
+def test_raw_update_run_rejects_reopening_cancelled(tmp_path: Path) -> None:
+    """A terminal row must not reopen through the raw store writer (#4269, D-05)."""
     store = RunStore(tmp_path / "raw.sqlite3")
     try:
         store.create_run(RunRecord("reopen", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="queued"))
         store.update_run("reopen", status="cancelled", ended_at="2026-11-11T00:00:00Z")
-        store.update_run("reopen", status="running")
+        with pytest.raises(IllegalRunStatusTransitionError):
+            store.update_run("reopen", status="running")
         got = store.get_run("reopen")
-        assert got is not None and got.status == "running"
+        assert got is not None and got.status == "cancelled"
     finally:
         store.close()
