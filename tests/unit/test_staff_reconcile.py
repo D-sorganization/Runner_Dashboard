@@ -536,6 +536,21 @@ def test_restart_turns_workerless_queued_runs_into_retryable_failures(
     assert any(event["kind"] == "reconcile" for event in temp_store.events_after(rec.id, 0))
 
 
+def test_restart_reconcile_skips_runs_with_live_workers(
+    temp_store: RunStore, staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run admitted after startup whose worker is alive (semaphore waiter) is not orphaned (#4514)."""
+    _make_run(temp_store, "run-live", "queued")
+    _make_run(temp_store, "run-dead", "queued")
+    monkeypatch.setattr(staff_runner, "active_worker_run_ids", lambda: frozenset({"run-live"}))
+    reconciled = reconcile_orphaned_runs(staff_runner, event_store=EventStore(), requeue_queued=True)
+    assert "run-live" not in reconciled
+    assert "run-dead" in reconciled
+    live = temp_store.get_run("run-live")
+    assert live is not None
+    assert live.status == "queued"
+
+
 def test_rearm_pending_retries_schedules_due_attempt(
     temp_store: RunStore, staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:

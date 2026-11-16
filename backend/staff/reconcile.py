@@ -405,12 +405,20 @@ def reconcile_orphaned_runs(
 
     store = runner.store
     active = store.active_runs()
+    # Startup reconcile runs on a background thread while the API already accepts
+    # submissions; never orphan a run whose in-process worker is alive (e.g. a
+    # queued run waiting on the concurrency semaphore).
+    live_worker_ids = getattr(runner, "active_worker_run_ids", None)
+    live_workers = live_worker_ids() if callable(live_worker_ids) else frozenset()
     reconciled_ids: list[str] = []
     ev_store = event_store if event_store is not None else get_event_store()
 
     for rec in active:
         # Only reconcile runs owned by this node
         if rec.machine and rec.machine != runner.machine:
+            continue
+
+        if rec.id in live_workers:
             continue
 
         # Preserve scheduled retries waiting for backoff (issue #1303, SC-A7)
