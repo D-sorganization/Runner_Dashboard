@@ -6690,7 +6690,7 @@
             "type": "string"
           },
           "status": {
-            "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+            "enum": ["live", "idle", "stale", "ended", "uncaptured", "blocked"],
             "title": "Status",
             "type": "string"
           }

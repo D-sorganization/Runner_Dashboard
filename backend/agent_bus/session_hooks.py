@@ -18,7 +18,12 @@ _fleet_dir = Path(__file__).resolve().parents[2] / "clients" / "fleet"
 if str(_fleet_dir) not in sys.path:
     sys.path.insert(0, str(_fleet_dir))
 
-from activity_producers import emit_activity  # noqa: E402
+from activity_producers import (  # noqa: E402
+    INPUT_GATE_BLOCKED_KIND,
+    INPUT_GATE_UNBLOCKED_KIND,
+    emit_activity,
+    record_input_gate_activity,
+)
 from fleet_client import FleetAPIError, FleetClient  # noqa: E402
 from fleet_validators import short_host  # noqa: E402
 
@@ -194,6 +199,43 @@ def session_start(
         if exc.status == 0:
             return _offline_summary(exc)
         raise
+
+
+def permission_prompt_blocked(
+    *,
+    reason: str = "permission",
+    prompt: str = "",
+    node: str | None = None,
+) -> dict[str, Any]:
+    """Record that this CLI session is waiting at a permission or notification prompt (#4488)."""
+    state = _load_state()
+    if not state or not state.get("session"):
+        return {"skipped": True, "reason": "no agent-bus state"}
+    session = str(state["session"])
+    record_input_gate_activity(
+        session_id=session,
+        node=node or _node(short_host),
+        kind=INPUT_GATE_BLOCKED_KIND,
+        reason=reason,
+        prompt=prompt,
+    )
+    log.info("agent bus permission prompt blocked: session=%s reason=%s", session, reason)
+    return {"emitted": True, "kind": INPUT_GATE_BLOCKED_KIND, "session": session}
+
+
+def permission_prompt_unblocked(*, node: str | None = None) -> dict[str, Any]:
+    """Clear the input-gate wait after the operator answers or dismisses the prompt (#4488)."""
+    state = _load_state()
+    if not state or not state.get("session"):
+        return {"skipped": True, "reason": "no agent-bus state"}
+    session = str(state["session"])
+    record_input_gate_activity(
+        session_id=session,
+        node=node or _node(short_host),
+        kind=INPUT_GATE_UNBLOCKED_KIND,
+    )
+    log.info("agent bus permission prompt unblocked: session=%s", session)
+    return {"emitted": True, "kind": INPUT_GATE_UNBLOCKED_KIND, "session": session}
 
 
 def pre_push(client: Any | None = None, *, lease_seconds: int = DEFAULT_LEASE_SECONDS) -> dict[str, Any]:

@@ -65,6 +65,55 @@ def test_recent_heartbeat_is_live(store):
     assert page.items[0].status == "live"
 
 
+def test_recent_blocked_on_input_is_blocked_not_live(store):
+    """A session waiting at a prompt must not masquerade as live (#4488)."""
+    ingest(
+        store,
+        envelope(ts="2026-10-28T12:09:00Z", kind="blocked_on_input", payload={"reason": "permission"}),
+    )
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW)
+    assert page.items[0].status == "blocked"
+
+
+def test_unblocked_after_blocked_on_input_returns_to_live(store):
+    ingest(store, envelope(seq=1, ts="2026-10-28T12:08:00Z", kind="blocked_on_input"))
+    ingest(store, envelope(seq=2, ts="2026-10-28T12:09:00Z", kind="unblocked"))
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW)
+    assert page.items[0].status == "live"
+    assert page.items[0].last_kind == "unblocked"
+
+
+def test_heartbeat_after_unblocked_is_live_not_blocked(store):
+    ingest(store, envelope(seq=1, ts="2026-10-28T12:08:30Z", kind="blocked_on_input"))
+    ingest(store, envelope(seq=2, ts="2026-10-28T12:08:45Z", kind="unblocked"))
+    ingest(store, envelope(seq=3, ts="2026-10-28T12:09:00Z", kind="heartbeat"))
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW)
+    assert page.items[0].status == "live"
+
+
+def test_stale_blocked_on_input_becomes_stale_never_ended(store):
+    ingest(store, envelope(ts="2026-10-27T00:00:00Z", kind="blocked_on_input"))
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW)
+    assert page.items[0].status == "stale"
+
+
+def test_blocked_status_filter_includes_only_blocked_sessions(store):
+    ingest(store, envelope(session_id="blocked-a", ts="2026-10-28T12:09:00Z", kind="blocked_on_input"))
+    ingest(store, envelope(session_id="live-b", ts="2026-10-28T12:09:00Z", kind="heartbeat"))
+    from activity_sessions import compute_sessions
+
+    page = compute_sessions(store, now=NOW, status="blocked")
+    assert [item.session_id for item in page.items] == ["blocked-a"]
+
+
 def test_quiet_past_live_window_but_within_idle_window_is_idle(store):
     ingest(store, envelope(ts="2026-10-28T12:05:00Z", kind="heartbeat"))
     from activity_sessions import compute_sessions

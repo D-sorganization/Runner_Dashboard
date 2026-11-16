@@ -12421,7 +12421,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "live" | "idle" | "stale" | "ended" | "uncaptured";
+            status: "live" | "idle" | "stale" | "ended" | "uncaptured" | "blocked";
         };
         /**
          * SessionTelemetryPayload
@@ -22458,7 +22458,7 @@ export interface operations {
         parameters: {
             query?: {
                 node?: string | null;
-                status?: ("live" | "idle" | "stale" | "ended" | "uncaptured") | null;
+                status?: ("live" | "idle" | "stale" | "ended" | "uncaptured" | "blocked") | null;
                 repo?: string | null;
                 limit?: number;
             };

@@ -68,7 +68,7 @@ def test_returns_bounded_sessions_list(tmp_path, monkeypatch):
         body = response.json()
         assert len(body["items"]) == 1
         assert body["items"][0]["session_id"] == "session-a"
-        assert body["items"][0]["status"] in {"live", "idle", "stale", "ended", "uncaptured"}
+        assert body["items"][0]["status"] in {"live", "idle", "stale", "ended", "uncaptured", "blocked"}
 
 
 def test_filters_by_query_params(tmp_path, monkeypatch):
