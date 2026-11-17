@@ -53,12 +53,11 @@ def normalize_recorded_at(value: Any) -> str:
     if text:
         try:
             parsed = datetime.fromisoformat(text.replace("Z", "+00:00").replace("z", "+00:00"))
-        except ValueError:
-            parsed = None
-        if parsed is not None:
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=UTC)
             return parsed.astimezone(UTC).isoformat()
+        except (OverflowError, ValueError):
+            pass
     return datetime.now(UTC).isoformat()
 
 

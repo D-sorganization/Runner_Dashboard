@@ -40,6 +40,13 @@ def test_recorded_at_unparseable_falls_back_to_now() -> None:
     assert before <= datetime.fromisoformat(rec.recorded_at) <= datetime.now(UTC)
 
 
+@pytest.mark.parametrize("recorded_at", ["0001-01-01T00:00:00+23:59", "9999-12-31T23:59:59-23:59"])
+def test_recorded_at_utc_conversion_overflow_falls_back_to_now(recorded_at: str) -> None:
+    before = datetime.now(UTC)
+    rec = SessionRecord.from_dict({"session_id": "s", "recorded_at": recorded_at})
+    assert before <= datetime.fromisoformat(rec.recorded_at) <= datetime.now(UTC)
+
+
 def test_metrics_window_places_offset_timestamps_by_instant(temp_store: SessionTelemetryStore) -> None:
     # 12:00+05:00 is 07:00Z: inside [2026-11-15T10:00Z, 2026-11-16T10:00Z).
     # A lexical compare against "...T10:00:00+00:00" wrongly excludes it.
