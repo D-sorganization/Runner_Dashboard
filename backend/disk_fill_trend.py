@@ -99,7 +99,13 @@ def is_anomalous(
 
     A baseline with fewer than ``min_samples`` observations is not yet
     trustworthy, so it never flags regardless of how extreme the value is.
+
+    Raises ``ValueError`` for a non-finite ``value`` or a non-finite /
+    non-positive ``z_threshold`` instead of silently reporting "not anomalous".
     """
+    _require_finite(value)
+    if not math.isfinite(z_threshold) or z_threshold <= 0.0:
+        raise ValueError(f"z_threshold must be finite and > 0, got {z_threshold!r}")
     if baseline.sample_count < min_samples:
         return False
     if baseline.deviation == 0.0:
@@ -120,9 +126,16 @@ def project_disk_fill(
     trend is flat or growing, there is no time-to-full and no alert. When it
     is shrinking, projects how many hours remain until it reaches zero and
     alerts when that is under ``threshold_hours``.
+
+    Raises ``ValueError`` for fewer than two samples, any non-finite sample
+    value, or a non-finite / non-positive ``threshold_hours``.
     """
     if len(samples) < 2:
         raise ValueError("project_disk_fill requires at least two samples")
+    if not math.isfinite(threshold_hours) or threshold_hours <= 0.0:
+        raise ValueError(f"threshold_hours must be finite and > 0, got {threshold_hours!r}")
+    for sample in samples:
+        _require_finite(sample.value)
 
     ordered = sorted(samples, key=lambda sample: sample.timestamp)
     t0 = ordered[0].timestamp

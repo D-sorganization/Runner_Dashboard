@@ -524,7 +524,7 @@ def test_reconcile_executing_proposals_marks_failed_without_retry(
 def test_restart_turns_workerless_queued_runs_into_retryable_failures(
     temp_store: RunStore, staff_runner: runner_mod.StaffRunner
 ) -> None:
-    """Startup must not preserve a queued row without restoring its worker (#4514)."""
+    """A stranded row with no available role is failed visibly (#4514)."""
     _make_run(temp_store, "run-queued", "queued")
     reconciled = reconcile_orphaned_runs(staff_runner, event_store=EventStore(), requeue_queued=True)
     assert "run-queued" in reconciled
@@ -536,6 +536,58 @@ def test_restart_turns_workerless_queued_runs_into_retryable_failures(
     assert rec.ended_at is not None
     assert temp_store.active_runs() == []
     assert any(event["kind"] == "reconcile" for event in temp_store.events_after(rec.id, 0))
+
+
+def _worker_role() -> RoleSpec:
+    return RoleSpec(
+        name="worker",
+        title="Worker",
+        instructions="Work",
+        providers=("fake",),
+        schedule="",
+        window={"start": "00:00", "end": "23:59"},
+        repos=("Tools",),
+    )
+
+
+def _fake_retry_plan(_runner: runner_mod.StaffRunner, rec: RunRecord, _role: RoleSpec) -> Any:
+    from staff.plan import RunPlan
+
+    return RunPlan(
+        role=rec.role,
+        provider=rec.provider,
+        model=rec.model,
+        repo=rec.repo,
+        target_kind=rec.target_kind,
+        target_ref=rec.target_ref,
+        operator_prompt="",
+        prompt=rec.prompt,
+        argv=["echo", "relaunch"],
+        branch="staff/relaunch",
+        lease_ritual=False,
+    )
+
+
+@pytest.fixture
+def relaunch_runner(temp_store: RunStore, monkeypatch: pytest.MonkeyPatch) -> tuple[runner_mod.StaffRunner, list[str]]:
+    """A runner whose worker launches are captured instead of spawning a CLI."""
+    monkeypatch.setattr("staff.retry.retry_plan", _fake_retry_plan)
+    roles = {"worker": _worker_role()}
+    runner = runner_mod.StaffRunner(store=temp_store, machine="test-node", roles_loader=lambda: roles)
+    launched: list[str] = []
+    monkeypatch.setattr(runner, "launch", lambda rec, _plan: launched.append(rec.id))
+    return runner, launched
+
+
+def test_requeue_queued_preserves_plain_queued_runs(
+    temp_store: RunStore, relaunch_runner: tuple[runner_mod.StaffRunner, list[str]]
+) -> None:
+    """Queued-not-started runs are relaunched when their role remains available (#4256)."""
+    runner, launched = relaunch_runner
+    _make_run(temp_store, "run-queued", "queued")
+    reconciled = reconcile_orphaned_runs(runner, event_store=EventStore(), requeue_queued=True)
+    assert "run-queued" not in reconciled
+    assert launched == ["run-queued"]
 
 
 def test_restart_reconcile_skips_runs_with_live_workers(
@@ -653,6 +705,60 @@ def test_admit_publishes_ownership_atomically_with_store_write(
     assert not snapshot.is_alive()
     assert admission_errors == []
     assert observed == [frozenset({rec.id})]
+
+
+def test_requeue_queued_relaunches_stranded_run(
+    temp_store: RunStore, relaunch_runner: tuple[runner_mod.StaffRunner, list[str]]
+) -> None:
+    """A preserved queued run gets a worker thread again after a restart (#4249 stranded-run bug).
+
+    Before the fix the run stayed ``queued`` forever: no thread, no retry timer.
+    """
+    runner, launched = relaunch_runner
+    _make_run(temp_store, "run-stranded", "queued")
+    reconcile_orphaned_runs(runner, event_store=EventStore(), requeue_queued=True)
+    assert launched == ["run-stranded"]
+    events = temp_store.events_after("run-stranded")
+    assert any(e["kind"] == "reconcile" and "relaunched" in e["text"] for e in events)
+
+
+def test_requeue_queued_relaunch_is_idempotent(
+    temp_store: RunStore, relaunch_runner: tuple[runner_mod.StaffRunner, list[str]]
+) -> None:
+    """A second reconcile pass in the same process never starts a duplicate worker."""
+    runner, launched = relaunch_runner
+    _make_run(temp_store, "run-once", "queued")
+    reconcile_orphaned_runs(runner, event_store=EventStore(), requeue_queued=True)
+    reconcile_orphaned_runs(runner, event_store=EventStore(), requeue_queued=True)
+    assert launched == ["run-once"]
+
+
+def test_requeue_queued_skips_other_machines_and_backoff_retries(
+    temp_store: RunStore,
+    relaunch_runner: tuple[runner_mod.StaffRunner, list[str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner, launched = relaunch_runner
+    monkeypatch.setattr("staff.retry._schedule", lambda *_a: None)  # backoff retries belong to rearm
+    _make_run(temp_store, "run-remote", "queued", machine="other-node")
+    _make_run(temp_store, "run-backoff", "queued", next_attempt_at="2999-01-01T00:00:00Z", retry_of="run-x", attempt=2)
+    reconcile_orphaned_runs(runner, event_store=EventStore(), requeue_queued=True)
+    assert "run-remote" not in launched
+    assert "run-backoff" not in launched
+
+
+def test_requeue_queued_fails_run_whose_role_is_gone(temp_store: RunStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A stranded run that cannot be relaunched is failed visibly, never left queued."""
+    runner = runner_mod.StaffRunner(store=temp_store, machine="test-node", roles_loader=dict)
+    launched: list[str] = []
+    monkeypatch.setattr(runner, "launch", lambda rec, _plan: launched.append(rec.id))
+    _make_run(temp_store, "run-no-role", "queued", role="retired-role")
+    reconcile_orphaned_runs(runner, event_store=EventStore(), requeue_queued=True)
+    rec = temp_store.get_run("run-no-role")
+    assert rec is not None
+    assert rec.status == "failed"
+    assert rec.failure_class == "orphaned_queued"
+    assert launched == []
 
 
 def test_rearm_pending_retries_schedules_due_attempt(

@@ -42,7 +42,6 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +189,7 @@ class HoldVerdict:
     #: Populated on evaluation failure. A verdict that could not be computed is
     #: treated as HELD, so a broken token or a rate limit never opens the gate.
     error: str | None = None
-    #: Head SHA the verdict was computed against; a direct merge is pinned to it.
+    #: Head SHA the verdict was computed against; the arm is pinned to it.
     head_sha: str = ""
     #: Base branch and GraphQL node id of the PR, for queue-aware fallbacks.
     base_ref: str = ""
@@ -222,8 +221,8 @@ class ArmResult:
     #: True only when an unverified REST arm could not be revoked: GitHub may
     #: still auto-merge the PR. Callers must surface this loudly.
     auto_merge_may_be_on: bool = False
-    #: True only when the PR was already clean, arming was refused, and the
-    #: guard merged it directly (#1968) and verified ``merged`` is true.
+    #: Kept for callers' compatibility; arm-only policy (#4249) never merges,
+    #: so :func:`arm_auto_merge` always leaves this False.
     merged: bool = False
     #: True when a hold appeared after merge/enqueue completed; still a failure (#4315).
     in_flight_hold_after_completion: bool = False
@@ -338,9 +337,24 @@ _CLOSE_DISARM_WINDOW_SECONDS = 5
 
 _DISARM_TIMELINE_JQ = (
     '.[] | select(.event == "auto_merge_disabled" or .event == "closed") '
-    '| select(.event == "closed" or (.actor.type // "User") != "Bot") '
-    '| "\\(.created_at)\\t\\(.event)"'
+    '| "\\(.created_at)\\t\\(.event)\\t\\(.actor.login // "")"'
 )
+
+#: Accounts whose disarms are the Merge-Hold-Guard workflow enforcing a hold that
+#: is already visible, never a reviewer's decision.
+WORKFLOW_GUARD_ACTORS = frozenset({"github-actions[bot]"})
+
+#: Hidden marker on the comment this module posts when it disarms a PR itself.
+GUARD_DISARM_MARKER = "<!-- automerge-guard:disarm -->"
+
+#: A disarm is the guard's own when the same account posted the marker this close to it.
+_GUARD_DISARM_WINDOW_SECONDS = 120
+
+
+@dataclass(frozen=True)
+class _Disarm:
+    stamp: str
+    actor: str = ""
 
 
 def _seconds(stamp: str) -> float:
@@ -348,16 +362,17 @@ def _seconds(stamp: str) -> float:
     return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
 
 
-def _disarm_events(run: CommandRunner, repo: str, pr: int) -> dict[str, list[str]]:
-    """Timeline timestamps by event (non-bot disarms, any ``closed``).
+def _disarm_events(run: CommandRunner, repo: str, pr: int) -> tuple[list[_Disarm], list[str]]:
+    """Every ``auto_merge_disabled`` (with its actor) and every ``closed`` stamp.
 
-    Post: keys ``auto_merge_disabled`` and ``closed``. Bot actors are excluded
-    from disarms so the Merge-Hold-Guard workflow's own revocations never read
-    as a human decision. A later re-arm is deliberately NOT read: owner-token
-    agents re-arm within seconds of any disarm, so it cannot cancel a hold.
-    Raises ``RuntimeError`` if the timeline is unreadable.
+    Post: disarms by any account are returned, bots included (#4249 B-04): in this
+    fleet reviewers are bots, so dropping bot disarms let a held PR be re-armed.
+    A later re-arm is deliberately NOT read: agents re-arm within seconds of any
+    disarm, so it cannot cancel a hold. Raises ``RuntimeError`` if the timeline is
+    unreadable.
     """
-    events: dict[str, list[str]] = {"auto_merge_disabled": [], "closed": []}
+    disarms: list[_Disarm] = []
+    closes: list[str] = []
     lines = _gh_lines(
         run,
         [
@@ -369,10 +384,12 @@ def _disarm_events(run: CommandRunner, repo: str, pr: int) -> dict[str, list[str
         ],
     )
     for line in lines:
-        stamp, _, event = line.partition("\t")
-        if event in events:
-            events[event].append(stamp)
-    return events
+        stamp, event, actor = (line.split("\t") + ["", ""])[:3]
+        if event == "auto_merge_disabled":
+            disarms.append(_Disarm(stamp, actor.strip()))
+        elif event == "closed":
+            closes.append(stamp)
+    return disarms, closes
 
 
 def _is_close_side_effect(disarm: str, closes: Sequence[str]) -> bool:
@@ -380,34 +397,74 @@ def _is_close_side_effect(disarm: str, closes: Sequence[str]) -> bool:
     return any(0 <= _seconds(disarm) - _seconds(close) <= _CLOSE_DISARM_WINDOW_SECONDS for close in closes)
 
 
-def _latest_reviewer_disarm(events: Mapping[str, Sequence[str]]) -> str:
-    """Latest disarm that is not the side effect of a PR close, or ``""``."""
-    disarms = [stamp for stamp in events["auto_merge_disabled"] if not _is_close_side_effect(stamp, events["closed"])]
-    return max(disarms) if disarms else ""
+def _guard_disarm_marks(run: CommandRunner, repo: str, pr: int) -> list[_Disarm]:
+    """``(created_at, login)`` of every guard-disarm marker comment on the PR."""
+    marks: list[_Disarm] = []
+    for comment in _issue_comments(run, repo, pr):
+        if GUARD_DISARM_MARKER in str(comment.get("body") or ""):
+            login = str(_obj(comment.get("user")).get("login") or "")
+            marks.append(_Disarm(str(comment.get("created_at") or ""), login))
+    return marks
+
+
+def _is_guard_own(disarm: _Disarm, marks: Sequence[_Disarm]) -> bool:
+    """True when the disarming account marked this disarm as the guard's own."""
+    if not disarm.actor:
+        return False
+    for mark in marks:
+        if mark.actor != disarm.actor or not mark.stamp:
+            continue
+        if abs(_seconds(mark.stamp) - _seconds(disarm.stamp)) <= _GUARD_DISARM_WINDOW_SECONDS:
+            return True
+    return False
+
+
+def _reviewer_disarms(
+    run: CommandRunner, repo: str, pr: int, arrived: str, disarms: Sequence[_Disarm]
+) -> list[_Disarm]:
+    """Disarms since the head arrived that the guard did not make itself.
+
+    Comments are read only when a disarm is left to explain. Unreadable comments
+    excuse nothing (fail closed).
+    """
+    pending = [d for d in disarms if not arrived or d.stamp > arrived]
+    if not pending:
+        return []
+    try:
+        marks = _guard_disarm_marks(run, repo, pr)
+    except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError):
+        return pending
+    return [d for d in pending if not _is_guard_own(d, marks)]
 
 
 def _disarm_reasons(run: CommandRunner, repo: str, pr: int, sha: str) -> list[str]:
-    """Signal 3: a non-bot account disarmed auto-merge since the head arrived.
+    """Signal 3: an account disarmed auto-merge since the head arrived.
 
-    A disarm that is only the side effect of closing the PR is ignored; a
-    later re-arm does not supersede one (a new push does, via the head
-    arrival time). Raises ``RuntimeError`` if unreadable.
+    Any account counts, bot or human (#4249 B-04). Not counted: the side effect
+    of closing the PR, the Merge-Hold-Guard workflow, and a disarm this module
+    made and marked itself. A later re-arm does not supersede a disarm (a new
+    push does, via the head arrival time). Raises ``RuntimeError`` if unreadable.
     """
-    last_disarm = _latest_reviewer_disarm(_disarm_events(run, repo, pr))
-    if not last_disarm:
+    all_disarms, closes = _disarm_events(run, repo, pr)
+    disarms = [
+        d for d in all_disarms if d.actor not in WORKFLOW_GUARD_ACTORS and not _is_close_side_effect(d.stamp, closes)
+    ]
+    if not disarms:
         return []
     arrived = _head_arrival(run, repo, pr, sha)
+    held = _reviewer_disarms(run, repo, pr, arrived, disarms)
+    if not held:
+        return []
+    last = max(held, key=lambda d: d.stamp)
+    who = last.actor or "a reviewer"
     if not arrived:
         return [
-            f"a reviewer disabled auto-merge at {last_disarm} and the "
-            "server-side arrival time of the head commit is unknown"
+            f"{who} disabled auto-merge at {last.stamp} and the server-side arrival time of the head commit is unknown"
         ]
-    if last_disarm > arrived:
-        return [
-            f"a reviewer disabled auto-merge at {last_disarm}, after the "
-            f"head commit arrived ({arrived}) — no push has superseded it"
-        ]
-    return []
+    return [
+        f"{who} disabled auto-merge at {last.stamp}, after the "
+        f"head commit arrived ({arrived}) — no push has superseded it"
+    ]
 
 
 def _repo_root_on_path() -> None:
@@ -487,9 +544,25 @@ def disarm_if_held(repo: str, pr: int, *, runner: CommandRunner | None = None) -
     """
     run = runner or _default_runner
     verdict = evaluate_hold(repo, pr, runner=run)
-    if verdict.held:
-        _disarm_auto_merge(repo, pr, run)
+    if verdict.held and _disarm_auto_merge(repo, pr, run):
+        _mark_guard_disarm(repo, pr, verdict.describe(), run)
     return verdict
+
+
+def _mark_guard_disarm(repo: str, pr: int, why: str, run: CommandRunner) -> None:
+    """Comment that the guard made this disarm, so it is not read as a reviewer's.
+
+    Without the mark the disarm would hold the PR until the next push, even after
+    the hold that caused it is lifted. A failed post is logged, not raised: the
+    disarm stands and reads as a hold (fail closed).
+    """
+    body = (
+        f"{GUARD_DISARM_MARKER}\nThe merge guard disarmed auto-merge: {why or 'hold applies'}.\n\n"
+        "This disarm is not itself a hold. Arming is possible again once the reason above is resolved."
+    )
+    proc = run(["gh", "api", "-X", "POST", f"repos/{repo}/issues/{pr}/comments", "-f", f"body={body}"])
+    if proc.returncode != 0:
+        logger.warning("Could not mark the guard disarm on %s#%s: %s", repo, pr, proc.stderr.strip())
 
 
 def _deletion_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> list[str]:
@@ -617,6 +690,7 @@ def _revoke_rest_arm(repo: str, pr: int, run: CommandRunner) -> tuple[str, bool]
     proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
     if proc.returncode == 0:
         logger.warning("Revoked unverified REST auto-merge arm on %s#%s.", repo, pr)
+        _mark_guard_disarm(repo, pr, "the REST arm could not be verified", run)
         return "auto-merge revoked", False
     err = proc.stderr.strip() or proc.stdout.strip()
     logger.error("Could not revoke REST auto-merge arm on %s#%s: %s", repo, pr, err)
@@ -714,101 +788,6 @@ def _enqueue_clean_pr(repo: str, pr: int, strategy: str, verdict: HoldVerdict, r
     return ArmResult(True, verdict, "enqueued in merge queue (PR was already clean)")
 
 
-def _merge_clean_pr(
-    repo: str,
-    pr: int,
-    strategy: str,
-    sha: str,
-    verdict: HoldVerdict,
-    run: CommandRunner,
-    delete_branch: bool = False,
-) -> ArmResult:
-    """Merge an already-clean ``repo#pr`` directly, pinned to the verified head.
-
-    Pre: arming was refused with the clean-status 422 and ``verdict`` is
-    not-held. Post: exactly one ``PUT .../merge`` (never an admin merge, never
-    retried) with ``sha`` so a newer push is not merged; reported as merged only
-    if a follow-up read shows ``merged`` is true. With ``delete_branch``, the head
-    ref is then deleted via REST, only for a same-repo head; a failed deletion
-    is a warning appended to the detail and never un-merges the result.
-    """
-    if not sha:
-        return ArmResult(False, verdict, "PR was already clean but the verified head SHA is unknown")
-    hold = disarm_if_held(repo, pr, runner=run)
-    if hold.held:
-        return ArmResult(False, hold, f"merge refused: {hold.describe()}")
-    pinned = _current_head_sha(repo, pr, run)
-    if not pinned:
-        hold = disarm_if_held(repo, pr, runner=run)
-        return ArmResult(False, hold, "merge refused: PR head SHA could not be verified")
-    if pinned != sha:
-        disarm_if_held(repo, pr, runner=run)
-        return ArmResult(False, hold, f"merge refused: head moved (expected {sha}, saw {pinned})")
-    proc = run(
-        [
-            "gh",
-            "api",
-            "-X",
-            "PUT",
-            f"repos/{repo}/pulls/{pr}/merge",
-            "-f",
-            f"merge_method={strategy}",
-            "-f",
-            f"sha={sha}",
-        ]
-    )
-    if proc.returncode != 0:
-        err = proc.stderr.strip() or proc.stdout.strip()
-        logger.warning("Direct merge of clean %s#%s refused: %s", repo, pr, err)
-        return ArmResult(False, verdict, f"PR was already clean but direct merge refused: {err}")
-    hold_after = disarm_if_held(repo, pr, runner=run)
-    if hold_after.held:
-        check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
-        merged = check.returncode == 0 and check.stdout.strip().lower() == "true"
-        if not merged:
-            return ArmResult(False, hold_after, f"merge refused after in-flight verdict: {hold_after.describe()}")
-        logger.error(
-            "IN-FLIGHT HOLD: merge of %s#%s completed but %s",
-            repo,
-            pr,
-            hold_after.describe(),
-        )
-        return ArmResult(
-            False,
-            hold_after,
-            f"IN-FLIGHT HOLD: merge completed but {hold_after.describe()}",
-            merged=True,
-            in_flight_hold_after_completion=True,
-        )
-    check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
-    if check.returncode != 0 or check.stdout.strip().lower() != "true":
-        return ArmResult(
-            False,
-            verdict,
-            "PR was already clean; merge call succeeded but PR is not merged (could not verify the merged flag)",
-        )
-    logger.info("Merged clean %s#%s directly (%s).", repo, pr, strategy)
-    detail = "merged (PR was already clean)"
-    if delete_branch:
-        detail += _delete_head_branch(repo, verdict, run)
-    return ArmResult(False, verdict, detail, merged=True)
-
-
-def _delete_head_branch(repo: str, verdict: HoldVerdict, run: CommandRunner) -> str:
-    """Delete the merged PR's head ref; return a detail suffix ("" on success)."""
-    if not (verdict.head_ref and verdict.head_in_base_repo):
-        return "; branch not deleted (head is not a branch of this repo)"
-    # Percent-encode the ref (keeping "/"): `gh api` reads a raw "#" as a URL
-    # fragment, so `feat#one` would otherwise delete an unrelated `feat`.
-    ref = quote(verdict.head_ref, safe="/")
-    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/git/refs/heads/{ref}"])
-    if proc.returncode != 0:
-        err = proc.stderr.strip() or proc.stdout.strip()
-        logger.warning("Merged %s but could not delete %s: %s", repo, verdict.head_ref, err)
-        return f"; branch not deleted: {err}"
-    return ""
-
-
 def arm_auto_merge(
     repo: str,
     pr: int,
@@ -833,11 +812,9 @@ def arm_auto_merge(
     and it is reported as armed only if the merge method GitHub stored equals
     ``strategy``; otherwise the arm is revoked with a ``DELETE`` on the same
     route, and a failed revoke is reported in the detail. If that PUT is refused
-    with the "clean status" 422 (PR already mergeable), one direct
-    ``PUT .../merge`` pinned to the verified head SHA is made instead (#1968),
-    unless the base branch has a merge queue (or that cannot be determined), in
-    which case one GraphQL ``enqueuePullRequest`` is attempted and never a
-    direct merge.
+    with the "clean status" 422 (PR already mergeable), the arm is reported as
+    refused: arm-only policy (#4249) never makes a direct ``PUT .../merge``,
+    GraphQL ``mergePullRequest`` or ``enqueuePullRequest`` from this function.
 
     Head pin (#4249 B-02): the arm carries ``--match-head-commit`` set to the
     head the hold verdict was computed against, so GitHub refuses it if the head
@@ -912,9 +889,13 @@ def _arm_pinned(
             if moved is not None:
                 return moved
         elif CLEAN_STATUS_MARKER in (proc.stderr + proc.stdout).lower():
-            if _base_has_merge_queue(repo, verdict.base_ref, run):
-                return _enqueue_clean_pr(repo, pr, strategy, verdict, run)
-            return _merge_clean_pr(repo, pr, strategy, verdict.head_sha, verdict, run, delete_branch)
+            # Arm-only (#4249): never fall back to a direct merge or enqueue.
+            detail = (
+                "PR is already clean, so GitHub refused to arm auto-merge; arm-only policy "
+                "never merges or enqueues directly (the merge queue or an owner must take it)"
+            )
+            logger.warning("Not armed on %s#%s: %s", repo, pr, detail)
+            return ArmResult(False, verdict, detail)
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Could not arm auto-merge on %s#%s: %s", repo, pr, detail)

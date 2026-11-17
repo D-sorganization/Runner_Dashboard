@@ -132,6 +132,41 @@ def rearm_pending_retries(runner: StaffRunner) -> list[str]:
     return rearmed
 
 
+_RELAUNCHED: set[str] = set()
+_RELAUNCH_LOCK = threading.Lock()
+
+
+def relaunch_stranded_queued_run(runner: StaffRunner, rec: RunRecord) -> bool:
+    """Give a queued, never-started run a worker thread again after a restart (#4249).
+
+    Pre: ``rec`` is queued, owned by ``runner.machine``, has no ``started_at`` and no
+    ``next_attempt_at`` (backoff retries are rearmed by :func:`rearm_pending_retries`).
+    Post: True means exactly one worker was launched for ``rec.id`` in this process
+    (a repeat call is a no-op that also returns True). False means the run cannot be
+    replanned (role or adapter gone) and the caller must fail it.
+    """
+    from staff.retry import retry_plan  # noqa: PLC0415
+
+    with _RELAUNCH_LOCK:
+        if rec.id in _RELAUNCHED:
+            return True
+        role = runner.roles().get(rec.role)
+        if role is None:
+            log.warning("Cannot relaunch stranded run %s: role %s is not loaded", rec.id, rec.role)
+            return False
+        try:
+            plan = retry_plan(runner, rec, role)
+        except Exception as exc:  # noqa: BLE001 — an unplannable run is failed, not stranded
+            log.warning("Cannot relaunch stranded run %s: %s", rec.id, exc)
+            return False
+        _RELAUNCHED.add(rec.id)
+    store_event = "relaunched queued run after dashboard restart (no worker thread survived)"
+    runner.store.append_event(rec.id, "reconcile", store_event)
+    runner.launch(rec, plan)
+    log.info("Relaunched stranded queued run %s", rec.id)
+    return True
+
+
 def _release_lease_with_retry(
     store: RunStore,
     rec: RunRecord,
@@ -418,8 +453,16 @@ def reconcile_orphaned_runs(
         if rec.machine and rec.machine != runner.machine:
             continue
 
+        # A run admitted on this node may still be waiting for its worker launch.
         if rec.id in live_workers:
             continue
+
+        if requeue_queued and rec.status == "queued" and not rec.started_at:
+            if rec.next_attempt_at:
+                continue  # backoff retry; rearm_pending_retries owns it
+            if relaunch_stranded_queued_run(runner, rec):
+                continue
+            # No role/plan any more: fall through and fail it visibly (never left stranded).
 
         # Preserve scheduled retries waiting for backoff (issue #1303, SC-A7)
         if rec.status == "queued" and rec.next_attempt_at:
