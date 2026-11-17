@@ -33,6 +33,7 @@ def _row(run: dict[str, Any]) -> dict[str, Any]:
         "target": target_ref,
         "status": run.get("status"),
         "started_at": run.get("started_at"),
+        "expires": run.get("expires"),
         "source": "staff",
     }
 

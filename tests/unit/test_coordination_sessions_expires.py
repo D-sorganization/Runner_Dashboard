@@ -6,8 +6,7 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 
 import pytest
-
-from coordination import hub_sessions, service
+from coordination import hub_sessions, service, staff_view
 
 
 @pytest.fixture(autouse=True)
@@ -19,7 +18,8 @@ def test_expired_staff_run_session_row_is_omitted_from_merge(monkeypatch: pytest
     expired = (datetime.now(UTC) - timedelta(minutes=1)).isoformat().replace("+00:00", "Z")
 
     async def staff_with_expired(repo=None):
-        return ([{"id": "gone", "repo": "Tools", "expires": expired, "started_at": expired}], [])
+        run = staff_view._row({"id": "gone", "repo": "Tools", "expires": expired, "started_at": expired})
+        return ([run], [])
 
     monkeypatch.setattr(
         service.board,
@@ -43,7 +43,8 @@ def test_long_running_staff_run_without_expires_stays_in_merge(monkeypatch: pyte
     started = (datetime.now(UTC) - timedelta(hours=9)).isoformat().replace("+00:00", "Z")
 
     async def staff_long_running(repo=None):
-        return ([{"id": "long", "repo": "Tools", "status": "running", "started_at": started}], [])
+        run = staff_view._row({"id": "long", "repo": "Tools", "status": "running", "started_at": started})
+        return ([run], [])
 
     monkeypatch.setattr(
         service.board,
