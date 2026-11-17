@@ -2064,6 +2064,20 @@
       },
       "CreateWorkItemRequest": {
         "properties": {
+          "artifact_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Refs"
+          },
           "expected_by": {
             "anyOf": [
               {
@@ -2074,6 +2088,18 @@
               }
             ],
             "title": "Expected By"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
           },
           "links": {
             "additionalProperties": {
@@ -2095,6 +2121,18 @@
               }
             ],
             "title": "Next Check At"
+          },
+          "output_format": {
+            "anyOf": [
+              {
+                "enum": ["pdf", "docx"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Format"
           },
           "owner_role": {
             "anyOf": [
@@ -4411,6 +4449,20 @@
       },
       "PatchWorkItemRequest": {
         "properties": {
+          "artifact_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Refs"
+          },
           "expected_by": {
             "anyOf": [
               {
@@ -4432,6 +4484,18 @@
               }
             ],
             "title": "Next Check At"
+          },
+          "output_format": {
+            "anyOf": [
+              {
+                "enum": ["pdf", "docx"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Format"
           },
           "owner_role": {
             "anyOf": [

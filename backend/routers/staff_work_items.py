@@ -11,7 +11,7 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import (
     APIRouter,
@@ -20,7 +20,7 @@ from fastapi import (
     Query,
     status,
 )
-from identity import Principal, format_caller, require_scope
+from identity import Principal, format_caller, require_any_scope, require_scope
 from pydantic import BaseModel, Field
 from staff.pagination import paginate_items
 from staff.work_items import (
@@ -33,6 +33,39 @@ log = logging.getLogger("dashboard.staff.work_items_router")
 router = APIRouter(tags=["staff-work-items"])
 
 
+def _is_broad_operator(caller: Principal) -> bool:
+    return bool({"admin", "staff.admin", "staff.chat"} & set(caller.scopes))
+
+
+def _require_item_owner(caller: Principal, item: Any) -> None:
+    if _is_broad_operator(caller):
+        return
+    if format_caller(caller) != item.requested_by:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "forbidden", "message": "Caller does not own this work item"},
+        )
+
+
+def _merge_report_links(
+    links: dict[str, list[str]],
+    output_format: Literal["pdf", "docx"] | None,
+    artifact_refs: list[str] | None,
+) -> dict[str, list[str]]:
+    merged = dict(links)
+    if output_format is not None:
+        merged["output_format"] = [output_format]
+    if artifact_refs is not None:
+        for ref in artifact_refs:
+            if ".." in ref or ref.startswith(("/", "\\")):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={"code": "invalid_artifact_ref", "message": "Unsafe artifact_ref"},
+                )
+        merged["artifact_refs"] = list(artifact_refs)
+    return merged
+
+
 class CreateWorkItemRequest(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     thread_id: str | None = None
@@ -40,6 +73,9 @@ class CreateWorkItemRequest(BaseModel):
     expected_by: str | None = None
     links: dict[str, list[str]] = Field(default_factory=dict)
     next_check_at: str | None = None
+    idempotency_key: str | None = Field(default=None, max_length=128)
+    output_format: Literal["pdf", "docx"] | None = None
+    artifact_refs: list[str] | None = None
 
 
 class PatchWorkItemRequest(BaseModel):
@@ -49,6 +85,8 @@ class PatchWorkItemRequest(BaseModel):
     next_check_at: str | None = None
     state: str | None = None
     reason: str | None = None
+    output_format: Literal["pdf", "docx"] | None = None
+    artifact_refs: list[str] | None = None
 
 
 @router.post(
@@ -58,11 +96,12 @@ class PatchWorkItemRequest(BaseModel):
 )
 async def create_work_item(
     body: CreateWorkItemRequest,
-    caller: Principal = Depends(require_scope("staff.chat")),
+    caller: Principal = Depends(require_any_scope("staff.chat", "staff.work_items.write")),
 ) -> dict[str, Any]:
     """Create and persist a new tracked work item."""
     store = get_work_item_store()
     caller_id = format_caller(caller)
+    links = _merge_report_links(body.links or {}, body.output_format, body.artifact_refs)
 
     item = store.create_work_item(
         title=body.title,
@@ -70,9 +109,15 @@ async def create_work_item(
         thread_id=body.thread_id or "",
         owner_role=body.owner_role or "",
         expected_by=body.expected_by,
-        links=body.links or {},
+        links=links,
         next_check_at=body.next_check_at,
+        idempotency_key=body.idempotency_key or "",
     )
+    if body.idempotency_key and item.title != body.title:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "idempotency_conflict", "message": "idempotency_key already used with different payload"},
+        )
     return item.to_dict()
 
 
@@ -96,7 +141,7 @@ async def list_work_items(
     store = get_work_item_store()
     caller_id = format_caller(caller)
 
-    req_by = caller_id if mine else requested_by
+    req_by = caller_id if (mine or not _is_broad_operator(caller)) else requested_by
 
     items = store.list_work_items(
         thread_id=thread_id,
@@ -139,7 +184,7 @@ async def list_work_items(
 )
 async def get_work_item(
     work_item_id: str,
-    _caller: Principal = Depends(require_scope("staff.read")),
+    caller: Principal = Depends(require_scope("staff.read")),
 ) -> dict[str, Any]:
     """Retrieve details for a single work item."""
     store = get_work_item_store()
@@ -149,6 +194,7 @@ async def get_work_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "work_item_not_found", "message": f"Work item '{work_item_id}' not found"},
         )
+    _require_item_owner(caller, item)
     return item.to_dict()
 
 
@@ -159,7 +205,7 @@ async def get_work_item(
 async def patch_work_item(
     work_item_id: str,
     body: PatchWorkItemRequest,
-    caller: Principal = Depends(require_scope("staff.chat")),
+    caller: Principal = Depends(require_any_scope("staff.chat", "staff.work_items.write")),
 ) -> dict[str, Any]:
     """Update work item metadata or advance its lifecycle state."""
     store = get_work_item_store()
@@ -171,6 +217,13 @@ async def patch_work_item(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "work_item_not_found", "message": f"Work item '{work_item_id}' not found"},
         )
+    _require_item_owner(caller, current)
+
+    merged_links = (
+        _merge_report_links(current.links, body.output_format, body.artifact_refs)
+        if (body.output_format is not None or body.artifact_refs is not None)
+        else None
+    )
 
     # 1. Handle state transition if requested
     if body.state and body.state != current.state:
@@ -188,13 +241,17 @@ async def patch_work_item(
             ) from exc
 
     # 2. Handle mutable metadata updates
-    if any(v is not None for v in (body.title, body.owner_role, body.expected_by, body.next_check_at)):
+    if any(
+        v is not None
+        for v in (body.title, body.owner_role, body.expected_by, body.next_check_at, merged_links)
+    ):
         store.update_work_item(
             work_item_id,
             title=body.title,
             owner_role=body.owner_role,
             expected_by=body.expected_by,
             next_check_at=body.next_check_at,
+            links=merged_links,
         )
 
     updated = store.get_work_item(work_item_id)

@@ -10389,14 +10389,20 @@ export interface components {
         };
         /** CreateWorkItemRequest */
         CreateWorkItemRequest: {
+            /** Artifact Refs */
+            artifact_refs?: string[] | null;
             /** Expected By */
             expected_by?: string | null;
+            /** Idempotency Key */
+            idempotency_key?: string | null;
             /** Links */
             links?: {
                 [key: string]: string[];
             };
             /** Next Check At */
             next_check_at?: string | null;
+            /** Output Format */
+            output_format?: ("pdf" | "docx") | null;
             /** Owner Role */
             owner_role?: string | null;
             /** Thread Id */
@@ -11403,10 +11409,14 @@ export interface components {
         };
         /** PatchWorkItemRequest */
         PatchWorkItemRequest: {
+            /** Artifact Refs */
+            artifact_refs?: string[] | null;
             /** Expected By */
             expected_by?: string | null;
             /** Next Check At */
             next_check_at?: string | null;
+            /** Output Format */
+            output_format?: ("pdf" | "docx") | null;
             /** Owner Role */
             owner_role?: string | null;
             /** Reason */
