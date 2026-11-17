@@ -24,10 +24,12 @@ def _offline_section() -> str:
     return " ".join(body.split())
 
 
-def test_offline_install_claim_is_qualified_by_a_populated_cache() -> None:
+def test_offline_install_claim_distinguishes_cache_from_registry_access() -> None:
     section = _offline_section()
-    first_sentence = section.split(". ", 1)[0]
-    assert "pre-populated npm cache" in first_sentence
+    assert "pre-populated npm cache" in section
+    assert "package tarball requests" in section
+    assert "default `audit=true`" in section
+    assert "not a guarantee of zero registry access" in section
     assert "alone, with no network access, on any fleet machine" not in section
 
 

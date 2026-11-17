@@ -171,10 +171,11 @@ complete.
 
 ### Deterministic / offline-constrained installs
 
-`npm ci` is expected to succeed from the committed `package-lock.json` without
-registry access only on a machine with a pre-populated npm cache that already
-holds every package in the lockfile. On a machine with an empty cache,
-`npm ci` needs the network. Run
+A pre-populated npm cache may satisfy package tarball requests for the
+committed `package-lock.json`; an empty cache needs the network to fetch them.
+However, plain `npm ci` uses npm's default `audit=true` and can still send an
+audit request to the configured registry, even with a warm cache. It is not a
+guarantee of zero registry access. Run
 `npm run verify-lockfile` (or `bash scripts/verify-lockfile.sh`) to check
 the lockfile locally: it does a clean-state `npm ci` (plain, not `--offline`,
 so anything missing from the cache is fetched), confirms `npm ls` reports no
