@@ -144,3 +144,42 @@ def test_project_disk_fill_honors_custom_threshold() -> None:
 
     assert projection.hours_to_full is not None
     assert projection.alert is True
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_project_disk_fill_rejects_non_finite_sample_values(bad: float) -> None:
+    samples = _samples([(120, 100_000.0), (60, bad), (0, 10_000.0)])
+
+    with pytest.raises(ValueError, match="finite"):
+        project_disk_fill("desk-1", samples)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), 0.0, -1.0])
+def test_project_disk_fill_rejects_invalid_threshold_hours(bad: float) -> None:
+    samples = _samples([(120, 100_000.0), (60, 50_000.0), (0, 10_000.0)])
+
+    with pytest.raises(ValueError, match="threshold_hours"):
+        project_disk_fill("desk-1", samples, threshold_hours=bad)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
+def test_is_anomalous_rejects_non_finite_value(bad: float) -> None:
+    baseline = Baseline(host="h", metric="m", mean=10.0, deviation=1.0, sample_count=10)
+
+    with pytest.raises(ValueError, match="finite"):
+        is_anomalous(baseline, bad)
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), 0.0, -2.0])
+def test_is_anomalous_rejects_invalid_z_threshold(bad: float) -> None:
+    baseline = Baseline(host="h", metric="m", mean=10.0, deviation=1.0, sample_count=10)
+
+    with pytest.raises(ValueError, match="z_threshold"):
+        is_anomalous(baseline, 100.0, z_threshold=bad)
+
+
+def test_valid_finite_inputs_still_work_after_validation() -> None:
+    baseline = Baseline(host="h", metric="m", mean=10.0, deviation=1.0, sample_count=10)
+
+    assert is_anomalous(baseline, 100.0) is True
+    assert is_anomalous(baseline, 10.5) is False
