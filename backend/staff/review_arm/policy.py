@@ -31,6 +31,8 @@ HELD_PRS = frozenset(
         ("AffineDrift", 5194),
         ("Gasification_Model", 5824),
         ("Gasification_Model", 5735),
+        ("Gasification_Model", 5898),
+        ("Gasification_Model", 5899),
         ("UpstreamDrift", 15172),
         ("UpstreamDrift", 10333),
     }
