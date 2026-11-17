@@ -67,6 +67,8 @@ class StaffRunner:
         self._sema = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
         self._provider_semas: dict[str, threading.BoundedSemaphore] = {}
         self._threads: list[threading.Thread] = []
+        # Rows admit() created whose launch() has not run yet; dispatch awaits I/O in between.
+        self._admitted: set[str] = set()
 
     def _get_provider_sema(self, provider: str) -> threading.BoundedSemaphore:
         with self._lock:
@@ -132,6 +134,8 @@ class StaffRunner:
             if (existing := self.store.get_run(rec.id)) is None:
                 raise
             return existing, plan, False
+        with self._lock:
+            self._admitted.add(rec.id)
         self.store.append_event(rec.id, "queued", f"queued on {self.machine} for {plan.provider}")
         handle_run_status_change(rec, "queued")
         return rec, plan, True
@@ -144,16 +148,18 @@ class StaffRunner:
         with self._lock:
             self._threads = [t for t in self._threads if t.is_alive()]
             self._threads.append(thread)
+            self._admitted.discard(rec.id)
         thread.start()
 
     def active_worker_run_ids(self) -> frozenset[str]:
-        """Snapshot runs with live in-process workers, including semaphore waiters."""
+        """Snapshot runs this process owns: live workers, semaphore waiters and admitted-not-yet-launched rows."""
         with self._lock:
-            return frozenset(
+            live = {
                 thread.name.removeprefix(_WORKER_THREAD_PREFIX)
                 for thread in self._threads
                 if thread.is_alive() and thread.name.startswith(_WORKER_THREAD_PREFIX)
-            )
+            }
+            return frozenset(live | self._admitted)
 
     def join_all(self, timeout: float = 10.0) -> list[str]:
         """Wait for launch()'s daemon threads to finish; return names still alive after timeout (#3778)."""

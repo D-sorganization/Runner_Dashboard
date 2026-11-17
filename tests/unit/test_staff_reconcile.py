@@ -5,8 +5,10 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
@@ -549,6 +551,42 @@ def test_restart_reconcile_skips_runs_with_live_workers(
     live = temp_store.get_run("run-live")
     assert live is not None
     assert live.status == "queued"
+
+
+def test_restart_reconcile_skips_admitted_runs_awaiting_launch(
+    temp_store: RunStore, staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A row admitted during startup but not yet launched (dispatch awaits I/O in between) is not orphaned."""
+    rec = RunRecord(
+        id="run-admitted",
+        role="worker",
+        provider="fake",
+        model=None,
+        status="queued",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="#100",
+        prompt="test prompt",
+        machine="test-node",
+    )
+    monkeypatch.setattr(staff_runner, "plan", lambda req: SimpleNamespace(role="worker", provider="fake"))
+    monkeypatch.setattr(runner_mod.ops, "new_run_record", lambda *args: rec)
+    monkeypatch.setattr(runner_mod, "handle_run_status_change", lambda *args: None)
+    _admitted, plan, created = staff_runner.admit(SimpleNamespace())
+    assert created
+
+    reconciled = reconcile_orphaned_runs(staff_runner, event_store=EventStore(), requeue_queued=True)
+    assert "run-admitted" not in reconciled
+    stored = temp_store.get_run("run-admitted")
+    assert stored is not None
+    assert stored.status == "queued"
+
+    started = threading.Event()
+    monkeypatch.setattr(staff_runner, "_worker", lambda *_args: started.set())
+    staff_runner.launch(rec, plan)
+    assert started.wait(5)
+    staff_runner.join_all(timeout=5)
+    assert "run-admitted" not in staff_runner.active_worker_run_ids()
 
 
 def test_rearm_pending_retries_schedules_due_attempt(
