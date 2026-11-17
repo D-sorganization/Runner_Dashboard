@@ -188,6 +188,16 @@ class Ledger:
             if data["run_id"] not in handled
         ]
 
+    def attempts_at(self, repo: str, pr: int, head: str) -> dict[str, int]:
+        """Our review runs at ``head``: still pending, finished with a verdict, failed."""
+        dispatched = [
+            d["run_id"] for kind, row_head, d in self._rows(repo, pr) if kind == "dispatch" and row_head == head
+        ]
+        outcomes = {d["run_id"]: str(d["outcome"]) for _r, _p, _h, d in self._kind_rows("handled")}
+        failed = sum(1 for r in dispatched if outcomes.get(r, "").endswith("no_verdict"))
+        done = sum(1 for r in dispatched if r in outcomes) - failed
+        return {"pending": len(dispatched) - done - failed, "done": done, "failed": failed}
+
     def mark_handled(self, run_id: str, *, outcome: str) -> None:
         self._append("*", 0, "*", "handled", {"run_id": run_id, "outcome": outcome})
 

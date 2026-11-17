@@ -157,3 +157,25 @@ def test_verdict_phase_runs_before_intake_and_updates_times(tmp_path: Path) -> N
     assert status["last_verdict"] == clock.now.isoformat()
     assert status["last_arm"] == clock.now.isoformat()
     assert status["counts"] == {"verdict_arm": 1}
+
+
+def test_settings_host_is_the_enable_flag_with_kill_switch() -> None:
+    from staff.review_arm.settings import Settings
+
+    assert Settings.from_env({"RD_REVIEW_ARM_HOST": "hub-a"}, machine="hub-a").enabled
+    assert not Settings.from_env({"RD_REVIEW_ARM_HOST": "hub-a"}, machine="worker-b").enabled
+    assert not Settings.from_env({"RD_REVIEW_ARM_HOST": "hub-a", "RD_REVIEW_ARM_ENABLED": "0"}, machine="hub-a").enabled
+    s = Settings.from_env(
+        {"RD_REVIEW_ARM_MAX_DISPATCH": "3", "RD_REVIEW_ARM_STALL_MINUTES": "45", "RD_REVIEW_ARM_LEDGER": "/tmp/x.db"},
+        machine="hub-a",
+    )
+    assert (s.max_dispatch, s.stall_minutes, str(s.ledger_path), s.dry_run) == (3, 45, "/tmp/x.db", True)
+
+
+def test_settings_reject_out_of_range_knobs() -> None:
+    import pytest
+    from staff.review_arm.settings import Settings
+
+    for env in ({"RD_REVIEW_ARM_STALL_MINUTES": "0"}, {"RD_REVIEW_ARM_MAX_DISPATCH": "-1"}):
+        with pytest.raises(ValueError):
+            Settings.from_env(env, machine="hub-a")

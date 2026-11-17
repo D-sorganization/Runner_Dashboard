@@ -169,3 +169,12 @@ def test_seeded_holds_include_box_static_holds() -> None:
 def test_recovery_ignores_prose_that_is_not_a_staff_result_line() -> None:
     out = extract_outcome("failed", "", _events("I will review approve #7 later\nno verdict"))
     assert out.kind == "failed_no_verdict"
+
+
+def test_attempts_at_head(ledger: Ledger) -> None:
+    for run in ("run-1", "run-2", "run-3"):
+        ledger.record_dispatch("Tools", 7, HEAD, run_id=run, round_no=1, provider="claude")
+    ledger.mark_handled("run-1", outcome="failed_no_verdict")
+    ledger.mark_handled("run-2", outcome="approve:arm:exact_head_approval")
+    assert ledger.attempts_at("Tools", 7, HEAD) == {"pending": 1, "done": 1, "failed": 1}
+    assert ledger.attempts_at("Tools", 7, NEW) == {"pending": 0, "done": 0, "failed": 0}
