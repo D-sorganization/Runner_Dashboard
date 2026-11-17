@@ -80,8 +80,8 @@ class Candidate:
             raise ValueError("repo must be a repository name")
         if type(self.pr) is not int or self.pr < 1 or not re.fullmatch(r"[0-9a-f]{40}", self.head_sha):
             raise ValueError("a candidate needs a positive PR and full lowercase SHA")
-        if self.prior_runs < 0:
-            raise ValueError("prior_runs must be nonnegative")
+        if type(self.prior_runs) is not int or self.prior_runs < 0:
+            raise ValueError("prior_runs must be a nonnegative integer")
 
 
 @dataclass(frozen=True)

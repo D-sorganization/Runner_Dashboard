@@ -80,6 +80,12 @@ def test_round_cap():
     assert decide(candidate(prior_runs=3)).action == "review"
 
 
+@pytest.mark.parametrize("prior_runs", [-1, 1.5, float("nan"), float("inf"), True])
+def test_prior_run_count_must_be_a_nonnegative_integer(prior_runs):
+    with pytest.raises(ValueError, match="prior_runs must be a nonnegative integer"):
+        candidate(prior_runs=prior_runs)
+
+
 def test_armed_skip():
     assert decide(candidate(armed=True)).reason == "already_armed"
 
