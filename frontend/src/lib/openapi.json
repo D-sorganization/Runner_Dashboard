@@ -3523,6 +3523,125 @@
         "title": "JobReleaseBody",
         "type": "object"
       },
+      "LaneCheckoutBody": {
+        "properties": {
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "lane_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lane Id"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "ttl_sec": {
+            "default": 3600,
+            "maximum": 14400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["session_id", "idempotency_key"],
+        "title": "LaneCheckoutBody",
+        "type": "object"
+      },
+      "LaneHeartbeatBody": {
+        "properties": {
+          "checkout_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Checkout Id",
+            "type": "string"
+          },
+          "fence_token": {
+            "minimum": 1.0,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "progress": {
+            "default": false,
+            "title": "Progress",
+            "type": "boolean"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "ttl_sec": {
+            "default": 3600,
+            "maximum": 14400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["checkout_id", "fence_token", "session_id"],
+        "title": "LaneHeartbeatBody",
+        "type": "object"
+      },
+      "LaneReleaseBody": {
+        "properties": {
+          "checkout_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Checkout Id",
+            "type": "string"
+          },
+          "fence_token": {
+            "minimum": 1.0,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "completed",
+            "maxLength": 128,
+            "title": "Reason",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": ["checkout_id", "fence_token", "session_id"],
+        "title": "LaneReleaseBody",
+        "type": "object"
+      },
       "LaunchAuthRequest": {
         "properties": {
           "provider": {
@@ -13899,6 +14018,173 @@
           }
         ],
         "summary": "Get Job Releases",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/lane-prompts/catalog": {
+      "get": {
+        "operationId": "get_lane_prompt_catalog_api_coordination_lane_prompts_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Lane Prompt Catalog Api Coordination Lane Prompts Catalog Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Lane Prompt Catalog",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/lane-prompts/checkout": {
+      "post": {
+        "operationId": "post_lane_prompt_checkout_api_coordination_lane_prompts_checkout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaneCheckoutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Lane Prompt Checkout Api Coordination Lane Prompts Checkout Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Lane Prompt Checkout",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/lane-prompts/heartbeat": {
+      "post": {
+        "operationId": "post_lane_prompt_heartbeat_api_coordination_lane_prompts_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaneHeartbeatBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Lane Prompt Heartbeat Api Coordination Lane Prompts Heartbeat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Lane Prompt Heartbeat",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/lane-prompts/release": {
+      "post": {
+        "operationId": "post_lane_prompt_release_api_coordination_lane_prompts_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaneReleaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Lane Prompt Release Api Coordination Lane Prompts Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Lane Prompt Release",
         "tags": ["coordination"]
       }
     },

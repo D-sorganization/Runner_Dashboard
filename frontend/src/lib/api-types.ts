@@ -1608,6 +1608,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/lane-prompts/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lane Prompt Catalog */
+        get: operations["get_lane_prompt_catalog_api_coordination_lane_prompts_catalog_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/coordination/lane-prompts/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Lane Prompt Checkout */
+        post: operations["post_lane_prompt_checkout_api_coordination_lane_prompts_checkout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/coordination/lane-prompts/heartbeat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Lane Prompt Heartbeat */
+        post: operations["post_lane_prompt_heartbeat_api_coordination_lane_prompts_heartbeat_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/coordination/lane-prompts/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Post Lane Prompt Release */
+        post: operations["post_lane_prompt_release_api_coordination_lane_prompts_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/messages": {
         parameters: {
             query?: never;
@@ -11043,6 +11111,55 @@ export interface components {
             /** Session */
             session: string;
         };
+        /** LaneCheckoutBody */
+        LaneCheckoutBody: {
+            /** Idempotency Key */
+            idempotency_key: string;
+            /** Lane Id */
+            lane_id?: string | null;
+            /** Role */
+            role?: string | null;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Ttl Sec
+             * @default 3600
+             */
+            ttl_sec: number;
+        };
+        /** LaneHeartbeatBody */
+        LaneHeartbeatBody: {
+            /** Checkout Id */
+            checkout_id: string;
+            /** Fence Token */
+            fence_token: number;
+            /**
+             * Progress
+             * @default false
+             */
+            progress: boolean;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Ttl Sec
+             * @default 3600
+             */
+            ttl_sec: number;
+        };
+        /** LaneReleaseBody */
+        LaneReleaseBody: {
+            /** Checkout Id */
+            checkout_id: string;
+            /** Fence Token */
+            fence_token: number;
+            /**
+             * Reason
+             * @default completed
+             */
+            reason: string;
+            /** Session Id */
+            session_id: string;
+        };
         /** LaunchAuthRequest */
         LaunchAuthRequest: {
             /**
@@ -16746,6 +16863,133 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lane_prompt_catalog_api_coordination_lane_prompts_catalog_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    post_lane_prompt_checkout_api_coordination_lane_prompts_checkout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LaneCheckoutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_lane_prompt_heartbeat_api_coordination_lane_prompts_heartbeat_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LaneHeartbeatBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_lane_prompt_release_api_coordination_lane_prompts_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LaneReleaseBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

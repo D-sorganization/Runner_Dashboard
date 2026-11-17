@@ -5141,3 +5141,7 @@ scheduled-surplus trim is logged as such rather than "host overloaded".
 ### Scoped `agent-smithers` Principal & Owner-Enforced Work Items
 
 `config/agent_principals.yml` updates `agent-smithers` to `kind: codex` with narrow `staff.read` and `staff.work_items.write` scopes. `backend/staff/work_items.py` and `backend/routers/staff_work_items.py` add per-principal `idempotency_key` deduplication (`409` on payload conflict), server-derived owner enforcement on `LIST`/`GET`/`PATCH` (`403` on cross-owner), and bounded `output_format` (`pdf`/`docx`) + traversal-checked `artifact_refs` metadata.
+
+### Durable Lane-Prompt Checkout & Fencing (PR #4549)
+
+`backend/coordination/lane_prompts.py` adds `LanePromptStore` (SQLite WAL with `BEGIN IMMEDIATE`, idempotency keys, monotonically increasing `fence_token`, and separate heartbeat/progress timestamps) exposed at `/api/coordination/lane-prompts/{catalog,checkout,heartbeat,release}` in `backend/routers/coordination.py`.
