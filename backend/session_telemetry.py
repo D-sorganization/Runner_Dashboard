@@ -42,6 +42,25 @@ def calculate_percentile(values: list[float], pct: float) -> float:
     return float(sorted_v[idx] + weight * (sorted_v[next_idx] - sorted_v[idx]))
 
 
+def normalize_recorded_at(value: Any) -> str:
+    """Return ``value`` as a UTC-aware ISO-8601 string (naive means UTC).
+
+    Post: always parseable and in one canonical form, so string comparison
+    against ``datetime.isoformat()`` cutoffs orders by instant. Missing or
+    unparseable input falls back to the current time.
+    """
+    text = str(value or "").strip()
+    if text:
+        try:
+            parsed = datetime.fromisoformat(text.replace("Z", "+00:00").replace("z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=UTC)
+            return parsed.astimezone(UTC).isoformat()
+        except (OverflowError, ValueError):
+            pass
+    return datetime.now(UTC).isoformat()
+
+
 def evaluate_alerts(wakeups_after_pr: int, cost_after_pr_usd: float) -> tuple[bool, list[str]]:
     """Check post-PR thresholds and return (is_alert, alert_reasons)."""
     reasons: list[str] = []
@@ -104,7 +123,7 @@ class SessionRecord:
         pre_push = data.get("pre_push_duration_s")
         pre_push_val = float(pre_push) if pre_push is not None else None
 
-        recorded_at = str(data.get("recorded_at", "")).strip() or datetime.now(UTC).isoformat()
+        recorded_at = normalize_recorded_at(data.get("recorded_at"))
         is_alert, alert_reasons = evaluate_alerts(wakeups_after_pr, cost_after_pr_usd)
 
         return cls(
