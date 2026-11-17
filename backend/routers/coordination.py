@@ -212,6 +212,8 @@ class LaneCheckoutBody(BaseModel):
     idempotency_key: str = Field(min_length=1, max_length=128)
     lane_id: str | None = Field(default=None, max_length=64)
     role: str | None = Field(default=None, max_length=64)
+    provider: str | None = Field(default=None, max_length=32)
+    host: str | None = Field(default=None, max_length=64)
     ttl_sec: int = Field(default=3600, ge=60, le=14400)
 
 
@@ -272,6 +274,8 @@ async def post_lane_prompt_checkout(body: LaneCheckoutBody, caller: Caller = WRI
             idempotency_key=body.idempotency_key,
             lane_id=body.lane_id,
             role=body.role,
+            provider=body.provider,
+            host=body.host,
             ttl_sec=body.ttl_sec,
         )
     except lane_prompts_mod.LaneConflictError as exc:

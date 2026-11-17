@@ -15,6 +15,58 @@ _DEFAULT_TTL_SEC = 3600
 _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
 
+_PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini")
+_HOST_ALIASES = {
+    "deskcomputer": "desk",
+    "desk": "desk",
+    "oglaptop": "oglaptop",
+    "og": "oglaptop",
+    "controltower": "ct",
+    "ct": "ct",
+    "brick": "brick",
+}
+
+
+def _infer_provider(session_id: str, explicit_provider: str | None) -> str | None:
+    raw = (explicit_provider or "").strip().lower()
+    if raw:
+        return "agy" if raw in ("gemini", "antigravity") else raw
+    sid = session_id.strip().lower()
+    for prefix in _PROVIDER_PREFIXES:
+        if sid.startswith(f"{prefix}-") or sid == prefix:
+            return "agy" if prefix == "gemini" else prefix
+    return None
+
+
+def _normalize_host(host: str | None) -> str | None:
+    if not host:
+        return None
+    key = host.strip().lower()
+    return _HOST_ALIASES.get(key, key)
+
+
+def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
+    lid = lane_id.strip().lower()
+    for prefix in _PROVIDER_PREFIXES:
+        if lid.startswith(f"{prefix}-"):
+            return "agy" if prefix == "gemini" else prefix
+    model = (subagent_model or "").strip().lower()
+    if model.startswith("claude-"):
+        return "claude"
+    if model.startswith("gemini-"):
+        return "agy"
+    if model.startswith("gpt-"):
+        return "codex"
+    return None
+
+
+def _lane_host(lane_id: str) -> str | None:
+    tokens = lane_id.strip().lower().split("-")
+    for tok in tokens[1:]:
+        if tok in _HOST_ALIASES:
+            return _HOST_ALIASES[tok]
+    return None
+
 
 class LaneConflictError(RuntimeError):
     """Raised when a lane is already actively checked out or none are eligible."""
@@ -213,6 +265,8 @@ class LanePromptStore:
         idempotency_key: str,
         lane_id: str | None = None,
         role: str | None = None,
+        provider: str | None = None,
+        host: str | None = None,
         ttl_sec: int = _DEFAULT_TTL_SEC,
         now: float | None = None,
     ) -> dict[str, Any]:
@@ -287,10 +341,24 @@ class LanePromptStore:
                 if role is not None:
                     query += " AND a.role = ?"
                     params.append(role)
-                query += " ORDER BY a.lane_id LIMIT 1"
-                target = conn.execute(query, params).fetchone()
-                if target is None:
+                query += " ORDER BY a.lane_id"
+                candidates = conn.execute(query, params).fetchall()
+                want_provider = _infer_provider(session_id, provider)
+                want_host = _normalize_host(host)
+                filtered: list[sqlite3.Row] = []
+                for cand in candidates:
+                    cand_prov = _lane_provider(cand["lane_id"], cand["subagent_model"])
+                    if want_provider is not None and cand_prov is not None and cand_prov != want_provider:
+                        continue
+                    cand_host = _lane_host(cand["lane_id"])
+                    if want_host is not None and cand_host is not None and cand_host != want_host:
+                        continue
+                    filtered.append(cand)
+                if want_host is not None:
+                    filtered.sort(key=lambda r: (0 if _lane_host(r["lane_id"]) == want_host else 1, r["lane_id"]))
+                if not filtered:
                     raise LaneConflictError("No eligible unclaimed lane available")
+                target = filtered[0]
 
             fence_row = conn.execute(
                 "SELECT COALESCE(MAX(fence_token), 0) + 1 AS next_fence FROM lane_checkouts WHERE lane_id = ?",
