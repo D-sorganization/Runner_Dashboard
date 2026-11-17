@@ -192,8 +192,9 @@ npm cache verify
 
 # Copy that machine's npm cache directory (see `npm config get cache`) to
 # the constrained machine, or run `npm ci` there first over a working
-# network link. Once the cache is warm, `npm ci --prefer-offline` (or
-# plain `npm ci`) will succeed without depending on registry latency.
+# network link. Once the cache is warm, `npm ci --prefer-offline` (or plain
+# `npm ci`) can avoid registry access for cached package tarballs. A warm cache
+# does not stop the default npm audit request from reaching the registry.
 ```
 
 This priming step is a manual workaround, not an automated offline mirror.

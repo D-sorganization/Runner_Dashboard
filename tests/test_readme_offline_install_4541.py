@@ -31,6 +31,8 @@ def test_offline_install_claim_distinguishes_cache_from_registry_access() -> Non
     assert "default `audit=true`" in section
     assert "not a guarantee of zero registry access" in section
     assert "alone, with no network access, on any fleet machine" not in section
+    assert "default npm audit request from reaching the registry" in section
+    assert "will succeed without depending on registry latency" not in section
 
 
 def test_readme_says_an_empty_cache_needs_the_network() -> None:

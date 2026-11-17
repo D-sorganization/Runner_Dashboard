@@ -1,4 +1,4 @@
 ---
 issue: 4541
-summary: "README: offline npm ci wording requires a pre-populated npm cache; #1085/#1129 cited as closed"
+summary: "README: distinguish npm cache from audit registry access; #1085/#1129 cited as closed"
 ---
