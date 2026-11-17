@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import logging
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -810,7 +809,7 @@ def test_cli_user_token_without_flag_proceeds_silently(
 
 
 # --------------------------------------------------------------------------
-# #1968: arming refused because the PR is already clean -> merge directly
+# #1968 superseded by #4249: a clean PR is refused, never merged or enqueued
 # --------------------------------------------------------------------------
 
 CLEAN_STATUS_422 = "gh: Pull request is in clean status, so auto-merge cannot be enabled (HTTP 422)"
@@ -893,37 +892,49 @@ class CleanGh(CloudGh):
         return [c for c in self.calls if any(p.endswith("/pulls/7/merge") for p in c)]
 
 
-def test_clean_status_422_merges_directly_with_sha_and_method() -> None:
-    fake = CleanGh()
+def _merge_api_calls(fake: CleanGh) -> list[list[str]]:
+    """Every call that would merge or enqueue instead of arming auto-merge."""
+    bad: list[list[str]] = []
+    for call in fake.calls:
+        text = " ".join(call)
+        if any(p.endswith("/merge") for p in call) and "PUT" in call:
+            bad.append(call)
+        elif "mergePullRequest" in text or "enqueuePullRequest" in text or "--admin" in call:
+            bad.append(call)
+        elif call[:3] == ["gh", "pr", "merge"] and "--auto" not in call:
+            bad.append(call)
+    return bad
+
+
+@pytest.mark.parametrize("queue", [False, True])
+def test_clean_status_422_is_refused_never_merged_or_enqueued(queue: bool) -> None:
+    """Arm-only (#4249): a clean PR is reported not armed; no merge/enqueue fallback."""
+    fake = CleanGh(queue=queue)
     result = automerge_guard.arm_auto_merge("o/r", 7, strategy="rebase", runner=fake)
     assert result.armed is False
-    assert result.merged is True
-    assert "already clean" in result.detail
-    assert len(fake.direct_calls) == 1
-    call = fake.direct_calls[0]
-    assert call[:4] == ["gh", "api", "-X", "PUT"]
-    assert "merge_method=rebase" in call
-    assert f"sha={HEAD_SHA}" in call
-    assert not any("admin" in part for part in call)
-
-
-def test_clean_status_merge_is_verified_via_merged_flag() -> None:
-    fake = CleanGh(merged="false")
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
     assert result.merged is False
-    assert "merged" in result.reason() and "not" in result.reason()
-    assert len(fake.direct_calls) == 1
+    assert "never merges or enqueues" in result.detail
+    assert fake.direct_calls == []
+    assert _graphql_calls(fake) == []
+    assert _merge_api_calls(fake) == []
 
 
-@pytest.mark.parametrize("status", ["405", "409", "422"])
-def test_clean_status_merge_refused_reports_reason_without_retry(status: str) -> None:
-    fake = CleanGh(direct_returncode=1, direct_stderr=f"Head branch was modified (HTTP {status})")
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.merged is False
-    assert result.armed is False
-    assert "Head branch was modified" in result.detail
-    assert len(fake.direct_calls) == 1
-    assert len(fake.rest_calls) == 1
+@pytest.mark.parametrize(
+    "fake_factory",
+    [
+        lambda: CloudGh(),
+        lambda: CleanGh(),
+        lambda: CleanGh(queue=True),
+        lambda: CleanGh(rules_fail=True),
+        lambda: CleanGh(merged="false"),
+        lambda: CleanGh(arm_stderr="Auto merge is not allowed for this repository (422)"),
+    ],
+)
+@pytest.mark.parametrize("delete_branch", [False, True])
+def test_arm_auto_merge_never_calls_a_merge_api(fake_factory: Callable[[], CloudGh], delete_branch: bool) -> None:
+    fake = fake_factory()
+    automerge_guard.arm_auto_merge("o/r", 7, delete_branch=delete_branch, runner=fake)
+    assert _merge_api_calls(fake) == []
 
 
 def test_other_422_keeps_current_behaviour() -> None:
@@ -942,128 +953,30 @@ def test_held_pr_is_never_merged_directly() -> None:
     assert fake.direct_calls == []
 
 
-ENQUEUE_HINT = "gh pr merge 7 --repo o/r --squash"
-
-
 def _graphql_calls(fake: CleanGh) -> list[list[str]]:
     return [c for c in fake.calls if "graphql" in c]
 
 
-def test_queue_present_enqueues_with_expected_head_and_never_puts_merge() -> None:
-    fake = CleanGh(queue=True)
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.armed is True
-    assert result.merged is False
-    assert "enqueued" in result.detail
-    gql = _graphql_calls(fake)
-    assert len(gql) == 1
-    text = " ".join(gql[0])
-    assert "enqueuePullRequest" in text and "expectedHeadOid" in text
-    assert f"oid={HEAD_SHA}" in gql[0] and "id=PR_node7" in gql[0]
-    assert fake.direct_calls == []
-
-
-def test_queue_present_graphql_failure_never_direct_merges() -> None:
-    fake = CleanGh(queue=True, graphql_fail=True)
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.armed is False and result.merged is False
-    assert ENQUEUE_HINT in result.detail
-    assert fake.direct_calls == []
-    assert len(_graphql_calls(fake)) == 1
-
-
 def test_rules_lookup_failure_is_treated_as_queue_present() -> None:
     fake = CleanGh(rules_fail=True)
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    result = automerge_guard.enqueue_stalled_pr("o/r", 7, runner=fake)
     assert result.merged is False
     assert fake.direct_calls == []
     assert len(_graphql_calls(fake)) == 1
-
-
-def test_no_queue_uses_direct_merge_path() -> None:
-    fake = CleanGh(queue=False)
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.merged is True
-    assert _graphql_calls(fake) == []
-
-
-def test_enqueue_hint_names_the_repo() -> None:
-    fake = CleanGh(queue=True, graphql_fail=True)
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert "gh pr merge 7 --repo o/r --squash" in result.detail
 
 
 def test_rules_lookup_is_paginated_at_100() -> None:
     fake = CleanGh(queue_on_later_page=True)
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.merged is False, "a queue on page 2 must not be missed"
+    result = automerge_guard.enqueue_stalled_pr("o/r", 7, runner=fake)
+    assert result.armed is True, "a queue on page 2 must not be missed"
     assert fake.direct_calls == []
-    assert len(_graphql_calls(fake)) == 1
 
 
 def test_rules_later_page_failure_fails_closed() -> None:
     fake = CleanGh(queue_on_later_page=True, later_page_fails=True)
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
+    result = automerge_guard.enqueue_stalled_pr("o/r", 7, runner=fake)
     assert result.merged is False
     assert fake.direct_calls == []
-
-
-def _ref_deletes(fake: CleanGh) -> list[list[str]]:
-    return [c for c in fake.calls if any("/git/refs/heads/" in p for p in c)]
-
-
-def test_clean_fallback_honours_delete_branch() -> None:
-    fake = CleanGh()
-    result = automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
-    assert result.merged is True
-    deletes = _ref_deletes(fake)
-    assert len(deletes) == 1
-    assert deletes[0] == [
-        "gh",
-        "api",
-        "-X",
-        "DELETE",
-        "repos/o/r/git/refs/heads/feat/x",
-    ]
-
-
-def test_clean_fallback_percent_encodes_the_head_ref() -> None:
-    # `gh api` treats `#` as a URL fragment: an unencoded `feat#one` would send
-    # DELETE .../heads/feat and delete an unrelated branch. `/` stays literal.
-    fake = CleanGh()
-    fake.pull["head"]["ref"] = "feat/x#one?y%z"  # type: ignore[index]
-    automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
-    deletes = _ref_deletes(fake)
-    assert len(deletes) == 1
-    assert deletes[0][-1] == "repos/o/r/git/refs/heads/feat/x%23one%3Fy%25z"
-
-
-def test_clean_fallback_does_not_delete_without_the_flag() -> None:
-    fake = CleanGh()
-    automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert _ref_deletes(fake) == []
-
-
-def test_clean_fallback_never_deletes_a_fork_branch() -> None:
-    fake = CleanGh()
-    fake.pull["head"]["repo"] = {"full_name": "fork/r"}  # type: ignore[index]
-    result = automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
-    assert result.merged is True
-    assert _ref_deletes(fake) == []
-
-
-def test_clean_fallback_delete_failure_warns_but_stays_merged() -> None:
-    fake = CleanGh(ref_delete_returncode=1)
-    result = automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
-    assert result.merged is True
-    assert "branch not deleted" in result.detail
-
-
-def test_clean_fallback_does_not_delete_when_merge_unverified() -> None:
-    fake = CleanGh(merged="false")
-    result = automerge_guard.arm_auto_merge("o/r", 7, delete_branch=True, runner=fake)
-    assert result.merged is False
-    assert _ref_deletes(fake) == []
 
 
 def test_cli_reports_merged_and_exits_zero(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1155,8 +1068,7 @@ def _independent_fix_needed_comment(sha: str = HEAD_SHA) -> dict[str, str | dict
 def _independent_pass_comment(sha: str = HEAD_SHA) -> dict[str, str | dict[str, str]]:
     return {
         "body": (
-            "### Independent Exact-Head Acceptance Review (`seat` / `antigravity-Brick`) — "
-            f"Verdict: `PASS @{sha}`"
+            f"### Independent Exact-Head Acceptance Review (`seat` / `antigravity-Brick`) — Verdict: `PASS @{sha}`"
         ),
         "created_at": "2026-11-10T08:00:00Z",
         "user": {"login": "d-sorg-runner-dashboard[bot]"},
@@ -1175,7 +1087,7 @@ def test_independent_fix_needed_at_head_holds_arm_and_merge() -> None:
     assert result.armed is False and result.merged is False
 
 
-def test_independent_pass_at_head_allows_clean_direct_merge() -> None:
+def test_independent_pass_at_head_clears_hold_but_clean_pr_is_never_merged() -> None:
     fake = CleanGh(
         queue=False,
         labels=["agent-model:agy-desk-001"],
@@ -1183,11 +1095,11 @@ def test_independent_pass_at_head_allows_clean_direct_merge() -> None:
     )
     assert automerge_guard.evaluate_hold("o/r", 7, runner=fake).held is False
     result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.merged is True
-    assert any("/merge" in " ".join(call) for call in fake.direct_calls)
+    assert result.merged is False
+    assert fake.direct_calls == []
 
 
-def test_stale_fix_needed_does_not_block_clean_merge_when_pass_at_head() -> None:
+def test_stale_fix_needed_does_not_hold_when_pass_at_head() -> None:
     other = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
     fake = CleanGh(
         queue=False,
@@ -1199,7 +1111,8 @@ def test_stale_fix_needed_does_not_block_clean_merge_when_pass_at_head() -> None
     )
     assert automerge_guard.evaluate_hold("o/r", 7, runner=fake).held is False
     result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.merged is True
+    assert result.merged is False
+    assert "never merges" in result.detail
 
 
 def test_arm_disarms_when_hold_at_arm_time(
@@ -1222,160 +1135,6 @@ def test_disarm_if_held_author_bot_path_disarms_armed_pr() -> None:
     verdict = automerge_guard.disarm_if_held("o/r", 7, runner=fake)
     assert verdict.held
     assert any("DELETE" in call and "/ccr/auto_merge" in " ".join(call) for call in fake.calls)
-
-
-def test_merge_path_disarms_when_fix_needed_arrives_before_direct_merge(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake = CleanGh(queue=False, labels=["agent-model:agy-desk-001"])
-    real_eval = automerge_guard.evaluate_hold
-    calls = {"n": 0}
-
-    def flaky_eval(repo: str, pr: int, *, runner: object | None = None, **kwargs: object) -> automerge_guard.HoldVerdict:
-        calls["n"] += 1
-        if calls["n"] == 1:
-            return automerge_guard.HoldVerdict(
-                False,
-                head_sha=HEAD_SHA,
-                base_ref="main",
-                node_id="PR_node7",
-                head_ref="feat/x",
-                head_in_base_repo=True,
-            )
-        return real_eval(repo, pr, runner=fake)
-
-    fake.issue_comments = [_independent_fix_needed_comment()]
-    monkeypatch.setattr(automerge_guard, "evaluate_hold", flaky_eval)
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.merged is False
-    assert "refused" in result.detail
-    assert any("DELETE" in call and "/ccr/auto_merge" in " ".join(call) for call in fake.calls)
-
-
-def test_in_flight_fix_needed_after_merge_put_blocks_before_merged(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fake = CleanGh(queue=False, merged="false", labels=["agent-model:agy-desk-001"])
-    fake.issue_comments = [_independent_pass_comment()]
-
-    real_disarm = automerge_guard.disarm_if_held
-    calls = {"n": 0}
-
-    def _clear_verdict() -> automerge_guard.HoldVerdict:
-        return automerge_guard.HoldVerdict(
-            False,
-            head_sha=HEAD_SHA,
-            base_ref="main",
-            node_id="PR_node7",
-            head_ref="feat/x",
-            head_in_base_repo=True,
-        )
-
-    def flaky_disarm(repo: str, pr: int, *, runner: object | None = None) -> automerge_guard.HoldVerdict:
-        calls["n"] += 1
-        if calls["n"] < 3:
-            return _clear_verdict()
-        fake.issue_comments = [_independent_fix_needed_comment()]
-        return real_disarm(repo, pr, runner=fake)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(automerge_guard, "disarm_if_held", flaky_disarm)
-    result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.merged is False
-    assert "in-flight verdict" in result.detail or "refused" in result.detail
-
-
-def test_in_flight_hold_after_merge_already_completed_is_nonzero_exit(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    fake = CleanGh(queue=False, merged="true", labels=["agent-model:agy-desk-001"])
-    fake.issue_comments = [_independent_pass_comment()]
-
-    real_disarm = automerge_guard.disarm_if_held
-    calls = {"n": 0}
-
-    def _clear_verdict() -> automerge_guard.HoldVerdict:
-        return automerge_guard.HoldVerdict(
-            False,
-            head_sha=HEAD_SHA,
-            base_ref="main",
-            node_id="PR_node7",
-            head_ref="feat/x",
-            head_in_base_repo=True,
-        )
-
-    def flaky_disarm(repo: str, pr: int, *, runner: object | None = None) -> automerge_guard.HoldVerdict:
-        calls["n"] += 1
-        if calls["n"] < 3:
-            return _clear_verdict()
-        fake.issue_comments = [_independent_fix_needed_comment()]
-        return real_disarm(repo, pr, runner=fake)  # type: ignore[arg-type]
-
-    monkeypatch.setattr(automerge_guard, "disarm_if_held", flaky_disarm)
-    with caplog.at_level(logging.ERROR):
-        result = automerge_guard.arm_auto_merge("o/r", 7, runner=fake)
-    assert result.merged is True
-    assert result.in_flight_hold_after_completion is True
-    assert "IN-FLIGHT HOLD" in result.detail
-    assert any("IN-FLIGHT HOLD" in rec.message for rec in caplog.records)
-
-
-def test_in_flight_hold_after_enqueue_succeeds_exits_five_on_arm_cli(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    fake = CleanGh(queue=True, labels=["agent-model:agy-desk-001"])
-    fake.issue_comments = [_independent_pass_comment()]
-    real_arm = automerge_guard.arm_auto_merge
-    real_disarm = automerge_guard.disarm_if_held
-    calls = {"n": 0}
-    captured: dict[str, automerge_guard.ArmResult] = {}
-
-    def _clear_verdict() -> automerge_guard.HoldVerdict:
-        return automerge_guard.HoldVerdict(
-            False,
-            head_sha=HEAD_SHA,
-            base_ref="main",
-            node_id="PR_node7",
-            head_ref="feat/x",
-            head_in_base_repo=True,
-        )
-
-    def flaky_disarm(repo: str, pr: int, *, runner: object | None = None) -> automerge_guard.HoldVerdict:
-        calls["n"] += 1
-        if calls["n"] < 3:
-            return _clear_verdict()
-        fake.issue_comments = [_independent_fix_needed_comment()]
-        return real_disarm(repo, pr, runner=fake)  # type: ignore[arg-type]
-
-    def arm_via_fake(*args: object, **kwargs: object) -> automerge_guard.ArmResult:
-        kwargs["runner"] = fake  # type: ignore[typeddict-unknown-key]
-        result = real_arm(*args, **kwargs)  # type: ignore[arg-type]
-        captured["result"] = result
-        return result
-
-    monkeypatch.setattr(automerge_guard, "disarm_if_held", flaky_disarm)
-    monkeypatch.setattr(automerge_guard, "arm_auto_merge", arm_via_fake)
-    with caplog.at_level(logging.ERROR):
-        code = automerge_guard._arm_cli(
-            "o/r",
-            7,
-            strategy="squash",
-            delete_branch=False,
-            arm_tier="agent",
-            dispatch_kind="",
-            repo_root=".",
-        )
-    result = captured["result"]
-    assert result.in_flight_hold_after_completion is True
-    assert result.armed is False
-    assert "enqueue completed" in result.detail
-    assert "IN-FLIGHT HOLD" in result.detail
-    assert any("IN-FLIGHT HOLD" in rec.message and "enqueue" in rec.message for rec in caplog.records)
-    assert code == automerge_guard.EXIT_IN_FLIGHT_HOLD
-    assert "IN-FLIGHT HOLD" in capsys.readouterr().out
-    assert len(_graphql_calls(fake)) == 1
 
 
 def test_arm_cli_in_flight_hold_after_completion_exits_five(
@@ -1437,9 +1196,12 @@ def test_no_guard_function_exceeds_the_consumer_function_budget() -> None:
 
 
 def test_arm_cli_refuses_when_match_head_commit_does_not_match(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setattr(automerge_guard, "_current_head_sha", lambda *_a, **_k: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+    monkeypatch.setattr(
+        automerge_guard, "_current_head_sha", lambda *_a, **_k: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    )
     code = automerge_guard._arm_cli(
         "o/r",
         5,
