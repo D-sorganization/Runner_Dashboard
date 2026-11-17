@@ -1644,10 +1644,7 @@ export interface paths {
     };
     "/api/coordination/lane-prompts/health": {
         parameters: {
-            query?: {
-                stall_heartbeat_sec?: number;
-                stall_progress_sec?: number;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -16918,17 +16915,18 @@ export interface operations {
             };
         };
     };
-    get_lane_prompt_health_api_coordination_lane_prompts_health_get: {
+    post_lane_prompt_checkout_api_coordination_lane_prompts_checkout_post: {
         parameters: {
-            query?: {
-                stall_heartbeat_sec?: number;
-                stall_progress_sec?: number;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LaneCheckoutBody"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -16952,18 +16950,18 @@ export interface operations {
             };
         };
     };
-    post_lane_prompt_checkout_api_coordination_lane_prompts_checkout_post: {
+    get_lane_prompt_health_api_coordination_lane_prompts_health_get: {
         parameters: {
-            query?: never;
+            query?: {
+                stall_heartbeat_sec?: number;
+                stall_progress_sec?: number;
+                expired_window_sec?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LaneCheckoutBody"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

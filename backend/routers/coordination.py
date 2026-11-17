@@ -250,12 +250,14 @@ async def get_lane_prompt_catalog(
 async def get_lane_prompt_health(
     stall_heartbeat_sec: int = 900,
     stall_progress_sec: int = 1800,
+    expired_window_sec: int = 86400,
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
     return await run_in_threadpool(
         lane_prompts_mod.get_lane_prompt_store().health_summary,
         stall_heartbeat_sec=stall_heartbeat_sec,
         stall_progress_sec=stall_progress_sec,
+        expired_window_sec=expired_window_sec,
     )
 
 

@@ -128,3 +128,70 @@ def test_health_endpoint_returns_summary(tmp_path: Path, monkeypatch) -> None:
     body = resp.json()
     assert body["needs_attention"] is True
     assert [x["lane_id"] for x in body["idle_lanes"]] == ["lane-idle-1"]
+
+
+def test_recovered_and_disabled_lanes_clear_expired_attention(tmp_path: Path) -> None:
+    """Recovered or disabled lanes must not keep needs_attention=True from historical expirations."""
+    from coordination.lane_prompts import LanePromptStore
+
+    store = LanePromptStore(db_path=tmp_path / "lane_prompts.sqlite3")
+    base = 1_700_000_000.0
+    store.register_assignment(
+        lane_id="lane-recover",
+        role="backlog-completion",
+        repos=["Runner_Dashboard"],
+        release_sha="abc123",
+        package_hash="pkg123",
+        subagent_model="",
+        max_children=0,
+        now=base,
+    )
+    # Checkout expires at base + 60.
+    store.checkout(
+        session_id="codex-old",
+        principal="loopback-dev",
+        idempotency_key="k-old",
+        lane_id="lane-recover",
+        ttl_sec=60,
+        now=base,
+    )
+    # Next day, a fresh healthy checkout replaces it.
+    day1 = base + 86400
+    fresh = store.checkout(
+        session_id="codex-new",
+        principal="loopback-dev",
+        idempotency_key="k-new",
+        lane_id="lane-recover",
+        ttl_sec=3600,
+        now=day1,
+    )
+    summary_recovered = store.health_summary(now=day1 + 100)
+    assert [x["lane_id"] for x in summary_recovered["healthy_active"]] == ["lane-recover"]
+    assert summary_recovered["expired_recent"] == []
+    assert summary_recovered["idle_lanes"] == []
+    assert summary_recovered["needs_attention"] is False
+
+    # Release and disable the lane: day-30 check must stay clean.
+    store.release(
+        checkout_id=fresh["checkout_id"],
+        fence_token=fresh["fence_token"],
+        session_id="codex-new",
+        reason="done",
+        now=day1 + 200,
+    )
+    store.register_assignment(
+        lane_id="lane-recover",
+        role="backlog-completion",
+        repos=["Runner_Dashboard"],
+        release_sha="abc123",
+        package_hash="pkg123",
+        subagent_model="",
+        max_children=0,
+        enabled=False,
+        now=day1 + 300,
+    )
+    day30 = base + 30 * 86400
+    summary_disabled = store.health_summary(now=day30)
+    assert summary_disabled["expired_recent"] == []
+    assert summary_disabled["idle_lanes"] == []
+    assert summary_disabled["needs_attention"] is False

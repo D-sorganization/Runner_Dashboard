@@ -14055,6 +14055,16 @@
               "title": "Stall Progress Sec",
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "expired_window_sec",
+            "required": false,
+            "schema": {
+              "default": 86400,
+              "title": "Expired Window Sec",
+              "type": "integer"
+            }
           }
         ],
         "responses": {

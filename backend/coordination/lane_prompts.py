@@ -431,12 +431,14 @@ class LanePromptStore:
         *,
         stall_heartbeat_sec: int = 900,
         stall_progress_sec: int = 1800,
+        expired_window_sec: int = 86400,
         now: float | None = None,
     ) -> dict[str, Any]:
-        """Classify active, stalled, expired, and unassigned idle lanes."""
+        """Classify active, stalled, unresolved-expired, and unassigned idle lanes."""
         ts = time.time() if now is None else float(now)
         hb_thresh = max(60, int(stall_heartbeat_sec))
         prog_thresh = max(60, int(stall_progress_sec))
+        exp_window = max(60, int(expired_window_sec))
 
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
             conn.execute(
@@ -446,15 +448,27 @@ class LanePromptStore:
             assignments = conn.execute(
                 "SELECT lane_id, role, task_focus, enabled FROM lane_assignments ORDER BY lane_id"
             ).fetchall()
+            enabled_lanes = {a["lane_id"] for a in assignments if a["enabled"]}
             active_rows = conn.execute("SELECT * FROM lane_checkouts WHERE status='active' ORDER BY lane_id").fetchall()
             expired_rows = conn.execute(
                 """
-                SELECT lane_id, checkout_id, session_id, expires_at
-                FROM lane_checkouts
-                WHERE status='expired'
-                ORDER BY expires_at DESC
+                SELECT c.lane_id, c.checkout_id, c.session_id, c.expires_at
+                FROM lane_checkouts c
+                JOIN lane_assignments a ON a.lane_id = c.lane_id
+                WHERE c.status = 'expired'
+                  AND a.enabled = 1
+                  AND (? - c.expires_at) <= ?
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM lane_checkouts c2
+                      WHERE c2.lane_id = c.lane_id
+                        AND c2.status IN ('active', 'released')
+                        AND c2.created_at > c.expires_at
+                  )
+                ORDER BY c.expires_at DESC
                 LIMIT 25
-                """
+                """,
+                (ts, exp_window),
             ).fetchall()
 
             active_lane_ids: set[str] = set()
@@ -463,6 +477,8 @@ class LanePromptStore:
             stalled_progress: list[dict[str, Any]] = []
 
             for r in active_rows:
+                if r["lane_id"] not in enabled_lanes:
+                    continue
                 active_lane_ids.add(r["lane_id"])
                 hb_age = ts - float(r["heartbeat_at"])
                 prog_ref = float(r["progress_at"]) if r["progress_at"] is not None else float(r["created_at"])
