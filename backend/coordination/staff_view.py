@@ -24,7 +24,7 @@ _ISSUE_TARGET = re.compile(r"^#(\d+)$")
 
 def _row(run: dict[str, Any]) -> dict[str, Any]:
     target_ref = run.get("target_ref") if "target_ref" in run else run.get("target")
-    return {
+    row = {
         "id": run.get("id"),
         "role": run.get("role"),
         "provider": run.get("provider"),
@@ -33,9 +33,12 @@ def _row(run: dict[str, Any]) -> dict[str, Any]:
         "target": target_ref,
         "status": run.get("status"),
         "started_at": run.get("started_at"),
-        "expires": run.get("expires"),
         "source": "staff",
     }
+    expires = run.get("expires")
+    if expires is not None and str(expires).strip():
+        row["expires"] = expires
+    return row
 
 
 def _expires_from_started(started_at: str | None) -> str:
