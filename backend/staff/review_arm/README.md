@@ -1,27 +1,72 @@
-# Review/arm core — Refs #4249
+# Review/arm service — Refs #4249
 
-This is the core slice of the approved RD-native pr-remediator service. It is
-**not registered with the live scheduler** and cannot arm or dispatch without
-explicitly supplied capabilities. There is no deploy, restart, or configuration
-change in this slice (RD #2657 deployment hold remains in force).
+The approved RD-native pr-remediator service: it replaces the box scripts
+(intake.py, driver.py, armd.py, review_ingest.py, relay.py). It is **default
+off** and **dry-run by default**. Deployment (and the 48 h dry run) is a
+separate operator step; this code performs no deploy, restart or service
+enablement.
 
-`Settings.from_env(env, machine=...)` reads `RD_REVIEW_ARM_ENABLED` (default off),
-`RD_REVIEW_ARM_DRY_RUN` (default true), `RD_REVIEW_ARM_INTERVAL_MINUTES` (default
-10), `RD_REVIEW_ARM_REPOS`, and additional `RD_REVIEW_ARM_HELD_PRS` entries in
-`Repository_Name#123` format. Only the machine named by the host-local
-`RD_REVIEW_ARM_HOST` setting may enable the loop; missing/blank disables it.
-Deployment must set this to the approved hub, never a worker (example: `hub-a`).
-Seed holds are always retained. `Intake.candidates()` makes one source listing
-per repository and confirms only candidates; source rate limiting aborts the
-cycle. The source must budget and interpret GitHub primary/secondary rate-limit
-headers through the existing GitHub client/governor.
+## Enabling and configuration (host-local env)
 
-`ReviewArmService.cycle()` is single-flight. Its `status()` returns last cycle,
-skip/action counts and bounded escalations. Dry-run only reads and records
-in-memory decisions. Disabled cycles perform no port calls. Live review/arm
-decisions require a second complete snapshot at the same head before calling
-the supplied capability. The arm capability must enforce the same head pin
-atomically; the earlier snapshot alone is insufficient.
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RD_REVIEW_ARM_HOST` | unset (off) | Enable flag: only the machine with this name runs the loop. |
+| `RD_REVIEW_ARM_ENABLED` | unset | `0`/`false` is a kill switch that wins over the host. |
+| `RD_REVIEW_ARM_DRY_RUN` | true | Only `0`/`false`/`no`/`off` leaves dry-run. |
+| `RD_REVIEW_ARM_INTERVAL_MINUTES` | 10 | Cycle interval (1..1440). |
+| `RD_REVIEW_ARM_MAX_DISPATCH` | 5 | Review dispatches per cycle (0..60); the rest stay queued. |
+| `RD_REVIEW_ARM_STALL_MINUTES` | 60 | Stall alert threshold. |
+| `RD_REVIEW_ARM_REPOS` | fleet repos | Comma-separated repository names. |
+| `RD_REVIEW_ARM_HELD_PRS` | — | Extra holds, `Repo#123`; seed holds always apply. |
+| `RD_REVIEW_ARM_LEDGER` | `~/.config/runner-dashboard/review-arm-ledger.sqlite3` | Durable ledger. |
+| `RD_REVIEW_ARM_BOX_STATE_DIR` | — | Directory with the box's `arm_holds.txt`, `blocked_heads.txt`, `arm_override.txt`; imported once. |
+
+`start_review_arm` runs from the leader's staff-scheduler bootstrap after the
+startup reconcile. `GET /api/staff/review-arm/status` (staff.read) reports
+enabled, dry_run, host, queue depth, last intake/dispatch/verdict/arm times,
+counts, escalations and recent decisions.
+
+## Cycle
+
+1. **Verdict phase** (armd.py / review_ingest.py): for each dispatched review
+   not yet handled, read the run outcome; after a failed post-run step or a hub
+   restart, recover the `STAFF_RESULT` verdict from the run events. Changes with
+   BLOCKING findings (or escalate) block the head until a new head or an
+   operator override; round >= 2 still blocking escalates to the owner. An
+   effective approve (policy 2: changes with zero BLOCKING) goes through
+   `arm_gate` (holds, open, draft, blocked, head moved) and the arm-only
+   `GitHubArmer`. The reviewer's final message is relayed to the PR (relay.py;
+   never `work_private`).
+2. **Intake** (intake.py): one GraphQL list per repo; required checks confirmed
+   at the head SHA; held / hold-labelled / blocked / armed / queued / reviewed
+   PRs skipped; more than four rounds escalates to the owner instead of
+   re-dispatching; otherwise dispatch a code-reviewer run through
+   `dispatch_staff_run` (independent provider family, strict provider,
+   code-read-only).
+3. **Stall alert**: queue non-empty and no dispatch or arm for
+   `RD_REVIEW_ARM_STALL_MINUTES` raises one alert per episode (fleet event +
+   rd-barb alert).
+
+Dry-run decides and logs everything (status shows would-dispatch / would-arm)
+but performs no GitHub write, no dispatch and no owner notification.
+
+## Arm-only
+
+`armer.py` can send exactly one mutation: `enablePullRequestAutoMerge`
+(SQUASH, `expectedHeadOid` = reviewed head). There is no merge, enqueue,
+admin or REST-merge path. Before arming it re-reads the PR and refuses a moved
+head, a closed/draft PR, a hold, incomplete labels and unacknowledged file
+deletions (RD #4449; `deletions-acknowledged` label or body line).
+`scripts/automerge_guard.arm_auto_merge` no longer falls back to a direct
+merge or enqueue either.
+
+## Evidence bar and parity notes
+
+An approve needs some review evidence; a non-blank review body suffices (box
+parity), an empty rubber-stamp approve escalates. `tests/test_staff_review_arm_replay.py`
+replays the box's last 7 days and requires identical arm decisions.
+
+## Original design notes (core slice)
 
 Boundary requirements for the subsequent integration slice:
 
