@@ -20655,6 +20655,36 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/review-arm/status": {
+      "get": {
+        "description": "enabled, dry_run, host, queue depth, last intake/dispatch/verdict/arm times, recent decisions.",
+        "operationId": "review_arm_status_api_staff_review_arm_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Arm Status Api Staff Review Arm Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Review Arm Status",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/roles": {
       "get": {
         "operationId": "roster_api_staff_roles_get",

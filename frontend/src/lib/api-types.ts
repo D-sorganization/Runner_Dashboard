@@ -4934,6 +4934,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/staff/review-arm/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Review Arm Status
+         * @description enabled, dry_run, host, queue depth, last intake/dispatch/verdict/arm times, recent decisions.
+         */
+        get: operations["review_arm_status_api_staff_review_arm_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/staff/roles": {
         parameters: {
             query?: never;
@@ -21246,6 +21266,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    review_arm_status_api_staff_review_arm_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
