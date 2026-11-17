@@ -45,6 +45,26 @@ def _normalize_host(host: str | None) -> str | None:
     return _HOST_ALIASES.get(key, key)
 
 
+def _infer_host(session_id: str, explicit_host: str | None) -> str | None:
+    norm = _normalize_host(explicit_host)
+    if norm is not None:
+        return norm
+    for tok in session_id.strip().lower().split("-"):
+        if tok in _HOST_ALIASES:
+            return _HOST_ALIASES[tok]
+    return None
+
+
+def _is_lane_compatible(cand: sqlite3.Row, want_provider: str | None, want_host: str | None) -> bool:
+    cand_prov = _lane_provider(cand["lane_id"], cand["subagent_model"])
+    if cand_prov is not None and (want_provider is None or cand_prov != want_provider):
+        return False
+    cand_host = _lane_host(cand["lane_id"])
+    if cand_host is not None and (want_host is None or cand_host != want_host):
+        return False
+    return True
+
+
 def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
     lid = lane_id.strip().lower()
     for prefix in _PROVIDER_PREFIXES:
@@ -272,6 +292,8 @@ class LanePromptStore:
     ) -> dict[str, Any]:
         ts = time.time() if now is None else float(now)
         ttl = max(60, int(ttl_sec))
+        want_provider = _infer_provider(session_id, provider)
+        want_host = _infer_host(session_id, host)
         # Idempotency keys are caller supplied, so scope them to the session and
         # principal to prevent replaying another caller's receipt and fence.
         scoped_idempotency_key = json.dumps(
@@ -303,10 +325,13 @@ class LanePromptStore:
 
             if lane_id is None and role is None:
                 active_self = conn.execute(
-                    "SELECT receipt_json FROM lane_checkouts WHERE session_id = ? AND status = 'active'",
+                    """SELECT c.receipt_json, a.lane_id, a.subagent_model
+                       FROM lane_checkouts c
+                       JOIN lane_assignments a ON a.lane_id = c.lane_id
+                       WHERE c.session_id = ? AND c.status = 'active'""",
                     (session_id,),
                 ).fetchone()
-                if active_self is not None:
+                if active_self is not None and _is_lane_compatible(active_self, want_provider, want_host):
                     return json.loads(active_self["receipt_json"])
 
             if lane_id is not None:
@@ -316,6 +341,8 @@ class LanePromptStore:
                 ).fetchone()
                 if row is None:
                     raise LaneConflictError(f"Lane {lane_id!r} not found or disabled")
+                if not _is_lane_compatible(row, want_provider, want_host):
+                    raise LaneConflictError(f"Lane {lane_id!r} is incompatible with caller provider/host")
                 held = conn.execute(
                     "SELECT session_id FROM lane_checkouts WHERE lane_id = ? AND status = 'active'",
                     (lane_id,),
@@ -343,17 +370,7 @@ class LanePromptStore:
                     params.append(role)
                 query += " ORDER BY a.lane_id"
                 candidates = conn.execute(query, params).fetchall()
-                want_provider = _infer_provider(session_id, provider)
-                want_host = _normalize_host(host)
-                filtered: list[sqlite3.Row] = []
-                for cand in candidates:
-                    cand_prov = _lane_provider(cand["lane_id"], cand["subagent_model"])
-                    if want_provider is not None and cand_prov is not None and cand_prov != want_provider:
-                        continue
-                    cand_host = _lane_host(cand["lane_id"])
-                    if want_host is not None and cand_host is not None and cand_host != want_host:
-                        continue
-                    filtered.append(cand)
+                filtered = [cand for cand in candidates if _is_lane_compatible(cand, want_provider, want_host)]
                 if want_host is not None:
                     filtered.sort(key=lambda r: (0 if _lane_host(r["lane_id"]) == want_host else 1, r["lane_id"]))
                 if not filtered:
