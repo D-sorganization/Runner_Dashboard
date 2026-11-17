@@ -82,6 +82,7 @@ def test_concurrent_checkout_single_winner_and_idempotency_survives_restart(
             principal="agent-codex",
             idempotency_key=f"idem-{idx}",
             lane_id="codex-desk-1",
+            host="desk",
         )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -107,6 +108,7 @@ def test_concurrent_checkout_single_winner_and_idempotency_survives_restart(
         principal="agent-codex",
         idempotency_key=win["idempotency_key"],
         lane_id="codex-desk-1",
+        host="desk",
     )
     assert retry["checkout_id"] == win["checkout_id"]
     assert retry["fence_token"] == win["fence_token"]
@@ -116,6 +118,7 @@ def test_concurrent_checkout_single_winner_and_idempotency_survives_restart(
         session_id=win["session_id"],
         principal="agent-codex",
         idempotency_key="idem-resume",
+        host="desk",
     )
     assert resumed["checkout_id"] == win["checkout_id"]
 
@@ -131,6 +134,7 @@ def test_heartbeat_stale_fence_fails_and_expiry_allows_reclaim(tmp_path: Path) -
         principal="agent-codex",
         idempotency_key="idem-a",
         lane_id="codex-desk-1",
+        host="desk",
         ttl_sec=60,
         now=now,
     )
@@ -163,6 +167,7 @@ def test_heartbeat_stale_fence_fails_and_expiry_allows_reclaim(tmp_path: Path) -
         principal="agent-codex",
         idempotency_key="idem-b",
         role="backlog-completion",
+        host="desk",
         ttl_sec=60,
         now=1100.0,
     )
@@ -225,6 +230,7 @@ def test_idempotency_key_is_scoped_to_principal_and_session(tmp_path: Path) -> N
         principal="agent-codex",
         idempotency_key="reused-key",
         lane_id="codex-desk-1",
+        host="desk",
     )
     store.release(
         checkout_id=first["checkout_id"],
@@ -232,11 +238,12 @@ def test_idempotency_key_is_scoped_to_principal_and_session(tmp_path: Path) -> N
         session_id="codex-owner",
     )
     second = store.checkout(
-        session_id="claude-owner",
+        session_id="codex-owner-2",
         principal="agent-claude",
         idempotency_key="reused-key",
         lane_id="codex-desk-1",
+        host="desk",
     )
     assert second["checkout_id"] != first["checkout_id"]
-    assert second["session_id"] == "claude-owner"
+    assert second["session_id"] == "codex-owner-2"
     assert second["principal"] == "agent-claude"

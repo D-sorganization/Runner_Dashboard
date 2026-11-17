@@ -11124,10 +11124,14 @@ export interface components {
         };
         /** LaneCheckoutBody */
         LaneCheckoutBody: {
+            /** Host */
+            host?: string | null;
             /** Idempotency Key */
             idempotency_key: string;
             /** Lane Id */
             lane_id?: string | null;
+            /** Provider */
+            provider?: string | null;
             /** Role */
             role?: string | null;
             /** Session Id */

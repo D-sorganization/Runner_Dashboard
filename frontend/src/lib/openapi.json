@@ -3487,6 +3487,18 @@
       },
       "LaneCheckoutBody": {
         "properties": {
+          "host": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
           "idempotency_key": {
             "maxLength": 128,
             "minLength": 1,
@@ -3504,6 +3516,18 @@
               }
             ],
             "title": "Lane Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
           },
           "role": {
             "anyOf": [
