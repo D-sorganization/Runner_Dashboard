@@ -98,22 +98,12 @@ def _infer_host(session_id: str, explicit_host: str | None) -> str | None:
     return None
 
 
-def _hosts_match(cand_host: str, want_host: str) -> bool:
-    if cand_host == want_host:
-        return True
-    if len(cand_host) >= 3 and want_host.startswith(cand_host):
-        return True
-    if len(want_host) >= 3 and cand_host.startswith(want_host):
-        return True
-    return False
-
-
 def _is_lane_compatible(cand: sqlite3.Row, want_provider: str | None, want_host: str | None) -> bool:
     cand_prov = _lane_provider(cand["lane_id"], cand["subagent_model"])
     if cand_prov is not None and (want_provider is None or cand_prov != want_provider):
         return False
     cand_host = _lane_host(cand["lane_id"])
-    if cand_host is not None and want_host is not None and not _hosts_match(cand_host, want_host):
+    if cand_host is not None and (want_host is None or cand_host != want_host):
         return False
     return True
 
@@ -360,6 +350,16 @@ class LanePromptStore:
             [principal, session_id, idempotency_key], ensure_ascii=False, separators=(",", ":")
         )
 
+        def _check_receipt_compatible(conn: sqlite3.Connection, receipt_json: str) -> dict[str, Any]:
+            rec = json.loads(receipt_json)
+            row = conn.execute(
+                "SELECT * FROM lane_assignments WHERE lane_id = ? AND enabled = 1",
+                (rec["lane_id"],),
+            ).fetchone()
+            if row is None or not _is_lane_compatible(row, want_provider, want_host):
+                raise LaneConflictError(f"Lane {rec['lane_id']!r} is incompatible with caller provider/host")
+            return rec
+
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
             existing_idem = conn.execute(
                 """SELECT receipt_json FROM lane_checkouts
@@ -367,7 +367,7 @@ class LanePromptStore:
                 (scoped_idempotency_key, principal, session_id),
             ).fetchone()
             if existing_idem is not None:
-                return json.loads(existing_idem["receipt_json"])
+                return _check_receipt_compatible(conn, existing_idem["receipt_json"])
 
             # Honor pre-scope database records only for the original owner.
             legacy_idem = conn.execute(
@@ -376,7 +376,7 @@ class LanePromptStore:
                 (idempotency_key, principal, session_id),
             ).fetchone()
             if legacy_idem is not None:
-                return json.loads(legacy_idem["receipt_json"])
+                return _check_receipt_compatible(conn, legacy_idem["receipt_json"])
 
             conn.execute(
                 "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
@@ -434,7 +434,7 @@ class LanePromptStore:
                 if want_host is not None:
                     filtered.sort(
                         key=lambda r: (
-                            0 if (_lh := _lane_host(r["lane_id"])) is not None and _hosts_match(_lh, want_host) else 1,
+                            0 if _lane_host(r["lane_id"]) == want_host else 1,
                             r["lane_id"],
                         )
                     )

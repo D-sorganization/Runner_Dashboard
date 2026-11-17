@@ -127,3 +127,40 @@ def test_explicit_lane_id_and_unknown_metadata_enforce_compatibility(
             principal="loopback-dev",
             idempotency_key="k-unknown-prov",
         )
+
+    # Known provider without host must NOT claim host-scoped agy-node-b-1.
+    with pytest.raises(LaneConflictError):
+        store.checkout(
+            session_id="agy-session-1",
+            principal="loopback-dev",
+            idempotency_key="k-missing-host",
+            provider="agy",
+        )
+
+    # Prefix collision check: node-backup must NOT match node-b.
+    with pytest.raises(LaneConflictError):
+        store.checkout(
+            session_id="agy-node-backup-20261117-1",
+            principal="loopback-dev",
+            idempotency_key="k-prefix-collision",
+            provider="agy",
+            host="node-backup",
+        )
+
+    # Reused idempotency key with incompatible provider/host must be rejected, not replayed.
+    ok = store.checkout(
+        session_id="agy-node-b-20261117-2",
+        principal="loopback-dev",
+        idempotency_key="k-replay-check",
+        provider="agy",
+        host="node-b",
+    )
+    assert ok["lane_id"] == "agy-node-b-1"
+    with pytest.raises(LaneConflictError, match="incompatible"):
+        store.checkout(
+            session_id="agy-node-b-20261117-2",
+            principal="loopback-dev",
+            idempotency_key="k-replay-check",
+            provider="claude",
+            host="node-b",
+        )
