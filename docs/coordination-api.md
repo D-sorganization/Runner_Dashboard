@@ -287,6 +287,14 @@ The postman runs in dry run only, so the response's `live` is always `false` and
 
 Read-only. Lists registered lane-prompt assignments and any active checkout metadata.
 
+### `GET /api/coordination/lane-prompts/health`
+
+Returns a health summary with `healthy_active`, `stalled_heartbeat`, `stalled_progress`, `expired_recent`, and
+`idle_lanes` entries, plus `needs_attention`. Query thresholds are `stall_heartbeat_sec` (default 900),
+`stall_progress_sec` (default 1800), and `expired_window_sec` (default 86400); each has an effective minimum of
+60 seconds. Expired active checkouts are marked expired while building the summary, and recovered or disabled lanes
+are excluded from recent-expiration alerts.
+
 ### `POST /api/coordination/lane-prompts/checkout`
 
 Body `{session_id, idempotency_key, lane_id?, role?, ttl_sec?}` → atomically resumes an active session

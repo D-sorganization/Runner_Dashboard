@@ -14032,6 +14032,77 @@
         "tags": ["coordination"]
       }
     },
+    "/api/coordination/lane-prompts/health": {
+      "get": {
+        "operationId": "get_lane_prompt_health_api_coordination_lane_prompts_health_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "stall_heartbeat_sec",
+            "required": false,
+            "schema": {
+              "default": 900,
+              "title": "Stall Heartbeat Sec",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stall_progress_sec",
+            "required": false,
+            "schema": {
+              "default": 1800,
+              "title": "Stall Progress Sec",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expired_window_sec",
+            "required": false,
+            "schema": {
+              "default": 86400,
+              "title": "Expired Window Sec",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Lane Prompt Health Api Coordination Lane Prompts Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Lane Prompt Health",
+        "tags": ["coordination"]
+      }
+    },
     "/api/coordination/lane-prompts/heartbeat": {
       "post": {
         "operationId": "post_lane_prompt_heartbeat_api_coordination_lane_prompts_heartbeat_post",
