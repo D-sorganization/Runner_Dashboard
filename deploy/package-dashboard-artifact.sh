@@ -179,7 +179,19 @@ else
     find "${STAGE_DIR}/scripts" -type f -name '*.pyc' -delete 2>/dev/null || true
 fi
 
-# 5c. Fleet client library (#4426). scripts/cursor_cloud_handoff.py, which
+# 5c. Vendored runtime helpers used by backend review finalization (#4359).
+# Keep the package intact so its imports resolve without a source checkout.
+mkdir -p "${STAGE_DIR}/shared_scripts"
+if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude='__pycache__' --exclude='*.pyc' --exclude='.pytest_cache' \
+        "${SCRIPT_DIR}/shared_scripts/" "${STAGE_DIR}/shared_scripts/"
+else
+    cp -r "${SCRIPT_DIR}/shared_scripts/." "${STAGE_DIR}/shared_scripts/"
+    find "${STAGE_DIR}/shared_scripts" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
+    find "${STAGE_DIR}/shared_scripts" -type f -name '*.pyc' -delete 2>/dev/null || true
+fi
+
+# 5d. Fleet client library (#4426). scripts/cursor_cloud_handoff.py, which
 # backend/ci_fix_service.py imports on demand, puts clients/fleet on sys.path
 # and imports fleet_client from it.
 mkdir -p "${STAGE_DIR}/clients/fleet"
