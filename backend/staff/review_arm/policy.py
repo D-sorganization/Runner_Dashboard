@@ -35,6 +35,12 @@ HELD_PRS = frozenset(
         ("Gasification_Model", 5899),
         ("UpstreamDrift", 15172),
         ("UpstreamDrift", 10333),
+        ("Gasification_Model", 10333),
+        # armd.py static HOLD set (box parity).
+        ("Tools_Private", 2191),
+        ("Tools_Private", 2195),
+        ("Runner_Dashboard", 4253),
+        ("AffineDrift", 5562),
     }
 )
 DEFAULT_REPOS = (
@@ -100,12 +106,10 @@ def decide(c: Candidate, held_prs: frozenset[tuple[str, int]] = HELD_PRS) -> Dec
     reason = ""
     if not c.holds_available:
         reason = "holds_unavailable"
-    elif c.held or (c.repo, c.pr) in (HELD_PRS | held_prs):
+    elif c.held:
         reason = "held_pr"
-    elif any(label.strip().casefold() in HOLD_LABELS for label in c.labels):
-        reason = "hold_label"
-    elif "sidekick" in c.title.casefold() and "packag" in c.title.casefold():
-        reason = "hold_label"
+    elif hold := is_held(c.repo, c.pr, c.labels, c.title, held_prs):
+        reason = hold
     elif c.armed:
         reason = "already_armed"
     elif c.in_merge_queue:
@@ -147,3 +151,56 @@ def decide(c: Candidate, held_prs: frozenset[tuple[str, int]] = HELD_PRS) -> Dec
         if provider in {"codex", "claude"} and PROVIDER_FAMILY[provider] != author_family:
             return Decision("review", "independent_reviewer", provider)
     return Decision("escalate", "no_independent_reviewer")
+
+
+@dataclass(frozen=True)
+class LiveHead:
+    """GitHub PR state read immediately before an arm decision."""
+
+    head_sha: str
+    state: str
+    draft: bool
+    labels: tuple[str, ...] = ()
+    title: str = ""
+
+
+def is_held(repo: str, pr: int, labels: tuple[str, ...], title: str, holds: frozenset[tuple[str, int]]) -> str:
+    """The hold reason (``held_pr`` / ``hold_label``) or ``""``."""
+    if (repo, pr) in (HELD_PRS | holds):
+        return "held_pr"
+    if any(label.strip().casefold() in HOLD_LABELS for label in labels):
+        return "hold_label"
+    if "sidekick" in title.casefold() and "packag" in title.casefold():
+        return "hold_label"
+    return ""
+
+
+def arm_gate(
+    repo: str,
+    pr: int,
+    verdict_head: str,
+    live: LiveHead,
+    *,
+    holds: frozenset[tuple[str, int]],
+    blocked: bool,
+) -> Decision:
+    """armd.py parity for an exact-head approve: arm, skip, or requeue a moved head.
+
+    Pre: the verdict at ``verdict_head`` is an effective approve and ``blocked``
+    is the ledger state at ``live.head_sha`` (overrides already applied).
+    Post: ``arm`` only for an open, non-draft, unheld, unblocked PR whose live
+    head equals ``verdict_head``; the arm capability must still pin that SHA.
+    """
+    Candidate(repo, pr, verdict_head)
+    hold = is_held(repo, pr, live.labels, live.title, holds)
+    if hold:
+        return Decision("skip", hold)
+    if live.state != "OPEN":
+        return Decision("skip", "not_open")
+    if live.draft:
+        return Decision("skip", "draft")
+    if blocked:
+        return Decision("skip", "blocked_head")
+    if live.head_sha != verdict_head:
+        return Decision("requeue", "head_moved")
+    return Decision("arm", "exact_head_approval")
