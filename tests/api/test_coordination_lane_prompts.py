@@ -232,11 +232,11 @@ def test_idempotency_key_is_scoped_to_principal_and_session(tmp_path: Path) -> N
         session_id="codex-owner",
     )
     second = store.checkout(
-        session_id="claude-owner",
+        session_id="codex-owner-2",
         principal="agent-claude",
         idempotency_key="reused-key",
         lane_id="codex-desk-1",
     )
     assert second["checkout_id"] != first["checkout_id"]
-    assert second["session_id"] == "claude-owner"
+    assert second["session_id"] == "codex-owner-2"
     assert second["principal"] == "agent-claude"

@@ -16,18 +16,40 @@ _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
 
 _PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini")
-_HOST_ALIASES = {
-    "deskcomputer": "desk",
-    "desk": "desk",
-    "oglaptop": "oglaptop",
-    "og": "oglaptop",
-    "controltower": "ct",
-    "ct": "ct",
-    "brick": "brick",
-}
 
 
-def _infer_provider(session_id: str, explicit_provider: str | None) -> str | None:
+def _load_host_aliases() -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    cfg_dir = Path(
+        os.environ.get(
+            "RUNNER_DASHBOARD_CONFIG_DIR",
+            str(Path("~/.config/runner-dashboard").expanduser()),
+        )
+    )
+    alias_file = cfg_dir / "host_aliases.json"
+    if alias_file.is_file():
+        try:
+            raw = json.loads(alias_file.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                for k, v in raw.items():
+                    if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip():
+                        aliases[k.strip().lower()] = v.strip().lower()
+        except (OSError, ValueError):
+            pass
+    env_raw = os.environ.get("RUNNER_DASHBOARD_HOST_ALIASES", "").strip()
+    if env_raw:
+        try:
+            raw = json.loads(env_raw)
+            if isinstance(raw, dict):
+                for k, v in raw.items():
+                    if isinstance(k, str) and isinstance(v, str) and k.strip() and v.strip():
+                        aliases[k.strip().lower()] = v.strip().lower()
+        except ValueError:
+            pass
+    return aliases
+
+
+def _infer_provider(session_id: str, explicit_provider: str | None, principal: str | None = None) -> str | None:
     raw = (explicit_provider or "").strip().lower()
     if raw:
         return "agy" if raw in ("gemini", "antigravity") else raw
@@ -35,24 +57,55 @@ def _infer_provider(session_id: str, explicit_provider: str | None) -> str | Non
     for prefix in _PROVIDER_PREFIXES:
         if sid.startswith(f"{prefix}-") or sid == prefix:
             return "agy" if prefix == "gemini" else prefix
+    prin = (principal or "").strip().lower()
+    if prin.startswith("agent-"):
+        tail = prin[len("agent-") :]
+        for prefix in _PROVIDER_PREFIXES:
+            if tail == prefix or tail.startswith(f"{prefix}-"):
+                return "agy" if prefix == "gemini" else prefix
     return None
 
 
-def _normalize_host(host: str | None) -> str | None:
+def _normalize_host(host: str | None, aliases: dict[str, str] | None = None) -> str | None:
     if not host:
         return None
     key = host.strip().lower()
-    return _HOST_ALIASES.get(key, key)
+    alias_map = _load_host_aliases() if aliases is None else aliases
+    return alias_map.get(key, key)
+
+
+def _strip_session_suffix_tokens(tokens: list[str]) -> list[str]:
+    out = list(tokens)
+    while out and (out[-1].isdigit() or (len(out[-1]) >= 6 and all(c in "0123456789abcdef" for c in out[-1]))):
+        out.pop()
+    return out
 
 
 def _infer_host(session_id: str, explicit_host: str | None) -> str | None:
-    norm = _normalize_host(explicit_host)
+    aliases = _load_host_aliases()
+    norm = _normalize_host(explicit_host, aliases)
     if norm is not None:
         return norm
-    for tok in session_id.strip().lower().split("-"):
-        if tok in _HOST_ALIASES:
-            return _HOST_ALIASES[tok]
+    tokens = session_id.strip().lower().split("-")
+    for tok in tokens:
+        if tok in aliases:
+            return aliases[tok]
+    if tokens and tokens[0] in _PROVIDER_PREFIXES:
+        body = _strip_session_suffix_tokens(tokens[1:])
+        if body and body[0] not in ("owner", "session", "sess", "worker", "test"):
+            candidate = "-".join(body)
+            return aliases.get(candidate, candidate)
     return None
+
+
+def _hosts_match(cand_host: str, want_host: str) -> bool:
+    if cand_host == want_host:
+        return True
+    if len(cand_host) >= 3 and want_host.startswith(cand_host):
+        return True
+    if len(want_host) >= 3 and cand_host.startswith(want_host):
+        return True
+    return False
 
 
 def _is_lane_compatible(cand: sqlite3.Row, want_provider: str | None, want_host: str | None) -> bool:
@@ -60,7 +113,7 @@ def _is_lane_compatible(cand: sqlite3.Row, want_provider: str | None, want_host:
     if cand_prov is not None and (want_provider is None or cand_prov != want_provider):
         return False
     cand_host = _lane_host(cand["lane_id"])
-    if cand_host is not None and (want_host is None or cand_host != want_host):
+    if cand_host is not None and want_host is not None and not _hosts_match(cand_host, want_host):
         return False
     return True
 
@@ -81,11 +134,18 @@ def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
 
 
 def _lane_host(lane_id: str) -> str | None:
+    aliases = _load_host_aliases()
     tokens = lane_id.strip().lower().split("-")
-    for tok in tokens[1:]:
-        if tok in _HOST_ALIASES:
-            return _HOST_ALIASES[tok]
-    return None
+    if not tokens or tokens[0] not in _PROVIDER_PREFIXES:
+        for tok in tokens[1:]:
+            if tok in aliases:
+                return aliases[tok]
+        return None
+    body = tokens[1:-1] if len(tokens) >= 3 and (tokens[-1].isdigit() or tokens[-1] == "test") else tokens[1:]
+    if not body or body[0] in ("owner", "session", "sess", "worker"):
+        return None
+    candidate = "-".join(body)
+    return aliases.get(candidate, candidate)
 
 
 class LaneConflictError(RuntimeError):
@@ -292,7 +352,7 @@ class LanePromptStore:
     ) -> dict[str, Any]:
         ts = time.time() if now is None else float(now)
         ttl = max(60, int(ttl_sec))
-        want_provider = _infer_provider(session_id, provider)
+        want_provider = _infer_provider(session_id, provider, principal)
         want_host = _infer_host(session_id, host)
         # Idempotency keys are caller supplied, so scope them to the session and
         # principal to prevent replaying another caller's receipt and fence.
@@ -372,7 +432,12 @@ class LanePromptStore:
                 candidates = conn.execute(query, params).fetchall()
                 filtered = [cand for cand in candidates if _is_lane_compatible(cand, want_provider, want_host)]
                 if want_host is not None:
-                    filtered.sort(key=lambda r: (0 if _lane_host(r["lane_id"]) == want_host else 1, r["lane_id"]))
+                    filtered.sort(
+                        key=lambda r: (
+                            0 if (_lh := _lane_host(r["lane_id"])) is not None and _hosts_match(_lh, want_host) else 1,
+                            r["lane_id"],
+                        )
+                    )
                 if not filtered:
                     raise LaneConflictError("No eligible unclaimed lane available")
                 target = filtered[0]
