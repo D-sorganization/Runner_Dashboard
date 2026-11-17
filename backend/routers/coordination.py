@@ -208,7 +208,7 @@ async def get_postman_reports(
 
 
 class LaneCheckoutBody(BaseModel):
-    session_id: str = Field(min_length=1, max_length=128)
+    session_id: str = Field(min_length=1, max_length=128, pattern=SESSION_PATTERN)
     idempotency_key: str = Field(min_length=1, max_length=128)
     lane_id: str | None = Field(default=None, max_length=64)
     role: str | None = Field(default=None, max_length=64)
@@ -218,7 +218,7 @@ class LaneCheckoutBody(BaseModel):
 class LaneHeartbeatBody(BaseModel):
     checkout_id: str = Field(min_length=1, max_length=64)
     fence_token: int = Field(ge=1)
-    session_id: str = Field(min_length=1, max_length=128)
+    session_id: str = Field(min_length=1, max_length=128, pattern=SESSION_PATTERN)
     ttl_sec: int = Field(default=3600, ge=60, le=14400)
     progress: bool = False
 
@@ -226,8 +226,16 @@ class LaneHeartbeatBody(BaseModel):
 class LaneReleaseBody(BaseModel):
     checkout_id: str = Field(min_length=1, max_length=64)
     fence_token: int = Field(ge=1)
-    session_id: str = Field(min_length=1, max_length=128)
+    session_id: str = Field(min_length=1, max_length=128, pattern=SESSION_PATTERN)
     reason: str = Field(default="completed", max_length=128)
+
+
+def _check_lane_session(caller: Caller, session_id: str) -> None:
+    """Keep lane checkout writes within the caller's authenticated session namespace."""
+    try:
+        caller.check_session(session_id)
+    except service.ImpersonationError as exc:
+        raise HTTPException(status_code=403, detail={"error": str(exc)}) from exc
 
 
 @router.get("/lane-prompts/catalog")
@@ -240,11 +248,12 @@ async def get_lane_prompt_catalog(
 
 @router.post("/lane-prompts/checkout")
 async def post_lane_prompt_checkout(body: LaneCheckoutBody, caller: Caller = WRITER) -> dict[str, Any]:
+    _check_lane_session(caller, body.session_id)
     try:
         return await run_in_threadpool(
             lane_prompts_mod.get_lane_prompt_store().checkout,
             session_id=body.session_id,
-            principal=caller.agent or "fleet-peer",
+            principal=caller.label.removeprefix("principal:"),
             idempotency_key=body.idempotency_key,
             lane_id=body.lane_id,
             role=body.role,
@@ -255,7 +264,8 @@ async def post_lane_prompt_checkout(body: LaneCheckoutBody, caller: Caller = WRI
 
 
 @router.post("/lane-prompts/heartbeat")
-async def post_lane_prompt_heartbeat(body: LaneHeartbeatBody, _caller: Caller = WRITER) -> dict[str, Any]:
+async def post_lane_prompt_heartbeat(body: LaneHeartbeatBody, caller: Caller = WRITER) -> dict[str, Any]:
+    _check_lane_session(caller, body.session_id)
     try:
         return await run_in_threadpool(
             lane_prompts_mod.get_lane_prompt_store().heartbeat,
@@ -270,7 +280,8 @@ async def post_lane_prompt_heartbeat(body: LaneHeartbeatBody, _caller: Caller = 
 
 
 @router.post("/lane-prompts/release")
-async def post_lane_prompt_release(body: LaneReleaseBody, _caller: Caller = WRITER) -> dict[str, Any]:
+async def post_lane_prompt_release(body: LaneReleaseBody, caller: Caller = WRITER) -> dict[str, Any]:
+    _check_lane_session(caller, body.session_id)
     try:
         return await run_in_threadpool(
             lane_prompts_mod.get_lane_prompt_store().release,

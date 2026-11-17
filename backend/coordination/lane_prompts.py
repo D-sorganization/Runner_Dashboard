@@ -218,14 +218,29 @@ class LanePromptStore:
     ) -> dict[str, Any]:
         ts = time.time() if now is None else float(now)
         ttl = max(60, int(ttl_sec))
+        # Idempotency keys are caller supplied, so scope them to the session and
+        # principal to prevent replaying another caller's receipt and fence.
+        scoped_idempotency_key = json.dumps(
+            [principal, session_id, idempotency_key], ensure_ascii=False, separators=(",", ":")
+        )
 
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
             existing_idem = conn.execute(
-                "SELECT receipt_json FROM lane_checkouts WHERE idempotency_key = ?",
-                (idempotency_key,),
+                """SELECT receipt_json FROM lane_checkouts
+                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?""",
+                (scoped_idempotency_key, principal, session_id),
             ).fetchone()
             if existing_idem is not None:
                 return json.loads(existing_idem["receipt_json"])
+
+            # Honor pre-scope database records only for the original owner.
+            legacy_idem = conn.execute(
+                """SELECT receipt_json FROM lane_checkouts
+                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?""",
+                (idempotency_key, principal, session_id),
+            ).fetchone()
+            if legacy_idem is not None:
+                return json.loads(legacy_idem["receipt_json"])
 
             conn.execute(
                 "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
@@ -318,7 +333,7 @@ class LanePromptStore:
                     target["role"],
                     session_id,
                     principal,
-                    idempotency_key,
+                    scoped_idempotency_key,
                     fence_token,
                     ttl,
                     expires_at,
