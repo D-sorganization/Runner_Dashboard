@@ -129,13 +129,17 @@ class StaffRunner:
         role = self.roles().get(plan.role)
         rec = ops.new_run_record(plan, req, self.machine, getattr(role, "max_attempts", 2) or 2, run_id)
         try:
-            self.store.create_run(rec)
+            # Reconciliation snapshots the store before consulting this set.
+            # Keep the DB write and ownership marker atomic with respect to
+            # active_worker_run_ids() so it cannot mistake a just-persisted row
+            # for a workerless orphan.
+            with self._lock:
+                self.store.create_run(rec)
+                self._admitted.add(rec.id)
         except sqlite3.IntegrityError:
             if (existing := self.store.get_run(rec.id)) is None:
                 raise
             return existing, plan, False
-        with self._lock:
-            self._admitted.add(rec.id)
         self.store.append_event(rec.id, "queued", f"queued on {self.machine} for {plan.provider}")
         handle_run_status_change(rec, "queued")
         return rec, plan, True

@@ -589,6 +589,72 @@ def test_restart_reconcile_skips_admitted_runs_awaiting_launch(
     assert "run-admitted" not in staff_runner.active_worker_run_ids()
 
 
+def test_admit_publishes_ownership_atomically_with_store_write(
+    staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reconciliation snapshot cannot see a new row before its ownership marker."""
+    rec = RunRecord(
+        id="run-atomic-admit",
+        role="worker",
+        provider="fake",
+        model=None,
+        status="queued",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="#100",
+        prompt="test prompt",
+        machine="test-node",
+    )
+    monkeypatch.setattr(staff_runner, "plan", lambda req: SimpleNamespace(role="worker", provider="fake"))
+    monkeypatch.setattr(runner_mod.ops, "new_run_record", lambda *args: rec)
+    monkeypatch.setattr(runner_mod, "handle_run_status_change", lambda *args: None)
+
+    row_written = threading.Event()
+    finish_write = threading.Event()
+    original_create = staff_runner.store.create_run
+
+    def create_then_pause(record: RunRecord) -> None:
+        original_create(record)
+        row_written.set()
+        assert finish_write.wait(timeout=2)
+
+    monkeypatch.setattr(staff_runner.store, "create_run", create_then_pause)
+    admission_errors: list[Exception] = []
+
+    def run_admission() -> None:
+        try:
+            staff_runner.admit(SimpleNamespace())
+        except Exception as exc:  # surfaced below on the test thread
+            admission_errors.append(exc)
+
+    admission = threading.Thread(target=run_admission)
+    admission.start()
+    assert row_written.wait(timeout=2)
+    snapshot_started = threading.Event()
+    snapshot_finished = threading.Event()
+    observed: list[frozenset[str]] = []
+
+    def read_active_ids() -> None:
+        snapshot_started.set()
+        observed.append(staff_runner.active_worker_run_ids())
+        snapshot_finished.set()
+
+    snapshot = threading.Thread(target=read_active_ids)
+    try:
+        snapshot.start()
+        assert snapshot_started.wait(timeout=2)
+        assert not snapshot_finished.wait(timeout=0.1)
+    finally:
+        finish_write.set()
+        admission.join(timeout=2)
+        snapshot.join(timeout=2)
+
+    assert not admission.is_alive()
+    assert not snapshot.is_alive()
+    assert admission_errors == []
+    assert observed == [frozenset({rec.id})]
+
+
 def test_rearm_pending_retries_schedules_due_attempt(
     temp_store: RunStore, staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
