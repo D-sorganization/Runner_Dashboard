@@ -1642,6 +1642,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/lane-prompts/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Lane Prompt Health */
+        get: operations["get_lane_prompt_health_api_coordination_lane_prompts_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/lane-prompts/heartbeat": {
         parameters: {
             query?: never;
@@ -16910,6 +16927,41 @@ export interface operations {
                 "application/json": components["schemas"]["LaneCheckoutBody"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lane_prompt_health_api_coordination_lane_prompts_health_get: {
+        parameters: {
+            query?: {
+                stall_heartbeat_sec?: number;
+                stall_progress_sec?: number;
+                expired_window_sec?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
