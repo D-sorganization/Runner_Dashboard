@@ -338,9 +338,24 @@ _CLOSE_DISARM_WINDOW_SECONDS = 5
 
 _DISARM_TIMELINE_JQ = (
     '.[] | select(.event == "auto_merge_disabled" or .event == "closed") '
-    '| select(.event == "closed" or (.actor.type // "User") != "Bot") '
-    '| "\\(.created_at)\\t\\(.event)"'
+    '| "\\(.created_at)\\t\\(.event)\\t\\(.actor.login // "")"'
 )
+
+#: Accounts whose disarms are the Merge-Hold-Guard workflow enforcing a hold that
+#: is already visible, never a reviewer's decision.
+WORKFLOW_GUARD_ACTORS = frozenset({"github-actions[bot]"})
+
+#: Hidden marker on the comment this module posts when it disarms a PR itself.
+GUARD_DISARM_MARKER = "<!-- automerge-guard:disarm -->"
+
+#: A disarm is the guard's own when the same account posted the marker this close to it.
+_GUARD_DISARM_WINDOW_SECONDS = 120
+
+
+@dataclass(frozen=True)
+class _Disarm:
+    stamp: str
+    actor: str = ""
 
 
 def _seconds(stamp: str) -> float:
@@ -348,16 +363,17 @@ def _seconds(stamp: str) -> float:
     return datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
 
 
-def _disarm_events(run: CommandRunner, repo: str, pr: int) -> dict[str, list[str]]:
-    """Timeline timestamps by event (non-bot disarms, any ``closed``).
+def _disarm_events(run: CommandRunner, repo: str, pr: int) -> tuple[list[_Disarm], list[str]]:
+    """Every ``auto_merge_disabled`` (with its actor) and every ``closed`` stamp.
 
-    Post: keys ``auto_merge_disabled`` and ``closed``. Bot actors are excluded
-    from disarms so the Merge-Hold-Guard workflow's own revocations never read
-    as a human decision. A later re-arm is deliberately NOT read: owner-token
-    agents re-arm within seconds of any disarm, so it cannot cancel a hold.
-    Raises ``RuntimeError`` if the timeline is unreadable.
+    Post: disarms by any account are returned, bots included (#4249 B-04): in this
+    fleet reviewers are bots, so dropping bot disarms let a held PR be re-armed.
+    A later re-arm is deliberately NOT read: agents re-arm within seconds of any
+    disarm, so it cannot cancel a hold. Raises ``RuntimeError`` if the timeline is
+    unreadable.
     """
-    events: dict[str, list[str]] = {"auto_merge_disabled": [], "closed": []}
+    disarms: list[_Disarm] = []
+    closes: list[str] = []
     lines = _gh_lines(
         run,
         [
@@ -369,10 +385,12 @@ def _disarm_events(run: CommandRunner, repo: str, pr: int) -> dict[str, list[str
         ],
     )
     for line in lines:
-        stamp, _, event = line.partition("\t")
-        if event in events:
-            events[event].append(stamp)
-    return events
+        stamp, event, actor = (line.split("\t") + ["", ""])[:3]
+        if event == "auto_merge_disabled":
+            disarms.append(_Disarm(stamp, actor.strip()))
+        elif event == "closed":
+            closes.append(stamp)
+    return disarms, closes
 
 
 def _is_close_side_effect(disarm: str, closes: Sequence[str]) -> bool:
@@ -380,34 +398,74 @@ def _is_close_side_effect(disarm: str, closes: Sequence[str]) -> bool:
     return any(0 <= _seconds(disarm) - _seconds(close) <= _CLOSE_DISARM_WINDOW_SECONDS for close in closes)
 
 
-def _latest_reviewer_disarm(events: Mapping[str, Sequence[str]]) -> str:
-    """Latest disarm that is not the side effect of a PR close, or ``""``."""
-    disarms = [stamp for stamp in events["auto_merge_disabled"] if not _is_close_side_effect(stamp, events["closed"])]
-    return max(disarms) if disarms else ""
+def _guard_disarm_marks(run: CommandRunner, repo: str, pr: int) -> list[_Disarm]:
+    """``(created_at, login)`` of every guard-disarm marker comment on the PR."""
+    marks: list[_Disarm] = []
+    for comment in _issue_comments(run, repo, pr):
+        if GUARD_DISARM_MARKER in str(comment.get("body") or ""):
+            login = str(_obj(comment.get("user")).get("login") or "")
+            marks.append(_Disarm(str(comment.get("created_at") or ""), login))
+    return marks
+
+
+def _is_guard_own(disarm: _Disarm, marks: Sequence[_Disarm]) -> bool:
+    """True when the disarming account marked this disarm as the guard's own."""
+    if not disarm.actor:
+        return False
+    for mark in marks:
+        if mark.actor != disarm.actor or not mark.stamp:
+            continue
+        if abs(_seconds(mark.stamp) - _seconds(disarm.stamp)) <= _GUARD_DISARM_WINDOW_SECONDS:
+            return True
+    return False
+
+
+def _reviewer_disarms(
+    run: CommandRunner, repo: str, pr: int, arrived: str, disarms: Sequence[_Disarm]
+) -> list[_Disarm]:
+    """Disarms since the head arrived that the guard did not make itself.
+
+    Comments are read only when a disarm is left to explain. Unreadable comments
+    excuse nothing (fail closed).
+    """
+    pending = [d for d in disarms if not arrived or d.stamp > arrived]
+    if not pending:
+        return []
+    try:
+        marks = _guard_disarm_marks(run, repo, pr)
+    except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError):
+        return pending
+    return [d for d in pending if not _is_guard_own(d, marks)]
 
 
 def _disarm_reasons(run: CommandRunner, repo: str, pr: int, sha: str) -> list[str]:
-    """Signal 3: a non-bot account disarmed auto-merge since the head arrived.
+    """Signal 3: an account disarmed auto-merge since the head arrived.
 
-    A disarm that is only the side effect of closing the PR is ignored; a
-    later re-arm does not supersede one (a new push does, via the head
-    arrival time). Raises ``RuntimeError`` if unreadable.
+    Any account counts, bot or human (#4249 B-04). Not counted: the side effect
+    of closing the PR, the Merge-Hold-Guard workflow, and a disarm this module
+    made and marked itself. A later re-arm does not supersede a disarm (a new
+    push does, via the head arrival time). Raises ``RuntimeError`` if unreadable.
     """
-    last_disarm = _latest_reviewer_disarm(_disarm_events(run, repo, pr))
-    if not last_disarm:
+    all_disarms, closes = _disarm_events(run, repo, pr)
+    disarms = [
+        d for d in all_disarms if d.actor not in WORKFLOW_GUARD_ACTORS and not _is_close_side_effect(d.stamp, closes)
+    ]
+    if not disarms:
         return []
     arrived = _head_arrival(run, repo, pr, sha)
+    held = _reviewer_disarms(run, repo, pr, arrived, disarms)
+    if not held:
+        return []
+    last = max(held, key=lambda d: d.stamp)
+    who = last.actor or "a reviewer"
     if not arrived:
         return [
-            f"a reviewer disabled auto-merge at {last_disarm} and the "
-            "server-side arrival time of the head commit is unknown"
+            f"{who} disabled auto-merge at {last.stamp} and the server-side arrival time of the head commit is unknown"
         ]
-    if last_disarm > arrived:
-        return [
-            f"a reviewer disabled auto-merge at {last_disarm}, after the "
-            f"head commit arrived ({arrived}) — no push has superseded it"
-        ]
-    return []
+    return [
+        f"{who} disabled auto-merge at {last.stamp}, after the "
+        f"head commit arrived ({arrived}) — no push has superseded it"
+    ]
 
 
 def _repo_root_on_path() -> None:
@@ -487,9 +545,25 @@ def disarm_if_held(repo: str, pr: int, *, runner: CommandRunner | None = None) -
     """
     run = runner or _default_runner
     verdict = evaluate_hold(repo, pr, runner=run)
-    if verdict.held:
-        _disarm_auto_merge(repo, pr, run)
+    if verdict.held and _disarm_auto_merge(repo, pr, run):
+        _mark_guard_disarm(repo, pr, verdict.describe(), run)
     return verdict
+
+
+def _mark_guard_disarm(repo: str, pr: int, why: str, run: CommandRunner) -> None:
+    """Comment that the guard made this disarm, so it is not read as a reviewer's.
+
+    Without the mark the disarm would hold the PR until the next push, even after
+    the hold that caused it is lifted. A failed post is logged, not raised: the
+    disarm stands and reads as a hold (fail closed).
+    """
+    body = (
+        f"{GUARD_DISARM_MARKER}\nThe merge guard disarmed auto-merge: {why or 'hold applies'}.\n\n"
+        "This disarm is not itself a hold. Arming is possible again once the reason above is resolved."
+    )
+    proc = run(["gh", "api", "-X", "POST", f"repos/{repo}/issues/{pr}/comments", "-f", f"body={body}"])
+    if proc.returncode != 0:
+        logger.warning("Could not mark the guard disarm on %s#%s: %s", repo, pr, proc.stderr.strip())
 
 
 def _deletion_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> list[str]:
@@ -617,6 +691,7 @@ def _revoke_rest_arm(repo: str, pr: int, run: CommandRunner) -> tuple[str, bool]
     proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
     if proc.returncode == 0:
         logger.warning("Revoked unverified REST auto-merge arm on %s#%s.", repo, pr)
+        _mark_guard_disarm(repo, pr, "the REST arm could not be verified", run)
         return "auto-merge revoked", False
     err = proc.stderr.strip() or proc.stdout.strip()
     logger.error("Could not revoke REST auto-merge arm on %s#%s: %s", repo, pr, err)
