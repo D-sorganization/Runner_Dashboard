@@ -283,6 +283,25 @@ Read-only. The newest postman dry-run reports (`limit` 1 to 50, default 10), wri
 The postman runs in dry run only, so the response's `live` is always `false` and nothing is delivered
 (proposal: `docs/agents/messenger-agents.md`).
 
+### `GET /api/coordination/lane-prompts/catalog`
+
+Read-only. Lists registered lane-prompt assignments and any active checkout metadata.
+
+### `POST /api/coordination/lane-prompts/checkout`
+
+Body `{session_id, idempotency_key, lane_id?, role?, ttl_sec?}` → atomically resumes an active session
+checkout or claims an eligible lane slot with a monotonically increasing `fence_token` (`409` on conflict).
+
+### `POST /api/coordination/lane-prompts/heartbeat`
+
+Body `{checkout_id, fence_token, session_id, ttl_sec?, progress?}` → extends checkout TTL when `fence_token`
+and `session_id` match (`409` on stale fence).
+
+### `POST /api/coordination/lane-prompts/release`
+
+Body `{checkout_id, fence_token, session_id, reason?}` → releases an active lane-prompt checkout (`409` on
+stale fence).
+
 ## Configuration
 
 | Variable                  | Meaning                                                                       |
