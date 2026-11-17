@@ -126,6 +126,18 @@ def _submodule_problem(worktree: Path) -> str:
     return ""
 
 
+def _forced_removal_problem(worktree: Path) -> str:
+    """Why a forced removal of ``worktree`` would lose a file, or ``""`` (fail-closed).
+
+    ``_worktree_clean`` tolerates untracked agent notes because a plain ``git worktree remove``
+    refuses a tree that still has them. A forced removal deletes them, so here any entry blocks.
+    """
+    status = _git(worktree, "status", "--porcelain")
+    if status.returncode != 0:
+        return "dirty"
+    return "untracked_files" if status.stdout.strip() else ""
+
+
 def _worktree_clean(worktree: Path) -> bool:
     """True when the linked worktree has no local changes and nothing ahead of main."""
     status = _git(worktree, "status", "--porcelain")
@@ -191,6 +203,8 @@ def worktree_entry_is_eligible(
     if not _worktree_clean(wt.path):
         return False, "dirty"
     problem = _submodule_problem(wt.path)
+    if not problem and _gitlink_paths(wt.path):
+        problem = _forced_removal_problem(wt.path)
     if problem:
         return False, problem
     if not _branch_merged_or_closed(checkout, wt.branch):
@@ -206,7 +220,7 @@ def _git_worktree_remove(checkout: Path, path: Path) -> bool:
     args = ["worktree", "remove"]
     if links:
         # git refuses any tree with submodules unless forced, so prove again that nothing is lost.
-        problem = "dirty" if not _worktree_clean(path) else _submodule_problem(path)
+        problem = "dirty" if not _worktree_clean(path) else _submodule_problem(path) or _forced_removal_problem(path)
         if problem:
             log.warning("not forcing removal of submodule worktree %s: %s", path, problem)
             return False
