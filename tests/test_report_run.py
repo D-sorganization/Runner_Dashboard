@@ -47,6 +47,51 @@ def test_report_run_timeout_and_start_failure_are_terminal(tmp_path: Path, failu
     assert json.loads((dest / "job-status.json").read_text(encoding="utf-8")) == res
 
 
+@pytest.mark.parametrize("timeout_s", [float("nan"), float("inf"), float("-inf")])
+def test_report_timeout_must_be_finite(tmp_path: Path, timeout_s: float) -> None:
+    import report_run
+
+    with pytest.raises(ValueError, match="finite and > 0"):
+        report_run.run_report_job(tmp_path, tmp_path / "dest", "refine", timeout_s=timeout_s)
+
+
+def test_report_lock_is_released_when_process_exits_abruptly(tmp_path: Path) -> None:
+    import report_run
+
+    lock_path = tmp_path / ".report_run.lock"
+    child = (
+        "import os, sys; from pathlib import Path; import report_run; "
+        "report_run._acquire_lock(Path(sys.argv[1])); os._exit(0)"
+    )
+    subprocess.run(
+        [sys.executable, "-c", child, str(lock_path)],
+        cwd=BACKEND_DIR,
+        check=True,
+    )
+    fd = report_run._acquire_lock(lock_path)
+    report_run._release_lock(fd)
+    assert lock_path.exists()
+
+
+def test_mkdir_error_reporter_failure_does_not_escape(tmp_path: Path) -> None:
+    import report_run
+
+    parent_file = tmp_path / "not-a-directory"
+    parent_file.write_text("file", encoding="utf-8")
+
+    def broken_reporter(_result: dict[str, object]) -> None:
+        raise RuntimeError("reporter unavailable")
+
+    result = report_run.run_report_job(
+        tmp_path,
+        parent_file / "dest",
+        "refine",
+        error_reporter=broken_reporter,
+    )
+    assert result["state"] == "failed"
+    assert result["persistence_failed"] is True
+
+
 def test_interrupted_restart_gets_fresh_id_and_drops_stale_artifacts(
     tmp_path: Path,
 ) -> None:

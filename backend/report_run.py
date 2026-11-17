@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import math
 import os
 import shutil
 import subprocess
@@ -124,22 +125,50 @@ def _persist_or_report(
     return result
 
 
-def _acquire_lock(lock_path: Path, attempt_id: str) -> int:
-    fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-    os.write(fd, attempt_id.encode("utf-8"))
-    return fd
+def _acquire_lock(lock_path: Path) -> int:
+    """Acquire a process-scoped lock that the OS releases after a crash."""
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            win_lock: Any = msvcrt
+            if os.fstat(fd).st_size == 0:
+                os.write(fd, b"\0")
+            os.lseek(fd, 0, os.SEEK_SET)
+            win_lock.locking(fd, win_lock.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
 
 
-def _release_lock(fd: int | None, lock_path: Path) -> None:
-    if fd is not None:
+def _release_lock(fd: int | None) -> None:
+    # Keep the inode stable; unlinking can let two processes lock different files.
+    if fd is None:
+        return
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            win_lock: Any = msvcrt
+            os.lseek(fd, 0, os.SEEK_SET)
+            win_lock.locking(fd, win_lock.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError:
+        pass
+    finally:
         try:
             os.close(fd)
         except OSError:
             pass
-    try:
-        lock_path.unlink(missing_ok=True)
-    except OSError:
-        pass
 
 
 def run_report_job(
@@ -161,8 +190,8 @@ def run_report_job(
       - Persistence failures set ``persistence_failed=True``, ``state="failed"``,
         and invoke ``error_reporter`` if supplied.
     """
-    if timeout_s <= 0:
-        raise ValueError("timeout_s must be > 0")
+    if not math.isfinite(timeout_s) or timeout_s <= 0:
+        raise ValueError("timeout_s must be finite and > 0")
 
     attempt_id = uuid.uuid4().hex
     status_path = destination / "job-status.json"
@@ -185,13 +214,16 @@ def run_report_job(
         result["reason"] = f"Destination mkdir failed: {exc}"
         logger.error("Report-run destination mkdir failed for %s: %s", destination, exc)
         if error_reporter is not None:
-            error_reporter(dict(result))
+            try:
+                error_reporter(dict(result))
+            except Exception as report_exc:  # noqa: BLE001 - reporter must not mask state
+                logger.error("Independent error_reporter failed: %s", report_exc)
         return result
 
     lock_path = destination / ".report_run.lock"
     lock_fd: int | None = None
     try:
-        lock_fd = _acquire_lock(lock_path, attempt_id)
+        lock_fd = _acquire_lock(lock_path)
     except OSError as exc:
         result["state"] = "failed"
         result["error_type"] = "ConcurrentRunError"
@@ -269,4 +301,4 @@ def run_report_job(
 
         return _persist_or_report(status_path, result, error_reporter)
     finally:
-        _release_lock(lock_fd, lock_path)
+        _release_lock(lock_fd)
