@@ -22,7 +22,7 @@ def test_agent_smithers_principal_is_codex_and_narrowly_scoped() -> None:
     sm = principals["agent-smithers"]
     assert sm["kind"] == "codex"
     assert set(sm["scopes"]) == {"staff.read", "staff.work_items.write"}
-    assert "roles" not in sm
+    assert sm["roles"] == []
 
 
 def test_work_item_idempotency_and_owner_scope_enforcement(tmp_path: Path) -> None:
@@ -37,6 +37,7 @@ def test_work_item_idempotency_and_owner_scope_enforcement(tmp_path: Path) -> No
         list_work_items,
         patch_work_item,
     )
+
     from staff import work_items as wi_mod
 
     wi_mod.reset_work_item_store()
@@ -77,6 +78,20 @@ def test_work_item_idempotency_and_owner_scope_enforcement(tmp_path: Path) -> No
                 )
             )
         assert exc_idem.value.status_code == 409
+
+        # A changed payload field conflicts even when the title is unchanged.
+        with pytest.raises(HTTPException) as exc_links:
+            asyncio.run(
+                create_work_item(
+                    CreateWorkItemRequest(
+                        title="Generate quarterly technical report",
+                        idempotency_key="sm-req-001",
+                        output_format="docx",
+                    ),
+                    caller=smithers,
+                )
+            )
+        assert exc_links.value.status_code == 409
 
         # Owner can read, list, and transition own item.
         got = asyncio.run(get_work_item(c1["id"], caller=smithers))

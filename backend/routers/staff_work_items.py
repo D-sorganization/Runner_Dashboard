@@ -102,6 +102,7 @@ async def create_work_item(
     store = get_work_item_store()
     caller_id = format_caller(caller)
     links = _merge_report_links(body.links or {}, body.output_format, body.artifact_refs)
+    persisted_links = links or {"runs": [], "issues": [], "prs": [], "code_requests": []}
 
     item = store.create_work_item(
         title=body.title,
@@ -109,11 +110,20 @@ async def create_work_item(
         thread_id=body.thread_id or "",
         owner_role=body.owner_role or "",
         expected_by=body.expected_by,
-        links=links,
+        links=persisted_links,
         next_check_at=body.next_check_at,
         idempotency_key=body.idempotency_key or "",
     )
-    if body.idempotency_key and item.title != body.title:
+    if body.idempotency_key and any(
+        (
+            item.title != body.title,
+            item.thread_id != (body.thread_id or ""),
+            item.owner_role != (body.owner_role or ""),
+            item.expected_by != body.expected_by,
+            item.links != persisted_links,
+            item.next_check_at != body.next_check_at,
+        )
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "idempotency_conflict", "message": "idempotency_key already used with different payload"},
@@ -241,10 +251,7 @@ async def patch_work_item(
             ) from exc
 
     # 2. Handle mutable metadata updates
-    if any(
-        v is not None
-        for v in (body.title, body.owner_role, body.expected_by, body.next_check_at, merged_links)
-    ):
+    if any(v is not None for v in (body.title, body.owner_role, body.expected_by, body.next_check_at, merged_links)):
         store.update_work_item(
             work_item_id,
             title=body.title,

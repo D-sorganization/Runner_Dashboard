@@ -64,6 +64,7 @@ agents:
   - id: agent-smithers
     kind: codex
     name: Smithers (Codex work-task intake)
+    roles: []
     scopes:
       - staff.read
       - staff.work_items.write
