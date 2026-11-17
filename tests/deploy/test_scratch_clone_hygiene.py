@@ -269,6 +269,45 @@ def test_task_folder_rechecked_before_removal(tmp_path: Path) -> None:
     assert report["kept"][0]["reason"] == "re_check_failed"
 
 
+@pytest.mark.parametrize("apply", [False, True])
+def test_task_folder_holding_a_git_clone_is_kept(tmp_path: Path, apply: bool) -> None:
+    root = tmp_path / "scratch"
+    folder = _aged_folder(root)
+    (folder / "repo" / ".git").mkdir(parents=True)
+    old = time.time() - 100 * HOUR
+    for path in (folder / "repo" / ".git", folder / "repo", folder):
+        os.utime(path, (old, old))
+    report = scratch.plan_aged_task_folders(
+        [root], apply=apply, now=time.time(), busy_dirs=lambda: set(), active_workdirs=set()
+    )
+    assert (folder / "repo" / ".git").exists()
+    assert report["aged"] == [] and report["removed"] == 0
+    assert report["kept"] == [{"path": str(folder), "reason": "contains_git"}]
+    assert report["kept_by_reason"] == {"contains_git": 1}
+
+
+@pytest.mark.skipif(hasattr(os, "geteuid") and os.geteuid() == 0, reason="root reads any directory")
+@pytest.mark.parametrize("apply", [False, True])
+def test_task_folder_with_unreadable_subtree_is_kept(tmp_path: Path, apply: bool) -> None:
+    root = tmp_path / "scratch"
+    folder = _aged_folder(root)
+    locked = folder / "locked"
+    locked.mkdir()
+    old = time.time() - 100 * HOUR
+    os.utime(locked, (old, old))
+    os.utime(folder, (old, old))
+    locked.chmod(0)
+    try:
+        report = scratch.plan_aged_task_folders(
+            [root], apply=apply, now=time.time(), busy_dirs=lambda: set(), active_workdirs=set()
+        )
+    finally:
+        locked.chmod(0o700)
+    assert folder.exists()
+    assert report["aged"] == [] and report["removed"] == 0
+    assert report["kept"] == [{"path": str(folder), "reason": "unreadable"}]
+
+
 def _fake_foreign(monkeypatch: pytest.MonkeyPatch, foreign: Path) -> None:
     """Make only ``foreign`` look owned by another uid; no real chown needed."""
     monkeypatch.setattr(os, "getuid", lambda: 1000, raising=False)

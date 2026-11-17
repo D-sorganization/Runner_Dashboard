@@ -81,18 +81,28 @@ def _children(root: Path) -> list[Path]:
         return []
 
 
-def _walk_files(folder: Path) -> Iterator[os.stat_result]:
-    """``lstat`` of every entry below ``folder``; symlinks are counted, never followed."""
+def _walk_files(folder: Path, problems: list[str] | None = None) -> Iterator[os.stat_result]:
+    """``lstat`` of every entry below ``folder``; symlinks are counted, never followed.
+
+    When ``problems`` is given, unreadable paths are appended as ``"unreadable"`` and any
+    ``.git`` entry (a clone or worktree) as ``"contains_git"`` so callers can fail closed.
+    """
     stack = [folder]
     while stack:
         try:
             entries = list(os.scandir(stack.pop()))
         except OSError:
+            if problems is not None:
+                problems.append("unreadable")
             continue
         for entry in entries:
+            if problems is not None and entry.name == ".git":
+                problems.append("contains_git")
             try:
                 info = entry.stat(follow_symlinks=False)
             except OSError:
+                if problems is not None:
+                    problems.append("unreadable")
                 continue
             yield info
             if entry.is_dir(follow_symlinks=False):
@@ -317,7 +327,15 @@ def plan_aged_task_folders(
             if in_use:
                 kept.append({"path": str(child), "reason": in_use})
                 continue
-            infos = list(_walk_files(child))
+            problems: list[str] = []
+            infos = list(_walk_files(child, problems))
+            if problems:
+                # A nested clone never went through the clone checks (dirty, stash, unpushed), and an
+                # unreadable subtree makes the newest-file age a guess: keep the whole folder.
+                kept.append(
+                    {"path": str(child), "reason": "contains_git" if "contains_git" in problems else "unreadable"}
+                )
+                continue
             try:
                 newest = max([info.st_mtime for info in infos] + [child.stat().st_mtime])
             except OSError:
@@ -339,6 +357,7 @@ def plan_aged_task_folders(
     return {
         "dry_run": not apply,
         "kept": kept,
+        "kept_by_reason": _count_by_reason(kept),
         "patterns": list(patterns),
         "min_age_hours": min_age_hours,
         "aged": aged,
