@@ -42,7 +42,6 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +189,7 @@ class HoldVerdict:
     #: Populated on evaluation failure. A verdict that could not be computed is
     #: treated as HELD, so a broken token or a rate limit never opens the gate.
     error: str | None = None
-    #: Head SHA the verdict was computed against; a direct merge is pinned to it.
+    #: Head SHA the verdict was computed against; the arm is pinned to it.
     head_sha: str = ""
     #: Base branch and GraphQL node id of the PR, for queue-aware fallbacks.
     base_ref: str = ""
@@ -222,8 +221,8 @@ class ArmResult:
     #: True only when an unverified REST arm could not be revoked: GitHub may
     #: still auto-merge the PR. Callers must surface this loudly.
     auto_merge_may_be_on: bool = False
-    #: True only when the PR was already clean, arming was refused, and the
-    #: guard merged it directly (#1968) and verified ``merged`` is true.
+    #: Kept for callers' compatibility; arm-only policy (#4249) never merges,
+    #: so :func:`arm_auto_merge` always leaves this False.
     merged: bool = False
     #: True when a hold appeared after merge/enqueue completed; still a failure (#4315).
     in_flight_hold_after_completion: bool = False
@@ -789,101 +788,6 @@ def _enqueue_clean_pr(repo: str, pr: int, strategy: str, verdict: HoldVerdict, r
     return ArmResult(True, verdict, "enqueued in merge queue (PR was already clean)")
 
 
-def _merge_clean_pr(
-    repo: str,
-    pr: int,
-    strategy: str,
-    sha: str,
-    verdict: HoldVerdict,
-    run: CommandRunner,
-    delete_branch: bool = False,
-) -> ArmResult:
-    """Merge an already-clean ``repo#pr`` directly, pinned to the verified head.
-
-    Pre: arming was refused with the clean-status 422 and ``verdict`` is
-    not-held. Post: exactly one ``PUT .../merge`` (never an admin merge, never
-    retried) with ``sha`` so a newer push is not merged; reported as merged only
-    if a follow-up read shows ``merged`` is true. With ``delete_branch``, the head
-    ref is then deleted via REST, only for a same-repo head; a failed deletion
-    is a warning appended to the detail and never un-merges the result.
-    """
-    if not sha:
-        return ArmResult(False, verdict, "PR was already clean but the verified head SHA is unknown")
-    hold = disarm_if_held(repo, pr, runner=run)
-    if hold.held:
-        return ArmResult(False, hold, f"merge refused: {hold.describe()}")
-    pinned = _current_head_sha(repo, pr, run)
-    if not pinned:
-        hold = disarm_if_held(repo, pr, runner=run)
-        return ArmResult(False, hold, "merge refused: PR head SHA could not be verified")
-    if pinned != sha:
-        disarm_if_held(repo, pr, runner=run)
-        return ArmResult(False, hold, f"merge refused: head moved (expected {sha}, saw {pinned})")
-    proc = run(
-        [
-            "gh",
-            "api",
-            "-X",
-            "PUT",
-            f"repos/{repo}/pulls/{pr}/merge",
-            "-f",
-            f"merge_method={strategy}",
-            "-f",
-            f"sha={sha}",
-        ]
-    )
-    if proc.returncode != 0:
-        err = proc.stderr.strip() or proc.stdout.strip()
-        logger.warning("Direct merge of clean %s#%s refused: %s", repo, pr, err)
-        return ArmResult(False, verdict, f"PR was already clean but direct merge refused: {err}")
-    hold_after = disarm_if_held(repo, pr, runner=run)
-    if hold_after.held:
-        check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
-        merged = check.returncode == 0 and check.stdout.strip().lower() == "true"
-        if not merged:
-            return ArmResult(False, hold_after, f"merge refused after in-flight verdict: {hold_after.describe()}")
-        logger.error(
-            "IN-FLIGHT HOLD: merge of %s#%s completed but %s",
-            repo,
-            pr,
-            hold_after.describe(),
-        )
-        return ArmResult(
-            False,
-            hold_after,
-            f"IN-FLIGHT HOLD: merge completed but {hold_after.describe()}",
-            merged=True,
-            in_flight_hold_after_completion=True,
-        )
-    check = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".merged"])
-    if check.returncode != 0 or check.stdout.strip().lower() != "true":
-        return ArmResult(
-            False,
-            verdict,
-            "PR was already clean; merge call succeeded but PR is not merged (could not verify the merged flag)",
-        )
-    logger.info("Merged clean %s#%s directly (%s).", repo, pr, strategy)
-    detail = "merged (PR was already clean)"
-    if delete_branch:
-        detail += _delete_head_branch(repo, verdict, run)
-    return ArmResult(False, verdict, detail, merged=True)
-
-
-def _delete_head_branch(repo: str, verdict: HoldVerdict, run: CommandRunner) -> str:
-    """Delete the merged PR's head ref; return a detail suffix ("" on success)."""
-    if not (verdict.head_ref and verdict.head_in_base_repo):
-        return "; branch not deleted (head is not a branch of this repo)"
-    # Percent-encode the ref (keeping "/"): `gh api` reads a raw "#" as a URL
-    # fragment, so `feat#one` would otherwise delete an unrelated `feat`.
-    ref = quote(verdict.head_ref, safe="/")
-    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/git/refs/heads/{ref}"])
-    if proc.returncode != 0:
-        err = proc.stderr.strip() or proc.stdout.strip()
-        logger.warning("Merged %s but could not delete %s: %s", repo, verdict.head_ref, err)
-        return f"; branch not deleted: {err}"
-    return ""
-
-
 def arm_auto_merge(
     repo: str,
     pr: int,
@@ -908,11 +812,9 @@ def arm_auto_merge(
     and it is reported as armed only if the merge method GitHub stored equals
     ``strategy``; otherwise the arm is revoked with a ``DELETE`` on the same
     route, and a failed revoke is reported in the detail. If that PUT is refused
-    with the "clean status" 422 (PR already mergeable), one direct
-    ``PUT .../merge`` pinned to the verified head SHA is made instead (#1968),
-    unless the base branch has a merge queue (or that cannot be determined), in
-    which case one GraphQL ``enqueuePullRequest`` is attempted and never a
-    direct merge.
+    with the "clean status" 422 (PR already mergeable), the arm is reported as
+    refused: arm-only policy (#4249) never makes a direct ``PUT .../merge``,
+    GraphQL ``mergePullRequest`` or ``enqueuePullRequest`` from this function.
 
     Head pin (#4249 B-02): the arm carries ``--match-head-commit`` set to the
     head the hold verdict was computed against, so GitHub refuses it if the head
@@ -987,9 +889,13 @@ def _arm_pinned(
             if moved is not None:
                 return moved
         elif CLEAN_STATUS_MARKER in (proc.stderr + proc.stdout).lower():
-            if _base_has_merge_queue(repo, verdict.base_ref, run):
-                return _enqueue_clean_pr(repo, pr, strategy, verdict, run)
-            return _merge_clean_pr(repo, pr, strategy, verdict.head_sha, verdict, run, delete_branch)
+            # Arm-only (#4249): never fall back to a direct merge or enqueue.
+            detail = (
+                "PR is already clean, so GitHub refused to arm auto-merge; arm-only policy "
+                "never merges or enqueues directly (the merge queue or an owner must take it)"
+            )
+            logger.warning("Not armed on %s#%s: %s", repo, pr, detail)
+            return ArmResult(False, verdict, detail)
     if proc.returncode != 0:
         detail = proc.stderr.strip() or proc.stdout.strip()
         logger.warning("Could not arm auto-merge on %s#%s: %s", repo, pr, detail)
