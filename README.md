@@ -171,10 +171,13 @@ complete.
 
 ### Deterministic / offline-constrained installs
 
-`npm ci` is expected to succeed from the committed `package-lock.json` alone,
-with no network access, on any fleet machine. Run
+`npm ci` is expected to succeed from the committed `package-lock.json` without
+registry access only on a machine with a pre-populated npm cache that already
+holds every package in the lockfile. On a machine with an empty cache,
+`npm ci` needs the network. Run
 `npm run verify-lockfile` (or `bash scripts/verify-lockfile.sh`) to check
-this locally: it does a clean-state `npm ci`, confirms `npm ls` reports no
+the lockfile locally: it does a clean-state `npm ci` (plain, not `--offline`,
+so anything missing from the cache is fetched), confirms `npm ls` reports no
 unmet/invalid entries, and runs `npm run build`.
 
 If a machine's local npm cache is not yet warm (e.g. a WAN-constrained
@@ -193,10 +196,11 @@ npm cache verify
 ```
 
 This priming step is a manual workaround, not an automated offline mirror.
-A scripted/versioned offline artifact pipeline (build once on `main`,
+The scripted/versioned offline artifact pipeline (build once on `main`,
 publish a checksummed `dist/` artifact, let `deploy/update-deployed.sh`
-install from that artifact without touching npm at all) is tracked as a
-larger follow-up in issue #1085 and is out of scope for this lockfile fix.
+install from that artifact without touching npm at all) was tracked in
+issue #1085 and its remainder #1129, both closed. It is separate from this
+lockfile check, which still depends on the npm cache as described above.
 
 ## Production Deployment
 
