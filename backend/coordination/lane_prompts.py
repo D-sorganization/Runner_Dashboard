@@ -426,6 +426,92 @@ class LanePromptStore:
 
         return self._run_tx(_tx)
 
+    def health_summary(
+        self,
+        *,
+        stall_heartbeat_sec: int = 900,
+        stall_progress_sec: int = 1800,
+        now: float | None = None,
+    ) -> dict[str, Any]:
+        """Classify active, stalled, expired, and unassigned idle lanes."""
+        ts = time.time() if now is None else float(now)
+        hb_thresh = max(60, int(stall_heartbeat_sec))
+        prog_thresh = max(60, int(stall_progress_sec))
+
+        def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
+            conn.execute(
+                "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
+                (ts,),
+            )
+            assignments = conn.execute(
+                "SELECT lane_id, role, task_focus, enabled FROM lane_assignments ORDER BY lane_id"
+            ).fetchall()
+            active_rows = conn.execute("SELECT * FROM lane_checkouts WHERE status='active' ORDER BY lane_id").fetchall()
+            expired_rows = conn.execute(
+                """
+                SELECT lane_id, checkout_id, session_id, expires_at
+                FROM lane_checkouts
+                WHERE status='expired'
+                ORDER BY expires_at DESC
+                LIMIT 25
+                """
+            ).fetchall()
+
+            active_lane_ids: set[str] = set()
+            healthy_active: list[dict[str, Any]] = []
+            stalled_heartbeat: list[dict[str, Any]] = []
+            stalled_progress: list[dict[str, Any]] = []
+
+            for r in active_rows:
+                active_lane_ids.add(r["lane_id"])
+                hb_age = ts - float(r["heartbeat_at"])
+                prog_ref = float(r["progress_at"]) if r["progress_at"] is not None else float(r["created_at"])
+                prog_age = ts - prog_ref
+                item = {
+                    "lane_id": r["lane_id"],
+                    "checkout_id": r["checkout_id"],
+                    "session_id": r["session_id"],
+                    "heartbeat_age_sec": round(hb_age, 1),
+                    "progress_age_sec": round(prog_age, 1),
+                    "expires_in_sec": round(float(r["expires_at"]) - ts, 1),
+                }
+                if hb_age >= hb_thresh:
+                    stalled_heartbeat.append(item)
+                elif prog_age >= prog_thresh:
+                    stalled_progress.append(item)
+                else:
+                    healthy_active.append(item)
+
+            idle_lanes = [
+                {
+                    "lane_id": a["lane_id"],
+                    "role": a["role"],
+                    "task_focus": a["task_focus"],
+                }
+                for a in assignments
+                if a["enabled"] and a["lane_id"] not in active_lane_ids
+            ]
+            expired_recent = [
+                {
+                    "lane_id": r["lane_id"],
+                    "checkout_id": r["checkout_id"],
+                    "session_id": r["session_id"],
+                    "expired_ago_sec": round(ts - float(r["expires_at"]), 1),
+                }
+                for r in expired_rows
+            ]
+            return {
+                "checked_at": ts,
+                "healthy_active": healthy_active,
+                "stalled_heartbeat": stalled_heartbeat,
+                "stalled_progress": stalled_progress,
+                "expired_recent": expired_recent,
+                "idle_lanes": idle_lanes,
+                "needs_attention": bool(stalled_heartbeat or stalled_progress or expired_recent or idle_lanes),
+            }
+
+        return self._run_tx(_tx)
+
 
 _default_store_lock = threading.Lock()
 _default_store: LanePromptStore | None = None
