@@ -186,7 +186,7 @@ READ_ONLY_RUN_SHELL_DENY: tuple[str, ...] = UNATTENDED_SHELL_DENY + (
     "gh api",
 )
 _CLAUDE_READ_ONLY_RUN_TOOLS = ("Read", "Grep", "Glob", "TodoWrite", "WebFetch", "WebSearch")
-READ_ONLY_RUN_PROVIDERS: frozenset[str] = frozenset({"claude", "antigravity"})
+READ_ONLY_RUN_PROVIDERS: frozenset[str] = frozenset({"claude", "antigravity", "codex"})
 
 
 def grok_unattended_flags() -> tuple[str, str]:
