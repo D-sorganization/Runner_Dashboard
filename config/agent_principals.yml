@@ -62,10 +62,12 @@ agents:
       - bot
       - barb
   - id: agent-smithers
-    kind: grokbot
-    name: Smithers (Grok work-task intake)
+    kind: codex
+    name: Smithers (Codex work-task intake)
+    roles: []
     scopes:
-      - fleet.read
+      - staff.read
+      - staff.work_items.write
   - id: agent-codex-hands
     kind: codex
     name: Codex hands (computer control)
