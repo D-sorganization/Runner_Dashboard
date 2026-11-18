@@ -5145,3 +5145,7 @@ scheduled-surplus trim is logged as such rather than "host overloaded".
 ### Durable Lane-Prompt Checkout & Fencing (PR #4549)
 
 `backend/coordination/lane_prompts.py` adds `LanePromptStore` (SQLite WAL with `BEGIN IMMEDIATE`, idempotency keys, monotonically increasing `fence_token`, and separate heartbeat/progress timestamps) exposed at `/api/coordination/lane-prompts/{catalog,checkout,heartbeat,release}` in `backend/routers/coordination.py`. The health summary reports healthy active checkouts, heartbeat/progress stalls, recently expired checkouts, and idle enabled lanes through `GET /api/coordination/lane-prompts/health`; threshold query values are integer seconds, with effective minimums of 60 seconds.
+
+### Durable Report-Run Recovery (PR #4551)
+
+`backend/report_run.py` coordinates bounded LaTeX/DOCX report builds with a process-scoped destination lock, guarded recovery from interrupted or corrupt status records, stale-artifact removal, SHA-256 artifact records, and atomic status persistence. Every result keeps `approval_ready=false`; successful builds stop at `awaiting_visual_review`. Destination, build, hash, and persistence failures remain terminal and can be reported through an independent error callback.
