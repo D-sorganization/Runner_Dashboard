@@ -58,6 +58,18 @@ def _git(root: Path, *args: str) -> str:
     return result.stdout.strip()
 
 
+def _git_bytes(root: Path, *args: str) -> bytes:
+    """Return Git output without decoding, newline translation, or stripping."""
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
+    return subprocess.run(
+        ["git", "-C", str(root), *args],
+        env=env,
+        capture_output=True,
+        timeout=GIT_TIMEOUT_SECONDS,
+        check=True,
+    ).stdout
+
+
 def _write(path: Path, state: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -186,7 +198,7 @@ def refresh(root: Path, *, state_path: Path | None = None) -> dict[str, Any]:
         if _git(root, "branch", "--show-current") != "main":
             state.update(status="skipped", reason="checkout is not on main")
         elif _git(root, "status", "--porcelain", "--untracked-files=all"):
-            quarantine = quarantine_dirty_worktree(root, git_run=_git)
+            quarantine = quarantine_dirty_worktree(root, git_run=_git, git_bytes=_git_bytes)
             if quarantine:
                 state["dirty_quarantine"] = quarantine
             if _git(root, "status", "--porcelain", "--untracked-files=all"):
