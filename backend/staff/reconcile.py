@@ -417,6 +417,8 @@ def reconcile_orphaned_runs(
     Post: active runs owned by this machine are marked failed/orphaned,
           leases are released, clean worktrees removed, fleet events emitted,
           and interrupted chat messages and executing proposals reconciled.
+          Plain unstarted queued rows become retryable failures when requeue_queued
+          is enabled; scheduled backoff retries are preserved and re-armed.
     """
     from staff import verification  # noqa: PLC0415
 
@@ -438,12 +440,21 @@ def reconcile_orphaned_runs(
 
     store = runner.store
     active = store.active_runs()
+    # Startup reconcile runs on a background thread while the API already accepts
+    # submissions; never orphan a run whose in-process worker is alive (e.g. a
+    # queued run waiting on the concurrency semaphore).
+    live_worker_ids = getattr(runner, "active_worker_run_ids", None)
+    live_workers = live_worker_ids() if callable(live_worker_ids) else frozenset()
     reconciled_ids: list[str] = []
     ev_store = event_store if event_store is not None else get_event_store()
 
     for rec in active:
         # Only reconcile runs owned by this node
         if rec.machine and rec.machine != runner.machine:
+            continue
+
+        # A run admitted on this node may still be waiting for its worker launch.
+        if rec.id in live_workers:
             continue
 
         if requeue_queued and rec.status == "queued" and not rec.started_at:
@@ -476,6 +487,7 @@ def reconcile_orphaned_runs(
         revoke_run_token(rec.id)
 
         # 4. Update run record
+        queued_orphan = requeue_queued and rec.status == "queued" and not rec.started_at
         err_msg = (
             f"orphaned by dashboard restart; recovery worktree preserved at {preserved_path}"
             if preserved_path
@@ -486,9 +498,13 @@ def reconcile_orphaned_runs(
             rec.id,
             RunStatus(rec.status),
             RunStatus.FAILED,
-            failure_class="orphaned",
-            retryable=False,
-            remediation=f"Run was orphaned across dashboard restart on node {runner.machine}; inspect worktree.",
+            failure_class="orphaned_queued" if queued_orphan else "orphaned",
+            retryable=bool(queued_orphan),
+            remediation=(
+                "Queued run lost its worker during restart; retry this run."
+                if queued_orphan
+                else f"Run was orphaned across dashboard restart on node {runner.machine}; inspect worktree."
+            ),
             ended_at=_now(),
             error=err_msg,
         )

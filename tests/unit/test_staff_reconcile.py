@@ -5,24 +5,27 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 from fleet_events import EventStore
-from staff import runner as runner_mod
-from staff import store as store_mod
 from staff.reconcile import (
     pid_belongs_to_run,
+    rearm_pending_retries,
     reconcile_executing_proposals,
     reconcile_orphaned_runs,
-    rearm_pending_retries,
     terminate_pid_for_run,
 )
-from staff.roles import RoleSpec
 from staff.store import RunRecord, RunStore
+
+from staff import runner as runner_mod
+from staff import store as store_mod
+from staff.roles import RoleSpec
 
 pytestmark = pytest.mark.unit
 
@@ -518,6 +521,23 @@ def test_reconcile_executing_proposals_marks_failed_without_retry(
     assert len(msgs_after) == len(msgs)
 
 
+def test_restart_turns_workerless_queued_runs_into_retryable_failures(
+    temp_store: RunStore, staff_runner: runner_mod.StaffRunner
+) -> None:
+    """A stranded row with no available role is failed visibly (#4514)."""
+    _make_run(temp_store, "run-queued", "queued")
+    reconciled = reconcile_orphaned_runs(staff_runner, event_store=EventStore(), requeue_queued=True)
+    assert "run-queued" in reconciled
+    rec = temp_store.get_run("run-queued")
+    assert rec is not None
+    assert rec.status == "failed"
+    assert rec.failure_class == "orphaned_queued"
+    assert rec.retryable is True
+    assert rec.ended_at is not None
+    assert temp_store.active_runs() == []
+    assert any(event["kind"] == "reconcile" for event in temp_store.events_after(rec.id, 0))
+
+
 def _worker_role() -> RoleSpec:
     return RoleSpec(
         name="worker",
@@ -562,14 +582,129 @@ def relaunch_runner(temp_store: RunStore, monkeypatch: pytest.MonkeyPatch) -> tu
 def test_requeue_queued_preserves_plain_queued_runs(
     temp_store: RunStore, relaunch_runner: tuple[runner_mod.StaffRunner, list[str]]
 ) -> None:
-    """Queued-not-started runs survive startup reconcile when requeue_queued is enabled (#4256)."""
-    runner, _launched = relaunch_runner
+    """Queued-not-started runs are relaunched when their role remains available (#4256)."""
+    runner, launched = relaunch_runner
     _make_run(temp_store, "run-queued", "queued")
     reconciled = reconcile_orphaned_runs(runner, event_store=EventStore(), requeue_queued=True)
     assert "run-queued" not in reconciled
-    rec = temp_store.get_run("run-queued")
-    assert rec is not None
-    assert rec.status == "queued"
+    assert launched == ["run-queued"]
+
+
+def test_restart_reconcile_skips_runs_with_live_workers(
+    temp_store: RunStore, staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run admitted after startup whose worker is alive (semaphore waiter) is not orphaned (#4514)."""
+    _make_run(temp_store, "run-live", "queued")
+    _make_run(temp_store, "run-dead", "queued")
+    monkeypatch.setattr(staff_runner, "active_worker_run_ids", lambda: frozenset({"run-live"}))
+    reconciled = reconcile_orphaned_runs(staff_runner, event_store=EventStore(), requeue_queued=True)
+    assert "run-live" not in reconciled
+    assert "run-dead" in reconciled
+    live = temp_store.get_run("run-live")
+    assert live is not None
+    assert live.status == "queued"
+
+
+def test_restart_reconcile_skips_admitted_runs_awaiting_launch(
+    temp_store: RunStore, staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A row admitted during startup but not yet launched (dispatch awaits I/O in between) is not orphaned."""
+    rec = RunRecord(
+        id="run-admitted",
+        role="worker",
+        provider="fake",
+        model=None,
+        status="queued",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="#100",
+        prompt="test prompt",
+        machine="test-node",
+    )
+    monkeypatch.setattr(staff_runner, "plan", lambda req: SimpleNamespace(role="worker", provider="fake"))
+    monkeypatch.setattr(runner_mod.ops, "new_run_record", lambda *args: rec)
+    monkeypatch.setattr(runner_mod, "handle_run_status_change", lambda *args: None)
+    _admitted, plan, created = staff_runner.admit(SimpleNamespace())
+    assert created
+
+    reconciled = reconcile_orphaned_runs(staff_runner, event_store=EventStore(), requeue_queued=True)
+    assert "run-admitted" not in reconciled
+    stored = temp_store.get_run("run-admitted")
+    assert stored is not None
+    assert stored.status == "queued"
+
+    started = threading.Event()
+    monkeypatch.setattr(staff_runner, "_worker", lambda *_args: started.set())
+    staff_runner.launch(rec, plan)
+    assert started.wait(5)
+    staff_runner.join_all(timeout=5)
+    assert "run-admitted" not in staff_runner.active_worker_run_ids()
+
+
+def test_admit_publishes_ownership_atomically_with_store_write(
+    staff_runner: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reconciliation snapshot cannot see a new row before its ownership marker."""
+    rec = RunRecord(
+        id="run-atomic-admit",
+        role="worker",
+        provider="fake",
+        model=None,
+        status="queued",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="#100",
+        prompt="test prompt",
+        machine="test-node",
+    )
+    monkeypatch.setattr(staff_runner, "plan", lambda req: SimpleNamespace(role="worker", provider="fake"))
+    monkeypatch.setattr(runner_mod.ops, "new_run_record", lambda *args: rec)
+    monkeypatch.setattr(runner_mod, "handle_run_status_change", lambda *args: None)
+
+    row_written = threading.Event()
+    finish_write = threading.Event()
+    original_create = staff_runner.store.create_run
+
+    def create_then_pause(record: RunRecord) -> None:
+        original_create(record)
+        row_written.set()
+        assert finish_write.wait(timeout=2)
+
+    monkeypatch.setattr(staff_runner.store, "create_run", create_then_pause)
+    admission_errors: list[Exception] = []
+
+    def run_admission() -> None:
+        try:
+            staff_runner.admit(SimpleNamespace())
+        except Exception as exc:  # surfaced below on the test thread
+            admission_errors.append(exc)
+
+    admission = threading.Thread(target=run_admission)
+    admission.start()
+    assert row_written.wait(timeout=2)
+    snapshot_started = threading.Event()
+    snapshot_finished = threading.Event()
+    observed: list[frozenset[str]] = []
+
+    def read_active_ids() -> None:
+        snapshot_started.set()
+        observed.append(staff_runner.active_worker_run_ids())
+        snapshot_finished.set()
+
+    snapshot = threading.Thread(target=read_active_ids)
+    try:
+        snapshot.start()
+        assert snapshot_started.wait(timeout=2)
+        assert not snapshot_finished.wait(timeout=0.1)
+    finally:
+        finish_write.set()
+        admission.join(timeout=2)
+        snapshot.join(timeout=2)
+
+    assert not admission.is_alive()
+    assert not snapshot.is_alive()
+    assert admission_errors == []
+    assert observed == [frozenset({rec.id})]
 
 
 def test_requeue_queued_relaunches_stranded_run(
@@ -622,7 +757,7 @@ def test_requeue_queued_fails_run_whose_role_is_gone(temp_store: RunStore, monke
     rec = temp_store.get_run("run-no-role")
     assert rec is not None
     assert rec.status == "failed"
-    assert rec.failure_class == "orphaned"
+    assert rec.failure_class == "orphaned_queued"
     assert launched == []
 
 

@@ -296,11 +296,17 @@ async def get_run(
                 RemoteRunNotFound,
                 find_remote_run,
                 proxy_remote_run,
+                unreachable_run_detail,
             )  # noqa: PLC0415
 
             try:
                 remote = await find_remote_run(run_id)
             except RemoteRunLookupUnavailable as exc:
+                if exc.peer is not None:
+                    peer_name, _peer_url = exc.peer
+                    return unreachable_run_detail(
+                        run_id, peer_name, f"Last known owner {peer_name}: {exc}", last_known_owner=True
+                    )
                 raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
             if remote is not None:
                 peer_name, peer_url = remote
