@@ -45,7 +45,25 @@ def test_register_hub_session_appears_in_sessions(rm: FakeRM, client: TestClient
     resp = client.post("/api/coordination/sessions/register", json=body, headers=_BOT)
     assert resp.status_code == 200, resp.text
     sessions = client.get("/api/coordination/sessions").json()["sessions"]
-    assert any(s["session"] == "cursor-lane-a" and s["source"] == "hub" for s in sessions)
+    hub = next(s for s in sessions if s["session"] == "cursor-lane-a")
+    assert hub["source"] == "hub"
+    assert hub["agent"] == "cursor"
+
+
+@pytest.mark.unit
+def test_restricted_bot_cannot_register_hub_session_as_another_agent(rm: FakeRM, client: TestClient) -> None:
+    hub_sessions.reset_hub_sessions()
+    body = {
+        "session": "cursor-lane-b",
+        "role": "codex",
+        "provider": "cursor",
+        "machine": "cloud",
+        "repo": "Tools",
+        "target": "issue:9",
+        "ttl_hours": 2,
+    }
+    resp = client.post("/api/coordination/sessions/register", json=body, headers=_BOT)
+    assert resp.status_code == 403, resp.text
 
 
 @pytest.mark.unit

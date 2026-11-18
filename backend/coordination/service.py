@@ -71,6 +71,38 @@ def _stamp(payload: dict[str, Any]) -> dict[str, Any]:
     return {**payload, "generated_at": now_iso()}
 
 
+def _parse_expires(value: str) -> datetime | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = f"{text[:-1]}+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed
+    except ValueError:
+        return None
+
+
+def _live_staff_runs(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop staff runs whose own ``expires`` is in the past.
+
+    Only an explicit run ``expires`` counts: the ``started_at + TTL`` fallback that
+    ``staff_run_as_session`` synthesizes must not hide a run that is still active
+    after more than the TTL.
+    """
+    now = datetime.now(UTC)
+    out: list[dict[str, Any]] = []
+    for run in runs:
+        exp = _parse_expires(str(run.get("expires") or ""))
+        if exp is not None and exp <= now:
+            continue
+        out.append(run)
+    return out
+
+
 def _bind(caller: Caller, session: str, explicit_agent: str | None = None, *, needs_agent: bool = False) -> str | None:
     """Authorize ``caller`` for ``session`` (and resolve the agent when the write names one)."""
     caller.check_session(session)
@@ -135,7 +167,7 @@ async def sessions(repo: str | None) -> dict[str, Any]:
     if source_warning:
         warnings.append(source_warning)
     hub_rows = hub_sessions.list_sessions(repo)
-    staff_session_rows = [staff_run_as_session(r) for r in runs]
+    staff_session_rows = [staff_run_as_session(r) for r in _live_staff_runs(runs)]
     merged_sessions = [*data.get("sessions", []), *staff_session_rows, *hub_rows]
     # de-dupe by (session, repo)
     seen: set[tuple[str, str]] = set()
@@ -195,6 +227,14 @@ def inbox(session: str, repo: str) -> dict[str, Any]:
 def register_hub_session(body: HubSessionRegisterBody, caller: Caller) -> dict[str, Any]:
     """Upsert a hub-local coordination session (no RM subprocess)."""
     _bind(caller, body.session)
+    if caller.restricted:
+        agent = caller.agent_for(None)
+        if body.role.casefold() != agent.casefold():
+            raise ImpersonationError(
+                f"{caller.label} may only register hub sessions for agent {agent!r}, not role {body.role!r}"
+            )
+    else:
+        agent = caller.agent_for(body.role)
     expires = (datetime.now(UTC) + timedelta(hours=float(body.ttl_hours))).isoformat().replace("+00:00", "Z")
     row = hub_sessions.upsert(
         {
@@ -205,7 +245,7 @@ def register_hub_session(body: HubSessionRegisterBody, caller: Caller) -> dict[s
             "repo": body.repo or "",
             "target": body.target or "",
             "expires": expires,
-            "agent": body.role,
+            "agent": agent,
             "issue": 0,
             "branch": "",
             "paths": [],

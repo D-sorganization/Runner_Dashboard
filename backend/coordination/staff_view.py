@@ -12,7 +12,6 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from coordination.staff_runs_cache import record_staff_runs_snapshot
 from staff.runner import get_runner
 
 from staff import fleet as staff_fleet
@@ -25,7 +24,7 @@ _ISSUE_TARGET = re.compile(r"^#(\d+)$")
 
 def _row(run: dict[str, Any]) -> dict[str, Any]:
     target_ref = run.get("target_ref") if "target_ref" in run else run.get("target")
-    return {
+    row = {
         "id": run.get("id"),
         "role": run.get("role"),
         "provider": run.get("provider"),
@@ -36,6 +35,10 @@ def _row(run: dict[str, Any]) -> dict[str, Any]:
         "started_at": run.get("started_at"),
         "source": "staff",
     }
+    expires = run.get("expires")
+    if expires is not None and str(expires).strip():
+        row["expires"] = expires
+    return row
 
 
 def _expires_from_started(started_at: str | None) -> str:
@@ -98,5 +101,4 @@ async def staff_runs(repo: str | None = None) -> tuple[list[dict[str, Any]], lis
     if repo:
         wanted = repo.casefold()
         rows = [r for r in rows if str(r["repo"] or "").casefold() == wanted]
-    record_staff_runs_snapshot(rows, [])
     return rows, []
