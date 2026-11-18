@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from staff.rm_sync import _git
+from staff.rm_sync import _git, _git_bytes
 from staff.rm_sync_quarantine import quarantine_dirty_worktree
 
 pytestmark = pytest.mark.unit
@@ -39,7 +39,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _quarantine(root: Path, tmp_path: Path) -> dict | None:
-    return quarantine_dirty_worktree(root, git_run=_git, quarantine_parent=tmp_path / "q")
+    return quarantine_dirty_worktree(root, git_run=_git, git_bytes=_git_bytes, quarantine_parent=tmp_path / "q")
 
 
 def _is_clean(root: Path) -> bool:
@@ -84,6 +84,33 @@ def test_staged_and_unstaged_edits_keep_both_versions(repo: Path, tmp_path: Path
     assert (saved / "tracked.txt").read_text(encoding="utf-8") == "base\nstaged\nworktree\n"
     assert "+staged" in (saved / "staged.patch").read_text(encoding="utf-8")
     assert _is_clean(repo)
+
+
+@pytest.mark.parametrize(
+    "before,after",
+    [
+        (b"old\n\n\n\n", b"new\n\n\n\n"),
+        (b"old\r\nline\r\n", b"new\r\nline\r\n"),
+        (bytes(range(256)), bytes(reversed(range(256)))),
+    ],
+)
+def test_staged_patch_restores_exact_bytes(repo: Path, tmp_path: Path, before: bytes, after: bytes) -> None:
+    path = repo / "tracked.txt"
+    path.write_bytes(before)
+    git(repo, "add", "tracked.txt")
+    git(repo, "commit", "-qm", "fixture")
+    path.write_bytes(after)
+    git(repo, "add", "tracked.txt")
+    summary = _quarantine(repo, tmp_path)
+    assert summary is not None
+    patch = str(Path(summary["dir"]) / "staged.patch")
+    git(repo, "apply", "--check", "--index", patch)
+    git(repo, "apply", "--index", patch)
+    assert path.read_bytes() == after
+    assert (
+        subprocess.run(["git", "-C", str(repo), "show", ":tracked.txt"], check=True, capture_output=True).stdout
+        == after
+    )
 
 
 def test_staged_new_file_is_saved_and_removed(repo: Path, tmp_path: Path) -> None:

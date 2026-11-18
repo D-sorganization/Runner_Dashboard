@@ -49,6 +49,7 @@ def quarantine_dirty_worktree(
     root: Path,
     *,
     git_run: Any,
+    git_bytes: Any,
     quarantine_parent: Path | None = None,
 ) -> dict[str, Any] | None:
     """Copy dirty paths aside, restore a clean tree, and log; never silently discard work.
@@ -92,8 +93,8 @@ def quarantine_dirty_worktree(
 
     if staged:
         # The index can differ from the worktree copy saved above; keep it as a patch.
-        patch = git_run(root, "diff", "--cached", "--binary")
-        (dest / "staged.patch").write_text(patch + "\n", encoding="utf-8")
+        patch = git_bytes(root, "diff", "--cached", "--binary")
+        (dest / "staged.patch").write_bytes(patch)
     if restore_paths:
         git_run(root, "restore", "--source=HEAD", "--staged", "--worktree", "--", *restore_paths)
     if clean_paths:
