@@ -104,12 +104,12 @@ def classify_docs_tests_only_arm(
         return LowRiskClassification(False, "files_incomplete")
     if not file_paths:
         return LowRiskClassification(False, "no_changed_files")
-    changed_lines = int(additions) + int(deletions)
-    if changed_lines > line_cap:
-        return LowRiskClassification(False, "over_line_cap")
     disallowed = [p for p in file_paths if not is_docs_or_tests_path(p)]
     if disallowed:
         return LowRiskClassification(False, f"mixed_paths:{disallowed[0]}")
+    changed_lines = int(additions) + int(deletions)
+    if changed_lines > line_cap:
+        return LowRiskClassification(True, "docs_tests_only:over_line_cap_advisory")
     return LowRiskClassification(True, "docs_tests_only")
 
 

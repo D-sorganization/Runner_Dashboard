@@ -249,13 +249,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repo_root=config.repo_root,
             )
             executed.append({"repo": row["repo"], "pr": row["pr"], **result})
+    for ex in executed:
+        log.info(
+            "merge shepherd arm repo=%s pr=%s armed=%s exit_code=%s",
+            ex.get("repo"),
+            ex.get("pr"),
+            ex.get("armed"),
+            ex.get("exit_code"),
+        )
     payload = summary_to_json(summary)
     payload["live"] = live
     payload["executed"] = executed
     _write_step_summary(payload)
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
-    return 1 if summary.errors else 0
+    arm_failed = any(not ex.get("armed") for ex in executed)
+    return 1 if summary.errors or arm_failed else 0
 
 
 if __name__ == "__main__":
