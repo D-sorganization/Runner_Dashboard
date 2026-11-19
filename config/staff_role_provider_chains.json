@@ -4,7 +4,7 @@
   "provider_models": {
     "codex": "gpt-6.1-sol",
     "claude": "claude-opus-5-5",
-    "cursor-agent": null,
+    "cursor-agent": "composer-2.5",
     "antigravity": "gemini-3.8-flash-high"
   },
   "roles": {

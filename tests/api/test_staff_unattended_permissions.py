@@ -114,7 +114,10 @@ def test_codex_command_items_are_not_mistaken_for_answers() -> None:
 
 
 @pytest.mark.unit
-def test_cursor_agent_runs_sandboxed_without_force() -> None:
+def test_cursor_agent_runs_sandboxed_without_force(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     argv = ADAPTERS["cursor-agent"].build_command("fix it", "/tmp/wt", model=None)
     assert argv[argv.index("--sandbox") + 1] == "enabled"
     assert "--trust" in argv  # workspace trust for its own worktree, not a permission bypass

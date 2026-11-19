@@ -124,10 +124,7 @@ _GEMINI_MODELS = ("gemini-2.5-pro", "gemini-2.5-flash")
 _CURSOR_AGENT_MODELS = (
     "auto",
     "composer-2.5",
-    "gpt-5",
-    "claude-sonnet-4",
-    "grok-code-fast-1",
-    "grok-4",
+    "composer-2.5-fast",
     "grok-4.7-high",
     "grok-4.7-high-fast",
     "grok-4.7-medium",

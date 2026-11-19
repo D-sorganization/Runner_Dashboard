@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -36,6 +37,7 @@ from staff.adapter_policies import (
 )
 from staff.anthropic_api_provider import build_adapter as _build_anthropic_api_adapter
 from staff.deepseek_provider import deepseek_available, deepseek_environment
+from staff.git_identity import staff_git_identity_env
 from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
 from staff.qwen_provider import (
@@ -55,6 +57,14 @@ ProviderId = str
 # ``agy`` is a Windows binary reached through WSL interop, whose command line is capped near 32 K
 # characters; a longer argv fails with ``agy: Invalid argument`` (#2744). Longer prompts go on stdin.
 AGY_MAX_ARGV_PROMPT_CHARS = 16_000
+
+
+def _cursor_agent_sandbox_mode() -> str:
+    """Cursor's sandbox is unavailable on Windows; fleet runs must not pass ``enabled`` there."""
+    if sys.platform == "win32":
+        return "disabled"
+    return "enabled"
+
 
 __all__ = [
     "ADAPTERS",
@@ -193,6 +203,8 @@ class ProviderAdapter:
                 )
             if self.provider_id == "antigravity" and "--mode" in out:
                 out[out.index("--mode") + 1] = "plan"
+        if self.provider_id == "cursor-agent" and "--sandbox" in out:
+            out[out.index("--sandbox") + 1] = _cursor_agent_sandbox_mode()
         if session_id:
             if self.provider_id in ("codex", "ollama"):
                 # Resume applies this invocation's config; retain explicit launch options.
@@ -491,9 +503,10 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "--model",
             "{model}",
         ),
-        default_model="grok-4.7-high",
+        default_model=None,
         models=_CURSOR_AGENT_MODELS,
         json_lines=True,
+        env_builder=staff_git_identity_env,
         notes=(
             "Cursor subscription; Grok models (grok-4.7-*, cursor-grok-4.6-*) are reached here, no separate xAI plan. "
             "Commands run inside Cursor's sandbox instead of --force (#1586); --trust only answers the "

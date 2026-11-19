@@ -17,6 +17,48 @@ _BUSY_SLEEP_S = 0.05
 
 _PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini")
 
+# Hub-provisioned Cursor CLI lanes (#4565). ``release_sha`` / ``package_hash`` are
+# placeholders until the hub publishes a fleet prompt package revision.
+_DEFAULT_RELEASE_SHA = "bootstrap"
+_DEFAULT_PACKAGE_HASH = "bootstrap"
+_DEFAULT_CURSOR_MODEL = "composer-2.5"
+
+DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "lane_id": "cursor-ct-1",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_CURSOR_MODEL,
+        "max_children": 2,
+        "task_focus": "CT host Cursor CLI lane (Composer 2.5).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-oglaptop-1",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_CURSOR_MODEL,
+        "max_children": 2,
+        "task_focus": "OGLaptop host Cursor CLI lane (Composer 2.5).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-desk-1",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_CURSOR_MODEL,
+        "max_children": 2,
+        "task_focus": "DeskComputer fallback Cursor lane (disabled while host is overloaded).",
+        "enabled": False,
+    },
+)
+
 
 def _load_host_aliases() -> dict[str, str]:
     aliases: dict[str, str] = {}
@@ -237,6 +279,11 @@ class LanePromptStore:
                 """)
         finally:
             conn.close()
+
+    def seed_defaults(self) -> None:
+        """Register :data:`DEFAULT_LANE_ASSIGNMENTS` (idempotent upsert per lane_id)."""
+        for row in DEFAULT_LANE_ASSIGNMENTS:
+            self.register_assignment(**row)
 
     def register_assignment(
         self,
@@ -689,4 +736,5 @@ def get_lane_prompt_store() -> LanePromptStore:
     with _default_store_lock:
         if _default_store is None:
             _default_store = LanePromptStore()
+            _default_store.seed_defaults()
         return _default_store
