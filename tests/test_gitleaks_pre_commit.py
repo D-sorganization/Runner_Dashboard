@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+from typing import Any
 from unittest import mock
 
 from scripts import gitleaks_pre_commit as hook
@@ -80,6 +81,80 @@ def test_healthy_staged_scan_with_scanned_bytes_passes() -> None:
 def test_fail_closed_zero_commits_and_zero_bytes_scanned() -> None:
     stdout = "INF 0 commits scanned.\nINF scanned ~0 bytes (0) in 12ms\nINF no leaks found\n"
     assert _staged_scan_exit(stdout) == 1
+
+
+def test_deletion_only_staged_scan_passes_with_zero_bytes() -> None:
+    """Deletion-only staged changes have no content to scan (#4560)."""
+    with mock.patch.dict(os.environ, {}, clear=True):
+        with mock.patch.object(hook, "_staged_has_changes", return_value=False):
+            with mock.patch.object(hook, "_run_gitleaks") as run:
+                run.return_value = subprocess.CompletedProcess(
+                    args=[],
+                    returncode=0,
+                    stdout="INF 0 commits scanned.\nINF scanned ~0 bytes (0) in 12ms\nINF no leaks found\n",
+                    stderr="",
+                )
+                assert hook.main([]) == 0
+
+
+def test_empty_file_staged_scan_passes_with_zero_bytes() -> None:
+    """Empty-file staged changes have no content to scan (#4560)."""
+    with mock.patch.dict(os.environ, {}, clear=True):
+        with mock.patch.object(hook, "_staged_has_changes", return_value=False):
+            with mock.patch.object(hook, "_run_gitleaks") as run:
+                run.return_value = subprocess.CompletedProcess(
+                    args=[],
+                    returncode=0,
+                    stdout="INF 0 commits scanned.\nINF scanned ~0 bytes (0) in 12ms\nINF no leaks found\n",
+                    stderr="",
+                )
+                assert hook.main([]) == 0
+
+
+def test_staged_has_changes_identifies_deletion_only() -> None:
+    """_staged_has_changes returns False when all staged files are deleted."""
+
+    def fake_run(cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if "--diff-filter=d" in cmd:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+        if "--quiet" in cmd:
+            return subprocess.CompletedProcess(args=cmd, returncode=1, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    with mock.patch("subprocess.run", side_effect=fake_run):
+        assert hook._staged_has_changes() is False
+
+
+def test_staged_has_changes_identifies_empty_file_only() -> None:
+    """_staged_has_changes returns False when staged files are 0-byte additions."""
+
+    def fake_run(cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if "--name-only" in cmd:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="empty.txt\n", stderr="")
+        if "--numstat" in cmd:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="0\t0\tempty.txt\n", stderr="")
+        if "--quiet" in cmd:
+            return subprocess.CompletedProcess(args=cmd, returncode=1, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    with mock.patch("subprocess.run", side_effect=fake_run):
+        assert hook._staged_has_changes() is False
+
+
+def test_staged_has_changes_identifies_real_content() -> None:
+    """_staged_has_changes returns True when staged files have real content."""
+
+    def fake_run(cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if "--name-only" in cmd:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="real.py\n", stderr="")
+        if "--numstat" in cmd:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="15\t2\treal.py\n", stderr="")
+        if "--quiet" in cmd:
+            return subprocess.CompletedProcess(args=cmd, returncode=1, stdout="", stderr="")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    with mock.patch("subprocess.run", side_effect=fake_run):
+        assert hook._staged_has_changes() is True
 
 
 def test_leak_exit_code_passthrough() -> None:

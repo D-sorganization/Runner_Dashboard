@@ -36,12 +36,45 @@ def _repo_root() -> Path:
 
 
 def _staged_has_changes() -> bool:
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--quiet"],
-        cwd=_repo_root(),
-        check=False,
-    )
-    return result.returncode == 1
+    """True when staged changes contain non-empty content to scan.
+
+    Deletion-only commits and empty-file-only additions introduce no content
+    for gitleaks to scan, so reporting 0 bytes scanned is expected (#4560).
+    """
+    try:
+        base_diff = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=_repo_root(),
+            check=False,
+        )
+        if base_diff.returncode != 1:
+            return False
+
+        diff_proc = subprocess.run(
+            ["git", "diff", "--cached", "--diff-filter=d", "--name-only"],
+            cwd=_repo_root(),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if diff_proc.returncode == 0 and not diff_proc.stdout.strip():
+            return False
+
+        numstat_proc = subprocess.run(
+            ["git", "diff", "--cached", "--numstat", "--diff-filter=d"],
+            cwd=_repo_root(),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if numstat_proc.returncode == 0:
+            lines = [line.split() for line in numstat_proc.stdout.splitlines() if len(line.split()) >= 3]
+            if lines and all(parts[0] == "0" and parts[1] == "0" for parts in lines):
+                return False
+
+        return True
+    except OSError:
+        return False
 
 
 def _pre_push_range() -> tuple[str, str] | None:
