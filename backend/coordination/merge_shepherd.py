@@ -145,10 +145,6 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
         return ShepherdDecision(
             ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.ALREADY_QUEUED, priority=priority
         )
-    if candidate.is_behind:
-        return ShepherdDecision(
-            ShepherdAction.UPDATE_BRANCH, pr_num, repo, detail="Update branch via API", priority=priority
-        )
 
     checks = candidate.checks_status.upper()
     if checks == "PENDING":
