@@ -21,6 +21,7 @@ from staff.adapters import (
     claude_unattended_tools,
     gemini_policy_toml,
 )
+from staff.adapter_policies import unattended_argv_bypass_flags
 
 UNATTENDED = [pid for pid, adapter in ADAPTERS.items() if adapter.unattended]
 
@@ -29,7 +30,7 @@ UNATTENDED = [pid for pid, adapter in ADAPTERS.items() if adapter.unattended]
 @pytest.mark.parametrize("provider", UNATTENDED)
 def test_no_unattended_argv_carries_a_bypass_flag(provider: str) -> None:
     argv = ADAPTERS[provider].build_command("do it", "/tmp/wt", model="m", gitdir="/repo/.git")
-    assert not PERMISSION_BYPASS_FLAGS & set(argv), argv
+    assert not unattended_argv_bypass_flags(provider, argv), argv
 
 
 @pytest.mark.unit

@@ -204,19 +204,23 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         dashboard_id="deepseek_api",
         conductor_id="deepseek-api",
         label="DeepSeek API",
-        execution_mode="remote_session",
+        execution_mode="local_exec",
         dispatch_mode="future",
         auth_mode="api_key",
         resource="runner",
-        capabilities=("code_review",),
+        capabilities=("code_edit", "ci_fix", "test_fix"),
         cost_per_task=0.0,
         max_concurrency=1,
         models=("deepseek-flash", "deepseek-v4-pro"),
+        availability_probe=("claude",),
         required_env=("DEEPSEEK_API_KEY",),
         setup_hint="Explicitly enable the DeepSeek API route and configure its credential on the host.",
-        enabled=False,
+        enabled=True,
         cloud_mutation_allowed=False,
-        notes="Paid route, explicit chat selection only; unavailable to autonomous dispatch.",
+        notes=(
+            "Paid route through Claude CLI + DeepSeek API; requires STAFF_DEEPSEEK_API_ENABLED on the host. "
+            "Opt in per role (draft-only qualification lanes first)."
+        ),
     ),
     ProviderEntry(
         dashboard_id="anthropic_api",

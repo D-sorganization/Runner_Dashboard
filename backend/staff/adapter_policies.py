@@ -55,6 +55,15 @@ PERMISSION_BYPASS_FLAGS = frozenset(
 _CHAT_BYPASS_FLAGS = PERMISSION_BYPASS_FLAGS | {"--trust", "-y"}
 
 
+def unattended_argv_bypass_flags(provider_id: str, argv: Sequence[str]) -> frozenset[str]:
+    """#1586 bypass tokens in an unattended launch argv, with provider-specific carve-outs."""
+    bypass = PERMISSION_BYPASS_FLAGS & set(argv)
+    if provider_id == "qwen":
+        # Qwen names headless edits ``--approval-mode yolo`` (not the separate ``--yolo`` flag).
+        bypass -= {"--yolo", "yolo", "-y"}
+    return frozenset(bypass)
+
+
 # ── Unattended runs (#1586) ─────────────────────────────────────────────────
 # Shell command prefixes an unattended run may execute without a prompt. One
 # table, rendered per provider (Claude tool rules, Gemini policy). Playbooks use

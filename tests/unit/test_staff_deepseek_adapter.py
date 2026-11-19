@@ -35,10 +35,19 @@ def test_subscription_policy_refuses_paid_provider() -> None:
     assert not check_provider_subscription("deepseek-api").ok
 
 
-def test_adapter_is_chat_only_and_uses_deepseek_model() -> None:
+def test_adapter_unattended_defaults_to_deepseek_v4_pro(monkeypatch: pytest.MonkeyPatch) -> None:
     adapter = ADAPTERS["deepseek-api"]
-    assert not adapter.unattended
-    argv = adapter.chat_argv("hello", ".")
+    assert adapter.unattended
+    monkeypatch.setenv("STAFF_DEEPSEEK_API_ENABLED", "true")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "example")  # pragma: allowlist secret
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/claude" if name == "claude" else None)
+    argv = adapter.build_command("hello", "/tmp/wt", model=None)
+    assert argv[-2:] == ["--model", "deepseek-v4-pro"]
+
+
+def test_adapter_chat_uses_deepseek_model() -> None:
+    adapter = ADAPTERS["deepseek-api"]
+    argv = adapter.chat_argv("hello", ".", model="deepseek-flash")
     assert argv[-2:] == ["--model", "deepseek-flash"]
     assert argv[argv.index("--tools") + 1] == ""
 
@@ -86,7 +95,7 @@ async def test_panel_invokes_mocked_claude_with_isolated_deepseek_environment(mo
     assert captured["env"]["ANTHROPIC_AUTH_TOKEN"] == "example"
     assert "DEEPSEEK_API_KEY" not in captured["env"]
     assert "OPENAI_API_KEY" not in captured["env"]
-    assert captured["cmd"][-2:] == ["--model", "deepseek-flash"]
+    assert captured["cmd"][-2:] == ["--model", "deepseek-v4-pro"]
 
 
 @pytest.mark.asyncio

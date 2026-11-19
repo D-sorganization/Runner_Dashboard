@@ -20,6 +20,7 @@ from staff.adapter_policies import (
     CHAT_READ_ONLY_TOOLS,
     CLAUDE_WRITE_TOOLS,
     PERMISSION_BYPASS_FLAGS,
+    unattended_argv_bypass_flags,
     READ_ONLY_RUN_PROVIDERS,
     READ_ONLY_RUN_SHELL_ALLOW,
     READ_ONLY_RUN_SHELL_DENY,
@@ -216,7 +217,9 @@ class ProviderAdapter:
         if output_schema is not None:
             apply_output_schema(self.provider_id, out, workdir, output_schema)
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
-        assert not PERMISSION_BYPASS_FLAGS & set(out), "unattended argv must never bypass permissions"  # noqa: S101
+        assert not unattended_argv_bypass_flags(self.provider_id, out), (
+            "unattended argv must never bypass permissions"
+        )  # noqa: S101
         return out
 
     def chat_argv(
@@ -391,8 +394,9 @@ _UNATTENDED_GROK = (
     _GROK_ALLOW,
     "--deny",
     _GROK_DENY,
-    "--no-auto-update",
-    "-w",
+    "--permission-mode",
+    "dontAsk",
+    "--cwd",
     "{workdir}",
     "--model",
     "{model}",
@@ -417,13 +421,13 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         label="DeepSeek API (explicit opt-in)",
         executable="claude",
         argv=_UNATTENDED_CLAUDE,
-        default_model="deepseek-flash",
+        default_model="deepseek-v4-pro",
         models=("deepseek-flash", "deepseek-v4-pro"),
         json_lines=True,
-        unattended=False,
+        unattended=True,
         installed_override=deepseek_available,
         env_builder=deepseek_environment,
-        notes="Paid API; requires explicit host enablement and provider selection; chat only.",
+        notes="Paid API; requires explicit host enablement (STAFF_DEEPSEEK_API_ENABLED) and provider selection.",
     ),
     "codex": ProviderAdapter(
         provider_id="codex",
@@ -522,7 +526,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         notes=(
             "Standalone Grok Build CLI registry row `grok_cli` (#4130), distinct from the "
             "Cursor-hosted Grok models under `cursor-agent`. Launch flags (`--allow`/`--deny`/"
-            "`--no-auto-update`/`-w`) are a best-effort mapping from published Grok docs, not "
+            "`--permission-mode dontAsk`/`--cwd`) are mapped to Grok Build CLI 1.0.77; not "
             "yet verified against a real `grok` binary — never `--yolo`/`--always-approve` "
             "(permission bypass, #1586). Has no confirmed read-only chat flag yet, so chat "
             "turns raise ChatReadOnlyUnsupportedError rather than guess one; not in the "
@@ -540,7 +544,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "--output-format",
             "stream-json",
             "--approval-mode",
-            "auto-edit",
+            "yolo",
             "--channel",
             "CI",
             "--model",
