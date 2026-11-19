@@ -164,3 +164,56 @@ def test_explicit_lane_id_and_unknown_metadata_enforce_compatibility(
             provider="claude",
             host="node-b",
         )
+
+
+def test_cursor_lane_routing_and_composer_model(tmp_path: Path) -> None:
+    """Cursor lanes and composer-* models route to cursor provider with host aliases."""
+    from coordination.lane_prompts import (
+        LanePromptStore,
+        _lane_host,
+        _lane_provider,
+    )
+
+    # Provider and model inference
+    assert _lane_provider("cursor-desk-1", "") == "cursor"
+    assert _lane_provider("some-custom-lane", "composer-2.5") == "cursor"
+    assert _lane_provider("some-custom-lane", "grok-code") == "cursor"
+
+    # Host inference
+    assert _lane_host("cursor-desk-1") == "desk"
+    assert _lane_host("cursor-ct-1") == "ct"
+    assert _lane_host("cursor-node-1") == "node"
+
+    # Store registration and catalog
+    store = LanePromptStore(db_path=tmp_path / "lane_prompts.sqlite3")
+    store.register_assignment(
+        lane_id="cursor-desk-1",
+        role="backlog-completion",
+        repos=["Runner_Dashboard"],
+        release_sha="abc123",
+        package_hash="pkg123",
+        subagent_model="composer-2.5",
+        max_children=2,
+    )
+    store.register_assignment(
+        lane_id="cursor-ct-1",
+        role="acceptance-review",
+        repos=["AffineDrift"],
+        release_sha="abc123",
+        package_hash="pkg123",
+        subagent_model="composer-2.5",
+        max_children=2,
+    )
+    catalog = store.list_catalog()
+    cat_ids = {c["lane_id"] for c in catalog}
+    assert "cursor-desk-1" in cat_ids
+    assert "cursor-ct-1" in cat_ids
+
+    # Checkout cursor lane by session id
+    res = store.checkout(
+        session_id="cursor-desk-20261118-1",
+        principal="agent-cursor",
+        idempotency_key="idem-cursor-1",
+        host="desk",
+    )
+    assert res["lane_id"] == "cursor-desk-1"

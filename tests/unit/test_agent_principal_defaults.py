@@ -6,10 +6,18 @@ import json
 from pathlib import Path
 
 import pytest
+
+pytest.importorskip("fcntl", reason="identity transitively requires fcntl on POSIX")
 from agent_principal_defaults import merge_agent_principal_defaults
 from identity import IdentityManager, principal_has_scope
 
-_MOCK_OVERLAY = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "overlay" / "mock-overlay.json"
+_MOCK_OVERLAY = (
+    Path(__file__).resolve().parents[2]
+    / "tests"
+    / "fixtures"
+    / "overlay"
+    / "mock-overlay.json"
+)
 
 
 def _defaults_path() -> Path:
@@ -24,13 +32,17 @@ def _write_overlay(tmp_path: Path, agent_token_paths: dict[str, str]) -> Path:
     return overlay_path
 
 
-def test_merge_applies_fleet_read_to_agent_grok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_merge_applies_fleet_read_to_agent_grok(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("DASHBOARD_AGENT_PRINCIPALS_FILE", str(_defaults_path()))
     id_dir = tmp_path / "id"
     id_dir.mkdir()
     tok_dir = id_dir / "agent-tokens"
     tok_dir.mkdir()
-    (tok_dir / "agent-grok.token").write_text("svc_test_grok_ingest\n", encoding="utf-8")
+    (tok_dir / "agent-grok.token").write_text(
+        "svc_test_grok_ingest\n", encoding="utf-8"
+    )
 
     mgr = IdentityManager(config_dir=id_dir)
     merge_agent_principal_defaults(mgr)
@@ -41,7 +53,9 @@ def test_merge_applies_fleet_read_to_agent_grok(tmp_path: Path, monkeypatch: pyt
     assert mgr.verify_token("svc_test_grok_ingest") is prin
 
 
-def test_overlay_token_path_is_ingested(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_overlay_token_path_is_ingested(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """#3082 category 2: an overlay-declared token path is read even with no local directory."""
     monkeypatch.setenv("DASHBOARD_AGENT_PRINCIPALS_FILE", str(_defaults_path()))
     id_dir = tmp_path / "id"
@@ -50,7 +64,10 @@ def test_overlay_token_path_is_ingested(tmp_path: Path, monkeypatch: pytest.Monk
     token_path = tmp_path / "overlay-store" / "agent-grok.token"
     token_path.parent.mkdir()
     token_path.write_text("svc_test_grok_overlay\n", encoding="utf-8")
-    monkeypatch.setenv("RD_OVERLAY_PATH", str(_write_overlay(tmp_path, {"agent-grok": str(token_path)})))
+    monkeypatch.setenv(
+        "RD_OVERLAY_PATH",
+        str(_write_overlay(tmp_path, {"agent-grok": str(token_path)})),
+    )
 
     mgr = IdentityManager(config_dir=id_dir)
     merge_agent_principal_defaults(mgr)
@@ -59,19 +76,26 @@ def test_overlay_token_path_is_ingested(tmp_path: Path, monkeypatch: pytest.Monk
     assert mgr.verify_token("svc_test_grok_overlay") is prin
 
 
-def test_overlay_token_path_overrides_directory_glob(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_overlay_token_path_overrides_directory_glob(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """When both are configured, the overlay path wins over the local directory glob."""
     monkeypatch.setenv("DASHBOARD_AGENT_PRINCIPALS_FILE", str(_defaults_path()))
     id_dir = tmp_path / "id"
     id_dir.mkdir()
     tok_dir = id_dir / "agent-tokens"
     tok_dir.mkdir()
-    (tok_dir / "agent-grok.token").write_text("svc_test_grok_directory\n", encoding="utf-8")
+    (tok_dir / "agent-grok.token").write_text(
+        "svc_test_grok_directory\n", encoding="utf-8"
+    )
 
     token_path = tmp_path / "overlay-store" / "agent-grok.token"
     token_path.parent.mkdir()
     token_path.write_text("svc_test_grok_overlay\n", encoding="utf-8")
-    monkeypatch.setenv("RD_OVERLAY_PATH", str(_write_overlay(tmp_path, {"agent-grok": str(token_path)})))
+    monkeypatch.setenv(
+        "RD_OVERLAY_PATH",
+        str(_write_overlay(tmp_path, {"agent-grok": str(token_path)})),
+    )
 
     mgr = IdentityManager(config_dir=id_dir)
     merge_agent_principal_defaults(mgr)
@@ -81,7 +105,9 @@ def test_overlay_token_path_overrides_directory_glob(tmp_path: Path, monkeypatch
     assert mgr.verify_token("svc_test_grok_directory") is None
 
 
-def test_no_overlay_configured_falls_back_to_directory_glob(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_overlay_configured_falls_back_to_directory_glob(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Unset RD_OVERLAY_PATH: behaviour is unchanged (overlay_contract's backward-compat contract)."""
     monkeypatch.delenv("RD_OVERLAY_PATH", raising=False)
     monkeypatch.setenv("DASHBOARD_AGENT_PRINCIPALS_FILE", str(_defaults_path()))
@@ -89,7 +115,9 @@ def test_no_overlay_configured_falls_back_to_directory_glob(tmp_path: Path, monk
     id_dir.mkdir()
     tok_dir = id_dir / "agent-tokens"
     tok_dir.mkdir()
-    (tok_dir / "agent-grok.token").write_text("svc_test_grok_directory\n", encoding="utf-8")
+    (tok_dir / "agent-grok.token").write_text(
+        "svc_test_grok_directory\n", encoding="utf-8"
+    )
 
     mgr = IdentityManager(config_dir=id_dir)
     merge_agent_principal_defaults(mgr)
@@ -98,35 +126,28 @@ def test_no_overlay_configured_falls_back_to_directory_glob(tmp_path: Path, monk
     assert mgr.verify_token("svc_test_grok_directory") is prin
 
 
-def test_merge_provisions_agent_cursor_as_checkin_only_without_read_or_chat(
+def test_merge_provisions_agent_cursor_with_bot_role_and_coordination_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """#2874: unconnected Cursor cloud check-in credential gets activity.checkin only."""
+    """#4565: Cursor agent principal provisions with standard bot roles and coordination.write."""
     monkeypatch.delenv("RD_OVERLAY_PATH", raising=False)
     monkeypatch.setenv("DASHBOARD_AGENT_PRINCIPALS_FILE", str(_defaults_path()))
     id_dir = tmp_path / "id"
     id_dir.mkdir()
     tok_dir = id_dir / "agent-tokens"
     tok_dir.mkdir()
-    (tok_dir / "agent-cursor.token").write_text("svc_test_cursor_checkin\n", encoding="utf-8")
+    (tok_dir / "agent-cursor.token").write_text(
+        "svc_test_cursor_checkin\n", encoding="utf-8"
+    )
 
     mgr = IdentityManager(config_dir=id_dir)
     merge_agent_principal_defaults(mgr)
 
     prin = mgr.principals["agent-cursor"]
-    assert prin.roles == ["checkin-only"]
+    assert prin.roles == ["bot"]
+    assert principal_has_scope(prin, "coordination.write")
     assert principal_has_scope(prin, "activity.checkin")
-    for forbidden in (
-        "activity.read",
-        "activity.write",
-        "staff.read",
-        "staff.chat",
-        "staff.dispatch",
-        "assistant.chat",
-        "fleet.read",
-        "memory.read",
-    ):
-        assert not principal_has_scope(prin, forbidden)
+    assert principal_has_scope(prin, "fleet.read")
     assert mgr.verify_token("svc_test_cursor_checkin") is prin
 
 
@@ -139,7 +160,9 @@ def test_grok_principals_have_explicit_runners_control(
     id_dir = tmp_path / "id"
     tok_dir = id_dir / "agent-tokens"
     tok_dir.mkdir(parents=True)
-    (tok_dir / f"{pid}.token").write_text(f"svc_test_{pid.replace('-', '_')}_ctrl\n", encoding="utf-8")
+    (tok_dir / f"{pid}.token").write_text(
+        f"svc_test_{pid.replace('-', '_')}_ctrl\n", encoding="utf-8"
+    )
 
     mgr = IdentityManager(config_dir=id_dir)
     merge_agent_principal_defaults(mgr)
@@ -147,4 +170,3 @@ def test_grok_principals_have_explicit_runners_control(
     prin = mgr.principals[pid]
     assert "runners.control" in (prin.scopes or [])
     assert principal_has_scope(prin, "runners.control")
-

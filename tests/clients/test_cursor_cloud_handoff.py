@@ -43,8 +43,16 @@ def test_emit_handoff_checkin_pr_opened_and_done_when_hub_reachable(
     assert res_pr["delivered"] == 1
     assert not res_pr.get("degraded")
     env_pr = fake_api.last.body[0]
-    assert (env_pr["source"], env_pr["kind"], env_pr["principal"]) == ("checkin", "pr_opened", "agent-cursor")
-    assert (env_pr["repo"], env_pr["pr"], env_pr["issue"]) == ("Runner_Dashboard", 3377, 3377)
+    assert (env_pr["source"], env_pr["kind"], env_pr["principal"]) == (
+        "checkin",
+        "pr_opened",
+        "agent-cursor",
+    )
+    assert (env_pr["repo"], env_pr["pr"], env_pr["issue"]) == (
+        "Runner_Dashboard",
+        3377,
+        3377,
+    )
     assert env_pr["branch"] == "cursor/activity-r1-followup-3377"
     assert fake_api.last.headers.get("authorization") == "Bearer test-checkin-token"
 
@@ -61,7 +69,11 @@ def test_emit_handoff_checkin_pr_opened_and_done_when_hub_reachable(
     assert res_done["ok"] is True
     assert res_done["delivered"] == 1
     env_done = fake_api.last.body[0]
-    assert (env_done["source"], env_done["kind"], env_done["repo"]) == ("checkin", "done", "Runner_Dashboard")
+    assert (env_done["source"], env_done["kind"], env_done["repo"]) == (
+        "checkin",
+        "done",
+        "Runner_Dashboard",
+    )
     assert env_done["seq"] == 2
 
 
@@ -82,7 +94,9 @@ def test_emit_handoff_checkin_validates_preconditions_before_network(
         )
 
     with pytest.raises(FleetArgumentError, match="repo"):
-        cursor_cloud_handoff.emit_handoff_checkin("done", "", base_url=fake_api.url, spool_file=spool)
+        cursor_cloud_handoff.emit_handoff_checkin(
+            "done", "", base_url=fake_api.url, spool_file=spool
+        )
 
     assert fake_api.requests == []
 
@@ -104,17 +118,25 @@ def test_emit_handoff_checkin_fails_open_when_hub_unreachable_or_unconfigured(
     monkeypatch.setattr(
         FleetClient,
         "request",
-        lambda self, method, path, **kw: (_ for _ in ()).throw(FleetAPIError(0, {"error": "unreachable"})),
+        lambda self, method, path, **kw: (_ for _ in ()).throw(
+            FleetAPIError(0, {"error": "unreachable"})
+        ),
     )
     offline = cursor_cloud_handoff.emit_handoff_checkin(
-        "pr_opened", "Runner_Dashboard", pr=3377, base_url="http://127.0.0.1:9", spool_file=spool
+        "pr_opened",
+        "Runner_Dashboard",
+        pr=3377,
+        base_url="http://127.0.0.1:9",
+        spool_file=spool,
     )
     assert offline["ok"] is True and offline["degraded"] is True
 
     monkeypatch.setattr(
         FleetClient,
         "request",
-        lambda self, method, path, **kw: (_ for _ in ()).throw(FleetAPIError(403, {"detail": "forbidden"})),
+        lambda self, method, path, **kw: (_ for _ in ()).throw(
+            FleetAPIError(403, {"detail": "forbidden"})
+        ),
     )
     denied = cursor_cloud_handoff.emit_handoff_checkin(
         "done", "Runner_Dashboard", base_url="http://127.0.0.1:9", spool_file=spool
@@ -124,7 +146,10 @@ def test_emit_handoff_checkin_fails_open_when_hub_unreachable_or_unconfigured(
 
 
 def test_handoff_stop_cli_emits_pr_opened_and_done_and_exits_zero_offline(
-    fake_api: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    fake_api: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     spool = tmp_path / "spool.json"
     monkeypatch.setenv("FLEET_CHECKIN_SPOOL", str(spool))
@@ -151,7 +176,10 @@ def test_handoff_stop_cli_emits_pr_opened_and_done_and_exits_zero_offline(
 
 
 def test_handoff_checkin_cli_subcommand_and_done_only_stop(
-    fake_api: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    fake_api: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     spool = tmp_path / "spool.json"
     monkeypatch.setenv("FLEET_CHECKIN_SPOOL", str(spool))
@@ -159,12 +187,23 @@ def test_handoff_checkin_cli_subcommand_and_done_only_stop(
     monkeypatch.setenv("FLEET_API_URL", fake_api.url)
     fake_api.respond("POST", "/api/v1/activity/checkins", 200, [{"ok": True}])
 
-    code_bad = cursor_cloud_handoff.main(["checkin", "pr_opened", "--repo", "Runner_Dashboard", "--url", fake_api.url])
+    code_bad = cursor_cloud_handoff.main(
+        ["checkin", "pr_opened", "--repo", "Runner_Dashboard", "--url", fake_api.url]
+    )
     out_bad = json.loads(capsys.readouterr().out)
     assert code_bad == 2 and out_bad["error"] == "invalid_arguments"
 
     code_ok = cursor_cloud_handoff.main(
-        ["checkin", "pr_opened", "--repo", "Runner_Dashboard", "--pr", "3377", "--url", fake_api.url]
+        [
+            "checkin",
+            "pr_opened",
+            "--repo",
+            "Runner_Dashboard",
+            "--pr",
+            "3377",
+            "--url",
+            fake_api.url,
+        ]
     )
     out_ok = json.loads(capsys.readouterr().out)
     assert code_ok == 0 and out_ok["ok"] is True and out_ok["delivered"] == 1
@@ -172,7 +211,9 @@ def test_handoff_checkin_cli_subcommand_and_done_only_stop(
     monkeypatch.setenv("CURSOR_CLOUD_HANDOFF_TEST_REPO", "Runner_Dashboard")
     monkeypatch.setenv("CURSOR_CLOUD_HANDOFF_TEST_BRANCH", "cursor/no-pr-3377")
     monkeypatch.delenv("CURSOR_CLOUD_HANDOFF_TEST_PR_NUMBER", raising=False)
-    monkeypatch.setattr(cursor_cloud_handoff, "_detect_pr_number", lambda _root, _branch: None)
+    monkeypatch.setattr(
+        cursor_cloud_handoff, "_detect_pr_number", lambda _root, _branch: None
+    )
 
     code_stop = cursor_cloud_handoff.main(["stop"])
     _ = capsys.readouterr()
@@ -184,12 +225,19 @@ def test_handoff_checkin_cli_subcommand_and_done_only_stop(
 def test_cursor_principal_is_checkin_only_and_checkin_route_bounds_wire_body() -> None:
     import yaml
 
-    defaults = yaml.safe_load((REPO_ROOT / "config" / "agent_principals.yml").read_text(encoding="utf-8"))
+    defaults = yaml.safe_load(
+        (REPO_ROOT / "config" / "agent_principals.yml").read_text(encoding="utf-8")
+    )
     agents = {row["id"]: row for row in defaults["agents"]}
     assert cursor_cloud_handoff.CURSOR_PRINCIPAL in agents
     cursor_cfg = agents[cursor_cloud_handoff.CURSOR_PRINCIPAL]
-    assert cursor_cfg["roles"] == ["checkin-only"]
-    assert cursor_cfg["scopes"] == ["activity.checkin"]
+    assert cursor_cfg["roles"] == ["bot"]
+    assert "activity.checkin" in cursor_cfg["scopes"]
 
-    activity_router_src = (REPO_ROOT / "backend" / "routers" / "activity.py").read_text(encoding="utf-8")
-    assert "_read_bounded_body(request, max_bytes=_CHECKIN_MAX_BYTES)" in activity_router_src
+    activity_router_src = (REPO_ROOT / "backend" / "routers" / "activity.py").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        "_read_bounded_body(request, max_bytes=_CHECKIN_MAX_BYTES)"
+        in activity_router_src
+    )

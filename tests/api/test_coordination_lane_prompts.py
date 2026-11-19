@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+pytest.importorskip(
+    "fcntl", reason="coordination_fake_rm transitively requires fcntl on POSIX"
+)
 from coordination_fake_rm import FakeRM, bot, install
 from fastapi.testclient import TestClient
 
@@ -44,7 +48,9 @@ def lane_rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRM]
 
 
 @pytest.fixture
-def lane_api(lane_rm: FakeRM, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, Any]:
+def lane_api(
+    lane_rm: FakeRM, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[TestClient, Any]:
     from coordination import lane_prompts
 
     store = lane_prompts.LanePromptStore(db_path=tmp_path / "lane-api.sqlite3")
@@ -60,7 +66,10 @@ def lane_api(lane_rm: FakeRM, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     )
     from server import app  # noqa: PLC0415
 
-    return TestClient(app, raise_server_exceptions=False, client=("100.64.0.9", 51000)), store
+    return (
+        TestClient(app, raise_server_exceptions=False, client=("100.64.0.9", 51000)),
+        store,
+    )
 
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
@@ -192,18 +201,26 @@ def test_heartbeat_stale_fence_fails_and_expiry_allows_reclaim(tmp_path: Path) -
     assert rel["status"] == "released"
 
 
-def test_checkout_rejects_a_session_outside_the_bot_namespace(lane_api: tuple[TestClient, Any]) -> None:
+def test_checkout_rejects_a_session_outside_the_bot_namespace(
+    lane_api: tuple[TestClient, Any],
+) -> None:
     client, _store = lane_api
     response = client.post(
         "/api/coordination/lane-prompts/checkout",
-        json={"session_id": "claude-owner", "idempotency_key": "idem-1", "lane_id": "lane-a"},
+        json={
+            "session_id": "claude-owner",
+            "idempotency_key": "idem-1",
+            "lane_id": "lane-a",
+        },
         headers=_CODEX,
     )
     assert response.status_code == 403, response.text
 
 
 @pytest.mark.parametrize("path", ["heartbeat", "release"])
-def test_lane_mutations_reject_another_agents_session(lane_api: tuple[TestClient, Any], path: str) -> None:
+def test_lane_mutations_reject_another_agents_session(
+    lane_api: tuple[TestClient, Any], path: str
+) -> None:
     client, store = lane_api
     checkout = store.checkout(
         session_id="codex-owner",
@@ -218,7 +235,9 @@ def test_lane_mutations_reject_another_agents_session(lane_api: tuple[TestClient
     }
     if path == "release":
         body["reason"] = "completed"
-    response = client.post(f"/api/coordination/lane-prompts/{path}", json=body, headers=_CLAUDE)
+    response = client.post(
+        f"/api/coordination/lane-prompts/{path}", json=body, headers=_CLAUDE
+    )
     assert response.status_code == 403, response.text
     assert store.list_catalog()[0]["active_checkout_id"] == checkout["checkout_id"]
 
