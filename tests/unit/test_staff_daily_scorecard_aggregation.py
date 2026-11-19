@@ -187,8 +187,8 @@ def test_models_rollup_is_per_model_across_the_window() -> None:
     ]
     models = daily_scorecard(runs, {})["models"]
     assert [m["model"] for m in models] == ["alpha-1", "zeta-1"]
-    assert models[0]["runs"] == 2 and models[0]["days"] == 2
-    assert models[1]["runs"] == 1 and models[1]["days"] == 1
+    assert models[0]["runs"] == 2 and models[0]["days_measured"] == 2
+    assert models[1]["runs"] == 1 and models[1]["days_measured"] == 1
 
 
 def test_totals_cover_every_bucket() -> None:

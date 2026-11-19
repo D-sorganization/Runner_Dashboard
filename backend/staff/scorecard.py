@@ -141,7 +141,7 @@ def daily_scorecard(
         {"date": day, "model": label, **_metrics(group, facts)} for (day, label), group in sorted(by_day_model.items())
     ]
     models = [
-        {"model": label, "days": len(days_per_model[label]), **_metrics(group, facts)}
+        {"model": label, "days_measured": len(days_per_model[label]), **_metrics(group, facts)}
         for label, group in sorted(by_model.items())
     ]
     return {"rows": rows, "models": models, "totals": _metrics(bucketed, facts)}

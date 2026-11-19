@@ -123,7 +123,7 @@ class StaffDailyScorecardModelRow(StaffScorecardMeasures):
     """One model summed over the window, with the UTC days it was measured on."""
 
     model: str
-    days: int
+    days_measured: int
 
 
 class StaffDailyScorecardResponse(BaseModel):

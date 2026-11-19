@@ -12915,8 +12915,8 @@ export interface components {
             closed_unmerged: number;
             /** Cost Usd */
             cost_usd: number;
-            /** Days */
-            days: number;
+            /** Days Measured */
+            days_measured: number;
             /** Failed Verification */
             failed_verification: number;
             /** Findings Per Merged Pr */

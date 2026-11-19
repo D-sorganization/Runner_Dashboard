@@ -7482,8 +7482,8 @@
             "title": "Cost Usd",
             "type": "number"
           },
-          "days": {
-            "title": "Days",
+          "days_measured": {
+            "title": "Days Measured",
             "type": "integer"
           },
           "failed_verification": {
@@ -7579,7 +7579,7 @@
           "review_findings",
           "findings_per_merged_pr",
           "model",
-          "days"
+          "days_measured"
         ],
         "title": "StaffDailyScorecardModelRow",
         "type": "object"
