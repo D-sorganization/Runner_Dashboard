@@ -23,10 +23,10 @@ def _pass(sha: str, *, at: str = "2026-11-19T10:00:00+00:00") -> HeadReviewPass:
 
 
 def test_fingerprint_is_order_independent_and_content_sensitive() -> None:
-    a = diff_fingerprint([("x.py", "1"), ("y.py", "2")])
-    assert a == diff_fingerprint([("y.py", "2"), ("x.py", "1")])
-    assert a != diff_fingerprint([("x.py", "1"), ("y.py", "3")])
-    assert a != diff_fingerprint([("x.py", "1")])
+    a = diff_fingerprint([("x.py", "100644", "1"), ("y.py", "100644", "2")])
+    assert a == diff_fingerprint([("y.py", "100644", "2"), ("x.py", "100644", "1")])
+    assert a != diff_fingerprint([("x.py", "100644", "1"), ("y.py", "100644", "3")])
+    assert a != diff_fingerprint([("x.py", "100644", "1")])
 
 
 def test_fingerprint_of_empty_diff_is_empty_string() -> None:
@@ -41,7 +41,7 @@ def test_exact_head_pass_still_wins() -> None:
 
 
 def test_carries_forward_when_diff_identical() -> None:
-    fp = diff_fingerprint([("x.py", "1")])
+    fp = diff_fingerprint([("x.py", "100644", "1")])
     ok, why = pass_with_carry_forward(
         [_pass(OLD)], pr=7, head_sha=NEW, head_fingerprint=fp, pass_fingerprints={OLD: fp}, now=NOW
     )
@@ -49,8 +49,8 @@ def test_carries_forward_when_diff_identical() -> None:
 
 
 def test_real_code_change_requires_fresh_review() -> None:
-    old_fp = diff_fingerprint([("x.py", "1")])
-    new_fp = diff_fingerprint([("x.py", "2")])
+    old_fp = diff_fingerprint([("x.py", "100644", "1")])
+    new_fp = diff_fingerprint([("x.py", "100644", "2")])
     ok, why = pass_with_carry_forward(
         [_pass(OLD)], pr=7, head_sha=NEW, head_fingerprint=new_fp, pass_fingerprints={OLD: old_fp}, now=NOW
     )
@@ -101,3 +101,57 @@ def test_fix_cap_allows_one_pass_then_escalates() -> None:
 def test_fix_cap_rejects_negative_counter() -> None:
     with pytest.raises(ValueError, match="failed_fix_passes"):
         fix_pass_decision(failed_fix_passes=-1)
+
+
+def test_fingerprint_changes_when_only_git_mode_changes() -> None:
+    plain = diff_fingerprint([("run.sh", "100644", "abc")])
+    executable = diff_fingerprint([("run.sh", "100755", "abc")])
+    assert plain != executable
+
+
+def test_mode_only_change_requires_fresh_review() -> None:
+    old_fp = diff_fingerprint([("run.sh", "100644", "abc")])
+    new_fp = diff_fingerprint([("run.sh", "100755", "abc")])
+    ok, why = pass_with_carry_forward(
+        [_pass(OLD)], pr=7, head_sha=NEW, head_fingerprint=new_fp, pass_fingerprints={OLD: old_fp}, now=NOW
+    )
+    assert (ok, why) == (False, "missing_pass_at_head")
+
+
+def _arm(**kw: object) -> tuple[str, str]:
+    from coordination.merge_shepherd_exact_head import shepherd_arm_eligibility
+
+    base: dict[str, object] = {
+        "review_decision": "",
+        "file_paths": ["backend/x.py"],
+        "additions": 5,
+        "deletions": 0,
+        "line_cap": 100,
+        "labels": [],
+        "checks_state": "SUCCESS",
+        "files_complete": True,
+        "pr_number": 7,
+        "head_sha": NEW,
+        "review_passes": [_pass(OLD)],
+        "now": NOW,
+    }
+    base.update(kw)
+    return shepherd_arm_eligibility(**base)  # type: ignore[arg-type]
+
+
+def test_arm_eligibility_carries_forward_pass_when_fingerprints_match() -> None:
+    fp = diff_fingerprint([("backend/x.py", "100644", "1")])
+    assert _arm(head_fingerprint=fp, pass_fingerprints={OLD: fp}) == (
+        "reviewed",
+        "exact_head_verdict+carried_forward_pass",
+    )
+
+
+def test_arm_eligibility_without_fingerprints_is_unchanged() -> None:
+    assert _arm()[0] == "no_approval"
+
+
+def test_arm_eligibility_rejects_changed_fingerprint() -> None:
+    old_fp = diff_fingerprint([("backend/x.py", "100644", "1")])
+    new_fp = diff_fingerprint([("backend/x.py", "100644", "2")])
+    assert _arm(head_fingerprint=new_fp, pass_fingerprints={OLD: old_fp})[0] == "no_approval"

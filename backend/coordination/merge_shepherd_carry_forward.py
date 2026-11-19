@@ -1,9 +1,9 @@
 """Carry an exact-head review PASS across main-only merges; cap fix passes (Part of #4563).
 
-Pure decision logic. Callers supply per-head diff fingerprints (path, blob oid pairs
-of the PR diff against ``main``); a PASS carries forward only when the fingerprint of
-the reviewed head equals the current head's, so real code changes still need a fresh
-exact-head review.
+Pure decision logic. Callers supply per-head diff fingerprints, i.e. (path, git mode, blob oid)
+of the PR diff against ``main``. A PASS carries forward only when the fingerprint of the
+reviewed head equals the current head's, so real code changes (including mode changes) still
+need a fresh exact-head review.
 """
 
 from __future__ import annotations
@@ -22,9 +22,13 @@ from coordination.merge_shepherd_exact_head import (
 MAX_FIX_PASSES = 1
 
 
-def diff_fingerprint(files: Iterable[tuple[str, str]]) -> str:
-    """Order-independent digest of ``(path, blob_oid)`` pairs; ``""`` for an empty diff."""
-    rows = sorted({f"{path}\0{oid}" for path, oid in files})
+def diff_fingerprint(files: Iterable[tuple[str, str, str]]) -> str:
+    """Order-independent digest of ``(path, git_mode, blob_oid)``; ``""`` for an empty diff.
+
+    The mode is part of the identity: ``100644`` -> ``100755`` keeps the blob oid but
+    changes runtime behavior, so it must never carry an old PASS.
+    """
+    rows = sorted({f"{path}\0{mode}\0{oid}" for path, mode, oid in files})
     if not rows:
         return ""
     return hashlib.sha256("\n".join(rows).encode("utf-8")).hexdigest()

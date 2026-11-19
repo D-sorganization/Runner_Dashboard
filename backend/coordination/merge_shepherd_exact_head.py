@@ -91,8 +91,14 @@ def shepherd_arm_eligibility(
     review_passes: Sequence[HeadReviewPass] = (),
     now: datetime | None = None,
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
+    head_fingerprint: str = "",
+    pass_fingerprints: Mapping[str, str] | None = None,
 ) -> tuple[str, str]:
-    """Docs/tests-only may arm without a hub pass; code paths need PASS at ``head_sha``."""
+    """Docs/tests-only may arm without a hub pass; code paths need PASS at ``head_sha``.
+
+    When ``head_fingerprint``/``pass_fingerprints`` are supplied (#4563), a PASS recorded
+    at an earlier head carries forward if its reviewed diff fingerprint equals the current one.
+    """
     if str(checks_state).upper() != "SUCCESS":
         return "no_approval", "required_checks_not_green"
     if any(str(lbl).strip().casefold() in LOW_RISK_BLOCKED_LABELS for lbl in labels):
@@ -102,13 +108,26 @@ def shepherd_arm_eligibility(
     if not file_paths:
         return "no_approval", "no_changed_files"
 
-    ok, pass_detail = pass_at_head(
-        review_passes,
-        pr=pr_number,
-        head_sha=head_sha,
-        now=now,
-        ttl_hours=review_pass_ttl_hours,
-    )
+    if head_fingerprint and pass_fingerprints:
+        from coordination.merge_shepherd_carry_forward import pass_with_carry_forward  # noqa: PLC0415
+
+        ok, pass_detail = pass_with_carry_forward(
+            review_passes,
+            pr=pr_number,
+            head_sha=head_sha,
+            head_fingerprint=head_fingerprint,
+            pass_fingerprints=pass_fingerprints,
+            now=now,
+            ttl_hours=review_pass_ttl_hours,
+        )
+    else:
+        ok, pass_detail = pass_at_head(
+            review_passes,
+            pr=pr_number,
+            head_sha=head_sha,
+            now=now,
+            ttl_hours=review_pass_ttl_hours,
+        )
     if ok:
         decision_label = (
             "review_decision_approved" if str(review_decision or "").upper() == "APPROVED" else "exact_head_verdict"
