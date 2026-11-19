@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from config_schema import atomic_write_json
 from coordination import board as board_mod
@@ -65,12 +66,12 @@ def _fetch_issue_comments(repo: str, issue: int, runner: CommandRunner) -> int:
     return int(json.loads(getattr(res, "stdout", "") or "{}").get("comments") or 0)
 
 
-def _create_successor_issue(repo: str, old_issue: int, runner: CommandRunner) -> int:
+def _create_successor_issue(repo: str, old_issue: int, marker: str, runner: CommandRunner) -> int:
     title = f"Fleet Coordination Board (Rollover from RM #{old_issue})"
     body = (
         f"# Fleet Coordination Board (Rollover from RM #{old_issue})\n\n"
         f"**Created:** {datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}\n"
-        f"**Predecessor:** #{old_issue}\n\n## Active Rules\n- Post concise STATUS / receipts.\n"
+        f"**Predecessor:** #{old_issue}\n\n{marker}\n\n## Active Rules\n- Post concise STATUS / receipts.\n"
     )
     res = runner(["gh", "issue", "create", "--repo", repo, "--title", title, "--body", body])
     if getattr(res, "returncode", None) != 0:
@@ -82,6 +83,52 @@ def _create_successor_issue(repo: str, old_issue: int, runner: CommandRunner) ->
     if out.isdigit():
         return int(out)
     raise RuntimeError(f"Could not parse issue number from output: {out}")
+
+
+def _recover_created_issue(repo: str, marker: str, runner: CommandRunner) -> int:
+    """Reconcile an uncertain create without ever replaying the remote write."""
+    res = runner(["gh", "api", "--paginate", "--slurp", f"repos/{repo}/issues?state=all&per_page=100"])
+    if getattr(res, "returncode", None) != 0:
+        raise RuntimeError("Cannot reconcile successor creation; retain journal and retry")
+    pages = json.loads(res.stdout)
+    matches = [
+        issue["number"]
+        for page in pages
+        for issue in page
+        if "pull_request" not in issue and marker in (issue.get("body") or "")
+    ]
+    if len(matches) != 1 or type(matches[0]) is not int or matches[0] <= 0:
+        raise RuntimeError("Successor creation ambiguous; retain journal for operator reconciliation")
+    return matches[0]
+
+
+def _validate_journal(journal: Any, repo: str, current_issue: int, current_preds: list[int]) -> None:
+    """Reject corrupt/stale state before remote writes or config mutation."""
+    if not isinstance(journal, dict) or journal.get("stage") not in ("CREATING", "ISSUE_CREATED", "CONFIG_UPDATED"):
+        raise ValueError("Invalid rollover journal stage")
+    old, new, preds = journal.get("old_issue"), journal.get("new_issue"), journal.get("predecessors")
+    if type(old) is not int or old <= 0 or not isinstance(preds, list):
+        raise ValueError("Invalid rollover journal original board")
+    if any(type(p) is not int or p <= 0 for p in preds) or len(set(preds)) != len(preds):
+        raise ValueError("Invalid rollover journal predecessors")
+    if journal.get("repo", repo) != repo:
+        raise ValueError("Rollover journal repository mismatch")
+    if journal["stage"] == "CREATING":
+        marker = journal.get("marker")
+        if (
+            new is not None
+            or not isinstance(marker, str)
+            or not re.fullmatch(r"<!-- board-rollover:[0-9a-f]{32} -->", marker)
+        ):
+            raise ValueError("Invalid rollover creation intent")
+    elif type(new) is not int or new <= 0 or new == old or new in preds:
+        raise ValueError("Invalid rollover journal successor")
+    expected = ([p for p in preds if p != old] + [old])[-MAX_PREDECESSORS:]
+    if current_issue == old and current_preds == preds:
+        return
+    if current_issue == new and current_preds == expected:
+        return
+    raise ValueError("Rollover journal conflicts with current configuration")
 
 
 def execute_board_rollover(
@@ -103,15 +150,16 @@ def execute_board_rollover(
     repo, old_issue, preds, raw_cfg = _read_rm_config(cfg_path)
     j_path = journal_path or (root / "config" / "rollover_journal.json")
 
-    journal: dict[str, Any] = {}
     if j_path.is_file():
-        try:
-            journal = json.loads(j_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            journal = {}
-
-    stage, new_issue = str(journal.get("stage") or "INIT"), journal.get("new_issue")
-    if stage in ("ISSUE_CREATED", "CONFIG_UPDATED") and new_issue and new_issue > 0:
+        journal = json.loads(j_path.read_text(encoding="utf-8"))
+        _validate_journal(journal, repo, old_issue, preds)
+        old_issue, preds = journal["old_issue"], journal["predecessors"]
+        if journal["stage"] == "CREATING":
+            journal["new_issue"] = _recover_created_issue(repo, journal["marker"], run)
+            journal["stage"] = "ISSUE_CREATED"
+            _validate_journal(journal, repo, old_issue, preds)
+            atomic_write_json(j_path, journal)
+        new_issue = journal["new_issue"]
         comment_count = threshold
     else:
         comment_count = _fetch_issue_comments(repo, old_issue, run)
@@ -124,8 +172,19 @@ def execute_board_rollover(
                 comment_count,
                 f"comment count {comment_count} below threshold {threshold}",
             )
-        new_issue = _create_successor_issue(repo, old_issue, run)
-        journal = {"stage": "ISSUE_CREATED", "old_issue": old_issue, "new_issue": new_issue, "predecessors": preds}
+        marker = f"<!-- board-rollover:{uuid4().hex} -->"
+        journal = {
+            "stage": "CREATING",
+            "repo": repo,
+            "old_issue": old_issue,
+            "new_issue": None,
+            "predecessors": preds,
+            "marker": marker,
+        }
+        atomic_write_json(j_path, journal)
+        new_issue = _create_successor_issue(repo, old_issue, marker, run)
+        journal.update(stage="ISSUE_CREATED", new_issue=new_issue)
+        _validate_journal(journal, repo, old_issue, preds)
         atomic_write_json(j_path, journal)
 
     new_preds = ([p for p in preds if p != old_issue and p != new_issue] + [old_issue])[-MAX_PREDECESSORS:]
@@ -133,7 +192,7 @@ def execute_board_rollover(
     atomic_write_json(cfg_path, raw_cfg)
     board_mod.reset_cache()
 
-    journal["stage"], journal["predecessors"] = "CONFIG_UPDATED", new_preds
+    journal["stage"] = "CONFIG_UPDATED"
     atomic_write_json(j_path, journal)
 
     try:
