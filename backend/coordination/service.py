@@ -22,6 +22,7 @@ from activity_producers import emit_activity
 from coordination import board, claims, hub_sessions, roster
 from coordination import jobs as jobs_mod
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
+from coordination.fleet_efficiency import enrich_hub_session, validate_lane_brief
 from coordination.models import (
     AckBody,
     ClaimBody,
@@ -34,9 +35,8 @@ from coordination.models import (
     PresenceBody,
     ReleaseBody,
 )
-from coordination.staff_runs_cache import record_staff_runs_snapshot, snapshot_staff_runs
-from coordination.fleet_efficiency import BriefValidationError, enrich_hub_session, validate_lane_brief
 from coordination.pr_age_rule import roster_agent_id
+from coordination.staff_runs_cache import record_staff_runs_snapshot, snapshot_staff_runs
 from coordination.staff_view import staff_run_as_session, staff_runs
 from staff.rm_sync import stale_source_warning
 

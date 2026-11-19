@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("fcntl", reason="coordination_fake_rm requires fcntl on POSIX")
-from coordination_fake_rm import FakeRM, bot, install
+from coordination_fake_rm import FakeRM, board, bot, install, session
 from fastapi.testclient import TestClient
 
 BACKEND_DIR = Path(__file__).resolve().parents[2] / "backend"
@@ -31,6 +31,19 @@ def client(rm: FakeRM) -> TestClient:
     from server import app  # noqa: PLC0415
 
     return TestClient(app, raise_server_exceptions=False, client=("100.64.0.9", 51000))
+
+
+def test_messages_rejects_invalid_status_brief(rm: FakeRM, client: TestClient) -> None:
+    rm.respond("agent_communicate:list", board(session("codex-1", "Runner_Dashboard", agent="codex")))
+    body = {
+        "session": "codex-1",
+        "repo": "Runner_Dashboard",
+        "to": "*",
+        "text": "Status: done\nline two",
+    }
+    resp = client.post("/api/coordination/messages", json=body, headers=_BOT)
+    assert resp.status_code == 422
+    assert "missing" in resp.json()["detail"]["error"].lower()
 
 
 def test_fleet_efficiency_endpoint(client: TestClient) -> None:

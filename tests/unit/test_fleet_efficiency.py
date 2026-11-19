@@ -5,7 +5,6 @@ from __future__ import annotations
 import time
 
 import pytest
-
 from coordination.fleet_efficiency import (
     BriefValidationError,
     WakeCoalescer,
@@ -13,6 +12,7 @@ from coordination.fleet_efficiency import (
     evaluate_planned_reset,
     fleet_efficiency_metadata,
     format_lane_brief,
+    time_now,
     validate_lane_brief,
     wake_coalesce_seconds,
 )
@@ -28,6 +28,20 @@ def test_wake_coalesce_seconds_defaults_and_clamps(monkeypatch: pytest.MonkeyPat
     assert wake_coalesce_seconds() == 450
     monkeypatch.setenv("FLEET_WAKE_COALESCE_SEC", "900")
     assert wake_coalesce_seconds() == 600
+
+
+@pytest.mark.unit
+def test_time_now_none_uses_wall_clock() -> None:
+    before = time.time()
+    result = time_now(None)
+    after = time.time()
+    assert before <= result <= after
+
+
+@pytest.mark.unit
+def test_wake_coalescer_without_explicit_now() -> None:
+    co = WakeCoalescer(window_sec=300)
+    assert co.should_deliver_wake("lane_done", "rd-barb") is True
 
 
 @pytest.mark.unit
@@ -102,6 +116,9 @@ def test_evaluate_planned_reset() -> None:
     tok = evaluate_planned_reset(turn_count=3, tokens_last_turn=200_000)
     assert tok["recommended"] is True
     assert "tokens_per_turn" in tok["reasons"]
+    milestone = evaluate_planned_reset(turn_count=2, tokens_last_turn=1_000, post_milestone=True)
+    assert milestone["recommended"] is True
+    assert "post_milestone" in milestone["reasons"]
 
 
 @pytest.mark.unit

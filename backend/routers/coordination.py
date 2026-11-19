@@ -33,7 +33,6 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
-from coordination.fleet_efficiency import BriefValidationError, fleet_efficiency_metadata
 from coordination import job_releases as job_releases_mod
 from coordination import jobs as jobs_mod
 from coordination import lane_prompts as lane_prompts_mod
@@ -42,6 +41,7 @@ from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
 from coordination.claims import AgingPrBlockedError, ClaimHeldError
+from coordination.fleet_efficiency import BriefValidationError, fleet_efficiency_metadata
 from coordination.jobs import JobIneligibleError, StaleFenceError
 from coordination.models import (
     AGENT_PATTERN,
