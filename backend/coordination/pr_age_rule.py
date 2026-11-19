@@ -32,6 +32,16 @@ def _normalize_agent(agent: str) -> str:
     return lowered
 
 
+def roster_agent_id(agent: str) -> str:
+    """Map lane/checkout agent ids onto Repository_Management roster entries."""
+    lowered = agent.strip().lower()
+    if lowered == "cursor":
+        return "cursor-agent"
+    if lowered in ("agy", "gemini"):
+        return "antigravity"
+    return lowered
+
+
 def _agent_from_pr_labels(pr: Mapping[str, Any], agent_ids: Sequence[str]) -> str | None:
     labels = pr.get("labels")
     if not isinstance(labels, list):

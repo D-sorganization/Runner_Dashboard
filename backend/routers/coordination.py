@@ -33,6 +33,7 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from coordination.fleet_efficiency import BriefValidationError, fleet_efficiency_metadata
 from coordination import job_releases as job_releases_mod
 from coordination import jobs as jobs_mod
 from coordination import lane_prompts as lane_prompts_mod
@@ -79,6 +80,8 @@ async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str
     except service.ImpersonationError as exc:
         log.warning("coordination: %s refused for %s: %s", what, caller.label, exc)
         raise HTTPException(status_code=403, detail={"error": str(exc)}) from exc
+    except BriefValidationError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
     except RMScriptError as exc:
         log.warning("coordination: %s by %s failed: %s", what, caller.label, exc.error)
         raise HTTPException(status_code=502, detail=exc.to_detail()) from exc
@@ -186,6 +189,16 @@ async def get_job_releases(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"error": f"since is not ISO-8601: {exc}"}) from exc
     return await run_in_threadpool(job_releases_mod.list_job_releases, since=since, limit=limit)
+
+
+@router.get("/fleet-efficiency")
+async def get_fleet_efficiency(
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    """Read-only fleet efficiency knobs: wake coalescing, brief cap, planned reset (#4562)."""
+    from coordination.service import now_iso
+
+    return {**fleet_efficiency_metadata(), "generated_at": now_iso()}
 
 
 @router.get("/briefing")
