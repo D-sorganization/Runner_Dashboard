@@ -89,3 +89,30 @@ def test_evidence_lookup_unavailable_fails_closed_to_abandoned(monkeypatch: pyte
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
     assert result.startswith("abandoned: evidence lookup unavailable")
     assert "agent reported: work completed" in result
+
+
+@pytest.mark.unit
+def test_pulls_lookup_is_one_bounded_recency_sorted_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#4546: ``--paginate .../pulls?state=all`` walks the whole PR history and blows the 20s hook budget."""
+    from coordination import gh_cli
+
+    seen: list[str] = []
+
+    def fetch(path: str) -> Any:
+        seen.append(path)
+        return []
+
+    def no_paginate(path: str) -> Any:
+        if "/pulls" in path:
+            pytest.fail(f"pulls lookup must not use the unbounded paginator: {path}")
+        return []
+
+    patch_gh_list_fetch(monkeypatch, fetch)
+    monkeypatch.setattr(gh_cli, "gh_api_json_all", no_paginate)
+    claims.classify_release_reason("Tools", 12, agent_reason="work completed")
+    pulls_paths = [p for p in seen if "/pulls" in p]
+    assert len(pulls_paths) == 1
+    assert "state=all" in pulls_paths[0]
+    assert "sort=updated" in pulls_paths[0]
+    assert "direction=desc" in pulls_paths[0]
+    assert "per_page=100" in pulls_paths[0]
