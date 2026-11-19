@@ -7,9 +7,11 @@ import posixpath
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from coordination.merge_shepherd_holds import LOW_RISK_SHEPHERD_BLOCKED_LABELS
+
 DEFAULT_LOW_RISK_LINE_CAP = 300
 
-LOW_RISK_BLOCKED_LABELS = frozenset({"do-not-merge", "hold", "needs-dieter"})
+LOW_RISK_BLOCKED_LABELS = LOW_RISK_SHEPHERD_BLOCKED_LABELS
 
 _AGENT_INSTRUCTION_FILENAMES = frozenset({"AGENTS.md", "CLAUDE.md", "GEMINI.md", "SKILL.md"})
 _AGENT_INSTRUCTION_PREFIXES = (

@@ -19,6 +19,7 @@ from coordination import claims as claims_mod
 from coordination import gh_cli, job_board_lease
 from coordination.board import RMScriptError
 from coordination.job_filters import gate_reason, repo_schedule_holds
+from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from staff.claim_guard import closing_pr_for, full_repo
 from staff.launch_guard import check_launch_allowed
@@ -27,7 +28,7 @@ log = logging.getLogger("dashboard.coordination.jobs")
 
 MIN_LIMIT = 1
 MAX_LIMIT = 200
-HOLD_LABELS = frozenset({"blocked", "do-not-automate", "do-not-merge"})
+HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 PRIORITY_TIERS = ("critical", "high", "medium", "low")
 _UNRANKED = len(PRIORITY_TIERS)
 

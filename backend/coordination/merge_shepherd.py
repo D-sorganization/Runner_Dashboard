@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import enum
 import logging
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+
+from coordination.merge_shepherd_holds import (
+    MERGE_SHEPHERD_HOLD_LABELS,
+    label_is_merge_shepherd_hold,
+    pr_title_indicates_hold,
+)
 
 
 class _StrEnum(str, enum.Enum):  # noqa: UP042
@@ -19,8 +24,7 @@ class _StrEnum(str, enum.Enum):  # noqa: UP042
 logger = logging.getLogger(__name__)
 
 MERGE_QUEUE_REPOS = frozenset({"runner_dashboard", "repository_management", "gasification_model", "rd", "rm", "gm"})
-HOLD_LABELS = frozenset({"hold", "drain-hold", "do-not-merge", "dnm", "blocked", "needs-decision", "wip"})
-_HOLD_TITLE = re.compile(r"\[hold\]|\(held\)|\(hold\)|^\s*hold\b", re.IGNORECASE)
+HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 #: Merge-queue ejections of one head after which the shepherd stops arming it (#3932).
 BOUNCE_LIMIT = 2
 #: Ejection reasons that say nothing about the PR itself.
@@ -113,9 +117,7 @@ def count_queue_bounces(node: Mapping[str, Any]) -> int:
 
 def is_pr_held(labels: Sequence[str] = (), title: str = "") -> bool:
     """Check if PR is marked with a hold via label or title indicator."""
-    return any(str(lbl).strip().casefold() in HOLD_LABELS for lbl in labels) or bool(
-        title and _HOLD_TITLE.search(title)
-    )
+    return any(label_is_merge_shepherd_hold(lbl) for lbl in labels) or pr_title_indicates_hold(title)
 
 
 def is_priority_candidate(candidate: PRCandidate) -> bool:

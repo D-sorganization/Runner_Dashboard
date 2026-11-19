@@ -89,6 +89,7 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
             (["do-not-merge"], "fix: normal fix"),
             (["blocked"], "fix: normal fix"),
             (["needs-decision"], "fix: normal fix"),
+            (["needs-owner"], "fix: normal fix"),
             ([], "[HOLD] refactor dispatch"),
             ([], "chore: topology sanitize deploy paths (held)"),
         ]
