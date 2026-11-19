@@ -230,8 +230,8 @@ def test_incomplete_board_over_1000_comments_denies_claims_fail_closed(
     monkeypatch.setattr(claims_mod, "run_module", fake_run_module)
     monkeypatch.setattr(board_mod, "board_page_fetcher", truncated_fetch_page)
 
-    with pytest.raises(RMScriptError):
-        board_mod.has_live_session("missing-session", "Runner_Dashboard")
+    # Non-fatal page-limit degradation must not 502 presence (#4569); claims stay fail-closed.
+    assert board_mod.has_live_session("missing-session", "Runner_Dashboard") is True
 
     status = claims_mod.check("Runner_Dashboard", 3550)
     assert status["available"] is False
