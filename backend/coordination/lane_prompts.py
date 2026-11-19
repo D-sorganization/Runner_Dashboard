@@ -120,6 +120,8 @@ def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
         return "agy"
     if model.startswith("gpt-"):
         return "codex"
+    if model.startswith("composer-") or model.startswith("grok-"):
+        return "cursor"
     return None
 
 
@@ -199,8 +201,7 @@ class LanePromptStore:
     def _init_schema(self) -> None:
         conn = self._connect()
         try:
-            conn.executescript(
-                """
+            conn.executescript("""
                 CREATE TABLE IF NOT EXISTS lane_assignments (
                     lane_id TEXT PRIMARY KEY,
                     role TEXT NOT NULL,
@@ -233,8 +234,7 @@ class LanePromptStore:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_active_lane
                     ON lane_checkouts(lane_id) WHERE status = 'active';
-                """
-            )
+                """)
         finally:
             conn.close()
 
@@ -297,8 +297,7 @@ class LanePromptStore:
                 "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
                 (ts,),
             )
-            rows = conn.execute(
-                """
+            rows = conn.execute("""
                 SELECT a.lane_id, a.role, a.repos_json, a.release_sha, a.package_hash,
                        a.subagent_model, a.max_children, a.task_focus, a.enabled,
                        c.checkout_id, c.session_id, c.fence_token, c.expires_at
@@ -306,8 +305,7 @@ class LanePromptStore:
                 LEFT JOIN lane_checkouts c
                   ON c.lane_id = a.lane_id AND c.status = 'active'
                 ORDER BY a.lane_id
-                """
-            ).fetchall()
+                """).fetchall()
             return [
                 {
                     "lane_id": r["lane_id"],
@@ -347,7 +345,9 @@ class LanePromptStore:
         # Idempotency keys are caller supplied, so scope them to the session and
         # principal to prevent replaying another caller's receipt and fence.
         scoped_idempotency_key = json.dumps(
-            [principal, session_id, idempotency_key], ensure_ascii=False, separators=(",", ":")
+            [principal, session_id, idempotency_key],
+            ensure_ascii=False,
+            separators=(",", ":"),
         )
 
         def _check_receipt_compatible(conn: sqlite3.Connection, receipt_json: str) -> dict[str, Any]:

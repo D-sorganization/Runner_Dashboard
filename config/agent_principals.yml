@@ -133,8 +133,9 @@ agents:
       - intake.proposals.create
   - id: agent-cursor
     kind: other
-    name: Cursor cloud check-in agent
+    name: Cursor CLI agent
     roles:
-      - checkin-only
+      - bot
     scopes:
       - activity.checkin
+      - fleet.read
