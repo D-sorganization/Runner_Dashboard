@@ -7,6 +7,7 @@ param(
   [string]$StopFile = "C:\Users\diete\.rd-sessions\STOP_SUPERVISOR",
   [string]$LogFile = "C:\Users\diete\.rd-sessions\overnight-supervisor.log",
   [string]$DormantFile = "C:\Users\diete\.rd-sessions\blocker-cache.json",
+  [string]$LocalFleetNode = $(if ($env:RD_FLEET_LOCAL_NODE) { $env:RD_FLEET_LOCAL_NODE } else { 'node-b' }),
   [switch]$DryRun
 )
 $ErrorActionPreference = 'Continue'
@@ -15,6 +16,18 @@ $Inventory = 'C:\Users\diete\.agents\rd-session\rd-fleet-inventory.ps1'
 $InvJson = 'C:\Users\diete\OpenBot\Shared\fleet-inventory\inventory.json'
 $FleetGh = 'C:\Users\diete\.claude\fleet-gh\bin'
 if (Test-Path $FleetGh) { $env:PATH = "$FleetGh;$env:PATH" }
+
+function Get-RemoteExecTarget([string]$fleetNode) {
+  $key = 'RD_FLEET_EXEC_' + ($fleetNode.ToUpper().Replace('-', '_'))
+  return (Get-Item -Path "Env:$key" -ErrorAction SilentlyContinue).Value
+}
+
+function Get-StaffMachineName([string]$fleetNode) {
+  $key = 'RD_FLEET_MACHINE_' + ($fleetNode.ToUpper().Replace('-', '_'))
+  if ($v = (Get-Item -Path "Env:$key" -ErrorAction SilentlyContinue).Value) { return $v }
+  if ($fleetNode -eq $LocalFleetNode -and $env:COMPUTERNAME) { return $env:COMPUTERNAME.ToLower() }
+  return $fleetNode
+}
 
 function Get-DormancyKey($task, $head, $blocker, $dep_version) {
   $t = if ($task) { "$task" } else { "none" }
@@ -31,15 +44,15 @@ $SkipItems = @(
 )
 
 $lanes = @(
-  @{ lane='claude-ct-1';       host='controltower'; prov='claude'; model='sonnet';        role='acceptance-review';  ud=$true },
-  @{ lane='codex-ct-test';     host='controltower'; prov='codex';  model='gpt-6.1-sol';   role='acceptance-review';  ud=$true },
-  @{ lane='codex-desk-1';      host='deskcomputer'; prov='codex';  model='gpt-6.1-terra'; role='backlog-completion'; ud=$false },
-  @{ lane='codex-desk-test';   host='deskcomputer'; prov='codex';  model='gpt-6.1-terra'; role='backlog-completion'; ud=$false },
-  @{ lane='claude-desk-1';     host='deskcomputer'; prov='claude'; model='sonnet';        role='backlog-completion'; ud=$false },
-  @{ lane='agy-desk-1';        host='deskcomputer'; prov='agy';    model='gemini-3.8-flash'; role='backlog-completion'; ud=$false },
-  @{ lane='codex-oglaptop-1';  host='oglaptop';     prov='codex';  model='gpt-6.1-terra'; role='backlog-completion'; ud=$false },
-  @{ lane='codex-oglaptop-2';  host='oglaptop';     prov='codex';  model='gpt-6.1-terra'; role='backlog-completion'; ud=$false },
-  @{ lane='claude-oglaptop-1'; host='oglaptop';     prov='claude'; model='sonnet';        role='backlog-completion'; ud=$false }
+  @{ lane='claude-ct-1';       host='hub-a'; prov='claude'; model='sonnet';        role='acceptance-review';  ud=$true },
+  @{ lane='codex-ct-test';     host='hub-a'; prov='codex';  model='gpt-6.1-sol';   role='acceptance-review';  ud=$true },
+  @{ lane='codex-desk-1';      host='node-b'; prov='codex';  model='gpt-6.1-terra'; role='backlog-completion'; ud=$false },
+  @{ lane='codex-desk-test';   host='node-b'; prov='codex';  model='gpt-6.1-terra'; role='backlog-completion'; ud=$false },
+  @{ lane='claude-desk-1';     host='node-b'; prov='claude'; model='sonnet';        role='backlog-completion'; ud=$false },
+  @{ lane='agy-desk-1';        host='node-b'; prov='agy';    model='gemini-3.8-flash'; role='backlog-completion'; ud=$false },
+  @{ lane='codex-oglaptop-1';  host='node-c'; prov='codex';  model='gpt-6.1-terra'; role='backlog-completion'; ud=$false },
+  @{ lane='codex-oglaptop-2';  host='node-c'; prov='codex';  model='gpt-6.1-terra'; role='backlog-completion'; ud=$false },
+  @{ lane='claude-oglaptop-1'; host='node-c'; prov='claude'; model='sonnet';        role='backlog-completion'; ud=$false }
 )
 
 $dormant = @{}
@@ -112,7 +125,8 @@ while ((Get-Date) -lt $deadline) {
     foreach ($l in $lanes) {
       $cur = $laneMap[$l.lane]
       if (-not $cur -or "$($cur.state)" -notmatch 'IDLE') { continue }
-      if ($expired["$($l.host):$($l.prov)"]) { continue }
+      $machine = Get-StaffMachineName $l.host
+      if ($expired["${machine}:$($l.prov)"]) { continue }
 
       if ($lastLaunch[$l.lane]) {
         $ranSec = ((Get-Date) - $lastLaunch[$l.lane]).TotalSeconds
@@ -145,7 +159,17 @@ while ((Get-Date) -lt $deadline) {
       } elseif ($l.role -eq 'acceptance-review') { "ASSIGNED ROLE: Review any unclaimed CLEAN non-draft PR lacking exact-head independent PASS across the fleet. Preserve all holds." } else { "ASSIGNED ROLE: Claim 1 unclaimed, unblocked issue across the fleet on active RM board. Follow all holds." }
 
       $cmd = "& '$RdSession' start -Provider $($l.prov) -Model $($l.model) -Mode work -Lane $($l.lane) -Role $($l.role) -ExtraPrompt '$($focus -replace "'","''")'"
-      $out = if ($l.host -eq 'deskcomputer') { Invoke-Expression $cmd 2>&1 | Out-String } else { $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd)); ssh -o BatchMode=yes -o ConnectTimeout=10 $l.host "powershell -NoProfile -EncodedCommand $b64" 2>&1 | Out-String }
+      if ($l.host -eq $LocalFleetNode) {
+        $out = Invoke-Expression $cmd 2>&1 | Out-String
+      } else {
+        $target = Get-RemoteExecTarget $l.host
+        if (-not $target) {
+          "[$(Get-Date -Format o)] SKIP_REMOTE lane=$($l.lane) node=$($l.host) (set RD_FLEET_EXEC_$($l.host.ToUpper().Replace('-','_')))" | Add-Content $LogFile
+          continue
+        }
+        $b64 = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($cmd))
+        $out = ssh -o BatchMode=yes -o ConnectTimeout=10 $target "powershell -NoProfile -EncodedCommand $b64" 2>&1 | Out-String
+      }
       $lastLaunch[$l.lane] = Get-Date
       "[$(Get-Date -Format o)] RELAUNCH lane=$($l.lane) card=$(if($picked){$picked.key}else{'role-fallback'}) out=$($out.Trim() -replace '\s+',' ')" | Add-Content $LogFile
       Start-Sleep -Seconds 2

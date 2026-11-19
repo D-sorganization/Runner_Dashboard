@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 from coordination import claims
-from coordination_fake_rm import patch_gh_list_fetch
+from tests.api.coordination_fake_rm import patch_gh_list_fetch
 
 
 @pytest.fixture(autouse=True)

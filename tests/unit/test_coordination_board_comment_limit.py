@@ -400,6 +400,45 @@ def test_merge_paginated_falsy_fallback_handling() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.unit
+def test_explicit_release_wins_over_leftover_presence_for_claim_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A release after presence must clear the hold even when earlier comments remain on the board."""
+    from coordination import claims
+
+    now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+    at_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    exp_str = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    presence = {
+        "version": 1,
+        "id": "p1",
+        "kind": "presence",
+        "agent": "claude",
+        "session": "s1",
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "branch": "feat/board-hygiene",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"task": "repair"},
+        "at": at_str,
+        "expires": exp_str,
+    }
+    release = {"version": 1, "id": "r1", "kind": "release", "session": "s1", "repo": "Runner_Dashboard", "at": at_str}
+    comments = [
+        {"id": 1, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(presence)}\n```"},
+        {"id": 2, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(release)}\n```"},
+    ]
+    board_state = paginate_board_comments(lambda p, n: comments if p == 1 else [], now=now)
+    assert board_state["sessions"] == []
+
+    monkeypatch.setattr(
+        "coordination.claims.board_config", lambda: ("D-sorganization/Repository_Management", 3029, 3, [])
+    )
+    monkeypatch.setattr(board_mod, "cached_board_state", lambda: board_state)
+    assert claims._board_claim_override("Runner_Dashboard", 4574) is None
+
+
 def test_apply_event_midstream_conflict_not_poisoned_if_released() -> None:
     now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
     at_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
