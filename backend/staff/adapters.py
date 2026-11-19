@@ -20,7 +20,6 @@ from staff.adapter_policies import (
     CHAT_READ_ONLY_TOOLS,
     CLAUDE_WRITE_TOOLS,
     PERMISSION_BYPASS_FLAGS,
-    unattended_argv_bypass_flags,
     READ_ONLY_RUN_PROVIDERS,
     READ_ONLY_RUN_SHELL_ALLOW,
     READ_ONLY_RUN_SHELL_DENY,
@@ -35,6 +34,7 @@ from staff.adapter_policies import (
     claude_unattended_tools,
     gemini_policy_toml,
     grok_unattended_flags,
+    unattended_argv_bypass_flags,
 )
 from staff.anthropic_api_provider import build_adapter as _build_anthropic_api_adapter
 from staff.deepseek_provider import deepseek_available, deepseek_environment
@@ -217,9 +217,7 @@ class ProviderAdapter:
         if output_schema is not None:
             apply_output_schema(self.provider_id, out, workdir, output_schema)
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
-        assert not unattended_argv_bypass_flags(self.provider_id, out), (
-            "unattended argv must never bypass permissions"
-        )  # noqa: S101
+        assert not unattended_argv_bypass_flags(self.provider_id, out), "unattended argv must never bypass permissions"  # noqa: S101
         return out
 
     def chat_argv(
