@@ -9,10 +9,11 @@ from identity import Principal
 from memory.models import MemoryAppendRequest
 from memory.service import append_entry
 from memory.store import get_memory_store, reset_memory_store
-from staff import store as run_stores
-from staff import tokens
 from staff.lessons import file_proposed_lessons
 from staff.store import RunRecord, RunStore
+
+from staff import store as run_stores
+from staff import tokens
 
 pytestmark = pytest.mark.unit
 
@@ -114,13 +115,12 @@ def test_api_valid_binding_derives_standard_from_store(context) -> None:
 @pytest.mark.parametrize("case", ["missing", "failed", "exit", "role", "repo", "requester", "standards"])
 def test_internal_filing_reloads_and_checks_authoritative_run(context, case: str) -> None:
     store, rec, _ = context
-    store.update_run("run", status="succeeded", exit_code=0)
+    store.update_run("run", status="failed" if case == "failed" else "succeeded", exit_code=0)
     caller = replace(rec, status="succeeded", exit_code=0)
     if case == "missing":
         store._conn.execute("DELETE FROM runs")
-    else:
+    elif case != "failed":
         field, value = {
-            "failed": ("status", "failed"),
             "exit": ("exit_code", 1),
             "role": ("role", "other"),
             "repo": ("repo", "other"),

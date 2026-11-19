@@ -72,8 +72,10 @@ def reconcile_holds(
     """Align persisted guardrail holds with ``roles``; leave schedule holds untouched.
 
     Pre: ``roles`` was loaded from a directory with no YAML syntax errors.
-    Post: on success, every YAML hold exists as an active guardrail; YAML guardrails
-    absent from roles are inactive. Raises ``HoldReconcileError`` when ``roles``
+    Post: on success, every YAML hold exists as an active guardrail unless its ID
+    belongs to a schedule hold (an explicit staff.hold promotion takes precedence).
+    YAML guardrails absent from roles are inactive; schedule holds stay untouched.
+    Raises ``HoldReconcileError`` when ``roles``
     cannot be reconciled (caller must fail closed before mutating).
     """
     desired = seed_from_roles(roles)
@@ -116,8 +118,14 @@ def reconcile_holds(
         next_guardrails.append(hold)
 
     present_keys = {_seed_key(h.text) for h in guardrails}
+    schedule_ids = {h.id for h in schedule}
     for key, want in sorted(desired_by_key.items()):
         if key in present_keys:
+            continue
+        if want.id in schedule_ids:
+            # Promotion retains the seeded ID. Do not recreate it or reactivate
+            # a schedule hold that the operator subsequently lifted.
+            diff.unchanged.append(want.text)
             continue
         diff.added.append(want.text)
         next_guardrails.append(want)

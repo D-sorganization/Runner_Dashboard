@@ -144,7 +144,7 @@ def test_tier_escalation_requires_flag(tmp_path, monkeypatch: pytest.MonkeyPatch
     guard = MagicMock()
     guard.can_run.return_value = (True, "")
     try_chain_failover(runner, store.get_run("run-esc"), plan, role, guard, retries_exhausted=False)
-    assert store.get_run("run-esc").status == "blocked"
+    assert store.get_run("run-esc").status == "failed"
     reset_provider_cooldowns()
 
     role_esc = RoleSpec(
@@ -268,7 +268,7 @@ def test_tier_escalation_does_not_bypass_provider_cooldown(tmp_path, monkeypatch
     guard.can_run.return_value = (True, "")
     try_chain_failover(runner, store.get_run("run-cool-esc"), plan, role, guard, retries_exhausted=False)
     assert store.get_run("run-cool-esc-a2") is None
-    assert store.get_run("run-cool-esc").status == "blocked"
+    assert store.get_run("run-cool-esc").status == "failed"
     assert store.get_run("run-cool-esc").failure_class == "providers_exhausted"
 
 

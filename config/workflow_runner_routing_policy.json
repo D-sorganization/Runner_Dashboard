@@ -44,6 +44,7 @@
         "issue-taxonomy-backfill.yml",
         "labels-sync.yml",
         "lint-workflow-files.yml",
+        "local-only-runner-guard.yml",
         "pr-cap.yml",
         "pr-body-lint.yml",
         "publish-guard.yml",
@@ -51,6 +52,7 @@
         "merge-shepherd.yml",
         "recurring-scan.yml",
         "reusable-pr-cap.yml",
+        "reusable-pr-freshness-guard.yml",
         "taxonomy-rollout.yml",
         "Verify-Issue-Closure.yml"
       ]

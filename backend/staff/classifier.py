@@ -35,6 +35,7 @@ ALLOWED_FAILURE_CLASSES = frozenset(
         "stalled",
         "lease_blocked",
         "orphaned",
+        "orphaned_queued",
         "workspace_error",
         "environment_error",
         "unkillable",
@@ -494,6 +495,23 @@ def classify_run_failure(
     )
 
 
+def attention_item_for_run(run: RunRecord) -> dict[str, Any]:
+    """Project a run into the shared flat summary-attention schema."""
+    return {
+        "id": run.id,
+        "role": run.role,
+        "provider": run.provider,
+        "machine": run.machine,
+        "repo": run.repo,
+        "target_ref": run.target_ref,
+        "status": run.status,
+        "error": run.error,
+        "failure_class": getattr(run, "failure_class", ""),
+        "retryable": getattr(run, "retryable", False),
+        "remediation": getattr(run, "remediation", ""),
+    }
+
+
 def format_attention_items(runs: list[RunRecord]) -> list[dict[str, Any]]:
     """Format and deduplicate attention items for staff summary.
 
@@ -511,21 +529,7 @@ def format_attention_items(runs: list[RunRecord]) -> list[dict[str, Any]]:
             key = (r.machine, r.provider)
             auth_groups.setdefault(key, []).append(r)
         else:
-            items.append(
-                {
-                    "id": r.id,
-                    "role": r.role,
-                    "provider": r.provider,
-                    "machine": r.machine,
-                    "repo": r.repo,
-                    "target_ref": r.target_ref,
-                    "status": r.status,
-                    "error": r.error,
-                    "failure_class": failure_cls,
-                    "retryable": getattr(r, "retryable", False),
-                    "remediation": getattr(r, "remediation", ""),
-                }
-            )
+            items.append(attention_item_for_run(r))
 
     # Insert deduplicated auth_expired attention items
     for (node, provider), grouped_runs in auth_groups.items():

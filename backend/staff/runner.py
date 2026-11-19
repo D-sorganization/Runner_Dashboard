@@ -16,21 +16,21 @@ from typing import Any
 from coordination.cursor_dispatch_lease import cursor_finalize_on_publish, cursor_pre_launch_or_block
 from staff.adapter_policies import antigravity_permissions
 from staff.adapters import ADAPTERS, ProviderAdapter
-from staff.execution_result import classify_execution_result
-from staff.lessons import file_proposed_lessons, select_repo_lessons
+from staff.lessons import select_repo_lessons
 from staff.plan import RunPlan, RunRequest
-from staff.run_link import handle_run_status_change, result_summary
+from staff.run_link import handle_run_status_change
+from staff.run_status import RunStatus, transition, transition_to
+from staff.runner_finish import finish_run_after_execution
 from staff.runner_ops import StaffRunPreparationError
 from staff.standards_registry import TOTAL_CONTEXT_TOKEN_CAP
 from staff.store import RunRecord, RunStore, _now, get_store
 from staff.tokens import revoke_run_token
 from staff.watchdog import StaffWatchdog, terminate_process_group
 
-from staff import claim_guard, consolidation, lifecycle_fence, review, runner_planning, verification, workspace
 from staff import lease as lease_ritual
+from staff import lifecycle_fence, runner_planning, workspace
 from staff import retry as retry_mod
 from staff import runner_ops as ops
-from staff import usage as usage_mod
 from staff.roles import RoleSpec, load_roles
 
 log = logging.getLogger("dashboard.staff.runner")
@@ -39,7 +39,7 @@ MAX_CONCURRENT_RUNS = int(os.environ.get("STAFF_MAX_CONCURRENT_RUNS", "3"))
 NO_RESULT_ERROR = "agent exited 0 without a STAFF_RESULT line"
 RUN_TIMEOUT_SECONDS = int(os.environ.get("STAFF_RUN_TIMEOUT_SECONDS", str(4 * 3600)))
 IDLE_TIMEOUT_SECONDS = int(os.environ.get("STAFF_IDLE_TIMEOUT_SECONDS", str(20 * 60)))
-
+_WORKER_THREAD_PREFIX = "staff-"
 from staff.runner_registry import get_runner, reset_runner  # noqa: E402
 
 __all__ = ["RunPlan", "RunRequest", "StaffRunner", "get_runner", "reset_runner"]
@@ -67,6 +67,8 @@ class StaffRunner:
         self._sema = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
         self._provider_semas: dict[str, threading.BoundedSemaphore] = {}
         self._threads: list[threading.Thread] = []
+        # Rows admit() created whose launch() has not run yet; dispatch awaits I/O in between.
+        self._admitted: set[str] = set()
 
     def _get_provider_sema(self, provider: str) -> threading.BoundedSemaphore:
         with self._lock:
@@ -127,7 +129,13 @@ class StaffRunner:
         role = self.roles().get(plan.role)
         rec = ops.new_run_record(plan, req, self.machine, getattr(role, "max_attempts", 2) or 2, run_id)
         try:
-            self.store.create_run(rec)
+            # Reconciliation snapshots the store before consulting this set.
+            # Keep the DB write and ownership marker atomic with respect to
+            # active_worker_run_ids() so it cannot mistake a just-persisted row
+            # for a workerless orphan.
+            with self._lock:
+                self.store.create_run(rec)
+                self._admitted.add(rec.id)
         except sqlite3.IntegrityError:
             if (existing := self.store.get_run(rec.id)) is None:
                 raise
@@ -138,11 +146,24 @@ class StaffRunner:
 
     def launch(self, rec: RunRecord, plan: RunPlan) -> None:
         """Start the worker thread for a run :meth:`admit` created."""
-        thread = threading.Thread(target=self._worker, args=(rec, plan), name=f"staff-{rec.id}", daemon=True)
+        thread = threading.Thread(
+            target=self._worker, args=(rec, plan), name=f"{_WORKER_THREAD_PREFIX}{rec.id}", daemon=True
+        )
         with self._lock:
             self._threads = [t for t in self._threads if t.is_alive()]
             self._threads.append(thread)
+            self._admitted.discard(rec.id)
         thread.start()
+
+    def active_worker_run_ids(self) -> frozenset[str]:
+        """Snapshot runs this process owns: live workers, semaphore waiters and admitted-not-yet-launched rows."""
+        with self._lock:
+            live = {
+                thread.name.removeprefix(_WORKER_THREAD_PREFIX)
+                for thread in self._threads
+                if thread.is_alive() and thread.name.startswith(_WORKER_THREAD_PREFIX)
+            }
+            return frozenset(live | self._admitted)
 
     def join_all(self, timeout: float = 10.0) -> list[str]:
         """Wait for launch()'s daemon threads to finish; return names still alive after timeout (#3778)."""
@@ -167,12 +188,10 @@ class StaffRunner:
         if proc is not None and proc.poll() is None:
             terminate_process_group(proc.pid, grace_period=1.0)
             self.store.append_event(run_id, "cancel", "terminate signal sent")
-            handle_run_status_change(rec, "cancelled")
-            return True
+            return True  # the worker's finish path writes ``cancelled`` and notifies once (#4269)
         if rec.status in ("queued", "preparing"):
-            self.store.update_run(run_id, status="cancelled", ended_at=_now())
+            transition(self.store, run_id, RunStatus(rec.status), RunStatus.CANCELLED, ended_at=_now())
             self.store.append_event(run_id, "cancel", "cancelled before start")
-            handle_run_status_change(rec, "cancelled")
             return True
         return False
 
@@ -188,7 +207,7 @@ class StaffRunner:
                 return
             crashed = False
             try:
-                store.update_run(rec.id, status="preparing", started_at=_now())
+                transition(store, rec.id, RunStatus.QUEUED, RunStatus.PREPARING, started_at=_now())
                 handle_run_status_change(rec, "preparing")
                 cloud_run = plan.execution_mode == "cloud"
                 if not cloud_run and ops.fail_if_cli_outdated(store, rec, self._adapters[plan.provider]):
@@ -222,9 +241,7 @@ class StaffRunner:
             except Exception as exc:  # noqa: BLE001
                 crashed = True
                 log.exception("staff run %s crashed", rec.id)
-                store.update_run(rec.id, status="failed", ended_at=_now(), error=str(exc)[:1000])
-                claim_guard.release_claim(rec.id, "failed")
-                store.append_event(rec.id, "error", str(exc)[:1000])
+                ops.record_worker_crash(store, rec, exc)
             finally:
                 if plan.lease_ritual:
                     lease_ritual.release(
@@ -250,6 +267,7 @@ class StaffRunner:
         pre_pr_entrypoint: str = "",
     ) -> None:
         store = self.store
+        ops.ensure_preparing_before_launch(store, rec)
         adapter = self._adapters[plan.provider]
         role = self.roles()[plan.role]
         prompt = lifecycle_fence.compose_fenced(  # re-derive + assert the RM#2712 fence (#4156)
@@ -313,7 +331,14 @@ class StaffRunner:
             with self._lock:
                 self._procs[rec.id] = proc
                 cancelled = rec.id in self._cancel_flags
-            store.update_run(rec.id, status="running", transcript_path=str(transcript), prompt=prompt, pid=proc.pid)
+            transition_to(
+                store,
+                rec.id,
+                RunStatus.RUNNING,
+                transcript_path=str(transcript),
+                prompt=prompt,
+                pid=proc.pid,
+            )
             store.append_event(rec.id, "start", f"{launch_label} in {workdir}")
             handle_run_status_change(rec, "running")
             if cancelled:
@@ -377,64 +402,21 @@ class StaffRunner:
                     for k in ("input_tokens", "output_tokens"):
                         usage[k] = int(usage.get(k, 0)) + int(n_usage.get(k, 0))
                     usage["cost_usd"] = float(usage.get("cost_usd", 0.0)) + float(n_usage.get("cost_usd", 0.0))
-            status, failure_class, retryable, remediation, error = classify_execution_result(
+            finish_run_after_execution(
+                self,
+                store=store,
+                rec=rec,
+                plan=plan,
+                workdir=workdir,
                 cancelled=cancelled,
                 rc=rc,
+                usage=usage,
                 result_line=result_line,
-                provider=plan.provider,
-                transcript_path=transcript,
+                transcript=transcript,
+                question=question,
                 watchdog_failure_class=watchdog.failure_class or "",
                 watchdog_error=watchdog.error_message or "",
-                machine=self.machine,
-                has_thread=bool(rec.thread_id),
-                run=rec,
-                opens_pr=self._opens_pr_or_false(rec.role),
-                probe=verification.GhCliPrProbe(),
             )
-
-            same_provider = review.is_same_provider_review(rec.prompt)
-            status, failure_class, retryable, error, remediation = ops.apply_code_reviewer_post_classification(
-                store, rec, plan, rc, status, failure_class, retryable, error, remediation, result_line, transcript
-            )
-
-            workspace.persist_run_transcript(store, rec.id, workdir)
-            # The exit event lands before the terminal status, so a reader that sees the status sees it (#1489).
-            store.append_event(rec.id, "exit", f"exit code {rc} → {status}")
-            store.update_run(
-                rec.id,
-                status=status,
-                failure_class=failure_class,
-                retryable=retryable,
-                remediation=remediation,
-                error=error,
-                ended_at=_now(),
-                exit_code=rc,
-                cost_usd=float(usage.get("cost_usd", 0.0)),
-                input_tokens=int(usage.get("input_tokens", 0)),
-                output_tokens=int(usage.get("output_tokens", 0)),
-                outcome=review.parse_outcome(result_line, same_provider=same_provider)
-                or consolidation.parse_outcome(result_line),
-            )
-            usage_mod.finalize_cost(store, rec.id, plan.provider, plan.model)
-            verdict = verification.verify_and_record(store, rec.id, opens_pr=lambda: self.opens_pr(rec.role))
-            updated_rec = store.get_run(rec.id)
-            if updated_rec is not None:
-                updated_rec = verification.apply_deliverable_failure(
-                    store, updated_rec, verdict, opens_pr=lambda: self.opens_pr(rec.role)
-                )
-            if updated_rec is not None:
-                if status == "succeeded" and rc == 0 and not cancelled:
-                    file_proposed_lessons(store, updated_rec, transcript_path=transcript)
-                q = question if status == "needs_input" else None
-                if status == "succeeded":
-                    from staff.failover_dispatch import run_completion_summary
-
-                    summary = run_completion_summary(
-                        store, updated_rec, result_line, provider=plan.provider, model=plan.model
-                    )
-                else:
-                    summary = (updated_rec.outcome or result_summary(result_line)) or ""
-                handle_run_status_change(updated_rec, status=status, question=q, summary=summary)
         finally:
             revoke_run_token(rec.id)
             workspace.finalize_run_worktree(self.store, rec.id, workdir, plan.repo, branch=plan.branch)

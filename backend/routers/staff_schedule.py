@@ -13,6 +13,7 @@ hook, gated by ``STAFF_SCHEDULER_ENABLED`` (default ``1``).
 # ruff: noqa: B008
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -93,6 +94,10 @@ def start_scheduler() -> None:
         except Exception as exc:  # noqa: BLE001 — pause watchdog must not block bootstrap
             log.exception("staff scheduler pause watchdog failed: %s", exc)
     sched = get_scheduler() if enabled else None
+    try:
+        loop: asyncio.AbstractEventLoop | None = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
 
     def _reconcile_then_start() -> None:
         try:
@@ -104,6 +109,12 @@ def start_scheduler() -> None:
             log.exception("Failed to reconcile orphaned staff runs on startup: %s", exc)
         if sched is not None:
             sched.start()
+        try:  # #4249: default off; only the RD_REVIEW_ARM_HOST machine starts the loop
+            from staff.review_arm.runtime import start_review_arm
+
+            start_review_arm(loop)
+        except Exception as exc:  # noqa: BLE001
+            log.exception("Failed to start review-arm: %s", exc)
 
     thread = threading.Thread(target=_reconcile_then_start, name="staff-scheduler-bootstrap", daemon=True)
     _bootstrap_thread = thread
@@ -192,6 +203,8 @@ class ScheduleToggleBody(BaseModel):
 class LeaderLeaseBody(BaseModel):
     machine: str = Field(min_length=1, max_length=80)
     ttl_seconds: float | None = Field(default=None, gt=0, le=3600)
+    # Slots the caller handled as leader: slot key -> ISO time of the tick that covered it (#4274 D-13).
+    handled: dict[str, str] = Field(default_factory=dict, max_length=200)
 
 
 @router.post(
@@ -333,7 +346,9 @@ async def post_leader_lease(
     # The holder decides which host submits scheduled runs, so this needs ``staff.dispatch``
     # (which fleet peers carry), never the read scope (#4274 D-13).
     sched = get_scheduler()
-    return sched.acquire_leader_lease(body.machine, now=datetime.now(UTC), ttl_seconds=body.ttl_seconds)
+    return sched.acquire_leader_lease(
+        body.machine, now=datetime.now(UTC), ttl_seconds=body.ttl_seconds, handled=body.handled
+    )
 
 
 v1_router = APIRouter(prefix="/api/v1/staff", tags=["staff-v1"])

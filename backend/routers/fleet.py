@@ -42,11 +42,11 @@ from proxy_utils import (
 )
 from pydantic import BaseModel, Field
 from routers.runners import run_runner_svc, runner_num_from_id, runner_svc_path
+from routers.system import local_system_metrics_snapshot
 from runner_inventory import fetch_org_runners
 from system_utils import (
     classify_node_offline,
     get_deployment_info,
-    get_system_metrics_snapshot,
     resource_offline_reason,
 )
 from time_utils import now_ms
@@ -257,7 +257,7 @@ async def _collect_fleet_status(*, exclude_pools: bool) -> dict[str, Any]:
                 **reason,
             }
 
-    tasks: list[Awaitable[Any]] = [get_system_metrics_snapshot()]
+    tasks: list[Awaitable[Any]] = [local_system_metrics_snapshot()]
     node_items = list(nodes_to_query.items()) if not exclude_pools else []
     tasks.extend(fetch_node(name, url) for name, url in node_items)
     peer_list = peer_pools if not exclude_pools else []

@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 import threading
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ import pytest
 from coordination import service as coord_service
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
 from staff import adapters as adapters_mod
 from staff import fleet as fleet_mod
 from staff import runner as runner_mod
@@ -114,3 +116,42 @@ def test_slow_board_never_blocks_the_summary(client: TestClient, monkeypatch: py
 
     assert body["board_sessions"] == []
     assert body["board_sessions_warning"] == "board sessions read timed out"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("worker_alive", [False, True])
+def test_summary_surfaces_old_workerless_queue_beyond_recent_window(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, worker_alive: bool
+) -> None:
+    runner = runner_mod.get_runner()
+    record = store_mod.RunRecord(
+        id="run-old-queued-no-worker",
+        role="worker",
+        provider="claude",
+        model=None,
+        machine="Desk",
+        repo="Tools",
+        target_kind="issue",
+        target_ref="#100",
+        prompt="test",
+        created_at=(datetime.now(UTC) - timedelta(days=2)).isoformat(),
+    )
+    runner.store.create_run(record)
+    monkeypatch.setattr(coord_service.board, "read_sessions", lambda repo=None: _board([]))
+    monkeypatch.setattr(
+        runner, "active_worker_run_ids", lambda: frozenset({record.id}) if worker_alive else frozenset()
+    )
+
+    response = client.get("/api/staff/summary")
+
+    assert response.status_code == 200
+    attention = {item.get("id"): item for item in response.json()["attention"]}
+    if worker_alive:
+        assert record.id not in attention
+    else:
+        assert attention[record.id]["status"] == "queued"
+        assert attention[record.id]["failure_class"] == "orphaned_queued"
+        assert attention[record.id]["queued_seconds"] >= 2 * 24 * 60 * 60
+    after = runner.store.get_run(record.id)
+    assert after is not None
+    assert after.status == "queued"

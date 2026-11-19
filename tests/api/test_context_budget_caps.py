@@ -108,9 +108,11 @@ def test_runner_plan_sets_codex_prompt_cap(monkeypatch: pytest.MonkeyPatch) -> N
         return original_compose_prompt(*args, **kwargs)
 
     monkeypatch.setattr(workspace, "compose_prompt", wrapped_compose_prompt)
+    from staff.failover_dispatch import ProviderPick
+
     monkeypatch.setattr(
         "staff.failover_dispatch.resolve_provider_and_model",
-        lambda *args, **kwargs: ("codex", None, "routine", []),
+        lambda *args, **kwargs: ProviderPick("codex", None, "routine", []),
     )
     get_runner().plan(RunRequest(role="ad-hoc", repo="Tools", issue=1, prompt="Review and patch."))
     assert seen["cap"] == TOTAL_CONTEXT_TOKEN_CAP
@@ -120,9 +122,11 @@ def test_run_context_stamping_and_token_accounting(monkeypatch: pytest.MonkeyPat
     from staff.plan import RunRequest
     from staff.runner import get_runner
 
+    from staff.failover_dispatch import ProviderPick
+
     monkeypatch.setattr(
         "staff.failover_dispatch.resolve_provider_and_model",
-        lambda *args, **kwargs: ("claude", None, "routine", []),
+        lambda *args, **kwargs: ProviderPick("claude", None, "routine", []),
     )
     rec, plan, _ = get_runner().admit(RunRequest(role="ad-hoc", repo="Tools", issue=1, prompt="Review"))
     assert plan.standards_version and plan.standards_tokens > 0

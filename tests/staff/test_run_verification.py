@@ -20,6 +20,7 @@ from typing import Any
 import pytest
 from staff import verification as v
 from staff.store import RunRecord, RunStore
+from staff.verification_types import CommitInfo
 
 NOW = datetime(2026, 9, 25, 12, 0, tzinfo=UTC)
 
@@ -359,7 +360,24 @@ def test_unset_verify_mode_enforces_failed_verification_and_report_requires_opt_
     assert verdict is not None and verdict.verification == "failed"
     enforced_rec = store.get_run("run_default_enforce")
     assert enforced_rec is not None
-    assert (enforced_rec.status, enforced_rec.failure_class) == ("failed", v.UNVERIFIED_OUTPUT)
+    assert (enforced_rec.status, enforced_rec.verification, enforced_rec.failure_class) == (
+        "succeeded",
+        "failed",
+        "",
+    )
+    pre_status, pre_fc, _, pre_err, _, _ = v.apply_enforce_before_terminal(
+        _rec(id="run_default_enforce", status="running"),
+        classified_status="succeeded",
+        failure_class="",
+        retryable=False,
+        error="",
+        remediation="",
+        opens_pr=True,
+        probe=FakeProbe(v.PullRequest(9, "closed", "green")),
+        mode="enforce",
+        now=NOW,
+    )
+    assert (pre_status, pre_fc, pre_err) == ("failed", v.UNVERIFIED_OUTPUT, verdict.detail)
 
     monkeypatch.setenv(v.MODE_ENV, "report")
     store.create_run(_rec(id="run_opt_in_report"))
@@ -401,12 +419,12 @@ FAILED = v.Verdict("failed", "no PR", None)
     ("mode", "verdict", "status_change"),
     [
         ("report", FAILED, False),
-        ("enforce", FAILED, True),
+        ("enforce", FAILED, False),
         ("enforce", v.Verdict("unverified", "CI pending", 4), False),
         ("enforce", v.Verdict("verified", "green", 4), False),
     ],
 )
-def test_only_enforce_turns_a_failed_verdict_into_a_failed_run(
+def test_updates_for_never_mutates_terminal_status(
     mode: str, verdict: v.Verdict, status_change: bool
 ) -> None:
     updates = v.updates_for(_rec(), verdict, mode)
@@ -414,11 +432,30 @@ def test_only_enforce_turns_a_failed_verdict_into_a_failed_run(
     assert updates["verification"] == verdict.verification
     assert updates["verification_detail"] == verdict.detail
     assert updates["pr_number"] == verdict.pr_number
-    if status_change:
-        assert (updates["status"], updates["failure_class"]) == ("failed", v.UNVERIFIED_OUTPUT)
-        assert updates["error"] == verdict.detail
-    else:
-        assert "status" not in updates and "failure_class" not in updates
+    assert "status" not in updates
+    assert status_change is False
+
+
+@pytest.mark.unit
+def test_apply_enforce_before_terminal_folds_failed_verdict_into_status() -> None:
+    rec = _rec(status="running")
+    verdict = v.Verdict("failed", "no pull request found", None)
+    probe = FakeProbe(pr=None, remote_ahead_by=1)
+    status, failure_class, retryable, error, remediation, evaluation = v.apply_enforce_before_terminal(
+        rec,
+        classified_status="succeeded",
+        failure_class="",
+        retryable=False,
+        error="",
+        remediation="",
+        opens_pr=True,
+        probe=probe,
+        mode="enforce",
+        now=NOW,
+    )
+    assert evaluation is not None and evaluation.verification == "failed"
+    assert (status, failure_class, retryable) == ("failed", v.UNVERIFIED_OUTPUT, False)
+    assert error == evaluation.detail
 
 
 def test_enforce_never_touches_a_run_that_did_not_succeed() -> None:
@@ -680,3 +717,128 @@ def test_reconcile_orphaned_runs_makes_no_gh_probe_call(monkeypatch: pytest.Monk
 
     reconciled = reconcile.reconcile_orphaned_runs(runner, event_store=object())  # type: ignore[arg-type]
     assert reconciled == []
+
+
+# ── #4492: a pr-remediator that pushes to the target PR's own branch is a deliverable ──
+class PushProbe(FakeProbe):
+    """FakeProbe that also answers ``commit_info`` for the target PR head."""
+
+    def __init__(self, *, committed_at: str, committer: str = "dieterolson", **kw: Any) -> None:
+        super().__init__(**kw)
+        self.committed_at, self.committer = committed_at, committer
+        self.commit_calls: list[tuple[str, str]] = []
+
+    def commit_info(self, repo: str, sha: str) -> CommitInfo:
+        self.commit_calls.append((repo, sha))
+        return CommitInfo(sha=sha, committed_at=self.committed_at, committer=self.committer)
+
+
+def _push_rec(**overrides: Any) -> RunRecord:
+    base: dict[str, Any] = {
+        "role": "pr-remediator",
+        "repo": "Repository_Management",
+        "target_kind": "pr",
+        "target_ref": "PR #2952",
+        "branch": "staff/pr-remediator-2952-776bbf",
+        "started_at": _iso(NOW - timedelta(minutes=20)),
+        "ended_at": _iso(NOW - timedelta(minutes=5)),
+    }
+    base.update(overrides)
+    return _rec(**base)
+
+
+@pytest.mark.parametrize(("ci", "expected"), [("green", "verified"), ("pending", "unverified")])
+def test_push_to_target_pr_branch_during_run_is_a_deliverable(ci: str, expected: str) -> None:
+    """Regression: run-9d6e34a882b8 (RM #2952) pushed a new head to the PR branch, was marked no_change."""
+    target = v.PullRequest(2952, "open", ci, head_sha="da6e9d09")
+    probe = PushProbe(pr=None, remote_ahead_by=0, pr_by_number=target, committed_at=_iso(NOW - timedelta(minutes=8)))
+
+    verdict = v.evaluate(_push_rec(), opens_pr=True, probe=probe, now=NOW, result_text="STAFF_RESULT: pushed fixes")
+
+    assert verdict.verification == expected
+    assert verdict.pr_number == 2952
+    assert probe.commit_calls == [("Repository_Management", "da6e9d09")]
+    assert v.deliverable_failure_updates(_push_rec(), verdict, opens_pr=True) == {}
+
+
+def test_push_to_target_pr_branch_then_merged_is_verified() -> None:
+    target = v.PullRequest(2952, "merged", "green", head_sha="abc")
+    probe = PushProbe(pr=None, remote_ahead_by=0, pr_by_number=target, committed_at=_iso(NOW - timedelta(minutes=10)))
+
+    verdict = v.evaluate(_push_rec(), opens_pr=True, probe=probe, now=NOW)
+
+    assert verdict.verification == "verified"
+
+
+def test_target_head_older_than_the_run_is_still_no_change() -> None:
+    target = v.PullRequest(2952, "open", "green", head_sha="old")
+    probe = PushProbe(pr=None, remote_ahead_by=0, pr_by_number=target, committed_at=_iso(NOW - timedelta(hours=2)))
+
+    verdict = v.evaluate(
+        _push_rec(), opens_pr=True, probe=probe, now=NOW, result_text="STAFF_RESULT: investigated, nothing to change"
+    )
+
+    assert verdict.verification == "no_change"
+
+
+def test_github_web_flow_commit_during_run_is_not_credited() -> None:
+    """A GitHub 'Update branch' merge (committer web-flow / GitHub) is not the run's own push."""
+    target = v.PullRequest(2952, "open", "green", head_sha="wf")
+    probe = PushProbe(
+        pr=None,
+        remote_ahead_by=0,
+        pr_by_number=target,
+        committed_at=_iso(NOW - timedelta(minutes=8)),
+        committer="web-flow",
+    )
+
+    verdict = v.evaluate(_push_rec(), opens_pr=True, probe=probe, now=NOW)
+
+    assert verdict.verification == "no_change"
+
+
+def test_closed_target_pr_with_new_head_is_not_credited() -> None:
+    target = v.PullRequest(2952, "closed", "green", head_sha="x")
+    probe = PushProbe(pr=None, remote_ahead_by=0, pr_by_number=target, committed_at=_iso(NOW - timedelta(minutes=8)))
+
+    verdict = v.evaluate(_push_rec(), opens_pr=True, probe=probe, now=NOW)
+
+    assert verdict.verification == "no_change"
+
+
+def test_commit_lookup_error_leaves_run_unverified() -> None:
+    class Boom(PushProbe):
+        def commit_info(self, repo: str, sha: str) -> CommitInfo:
+            raise v.GitHubLookupError("timeout")
+
+    target = v.PullRequest(2952, "open", "green", head_sha="x")
+    probe = Boom(pr=None, remote_ahead_by=0, pr_by_number=target, committed_at="")
+
+    verdict = v.evaluate(_push_rec(), opens_pr=True, probe=probe, now=NOW)
+
+    assert verdict.verification == "unverified"
+
+
+def test_probe_without_commit_info_keeps_existing_behavior() -> None:
+    target = v.PullRequest(2952, "open", "green", head_sha="x")
+    probe = FakeProbe(pr=None, remote_ahead_by=0, pr_by_number=target)
+
+    verdict = v.evaluate(_push_rec(), opens_pr=True, probe=probe, now=NOW)
+
+    assert verdict.verification == "no_change"
+
+
+def test_gh_probe_commit_info_reads_committer_date() -> None:
+    body = {
+        "sha": "abc",
+        "commit": {"committer": {"date": "2026-11-16T13:30:00Z", "name": "Codex"}},
+        "committer": {"login": "dieterolson"},
+    }
+
+    def run(argv: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        assert argv[:2] == ["gh", "api"] and argv[2].endswith("/commits/abc")
+        return subprocess.CompletedProcess(argv, 0, json.dumps(body), "")
+
+    info = v.GhCliPrProbe(run=run).commit_info("Repository_Management", "abc")
+
+    assert info == CommitInfo(sha="abc", committed_at="2026-11-16T13:30:00Z", committer="dieterolson")

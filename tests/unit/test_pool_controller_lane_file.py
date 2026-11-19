@@ -36,6 +36,9 @@ def test_write_lane_file_before_spawn_shape(tmp_path: Path) -> None:
     assert data["role"] == "lane"
     assert data["state"] == "pending"
     assert data["pid"] is None
+    assert data["push_id"] == ""
+    assert data["host"]
+    assert data["created_at"] == data["updated_at"]
     assert data["updated_at"] <= time.time()
     assert data["updated_at"] >= before_spawn - 1
 

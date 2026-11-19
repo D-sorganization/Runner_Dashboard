@@ -183,7 +183,7 @@ export function ActivityPage(): React.ReactElement {
                 <ul role="list">
                   {[...byStatus.entries()].map(([status, items]) => (
                     <li key={status}>
-                      <span className="activity-page__status-label">
+                      <span className="activity-page__status-label" data-status={status}>
                         {status} ({items.length})
                       </span>
                       <ul role="list">

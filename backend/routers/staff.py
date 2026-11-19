@@ -87,6 +87,8 @@ class RunBody(BaseModel):
     work_item_id: str | None = Field(default=None, max_length=120)
     origin_node: str | None = Field(default=None, max_length=60)
     dry_run: bool = False
+    strict_provider: bool = False
+    authority_code_read_only: bool = False
     # Run even when the role's budget or the provider's plan window is spent (#1588); audited.
     ignore_budget: bool = False
     # Operator-only: dispatch despite a foreign claim:* label / closing PR; needs a reason; audited (#2562).
@@ -294,11 +296,17 @@ async def get_run(
                 RemoteRunNotFound,
                 find_remote_run,
                 proxy_remote_run,
+                unreachable_run_detail,
             )  # noqa: PLC0415
 
             try:
                 remote = await find_remote_run(run_id)
             except RemoteRunLookupUnavailable as exc:
+                if exc.peer is not None:
+                    peer_name, _peer_url = exc.peer
+                    return unreachable_run_detail(
+                        run_id, peer_name, f"Last known owner {peer_name}: {exc}", last_known_owner=True
+                    )
                 raise HTTPException(status_code=503, detail="peer run lookup unavailable") from exc
             if remote is not None:
                 peer_name, peer_url = remote

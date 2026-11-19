@@ -83,7 +83,7 @@ def _principal_fields(row: dict[str, Any], agent_id: str) -> dict[str, Any]:
         "id": agent_id,
         "type": "bot",
         "name": str(row.get("name") or agent_id),
-        "roles": roles or ["bot"],
+        "roles": roles if "roles" in row else ["bot"],
         "scopes": scopes,
         "assistant_kind": str(kind) if kind else None,
         "inbox_webhook_url": webhook_url,

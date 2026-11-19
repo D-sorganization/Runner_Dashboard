@@ -4,6 +4,7 @@
  * Implements Workstream C (Issue #1721, Epic #1718).
  */
 import React, { useState, useEffect } from "react";
+import { ApiClientError, resetThreadLoopGuard } from "../Staff/staffApi";
 import type { ContextPaneProps } from "./contextTypes";
 import { FleetCatalogPane } from "./FleetCatalogPane";
 import { RoleReadinessSection, RunList, WorkItemList } from "./ContextReadiness";
@@ -29,6 +30,14 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
   const [modelOverride, setModelOverride] = useState<string>(role?.model?.override ?? "");
   const [isChangingModel, setIsChangingModel] = useState<boolean>(false);
   const [modelError, setModelError] = useState<string | null>(null);
+  const [loopGuardPaused, setLoopGuardPaused] = useState<boolean>(Boolean(threadContext?.loop_guard_paused));
+  const [loopGuardResetBusy, setLoopGuardResetBusy] = useState(false);
+  const [loopGuardResetError, setLoopGuardResetError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoopGuardPaused(Boolean(threadContext?.loop_guard_paused));
+    setLoopGuardResetError(null);
+  }, [threadContext?.thread_id, threadContext?.loop_guard_paused]);
 
   useEffect(() => {
     setScheduleEnabled(role?.schedule?.enabled ?? null);
@@ -362,6 +371,35 @@ export const ContextPane: React.FC<ContextPaneProps> = ({
             aria-label="Thread linked items"
             className="context-tabpanel"
           >
+            {threadContext?.thread_id && loopGuardPaused && (
+              <div className="context-loop-guard-banner">
+                <p>Loop guard paused this thread after too many agent-only turns.</p>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={loopGuardResetBusy}
+                  onClick={async () => {
+                    if (!threadContext?.thread_id) return;
+                    setLoopGuardResetBusy(true);
+                    setLoopGuardResetError(null);
+                    try {
+                      const res = await resetThreadLoopGuard(threadContext.thread_id);
+                      setLoopGuardPaused(Boolean(res.loop_guard_paused));
+                    } catch (err) {
+                      setLoopGuardResetError(
+                        err instanceof ApiClientError ? err.message : "Loop guard reset failed.",
+                      );
+                    } finally {
+                      setLoopGuardResetBusy(false);
+                    }
+                  }}
+                >
+                  Reset loop guard
+                </button>
+                {loopGuardResetError && <p className="context-error-text">{loopGuardResetError}</p>}
+              </div>
+            )}
+
             {threadContext?.thread_id && (
               <div>
                 <div className="context-section-label">

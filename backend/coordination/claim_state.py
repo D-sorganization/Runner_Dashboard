@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
 import os
 import sqlite3
 import threading
@@ -19,18 +20,35 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from coordination.job_board_rows import JobBoardRows
+
 log = logging.getLogger("dashboard.coordination.claim_state")
 
 _SQLITE_BUSY_RETRIES = 8
 _SQLITE_BUSY_SLEEP_S = 0.05
-_DEFAULT_CAS_RESERVE_TTL_S = float(os.environ.get("CLAIM_STATE_CAS_TTL_S", "300"))
+_FALLBACK_CAS_RESERVE_TTL_S = 300.0
+
+
+def _parse_ttl(raw: str | None) -> float | None:
+    """Parse a TTL string; ``None`` unless it is a finite number greater than zero."""
+    if raw is None or raw.strip() == "":
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) and value > 0 else None
+
+
+_DEFAULT_CAS_RESERVE_TTL_S = _parse_ttl(os.environ.get("CLAIM_STATE_CAS_TTL_S")) or _FALLBACK_CAS_RESERVE_TTL_S
 
 
 def cas_reserve_ttl_seconds() -> float:
-    raw = os.environ.get("CLAIM_STATE_CAS_TTL_S")
-    if raw is not None and raw != "":
-        return float(raw)
-    return _DEFAULT_CAS_RESERVE_TTL_S
+    """Reservation TTL from the environment; a malformed or non-positive value falls back to 300s."""
+    parsed = _parse_ttl(os.environ.get("CLAIM_STATE_CAS_TTL_S"))
+    if parsed is not None:
+        return parsed
+    return _FALLBACK_CAS_RESERVE_TTL_S
 
 
 _store_lock = threading.Lock()
@@ -85,8 +103,8 @@ def _default_db_path() -> Path:
     return base / "claim_state.sqlite3"
 
 
-class ClaimStateStore:
-    """SQLite WAL store: one row per ``repo#issue`` with CAS acquire."""
+class ClaimStateStore(JobBoardRows):
+    """SQLite WAL store: one row per ``repo#issue`` with CAS acquire, plus job-board fences and leases."""
 
     def __init__(self, path: Path) -> None:
         self._path = path
@@ -111,6 +129,7 @@ class ClaimStateStore:
         columns = {str(row[1]) for row in self._execute("PRAGMA table_info(issue_claims)").fetchall()}
         if "expires_at" not in columns:
             self._execute("ALTER TABLE issue_claims ADD COLUMN expires_at REAL")
+        self._create_job_board_tables()
 
     def _retry(self, operation: Any) -> Any:
         for attempt in range(_SQLITE_BUSY_RETRIES):
@@ -171,6 +190,8 @@ class ClaimStateStore:
         repo_key, issue_num = self._key(repo, issue)
         now = time.time()
         ttl = cas_reserve_ttl_seconds() if reserve_ttl_s is None else float(reserve_ttl_s)
+        if not math.isfinite(ttl) or ttl <= 0:
+            raise ValueError(f"reserve_ttl_s must be a finite number > 0, got {reserve_ttl_s!r}")
         expires = now + ttl
 
         with self._lock:

@@ -85,6 +85,7 @@ def test_retry_constants() -> None:
     assert "rate_limited" in retry_mod.RETRYABLE_FAILURE_CLASSES
     assert "provider_error" in retry_mod.RETRYABLE_FAILURE_CLASSES
     assert "workspace_error" in retry_mod.RETRYABLE_FAILURE_CLASSES
+    assert "submodule_lock" in retry_mod.RETRYABLE_FAILURE_CLASSES
 
     for non_retryable in (
         "needs_input",
@@ -113,6 +114,7 @@ def test_compute_backoff_exponential() -> None:
         ("rate_limited", True),
         ("provider_error", True),
         ("workspace_error", True),
+        ("submodule_lock", True),
         ("needs_input", False),
         ("auth_expired", False),
         ("lease_blocked", False),
@@ -125,7 +127,7 @@ def test_compute_backoff_exponential() -> None:
     ],
 )
 def test_retry_matrix_per_failure_class(failure_class: str, expected_retryable: bool) -> None:
-    """Only rate_limited, provider_error, and workspace_error are retried."""
+    """Registered retryable failure classes are eligible for same-provider retry."""
     assert retry_mod.is_retryable_class(failure_class) is expected_retryable
 
 
@@ -367,16 +369,16 @@ def test_bounded_retry_fake_provider_429_twice_then_success(
 
     rec = runner.submit(runner_mod.RunRequest(role="flaky-worker", prompt="process data"))
 
-    # Wait for logical run and attempts to reach terminal state
+    # Wait for the retry chain to finish (success is recorded on the attempt row; root stays terminal).
     for _ in range(300):
-        row = temp_store.get_run(rec.id)
-        if row and row.status == "succeeded":
+        attempts = temp_store.get_attempts(rec.id)
+        if attempts and attempts[-1].status == "succeeded":
             break
         time.sleep(0.05)
 
     final_root = temp_store.get_run(rec.id)
     assert final_root is not None
-    assert final_root.status == "succeeded"
+    assert final_root.status == "failed"
 
     attempts = temp_store.get_attempts(rec.id)
     assert len(attempts) == 3
@@ -396,7 +398,7 @@ def test_bounded_retry_fake_provider_429_twice_then_success(
     logical_runs = temp_store.list_runs(logical_only=True)
     assert len(logical_runs) == 1
     assert logical_runs[0].id == rec.id
-    assert logical_runs[0].status == "succeeded"
+    assert logical_runs[0].status == "failed"
 
 
 def test_reconcile_preserves_scheduled_retries(temp_store: RunStore) -> None:

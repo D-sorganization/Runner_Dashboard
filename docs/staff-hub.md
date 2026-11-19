@@ -276,6 +276,7 @@ Both run columns are additive (`PRAGMA`-guarded `ALTER TABLE`, like
 | `STAFF_MAX_CONCURRENT_RUNS`   | `3`                                                                             | Runs executing at once on this node                                                                               |
 | `STAFF_RUN_TIMEOUT_SECONDS`   | `14400`                                                                         | Hard stop per run                                                                                                 |
 | `STAFF_PEER_TIMEOUT_SECONDS`  | `6`                                                                             | Per-peer timeout for board fan-out (forwarded dispatches allow 5×)                                                |
+| `STAFF_PEER_LOOKUP_TIMEOUT_SECONDS` | `2.5` | Total peer run/session discovery deadline and per-peer wait. Positive finite seconds; invalid values use the default. HTTP requests also obey `STAFF_PEER_TIMEOUT_SECONDS`, so raise that transport limit too when choosing a longer discovery budget. |
 | `STAFF_BUDGET_USD_PER_DAY`    | `0` (unlimited)                                                                 | Fleet-wide daily ceiling reported by `/api/staff/usage`                                                           |
 | `STAFF_WALL_USD_PER_MIN`      | unset                                                                           | `provider=rate,...` wall-time fallback for providers without token accounting                                     |
 | `STAFF_QUOTA_STATE`           | `<config dir>/staff_quota.json`                                                 | Newest plan-window snapshot per account (#1587)                                                                   |
@@ -759,3 +760,18 @@ Observability for a future learning router; nothing here changes provider or mac
 - **Where to read it**: `GET /api/v1/staff/report-cards`, `/leaderboard` (Wilson 95% CI in `first_pass_ci_95`, cost per success in `effective_cost_per_success_usd`).
 - **Shadow mode**: set `STAFF_ROUTING_MODE=shadow` (default `off`). Each newly admitted run then gets one `routing_shadow` run event `{chosen, recommended, agrees, scores}`, where `recommended` is the best provider for the role and complexity tier from the last 14 days of runs. The router stays in shadow until a provider has n >= 8 scored runs: below that `recommended` is `null`. Advice failures are logged and swallowed; the chosen provider is never altered. The hook sits at the dispatch admission seam in `backend/staff/dispatch_service.py` (the selection itself is `failover_dispatch.select_provider_from_chain`).
 - Override/feedback counts (`routing_feedback`) live in the conversation store and are not joined here yet.
+
+
+### Code-read-only Codex runs
+
+Roles with `permissions.code_read_only: true` can select Codex, Claude or
+Antigravity. Codex runs use `exec --sandbox read-only`, including resumed runs;
+they omit writable directory grants, the workspace-write network override and
+approval bypass flags. Ordinary Codex runs retain their workspace-write sandbox.
+The shared provider policy also permits Codex in read-only failover chains when
+another provider is unavailable or auth-blocked. Model choices remain settings.
+
+The read-only fence remains in effect: run GitHub App tokens request only read
+permissions for contents, pull requests, issues, metadata and checks, regardless
+of provider, so GitHub writes are not authorized. The RM `code-reviewer` role
+already includes Codex; no role definition change is required.

@@ -249,7 +249,7 @@ jobs:
               ;;
             merge_group)
               echo "tier=merge-group" >> "$GITHUB_OUTPUT"
-              echo "full_suite=false" >> "$GITHUB_OUTPUT"
+              echo "full_suite=true" >> "$GITHUB_OUTPUT"
               echo "run_python_tests=true" >> "$GITHUB_OUTPUT"
               ;;
             push)
@@ -314,11 +314,26 @@ jobs:
           # check — plus security-scan, tests, tests-required) is skipped when
           # this predicate is false, so a missing prefix means a PR merges with
           # no test signal at all.
-          prefixes = ("backend/", "clients/", "deploy/", "tests/")
+          # H-04 (#4268): scripts/, shared_scripts/, .github/, config/ and
+          # fleet-hooks/ are exercised by pytest (workflow contract, script
+          # and hook tests), as are the lock file and the Dockerfile.
+          prefixes = (
+              "backend/",
+              "clients/",
+              "deploy/",
+              "tests/",
+              "scripts/",
+              "shared_scripts/",
+              ".github/",
+              "config/",
+              "fleet-hooks/",
+          )
           exact = {
               "pyproject.toml",
               "uv.lock",
               "requirements.txt",
+              "requirements.lock.txt",
+              "Dockerfile",
               "requirements-audit-ignore.txt",
               "bandit.yaml",
               ".pre-commit-config.yaml",
@@ -333,7 +348,7 @@ jobs:
           EOF
       - name: Report skipped Python validation
         if: github.event_name == 'pull_request' && steps.python-scope.outputs.run_python_tests != 'true'
-        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, clients, deploy, tests, or Python dependency policy files."
+        run: echo "Skipping Python dependency bootstrap and pytest collection; this PR does not touch backend, clients, deploy, tests, scripts, shared_scripts, .github, config, fleet-hooks, the Dockerfile, or Python dependency policy files."
 
   # â”€â”€ Fleet-wide CI health gate (issue #154) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   ci-health-check:
@@ -879,7 +894,7 @@ jobs:
       matrix:
         include: >-
           ${{ github.event_name == 'merge_group' &&
-          fromJSON('[{"python":"3.11","shard":1,"shards":2},{"python":"3.11","shard":2,"shards":2}]') ||
+          fromJSON('[{"python":"3.11","shard":1,"shards":1}]') ||
           fromJSON('[{"python":"3.11","shard":1,"shards":1}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -916,9 +931,10 @@ jobs:
           SHARDS: ${{ matrix.shards }}
         # -n auto: pytest-xdist parallel workers (issue #401).
         # -m exclusion: integration / playwright tests run nightly only.
-        # Full tier (merge_group): whole suite with coverage (issue #342); the
-        # coverage floor is enforced there. PR tier: the fast subset without
-        # coverage instrumentation (issue #1864).
+        # full_suite (merge_group, schedule, workflow_dispatch): non-integration,
+        # non-playwright pytest with coverage + fail_under (#4299, issue #342).
+        # Includes slow tests (CLI -m overrides pyproject not-slow addopts). PR
+        # tier: fast subset without coverage instrumentation (issue #1864).
         run: |
           python - <<'PY'
           import os
@@ -1241,3 +1257,33 @@ jobs:
             python3 scripts/ci/verify_merge_group_companion_checks.py
           fi
           echo "quality-gate: all gated jobs succeeded."
+
+  record-failure-visibility:
+    name: Record CI failure
+    needs:
+      - quality-gate
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.quality-gate.result == 'failure' &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+       github.event_name == 'merge_group')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Publish workflow failure notice
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/ci/publish_workflow_failure_notice.py \
+            --workflow "CI Standard" \
+            --ref "${GITHUB_REF}" \
+            --base-ref "${{ github.event.merge_group.base_ref || '' }}" \
+            --run-id "${{ github.run_id }}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${{ github.run_id }}" \
+            --event-name "${{ github.event_name }}"

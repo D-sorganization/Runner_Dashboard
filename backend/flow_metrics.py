@@ -84,14 +84,17 @@ def percentile(values: Sequence[float], pct: float) -> float:
 
 
 def flag_aging_open_prs(
-    pulls: Sequence[Mapping[str, Any]], *, rule_hours: float = PR_AGE_RULE_HOURS
+    pulls: Sequence[Mapping[str, Any]],
+    *,
+    rule_hours: float = PR_AGE_RULE_HOURS,
+    now: datetime | None = None,
 ) -> list[dict[str, Any]]:
     """Open PRs in ``pulls`` older than ``rule_hours`` (for dashboard flags)."""
     flagged: list[dict[str, Any]] = []
     for pr in pulls:
         if not isinstance(pr, dict):
             continue
-        age = open_pr_age_hours(str(pr.get("created_at") or ""))
+        age = open_pr_age_hours(str(pr.get("created_at") or ""), now=now)
         if age <= rule_hours:
             continue
         flagged.append(
@@ -192,13 +195,16 @@ async def _gh_json_paginated_list(run_gh: RunGh, api_path: str) -> tuple[list[An
 
 
 def _week_range(now: datetime | None = None) -> tuple[str, str]:
+    """Inclusive 7-day UTC date window ending on ``now`` (default: current time)."""
     end = (now or datetime.now(tz=UTC)).date()
     start = end - timedelta(days=WEEKLY_DAYS - 1)
     return start.isoformat(), end.isoformat()
 
 
-async def _search_issue_count(run_gh: RunGh, repo_full: str, qualifier: str) -> tuple[int, str | None]:
-    start, end = _week_range()
+async def _search_issue_count(
+    run_gh: RunGh, repo_full: str, qualifier: str, *, now: datetime | None = None
+) -> tuple[int, str | None]:
+    start, end = _week_range(now)
     query = quote(f"repo:{repo_full} is:issue {qualifier}:{start}..{end}", safe="")
     path = f"/search/issues?q={query}&per_page=1"
     payload, err = await _gh_json(run_gh, ["api", path])
@@ -221,8 +227,9 @@ async def _fetch_open_pr_ages(
     if err:
         return [], [], err
     pulls = [pr for pr in payload if isinstance(pr, dict)]
-    ages = [_age_hours(str(pr.get("created_at") or ""), now=now) for pr in pulls]
-    return ages, flag_aging_open_prs(pulls), None
+    # A PR without a parseable created_at has no measurable age; counting it as 0h would skew p50/p90.
+    ages = [_age_hours(str(pr["created_at"]), now=now) for pr in pulls if _parse_ts(str(pr.get("created_at") or ""))]
+    return ages, flag_aging_open_prs(pulls, now=now), None
 
 
 async def _fetch_cycle_hours(
@@ -261,8 +268,8 @@ async def collect_repo_metrics(
     repo_full = full_repo(repo_short)
     open_ages, aging_prs, open_err = await _fetch_open_pr_ages(runner, repo_full, now=now)
     cycle_hours, cycle_err = await _fetch_cycle_hours(runner, repo_full, now=now)
-    opened, opened_err = await _search_issue_count(runner, repo_full, "created")
-    closed, closed_err = await _search_issue_count(runner, repo_full, "closed")
+    opened, opened_err = await _search_issue_count(runner, repo_full, "created", now=now)
+    closed, closed_err = await _search_issue_count(runner, repo_full, "closed", now=now)
     errors = [e for e in (open_err, cycle_err, opened_err, closed_err) if e]
     return build_repo_row(
         repo_full,

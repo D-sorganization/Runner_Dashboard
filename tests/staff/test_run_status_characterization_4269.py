@@ -88,6 +88,7 @@ PINNED_CARD_STATUS_MAP: dict[str, str] = {
     "succeeded": "completed",
     "failed": "failed",
     "cancelled": "cancelled",
+    "blocked": "failed",  # PR 3: a blocked run's card no longer falls back to ``running``
 }
 
 PINNED_CLAIM_GUARD_TERMINAL: frozenset[str] = frozenset({"succeeded", "failed", "cancelled", "blocked"})
@@ -111,12 +112,12 @@ PINNED_OUTCOME_BUCKETS: tuple[str, ...] = (
     "in_flight",
 )
 
-# handle_run_status_change calls in staff.runner.StaffRunner (worker / admit / cancel).
+# handle_run_status_change calls in staff.runner.StaffRunner (worker / admit). Terminal
+# statuses are notified by ``run_status.transition()`` since PR 3, so ``cancelled`` left.
 PINNED_RUNNER_HANDLE_STATUSES: tuple[str, ...] = (
     "queued",
     "preparing",
     "running",
-    "cancelled",
 )
 
 
@@ -254,23 +255,26 @@ def test_store_accepts_every_canonical_literal(tmp_path: Path) -> None:
         store.close()
 
 
-def test_unconditional_update_run_allows_cancelled_to_running(tmp_path: Path) -> None:
-    """D-05: no compare-and-set today — cancelled can flip back to running."""
+def test_unconditional_update_run_rejects_reopening_cancelled(tmp_path: Path) -> None:
+    """D-05: a terminal row cannot bypass ``transition()`` via ``update_run``."""
+    from staff.run_status import IllegalRunStatusTransitionError  # noqa: PLC0415
+
     store = RunStore(tmp_path / "runs.sqlite3")
     try:
         store.create_run(RunRecord("reopen", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="queued"))
         store.update_run("reopen", status="cancelled", ended_at="2026-11-11T00:00:00Z")
-        store.update_run("reopen", status="running")
+        with pytest.raises(IllegalRunStatusTransitionError):
+            store.update_run("reopen", status="running")
         got = store.get_run("reopen")
         assert got is not None
-        assert got.status == "running"
+        assert got.status == "cancelled"
     finally:
         store.close()
 
 
-def test_card_run_maps_blocked_to_running_on_console() -> None:
+def test_card_run_maps_blocked_to_failed_on_console() -> None:
     run = RunRecord("r1", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p")
-    assert card_run(run, "blocked")["status"] == "running"
+    assert card_run(run, "blocked")["status"] == "failed"
 
 
 def test_runner_worker_handle_run_status_literals_are_pinned() -> None:
@@ -297,9 +301,9 @@ def wi_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[WorkIt
         ("preparing", "waiting_on_user", "in_progress"),
         ("needs_input", "in_progress", "waiting_on_user"),
         ("succeeded", "in_progress", "needs_evidence"),
-        ("failed", "in_progress", "in_progress"),
-        ("cancelled", "in_progress", "in_progress"),
-        ("blocked", "open", "open"),
+        ("failed", "in_progress", "blocked"),
+        ("cancelled", "in_progress", "open"),
+        ("blocked", "open", "blocked"),
     ],
 )
 def test_run_status_to_work_item_transitions_observed(

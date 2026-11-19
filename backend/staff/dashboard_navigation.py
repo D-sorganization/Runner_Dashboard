@@ -28,6 +28,7 @@ DASHBOARD_NAV_TABS = frozenset(
         "insights",
         "security",
         "settings",
+        "kanban",
     }
 )
 

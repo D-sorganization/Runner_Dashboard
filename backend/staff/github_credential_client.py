@@ -24,7 +24,7 @@ def fetch_github_token_for_run() -> str:
     )
     resp.raise_for_status()
     body = resp.json()
-    token = str(body.get("token", "")).strip()
-    if not token:
+    token = body.get("token", "")
+    if not isinstance(token, str) or not token.strip():
         raise RuntimeError("github-credential response missing token")
-    return token
+    return token.strip()

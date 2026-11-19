@@ -10,7 +10,7 @@ import pytest
 import runner_target_contract as rtc
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from identity import Principal, require_fleet_peer, require_scope
+from identity import Principal, require_fleet_peer
 from routers import fleet_target_routes as routes
 from routers import orchestration_schedule_routes as sched
 
@@ -51,7 +51,7 @@ def client(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> TestClient:
     def _op() -> Principal:
         return OPERATOR
 
-    app.dependency_overrides[require_scope("fleet.control")] = _op
+    app.dependency_overrides[routes._TARGET_AUTH] = _op
     app.dependency_overrides[require_fleet_peer] = lambda: None
     return TestClient(app)
 

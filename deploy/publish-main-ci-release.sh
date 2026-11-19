@@ -84,6 +84,20 @@ if [[ "$GATE_ONLY" == "true" ]]; then
   trap write_gate_output EXIT
 fi
 
+# A release that is not published because CI did not pass must be visible (#4419):
+# an error annotation, a job-summary line, and a non-zero status. Superseded or
+# already-released candidates are expected and keep exiting 0.
+#   4 = terminal CI failure, 5 = CI gate wait exhausted.
+fail_without_release() {
+  local message="$1" status="$2"
+  echo "$message"
+  echo "::error title=Main CI release not published::${message}"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    echo "**Release not published:** ${message}" >> "$GITHUB_STEP_SUMMARY"
+  fi
+  exit "$status"
+}
+
 skip_if_main_moved() {
   [[ "$REQUIRE_CURRENT_MAIN" == "true" ]] || return 0
   current_main_sha="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha')"
@@ -192,8 +206,7 @@ json.dump(pages, sys.stdout)
     1)
       ;;
     2)
-      echo "CI gate has terminal failures for ${SHA:0:7}; skipping release"
-      exit 0
+      fail_without_release "CI gate has terminal failures for ${SHA:0:7}; no release published" 4
       ;;
     3)
       echo "CI gate response is invalid or incomplete for ${SHA:0:7}; refusing release" >&2
@@ -205,8 +218,8 @@ json.dump(pages, sys.stdout)
       ;;
   esac
   if [[ "$attempt" -eq "$GATE_ATTEMPTS" ]]; then
-    echo "CI gate not satisfied for ${SHA:0:7} after ${GATE_ATTEMPTS} attempts; skipping release"
-    exit 0
+    fail_without_release \
+      "CI gate not satisfied for ${SHA:0:7} after ${GATE_ATTEMPTS} attempts; no release published" 5
   fi
   echo "CI gate waiting (attempt ${attempt}/${GATE_ATTEMPTS}); sleeping ${GATE_SLEEP_SECS}s"
   sleep "$GATE_SLEEP_SECS"

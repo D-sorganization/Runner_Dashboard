@@ -114,6 +114,64 @@ def test_idle_expiry_releases_unbound_stale_session() -> None:
     assert dispatch_queue_manager.get_active_sessions() == []
 
 
+def test_expire_keeps_session_when_bound_run_liveness_unknown() -> None:
+    session_id = uuid4().hex
+    recent = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    dispatch_queue_manager._active_sessions[session_id] = ActiveSession(
+        session_id=session_id,
+        repository="Runner_Dashboard",
+        number=None,
+        declared_paths=["*"],
+        tier="cli",
+        model="sonnet",
+        role="ad-hoc",
+        occupies_paths=True,
+        run_id="run-missing",
+        last_activity_at=recent,
+        dispatched_at=recent,
+    )
+    bind_run_session("run-missing", session_id)
+
+    def live(run_id: str) -> bool | None:
+        return None if run_id == "run-missing" else True
+
+    released = dispatch_queue_manager.expire_stale_sessions(run_live=live, ttl_seconds=60 * 60)
+    assert released == []
+    assert any(s.session_id == session_id for s in dispatch_queue_manager.get_active_sessions())
+
+
+def test_expire_keeps_bound_session_on_idle_ttl_when_liveness_unknown() -> None:
+    """Regression: bound runs with unknown liveness must not be idle-expired (#4352)."""
+    session_id = uuid4().hex
+    stale = (datetime.now(UTC) - timedelta(hours=2)).isoformat().replace("+00:00", "Z")
+    dispatch_queue_manager._active_sessions[session_id] = ActiveSession(
+        session_id=session_id,
+        repository="Runner_Dashboard",
+        number=None,
+        declared_paths=["backend/a.py"],
+        tier="cli",
+        model="sonnet",
+        role="ad-hoc",
+        occupies_paths=True,
+        run_id="run-store-miss",
+        last_activity_at=stale,
+        dispatched_at=stale,
+    )
+    bind_run_session("run-store-miss", session_id)
+
+    def live(_run_id: str) -> bool | None:
+        return None
+
+    ttl = session_idle_ttl_seconds()
+    released = dispatch_queue_manager.expire_stale_sessions(
+        now=datetime.now(UTC),
+        ttl_seconds=ttl,
+        run_live=live,
+    )
+    assert released == []
+    assert any(s.session_id == session_id for s in dispatch_queue_manager.get_active_sessions())
+
+
 def test_expire_releases_session_when_bound_run_is_terminal() -> None:
     session_id = uuid4().hex
     dispatch_queue_manager._active_sessions[session_id] = ActiveSession(
@@ -167,6 +225,32 @@ async def test_failed_review_dispatch_leaves_no_blocking_session(
     class FakeRunner:
         machine = "test-node"
 
+        def __init__(self) -> None:
+            self._rec: SimpleNamespace | None = None
+            self.store = SimpleNamespace(
+                append_event=lambda *a, **k: None,
+                update_run=lambda *a, **k: None,
+                compare_and_set_run_status=self._compare_and_set_run_status,
+                get_run=self._get_run,
+            )
+
+        def _get_run(self, _run_id: str) -> SimpleNamespace | None:
+            return self._rec
+
+        def _compare_and_set_run_status(
+            self,
+            run_id: str,
+            *,
+            expected: str,
+            status: str,
+            **_fields: Any,
+        ) -> bool:
+            rec = self._rec
+            if rec is None or rec.id != run_id or rec.status != expected:
+                return False
+            rec.status = status
+            return True
+
         def roles(self) -> dict[str, RoleSpec]:
             return runner_roles
 
@@ -186,7 +270,7 @@ async def test_failed_review_dispatch_leaves_no_blocking_session(
             )
 
         def admit(self, _req: Any, run_id: str = "") -> tuple[Any, RunPlan, bool]:
-            rec = SimpleNamespace(
+            self._rec = SimpleNamespace(
                 id=run_id or "run-review-fail",
                 role="code-reviewer",
                 provider="codex",
@@ -195,15 +279,10 @@ async def test_failed_review_dispatch_leaves_no_blocking_session(
                 status="queued",
             )
             plan = self.plan(_req)
-            return rec, plan, True
+            return self._rec, plan, True
 
         def launch(self, _rec: Any, _plan: RunPlan) -> None:
             raise RuntimeError("stale submodule index.lock")
-
-        store = SimpleNamespace(
-            append_event=lambda *a, **k: None,
-            update_run=lambda *a, **k: None,
-        )
 
     fake = FakeRunner()
 

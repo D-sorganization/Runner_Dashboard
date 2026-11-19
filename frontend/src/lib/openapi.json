@@ -2064,6 +2064,20 @@
       },
       "CreateWorkItemRequest": {
         "properties": {
+          "artifact_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Refs"
+          },
           "expected_by": {
             "anyOf": [
               {
@@ -2074,6 +2088,18 @@
               }
             ],
             "title": "Expected By"
+          },
+          "idempotency_key": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idempotency Key"
           },
           "links": {
             "additionalProperties": {
@@ -2095,6 +2121,18 @@
               }
             ],
             "title": "Next Check At"
+          },
+          "output_format": {
+            "anyOf": [
+              {
+                "enum": ["pdf", "docx"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Format"
           },
           "owner_role": {
             "anyOf": [
@@ -2678,21 +2716,6 @@
       },
       "FleetRunTokenRequest": {
         "properties": {
-          "repositories": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 8,
-            "minItems": 1,
-            "title": "Repositories",
-            "type": "array"
-          },
-          "role": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Role",
-            "type": "string"
-          },
           "run_id": {
             "maxLength": 80,
             "minLength": 1,
@@ -2700,7 +2723,7 @@
             "type": "string"
           }
         },
-        "required": ["run_id", "role", "repositories"],
+        "required": ["run_id"],
         "title": "FleetRunTokenRequest",
         "type": "object"
       },
@@ -3285,6 +3308,69 @@
         "title": "HostSettingsPutBody",
         "type": "object"
       },
+      "HubSessionRegisterBody": {
+        "additionalProperties": false,
+        "description": "Register or heartbeat a hub-local session (Cursor cloud lane, Barb, external agent).",
+        "properties": {
+          "machine": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Machine",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "repo": {
+            "anyOf": [
+              {
+                "pattern": "^(?:[A-Za-z0-9-]{1,39}/)?[A-Za-z0-9][A-Za-z0-9._-]{0,99}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Repo"
+          },
+          "role": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          },
+          "session": {
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "ttl_hours": {
+            "default": 2.0,
+            "maximum": 24.0,
+            "minimum": 0.1,
+            "title": "Ttl Hours",
+            "type": "number"
+          }
+        },
+        "required": ["session", "role", "provider", "machine"],
+        "title": "HubSessionRegisterBody",
+        "type": "object"
+      },
       "InitializeExecutorPayload": {
         "additionalProperties": false,
         "description": "Children always come from the filed plan; the caller may only tune execution.",
@@ -3437,6 +3523,149 @@
         "title": "JobReleaseBody",
         "type": "object"
       },
+      "LaneCheckoutBody": {
+        "properties": {
+          "host": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Host"
+          },
+          "idempotency_key": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "type": "string"
+          },
+          "lane_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lane Id"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "ttl_sec": {
+            "default": 3600,
+            "maximum": 14400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["session_id", "idempotency_key"],
+        "title": "LaneCheckoutBody",
+        "type": "object"
+      },
+      "LaneHeartbeatBody": {
+        "properties": {
+          "checkout_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Checkout Id",
+            "type": "string"
+          },
+          "fence_token": {
+            "minimum": 1.0,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "progress": {
+            "default": false,
+            "title": "Progress",
+            "type": "boolean"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session Id",
+            "type": "string"
+          },
+          "ttl_sec": {
+            "default": 3600,
+            "maximum": 14400.0,
+            "minimum": 60.0,
+            "title": "Ttl Sec",
+            "type": "integer"
+          }
+        },
+        "required": ["checkout_id", "fence_token", "session_id"],
+        "title": "LaneHeartbeatBody",
+        "type": "object"
+      },
+      "LaneReleaseBody": {
+        "properties": {
+          "checkout_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Checkout Id",
+            "type": "string"
+          },
+          "fence_token": {
+            "minimum": 1.0,
+            "title": "Fence Token",
+            "type": "integer"
+          },
+          "reason": {
+            "default": "completed",
+            "maxLength": 128,
+            "title": "Reason",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": ["checkout_id", "fence_token", "session_id"],
+        "title": "LaneReleaseBody",
+        "type": "object"
+      },
       "LaunchAuthRequest": {
         "properties": {
           "provider": {
@@ -3451,6 +3680,14 @@
       },
       "LeaderLeaseBody": {
         "properties": {
+          "handled": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "maxProperties": 200,
+            "title": "Handled",
+            "type": "object"
+          },
           "machine": {
             "maxLength": 80,
             "minLength": 1,
@@ -4355,6 +4592,20 @@
       },
       "PatchWorkItemRequest": {
         "properties": {
+          "artifact_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Artifact Refs"
+          },
           "expected_by": {
             "anyOf": [
               {
@@ -4376,6 +4627,18 @@
               }
             ],
             "title": "Next Check At"
+          },
+          "output_format": {
+            "anyOf": [
+              {
+                "enum": ["pdf", "docx"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Format"
           },
           "owner_role": {
             "anyOf": [
@@ -6195,6 +6458,11 @@
       "RunBody": {
         "description": "POST body for a dispatch. DbC: exactly the fields the runner understands.",
         "properties": {
+          "authority_code_read_only": {
+            "default": false,
+            "title": "Authority Code Read Only",
+            "type": "boolean"
+          },
           "claim_override_reason": {
             "default": "",
             "maxLength": 500,
@@ -6341,6 +6609,11 @@
             "title": "Standards Extra",
             "type": "string"
           },
+          "strict_provider": {
+            "default": false,
+            "title": "Strict Provider",
+            "type": "boolean"
+          },
           "surface": {
             "anyOf": [
               {
@@ -6389,12 +6662,6 @@
       },
       "RunJwtRequest": {
         "properties": {
-          "principal_id": {
-            "maxLength": 80,
-            "minLength": 1,
-            "title": "Principal Id",
-            "type": "string"
-          },
           "run_id": {
             "maxLength": 80,
             "minLength": 1,
@@ -6402,7 +6669,7 @@
             "type": "string"
           }
         },
-        "required": ["run_id", "principal_id"],
+        "required": ["run_id"],
         "title": "RunJwtRequest",
         "type": "object"
       },
@@ -6630,7 +6897,7 @@
             "type": "string"
           },
           "status": {
-            "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+            "enum": ["live", "idle", "stale", "ended", "uncaptured", "blocked"],
             "title": "Status",
             "type": "string"
           }
@@ -13778,6 +14045,244 @@
         "tags": ["coordination"]
       }
     },
+    "/api/coordination/lane-prompts/catalog": {
+      "get": {
+        "operationId": "get_lane_prompt_catalog_api_coordination_lane_prompts_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Lane Prompt Catalog Api Coordination Lane Prompts Catalog Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Lane Prompt Catalog",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/lane-prompts/checkout": {
+      "post": {
+        "operationId": "post_lane_prompt_checkout_api_coordination_lane_prompts_checkout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaneCheckoutBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Lane Prompt Checkout Api Coordination Lane Prompts Checkout Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Lane Prompt Checkout",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/lane-prompts/health": {
+      "get": {
+        "operationId": "get_lane_prompt_health_api_coordination_lane_prompts_health_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "stall_heartbeat_sec",
+            "required": false,
+            "schema": {
+              "default": 900,
+              "title": "Stall Heartbeat Sec",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stall_progress_sec",
+            "required": false,
+            "schema": {
+              "default": 1800,
+              "title": "Stall Progress Sec",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "expired_window_sec",
+            "required": false,
+            "schema": {
+              "default": 86400,
+              "title": "Expired Window Sec",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Lane Prompt Health Api Coordination Lane Prompts Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Lane Prompt Health",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/lane-prompts/heartbeat": {
+      "post": {
+        "operationId": "post_lane_prompt_heartbeat_api_coordination_lane_prompts_heartbeat_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaneHeartbeatBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Lane Prompt Heartbeat Api Coordination Lane Prompts Heartbeat Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Lane Prompt Heartbeat",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/lane-prompts/release": {
+      "post": {
+        "operationId": "post_lane_prompt_release_api_coordination_lane_prompts_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaneReleaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Lane Prompt Release Api Coordination Lane Prompts Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Lane Prompt Release",
+        "tags": ["coordination"]
+      }
+    },
     "/api/coordination/messages": {
       "post": {
         "operationId": "post_message_api_coordination_messages_post",
@@ -14071,6 +14576,53 @@
           }
         ],
         "summary": "Get Sessions",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/sessions/register": {
+      "post": {
+        "description": "Register or heartbeat a hub-local session for cloud lanes and external agents (#4458).",
+        "operationId": "post_sessions_register_api_coordination_sessions_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HubSessionRegisterBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Sessions Register Api Coordination Sessions Register Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Sessions Register",
         "tags": ["coordination"]
       }
     },
@@ -20548,6 +21100,36 @@
         "tags": ["staff"]
       }
     },
+    "/api/staff/review-arm/status": {
+      "get": {
+        "description": "enabled, dry_run, host, queue depth, last intake/dispatch/verdict/arm times, recent decisions.",
+        "operationId": "review_arm_status_api_staff_review_arm_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Arm Status Api Staff Review Arm Status Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Review Arm Status",
+        "tags": ["staff"]
+      }
+    },
     "/api/staff/roles": {
       "get": {
         "operationId": "roster_api_staff_roles_get",
@@ -22519,7 +23101,14 @@
             "schema": {
               "anyOf": [
                 {
-                  "enum": ["live", "idle", "stale", "ended", "uncaptured"],
+                  "enum": [
+                    "live",
+                    "idle",
+                    "stale",
+                    "ended",
+                    "uncaptured",
+                    "blocked"
+                  ],
                   "type": "string"
                 },
                 {
@@ -32222,6 +32811,57 @@
         ],
         "summary": "Export Thread Markdown Endpoint",
         "tags": ["staff-export"]
+      }
+    },
+    "/api/v1/staff/threads/{thread_id}/loop-guard/reset": {
+      "post": {
+        "description": "Reset loop-guard pause state for a thread (operators or Barb seats only).",
+        "operationId": "reset_thread_loop_guard_api_v1_staff_threads__thread_id__loop_guard_reset_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "thread_id",
+            "required": true,
+            "schema": {
+              "title": "Thread Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reset Thread Loop Guard Api V1 Staff Threads  Thread Id  Loop Guard Reset Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Reset Thread Loop Guard",
+        "tags": ["staff-threads"]
       }
     },
     "/api/v1/staff/threads/{thread_id}/messages": {

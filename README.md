@@ -171,10 +171,14 @@ complete.
 
 ### Deterministic / offline-constrained installs
 
-`npm ci` is expected to succeed from the committed `package-lock.json` alone,
-with no network access, on any fleet machine. Run
+A pre-populated npm cache may satisfy package tarball requests for the
+committed `package-lock.json`; an empty cache needs the network to fetch them.
+However, plain `npm ci` uses npm's default `audit=true` and can still send an
+audit request to the configured registry, even with a warm cache. It is not a
+guarantee of zero registry access. Run
 `npm run verify-lockfile` (or `bash scripts/verify-lockfile.sh`) to check
-this locally: it does a clean-state `npm ci`, confirms `npm ls` reports no
+the lockfile locally: it does a clean-state `npm ci` (plain, not `--offline`,
+so anything missing from the cache is fetched), confirms `npm ls` reports no
 unmet/invalid entries, and runs `npm run build`.
 
 If a machine's local npm cache is not yet warm (e.g. a WAN-constrained
@@ -188,15 +192,17 @@ npm cache verify
 
 # Copy that machine's npm cache directory (see `npm config get cache`) to
 # the constrained machine, or run `npm ci` there first over a working
-# network link. Once the cache is warm, `npm ci --prefer-offline` (or
-# plain `npm ci`) will succeed without depending on registry latency.
+# network link. Once the cache is warm, `npm ci --prefer-offline` (or plain
+# `npm ci`) can avoid registry access for cached package tarballs. A warm cache
+# does not stop the default npm audit request from reaching the registry.
 ```
 
 This priming step is a manual workaround, not an automated offline mirror.
-A scripted/versioned offline artifact pipeline (build once on `main`,
+The scripted/versioned offline artifact pipeline (build once on `main`,
 publish a checksummed `dist/` artifact, let `deploy/update-deployed.sh`
-install from that artifact without touching npm at all) is tracked as a
-larger follow-up in issue #1085 and is out of scope for this lockfile fix.
+install from that artifact without touching npm at all) was tracked in
+issue #1085 and its remainder #1129, both closed. It is separate from this
+lockfile check, which still depends on the npm cache as described above.
 
 ## Production Deployment
 

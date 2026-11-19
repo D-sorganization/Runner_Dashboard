@@ -482,3 +482,12 @@ export function createThread(
 ): Promise<ThreadInfo> {
   return apiRequest<ThreadInfo>(`${STAFF_BASE}/threads`, { method: "POST", body, signal });
 }
+
+/** Clear loop-guard pause on a thread (staff.admin or Barb seat). */
+export function resetThreadLoopGuard(
+  threadId: string,
+): Promise<{ ok: boolean; loop_guard_paused: boolean }> {
+  return apiRequest(`${STAFF_BASE}/threads/${encodeURIComponent(threadId)}/loop-guard/reset`, {
+    method: "POST",
+  });
+}

@@ -283,3 +283,27 @@ def test_pre_push_survives_a_broken_activity_store(state_file: Path, monkeypatch
     with mock.patch.object(client, "request", side_effect=fake_request):
         out = hooks.pre_push(client)
     assert out["heartbeat"] is True
+
+
+@pytest.mark.unit
+def test_permission_prompt_blocked_emits_blocked_on_input(state_file: Path, activity_store: ActivityStore) -> None:
+    sess = "cursor-node-c-20261116-gate"
+    state_file.write_text(json.dumps({"session": sess, "token": "tok", "role": "cursor"}), encoding="utf-8")
+    out = hooks.permission_prompt_blocked(reason="permission", prompt="Allow bash?")
+    assert out == {"emitted": True, "kind": "blocked_on_input", "session": sess}
+    page = activity_store.read(session_id=sess)
+    assert len(page.items) == 1
+    assert page.items[0].kind == "blocked_on_input"
+    assert page.items[0].payload["reason"] == "permission"
+    assert page.items[0].payload["prompt"] == "Allow bash?"
+
+
+@pytest.mark.unit
+def test_permission_prompt_unblocked_emits_unblocked(state_file: Path, activity_store: ActivityStore) -> None:
+    sess = "cursor-node-c-20261116-gate"
+    state_file.write_text(json.dumps({"session": sess, "token": "tok", "role": "cursor"}), encoding="utf-8")
+    hooks.permission_prompt_blocked()
+    out = hooks.permission_prompt_unblocked()
+    assert out == {"emitted": True, "kind": "unblocked", "session": sess}
+    kinds = [item.kind for item in activity_store.read(session_id=sess).items]
+    assert kinds == ["blocked_on_input", "unblocked"]

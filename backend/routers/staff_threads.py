@@ -19,10 +19,11 @@ from fastapi import (
     status,
 )
 from fastapi.responses import JSONResponse
-from identity import Principal, format_caller, require_fleet_peer, require_scope
+from identity import Principal, format_caller, principal_has_scope, require_fleet_peer, require_scope
 from staff.audit import record_audit
 from staff.availability import record_fast_acknowledgment
 from staff.barb_ingest import ingest_relayed_card
+from staff.barb_lease_fence import is_barb_seat
 from staff.budget import get_global_budget_guard
 from staff.chat import run_chat_turn_in_background
 from staff.chat_preroute import preroute_auto_message, thread_reply_role
@@ -35,7 +36,7 @@ from staff.conversation_models import (
     UpdateThreadRequest,
 )
 from staff.conversations import ConversationsUnavailableError, get_conversation_store
-from staff.loop_guard import enforce_loop_guard_or_raise, principal_author_kind
+from staff.loop_guard import admin_reset_loop_guard, enforce_loop_guard_or_raise, principal_author_kind
 from staff.pagination import paginate_items
 from staff.rate_limit import check_rate_limit
 from staff.relay_card_policy import assert_relay_run_card_authorized
@@ -259,7 +260,13 @@ async def post_message(
     store = _get_store_or_503()
     caller_id = format_caller(caller)
     author_kind = principal_author_kind(caller)
-    enforce_loop_guard_or_raise(thread_id, store, getattr(caller, "type", "bot"), message_kind=body.kind or "text")
+    enforce_loop_guard_or_raise(
+        thread_id,
+        store,
+        getattr(caller, "type", "bot"),
+        message_kind=body.kind or "text",
+        caller=caller,
+    )
 
     try:
         thread = store.get_thread(thread_id)
@@ -466,6 +473,27 @@ async def relay_to_grok_bot(
     if not result.get("ok") and result.get("error") == "relay_not_allowed":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=result)
     return result
+
+
+@router.post(
+    "/threads/{thread_id}/loop-guard/reset",
+    response_model_exclude_none=True,
+)
+async def reset_thread_loop_guard(
+    thread_id: str,
+    caller: Principal = Depends(require_scope("staff.chat")),
+) -> dict[str, Any]:
+    """Reset loop-guard pause state for a thread (operators or Barb seats only)."""
+    if not (principal_has_scope(caller, "staff.admin") or is_barb_seat(caller)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "loop_guard_reset_forbidden",
+                "message": "Loop guard reset requires staff.admin or a Barb seat principal",
+            },
+        )
+    store = _get_store_or_503()
+    return admin_reset_loop_guard(thread_id, store, format_caller(caller))
 
 
 # ── READ STATUS & INBOX ──────────────────────────────────────────────────────

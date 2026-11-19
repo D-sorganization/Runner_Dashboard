@@ -139,36 +139,44 @@ def main(argv: list[str] | None = None) -> int:
 
     # Step 3: Verified fleet-App identity — proceed with claim posting
     full_repo = f"{args.org}/{args.repo}" if "/" not in args.repo else args.repo
-    expires_at = (dt.datetime.now(dt.UTC) + dt.timedelta(hours=args.ttl_hours)).isoformat()
+    claimed_at = dt.datetime.now(dt.UTC)
+    expires_at = (claimed_at + dt.timedelta(hours=args.ttl_hours)).isoformat()
+    # Repository_Management replays only this versioned, flat lease contract.
     comment_body = (
-        f"<!-- lease:post_agent_lease -->\n"
-        f"lease:\n"
-        f"  agent: {args.agent}\n"
-        f"  session: {args.session}\n"
-        f"  expires: {expires_at}\n"
-        f"  intent: {args.intent}\n"
+        f"<!-- agent-lease v1 -->\n"
+        f"```yaml\n"
+        f"agent: {args.agent}\n"
+        f"session: {args.session}\n"
+        f"claimed_at: {claimed_at.isoformat()}\n"
+        f"expires_at: {expires_at}\n"
+        f"intent: {args.intent}\n"
+        f"```"
     )
 
     c_res = _exec_gh(
         [gh_bin, "issue", "comment", str(args.issue), "--repo", full_repo, "--body", comment_body], env=env
     )
-    l_res = _exec_gh(
-        [gh_bin, "issue", "edit", str(args.issue), "--repo", full_repo, "--add-label", f"claim:{args.agent}"], env=env
-    )
+    l_res = None
+    if c_res.returncode == 0:
+        l_res = _exec_gh(
+            [gh_bin, "issue", "edit", str(args.issue), "--repo", full_repo, "--add-label", f"claim:{args.agent}"],
+            env=env,
+        )
 
-    ok = c_res.returncode == 0
-    receipt = c_res.stdout.strip() or (f"https://github.com/{full_repo}/issues/{args.issue}#lease" if ok else "")
+    label_updated = l_res is not None and l_res.returncode == 0
+    ok = c_res.returncode == 0 and label_updated
+    receipt = c_res.stdout.strip() if c_res.returncode == 0 else ""
     errors = []
     if c_res.returncode != 0:
         errors.append(c_res.stderr.strip() or "comment failed")
-    if l_res.returncode != 0:
+    if l_res is not None and l_res.returncode != 0:
         errors.append(l_res.stderr.strip() or "label failed")
 
     payload = {
         "ok": ok,
         "agent": args.agent,
         "comment_posted": c_res.returncode == 0,
-        "label_updated": l_res.returncode == 0,
+        "label_updated": label_updated,
         "receipt": receipt,
         "expires_at": expires_at,
         "errors": errors,

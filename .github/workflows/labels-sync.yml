@@ -30,7 +30,7 @@ on:
     branches: [main]
     paths:
       - .github/labels.yml
-      - .github/scripts/labels-sync.js
+      - .github/scripts/labels-sync.cjs
 
 permissions:
   issues: write
@@ -63,7 +63,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
         with:
           script: |
-            const { sync } = require('./.github/scripts/labels-sync.js');
+            const { sync } = require('./.github/scripts/labels-sync.cjs');
             await sync({
               github, context, core,
               dryRun: process.env.DRY_RUN === 'true',

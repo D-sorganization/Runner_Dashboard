@@ -130,6 +130,14 @@ in flight (the same fan-out as `/api/staff/summary`).
 `complete: false` with `warnings` means the board read was partial — coordination is degraded, not the
 repository free.
 
+### `POST /api/coordination/sessions/register`
+
+Body `{session, role, provider, machine, repo?, target?, ttl_hours?}` registers or heartbeats a hub-local lane
+session (for example Cursor cloud agents) in the in-memory hub registry. Sessions are merged into
+`GET /api/coordination/sessions` with `source: "hub"`. Requires `coordination.write`; bot principals may only
+register sessions whose id starts with `<agent>-` (same impersonation rules as presence). Returns
+`{ok, session, generated_at}` where `session` includes computed `expires`.
+
 ### `GET /api/coordination/inbox?session=&repo=`
 
 `{available, complete, messages, conflicts, warnings, generated_at}` for `session` (`repo` defaults to
@@ -274,6 +282,33 @@ Read-only. The newest postman dry-run reports (`limit` 1 to 50, default 10), wri
 `message`, `alert`, `rejection`, `rollover`, `warning`), or an `error` when the board could not be read.
 The postman runs in dry run only, so the response's `live` is always `false` and nothing is delivered
 (proposal: `docs/agents/messenger-agents.md`).
+
+### `GET /api/coordination/lane-prompts/catalog`
+
+Read-only. Lists registered lane-prompt assignments and any active checkout metadata.
+
+### `GET /api/coordination/lane-prompts/health`
+
+Returns a health summary with `healthy_active`, `stalled_heartbeat`, `stalled_progress`, `expired_recent`, and
+`idle_lanes` entries, plus `needs_attention`. Query thresholds are `stall_heartbeat_sec` (default 900),
+`stall_progress_sec` (default 1800), and `expired_window_sec` (default 86400); each has an effective minimum of
+60 seconds. Expired active checkouts are marked expired while building the summary, and recovered or disabled lanes
+are excluded from recent-expiration alerts.
+
+### `POST /api/coordination/lane-prompts/checkout`
+
+Body `{session_id, idempotency_key, lane_id?, role?, ttl_sec?}` → atomically resumes an active session
+checkout or claims an eligible lane slot with a monotonically increasing `fence_token` (`409` on conflict).
+
+### `POST /api/coordination/lane-prompts/heartbeat`
+
+Body `{checkout_id, fence_token, session_id, ttl_sec?, progress?}` → extends checkout TTL when `fence_token`
+and `session_id` match (`409` on stale fence).
+
+### `POST /api/coordination/lane-prompts/release`
+
+Body `{checkout_id, fence_token, session_id, reason?}` → releases an active lane-prompt checkout (`409` on
+stale fence).
 
 ## Configuration
 

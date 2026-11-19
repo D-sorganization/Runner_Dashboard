@@ -382,7 +382,7 @@ def parse_role(
         fallback_providers=fallback_provs,
         provider_fallbacks=provider_fallback_rules,
         failover_chain=failover_chain,
-        valid=len(merged_errors) == 0,
+        valid=not any(not str(err).startswith("warning:") for err in merged_errors),
         errors=tuple(merged_errors),
         source_path=source_path,
     )

@@ -5,9 +5,10 @@ bounded, indexed :meth:`activity.ActivityStore.scan_recent` primitive) plus a
 ``now`` moment, with no cache of its own — a restart reproduces an identical
 view. Identity is ``(source, session_id)``; greatest ``ts`` wins ties broken
 by ``seq``, so late/out-of-order events can't regress or resurrect a session.
-Heartbeat absence alone only ever derives ``stale``, never ``ended`` — that
-needs an explicit terminal event from ``_TERMINAL_KINDS``, fail-closed for an
-undocumented source. ``uncaptured`` is reserved for the not-yet-built T4 slice.
+Heartbeat absence alone only ever derives ``stale``, never ``ended`` or
+``blocked`` — those need explicit events (terminal kinds or
+``blocked_on_input`` from CLI input-gate hooks; #4488). ``uncaptured`` is
+reserved for the not-yet-built T4 slice.
 
 An empty ``SessionsPage`` carries ``empty_reason`` (#3503): ``complete_empty``
 when the log has never recorded a single envelope versus ``local_empty`` when
@@ -32,7 +33,7 @@ MAX_SESSIONS_LIMIT = 500
 LIVE_WINDOW_SECONDS = 90.0  # 1.5x the 60s default heartbeat_interval
 IDLE_WINDOW_SECONDS = 900.0  # stale beyond this
 
-SessionStatus = Literal["live", "idle", "stale", "ended", "uncaptured"]
+SessionStatus = Literal["live", "idle", "stale", "ended", "uncaptured", "blocked"]
 
 #: Why a page came back with zero items (#3503): distinguishes "nothing has
 #: ever been recorded here" from "this filtered view matched nothing, but the
@@ -48,6 +49,10 @@ _TERMINAL_KINDS: dict[str, frozenset[str]] = {
     "checkin": frozenset({"done"}),
     "recorder": frozenset({"session_end", "exit"}),
 }
+
+#: Structured input-gate event from CLI permission/notification hooks (#4488).
+#: A later ``unblocked`` envelope clears the wait so heartbeat age rules resume.
+_BLOCKED_ON_INPUT_KIND = "blocked_on_input"
 
 
 class SessionSummary(BaseModel):
@@ -93,6 +98,8 @@ def _derive_status(event: ActivityEnvelope, *, now: datetime) -> SessionStatus:
     age = max(age, 0.0)  # a clock-skewed future timestamp reads as "now", not an error
     if event.source == "recorder" and event.kind == "uncaptured_process":
         return "uncaptured" if age <= IDLE_WINDOW_SECONDS else "stale"
+    if event.kind == _BLOCKED_ON_INPUT_KIND:
+        return "stale" if age > IDLE_WINDOW_SECONDS else "blocked"
     if age <= LIVE_WINDOW_SECONDS:
         return "live"
     if age <= IDLE_WINDOW_SECONDS:

@@ -234,6 +234,14 @@ Get-ScheduledTask -TaskName 'WSL-Runner-KeepAlive' | Select-Object TaskName,Stat
     fi
 }
 
+install_host_metrics_probe_if_present() {
+    local installer="${DASHBOARD_DIR}/deploy/install-host-metrics-probe.sh"
+    [[ -f "${installer}" ]] || return 0
+    info "Installing/updating host-metrics-probe systemd timer (#4309)"
+    RUNNER_DASHBOARD_DEPLOY_DIR="${DEPLOY_DIR}" bash "${installer}" \
+        || warn "host-metrics-probe install failed — run: bash ${installer} (system scope needs sudo)"
+}
+
 deploy_dashboard() {
     chmod +x "${DASHBOARD_DIR}/deploy/setup.sh" "${DASHBOARD_DIR}/deploy/update-deployed.sh" "${DASHBOARD_DIR}/deploy/reap-wsl-leaked-chrome.sh"
 
@@ -435,6 +443,7 @@ main() {
         install_windows_watchdog
     fi
     deploy_dashboard
+    install_host_metrics_probe_if_present
     install_autoscaler_if_requested
     verify_dashboard
     purge_stale_queue

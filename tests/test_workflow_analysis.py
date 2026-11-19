@@ -73,3 +73,34 @@ def test_summarize_runs_by_workflow_and_machine_builds_matrix() -> None:
     matrix = {(row["workflow_name"], row["machine_name"]): row for row in summary["matrix"]}
     assert matrix[("CI", "node-a-NVMe")]["avg_duration_seconds"] == 120
     assert matrix[("CI", "node-a-SSD")]["avg_duration_seconds"] == 300
+
+
+@pytest.mark.unit
+def test_summarize_ignores_runs_that_have_not_concluded() -> None:
+    """In-flight runs have no conclusion; they must not skew rate, duration or reasons."""
+    base = {"name": "CI", "repository": {"name": "Runner_Dashboard"}, "machine_name": "hub-a"}
+    runs = [
+        {
+            **base,
+            "status": "completed",
+            "conclusion": "success",
+            "run_started_at": "2026-05-26T12:00:00Z",
+            "updated_at": "2026-05-26T12:10:00Z",
+        },
+        {
+            **base,
+            "status": "in_progress",
+            "conclusion": None,
+            "run_started_at": "2026-05-26T12:00:00Z",
+            "updated_at": "2026-05-26T12:01:00Z",
+        },
+        {**base, "status": "queued", "conclusion": None},
+    ]
+
+    summary = wa.summarize_runs_by_workflow_and_machine(runs)
+
+    assert summary["sample_size"] == 1
+    assert summary["success_rate"] == 100.0
+    assert summary["failure_reasons"] == {}
+    assert summary["workflows"][0]["count"] == 1
+    assert summary["workflows"][0]["avg_duration_seconds"] == 600

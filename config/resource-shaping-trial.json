@@ -1,0 +1,33 @@
+{
+  "enabled": false,
+  "host_label": "",
+  "systemd": {
+    "slice_name": "runners.slice",
+    "cpu_weight": 20,
+    "io_weight": 20,
+    "nice": 10,
+    "memory_high_enabled": false,
+    "memory_high": "1750M"
+  },
+  "wslconfig": {
+    "enabled": false,
+    "auto_memory_reclaim": "gradual",
+    "memory_gb": null,
+    "processors": null,
+    "requires_owner_approval": true,
+    "requires_wsl_shutdown": true
+  },
+  "excluded_knobs": [
+    "CPUQuota",
+    "MemoryMax"
+  ],
+  "measurement": {
+    "baseline_days": 7,
+    "trial_days": 7,
+    "min_samples_per_window": 20,
+    "max_failure_rate_delta_pp": 0.5,
+    "max_timeout_rate_delta_pp": 0.25,
+    "max_duration_p95_increase_pct": 15.0,
+    "max_interactive_latency_p95_increase_pct": 20.0
+  }
+}

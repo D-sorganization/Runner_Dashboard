@@ -26,6 +26,7 @@ import sys
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 from bash_host import as_bash_path, require_bash
 
@@ -590,6 +591,12 @@ SCOPE_PREFIX_NOUNS = {
     "clients/": "clients",
     "tests/": "tests",
     "deploy/": "deploy",
+    # H-04 (#4268): these trees are exercised by pytest but used to skip the lane.
+    "scripts/": "scripts",
+    "shared_scripts/": "shared_scripts",
+    ".github/": ".github",
+    "config/": "config",
+    "fleet-hooks/": "fleet-hooks",
 }
 
 # Jobs whose `if:` gates on the detector. Losing any of these on a mis-detected
@@ -683,6 +690,27 @@ def test_deploy_only_pr_runs_python_lane() -> None:
     assert _detector_selects(["deploy/wsl-keepalive.ps1"]), (
         "deploy/ changes skip the pytest suite that exercises them (tests/deploy/)"
     )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "scripts/automerge_guard.py",
+        "shared_scripts/changes_fragment.py",
+        ".github/workflows/ci-standard.yml",
+        "config/lane_policy.json",
+        "fleet-hooks/pre-push",
+        "requirements.lock.txt",
+        "Dockerfile",
+    ],
+)
+def test_h04_paths_run_python_lane(path: str) -> None:
+    """H-04 (#4268): a PR touching only one of these must not skip lint, tests and security.
+
+    Each tree has pytest coverage (workflow contract tests, script tests, hook
+    tests, the lock and image checks), so skipping the lane merges it untested.
+    """
+    assert _detector_selects([path]), f"a PR touching only {path} skips quality-gate's Python lane"
 
 
 def test_docs_only_pr_still_skips_python_lane() -> None:
@@ -788,3 +816,13 @@ def test_ci_nightly_fails_on_empty_selection_and_verifies_executed_cases() -> No
     assert "continuing successfully" not in content
     assert "--junitxml=nightly-junit.xml" in content
     assert "python scripts/ci/check_junit_executed.py nightly-junit.xml" in content
+    assert "publish_workflow_failure_notice.py" in content
+
+
+def test_ci_standard_records_visible_failure_on_main_schedule_and_merge_group() -> None:
+    """Red tier-1 CI must open or update a tracking issue (#4299)."""
+    content = _workflow_text()
+    assert "record-failure-visibility" in content
+    assert "publish_workflow_failure_notice.py" in content
+    assert "merge_group)" in content
+    assert "--base-ref" in content

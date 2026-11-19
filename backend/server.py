@@ -232,7 +232,6 @@ from security import (  # noqa: E402
     safe_subprocess_env,  # noqa: E402
     validate_fleet_node_url,  # noqa: E402
 )
-from system_utils import get_system_metrics_snapshot  # noqa: E402
 from workflows.run_enrichment import (  # noqa: E402
     _get_recent_org_repos,
 )
@@ -784,6 +783,7 @@ from routers import staff_outcomes as _staff_outcomes_router  # noqa: E402
 from routers import staff_panels as _staff_panels_router  # noqa: E402
 from routers import staff_proposals as _staff_proposals_router  # noqa: E402
 from routers import staff_requests as _staff_requests_router  # noqa: E402
+from routers import staff_review_arm as _staff_review_arm_router  # noqa: E402
 from routers import staff_routing as _staff_routing_router  # noqa: E402
 from routers import staff_schedule as _staff_schedule_router  # noqa: E402
 from routers import staff_threads as _staff_threads_router  # noqa: E402
@@ -810,6 +810,7 @@ app.include_router(_staff_inbox_router.v1_router)
 app.include_router(_staff_router.router)
 app.include_router(_staff_local_runs_router.router)
 app.include_router(_staff_schedule_router.router)  # scheduler, holds, budgets (issue #1196)
+app.include_router(_staff_review_arm_router.router)  # review-arm status (issue #4249)
 app.include_router(_staff_schedule_router.v1_router)  # role schedule override (issue #1320)
 app.include_router(_staff_exclusions_router.router, prefix="/api/staff")  # dispatch exclusions
 app.include_router(_staff_exclusions_router.router, prefix="/api/v1/staff")
@@ -2828,7 +2829,7 @@ _orchestration_router.set_dependencies(
     write_runner_schedule_config=_write_runner_schedule_config,
     runner_scheduler_apply_command=_runner_scheduler_apply_command,
     run_cmd=run_cmd,
-    get_system_metrics_snapshot=get_system_metrics_snapshot,
+    get_system_metrics_snapshot=_system_router.local_system_metrics_snapshot,
     runner_scheduler_bin=RUNNER_SCHEDULER_BIN,
     runner_schedule_config=RUNNER_SCHEDULE_CONFIG,
     runner_scheduler_state=RUNNER_SCHEDULER_STATE,
@@ -2995,6 +2996,10 @@ async def _startup() -> None:
     _startup_reg = load_machine_registry()
     # Issue #1169: Fail fast if an active machine or pool has invalid configuration
     assert_valid_active_registry(_startup_reg)
+
+    from host_metrics_cache import warn_host_metrics_cache_at_startup
+
+    warn_host_metrics_cache_at_startup()
 
     # Wire injected dependencies for extracted routers (issue #360)
     _repos_router.set_dependencies(

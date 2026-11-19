@@ -27,7 +27,7 @@ def test_required_check_expression_includes_fast_checks_variable() -> None:
     assert selector.RD_FAST_CHECKS_VAR in expr
     assert "merge_group" in expr
     assert "ubuntu-latest" in expr
-    assert "d-sorg-fleet" in expr
+    assert "d-sorg-fleet-bulk" in expr
 
 
 def test_default_expression_does_not_include_fast_checks_variable() -> None:

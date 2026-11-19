@@ -31,12 +31,13 @@ _SUCCESS_RUN = {
 
 def test_skipped_alone_does_not_satisfy_check_name() -> None:
     assert not check_name_passes(
-        [{"status": "completed", "conclusion": "skipped", "name": "guard"}],
+        [{"status": "completed", "conclusion": "skipped", "name": "tests"}],
     )
 
 
-def test_duplicate_skipped_and_success_does_not_satisfy() -> None:
-    assert not check_name_passes(
+def test_duplicate_skipped_and_success_satisfies() -> None:
+    # #4419: a skipped sibling (merge-queue or path-filtered run) carries no verdict.
+    assert check_name_passes(
         [
             {"status": "completed", "conclusion": "skipped", "name": "lint"},
             {"status": "completed", "conclusion": "success", "name": "lint"},
@@ -53,27 +54,36 @@ def test_cancelled_superseded_by_success_still_satisfies() -> None:
     )
 
 
-def test_ci_gate_rejects_skipped_only_payload() -> None:
+def test_ci_gate_rejects_skipped_only_required_context() -> None:
+    ok, detail = ci_gate_for_commit(
+        [{"head_sha": _SHA, "name": "tests", "status": "completed", "conclusion": "skipped"}],
+        _SHA,
+        required_contexts=("tests",),
+    )
+    assert ok is False
+    assert "tests" in detail
+
+
+def test_ci_gate_accepts_skipped_only_optional_check() -> None:
+    # #4425: a job that skipped by design is not a failure unless it is a required context.
     ok, detail = ci_gate_for_commit(
         [{"head_sha": _SHA, "name": "guard", "status": "completed", "conclusion": "skipped"}],
         _SHA,
         required_contexts=(),
     )
-    assert ok is False
-    assert "guard" in detail
+    assert ok is True, detail
 
 
-def test_ci_gate_rejects_duplicate_skipped_and_success() -> None:
+def test_ci_gate_accepts_duplicate_skipped_and_success() -> None:
     ok, detail = ci_gate_for_commit(
         [
             {"head_sha": _SHA, "name": "tests", "status": "completed", "conclusion": "skipped"},
             {"head_sha": _SHA, "name": "tests", "status": "completed", "conclusion": "success"},
         ],
         _SHA,
-        required_contexts=(),
+        required_contexts=("tests",),
     )
-    assert ok is False
-    assert "tests" in detail
+    assert ok is True, detail
 
 
 def test_missing_required_context_fails_closed() -> None:
@@ -87,8 +97,33 @@ def test_missing_required_context_fails_closed() -> None:
     assert "required checks missing" in detail
 
 
-def test_skip_allowlist_is_documented_empty() -> None:
-    assert SKIPPED_CONCLUSION_ALLOWLIST == frozenset()
+def test_skip_allowlist_holds_only_the_pull_request_guard() -> None:
+    """The one required context that skips by design on a main commit (#4419)."""
+    assert SKIPPED_CONCLUSION_ALLOWLIST == frozenset({"guard"})
+
+    workflow = (REPO / ".github" / "workflows" / "anti-phantom-merge.yml").read_text(encoding="utf-8")
+    job = workflow.split("\n  guard:\n", 1)[1]
+    condition = job.split("    if: >-\n", 1)[1].split("\n    steps:", 1)[0]
+    assert "\n  merge_group:" in workflow, "guard must still report (as skipped) in the merge queue"
+    assert "github.event.pull_request.base.ref" in condition, "guard must still run only for a pull request"
+    assert "merge_group" not in condition
+
+
+def test_allowlisted_guard_passes_when_skipped_but_not_when_cancelled_or_failed() -> None:
+    def gate(*conclusions: str) -> bool:
+        runs = [
+            {"id": index, "head_sha": _SHA, "name": "guard", "status": "completed", "conclusion": conclusion}
+            for index, conclusion in enumerate(conclusions, start=1)
+        ]
+        return ci_gate_for_commit(runs, _SHA, required_contexts=("guard",))[0]
+
+    assert gate("skipped") is True
+    assert gate("skipped", "skipped") is True
+    assert gate("neutral") is False
+    assert gate("cancelled") is False
+    assert gate("skipped", "cancelled") is False
+    assert gate("success", "failure") is False
+    assert gate("failure", "skipped") is False
 
 
 def test_ci_gate_fails_when_required_policy_file_missing(tmp_path: Path) -> None:
