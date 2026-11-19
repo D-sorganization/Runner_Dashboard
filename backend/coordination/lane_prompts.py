@@ -15,7 +15,107 @@ _DEFAULT_TTL_SEC = 3600
 _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
 
-_PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini")
+_PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini", "deepseek", "qwen", "grok")
+
+# Hub-provisioned Cursor CLI lanes (#4565). ``release_sha`` / ``package_hash`` are
+# placeholders until the hub publishes a fleet prompt package revision.
+_DEFAULT_RELEASE_SHA = "bootstrap"
+_DEFAULT_PACKAGE_HASH = "bootstrap"
+_DEFAULT_CURSOR_MODEL = "composer-2.5"
+_DEFAULT_GROK_CURSOR_MODEL = "grok-4.7-high"
+_DEFAULT_QWEN_MODEL = "qwen3.8-flash"
+_DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
+
+DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "lane_id": "cursor-ct-1",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_CURSOR_MODEL,
+        "max_children": 2,
+        "task_focus": "CT host Cursor CLI lane (Composer 2.5).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-oglaptop-1",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_CURSOR_MODEL,
+        "max_children": 2,
+        "task_focus": "node-b host Cursor CLI lane (Composer 2.5).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-ct-2",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_GROK_CURSOR_MODEL,
+        "max_children": 1,
+        "task_focus": "CT host Cursor CLI lane (Grok 4.7 via cursor-agent).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-oglaptop-2",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_GROK_CURSOR_MODEL,
+        "max_children": 1,
+        "task_focus": "node-b host Cursor CLI lane (Grok 4.7 via cursor-agent).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "qwen-ct-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_QWEN_MODEL,
+        "max_children": 1,
+        "task_focus": "CT host Qwen Code CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "qwen-oglaptop-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_QWEN_MODEL,
+        "max_children": 1,
+        "task_focus": "node-b host Qwen Code CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "deepseek-ct-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_DEEPSEEK_MODEL,
+        "max_children": 1,
+        "task_focus": "CT host DeepSeek API CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "deepseek-oglaptop-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_DEEPSEEK_MODEL,
+        "max_children": 1,
+        "task_focus": "node-b host DeepSeek API CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+)
 
 
 def _load_host_aliases() -> dict[str, str]:
@@ -112,7 +212,11 @@ def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
     lid = lane_id.strip().lower()
     for prefix in _PROVIDER_PREFIXES:
         if lid.startswith(f"{prefix}-"):
-            return "agy" if prefix == "gemini" else prefix
+            if prefix == "gemini":
+                return "agy"
+            if prefix == "deepseek":
+                return "deepseek"
+            return prefix
     model = (subagent_model or "").strip().lower()
     if model.startswith("claude-"):
         return "claude"
@@ -120,6 +224,10 @@ def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
         return "agy"
     if model.startswith("gpt-"):
         return "codex"
+    if model.startswith("deepseek-"):
+        return "deepseek"
+    if model.startswith("qwen"):
+        return "qwen"
     if model.startswith("composer-") or model.startswith("grok-"):
         return "cursor"
     return None
@@ -237,6 +345,11 @@ class LanePromptStore:
                 """)
         finally:
             conn.close()
+
+    def seed_defaults(self) -> None:
+        """Register :data:`DEFAULT_LANE_ASSIGNMENTS` (idempotent upsert per lane_id)."""
+        for row in DEFAULT_LANE_ASSIGNMENTS:
+            self.register_assignment(**row)
 
     def register_assignment(
         self,
@@ -689,4 +802,5 @@ def get_lane_prompt_store() -> LanePromptStore:
     with _default_store_lock:
         if _default_store is None:
             _default_store = LanePromptStore()
+            _default_store.seed_defaults()
         return _default_store

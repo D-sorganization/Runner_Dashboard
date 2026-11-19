@@ -49,7 +49,10 @@ def test_lane_has_peer_scopes(principals, pid: str) -> None:
         assert scope not in (prin.scopes or []), (pid, scope)
 
 
-@pytest.mark.parametrize("pid", ("agent-claude", "agent-codex", "agent-gemini", "agent-cursor"))
+@pytest.mark.parametrize(
+    "pid",
+    ("agent-claude", "agent-codex", "agent-gemini", "agent-cursor", "agent-qwen", "agent-deepseek"),
+)
 def test_generic_agents_not_widened(principals, pid: str) -> None:
     prin = principals.get(pid)
     if prin is None:

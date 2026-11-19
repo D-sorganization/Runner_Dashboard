@@ -152,12 +152,44 @@
         "{model}"
       ],
       "prompt_via_stdin": false,
-      "env_keys": [],
+      "env_keys": [
+        "GIT_AUTHOR_EMAIL",
+        "GIT_AUTHOR_NAME",
+        "GIT_COMMITTER_EMAIL",
+        "GIT_COMMITTER_NAME"
+      ],
       "chat_read_only_argv": [
         "--mode",
         "ask"
       ],
       "lease_agent": "cursor-agent"
+    },
+    "deepseek-api": {
+      "executable": "claude",
+      "argv_template": [
+        "-p",
+        "{prompt}",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--permission-mode",
+        "dontAsk",
+        "--permission-prompts",
+        "none",
+        "--allowedTools",
+        "Read,Grep,Glob,Edit,Write,MultiEdit,NotebookEdit,TodoWrite,Task,WebFetch,WebSearch,Bash(git:*),Bash(gh:*),Bash(python:*),Bash(python3:*),Bash(pytest:*),Bash(ruff:*),Bash(black:*),Bash(mypy:*),Bash(pre-commit:*),Bash(uv:*),Bash(pip:*),Bash(npm:*),Bash(npx:*),Bash(node:*),Bash(tsc:*),Bash(make:*),Bash(curl:*),Bash(ls:*),Bash(cat:*),Bash(head:*),Bash(tail:*),Bash(grep:*),Bash(rg:*),Bash(find:*),Bash(wc:*),Bash(sort:*),Bash(diff:*),Bash(mkdir:*),Bash(cp:*),Bash(mv:*),Bash(echo:*),Bash(sed:*),Bash(jq:*)",
+        "--disallowedTools",
+        "Bash(sudo:*),Bash(su:*),Bash(gh repo delete:*),Bash(gh secret:*),Bash(gh auth:*),Bash(gh pr merge --admin:*),Bash(systemctl:*),Bash(shutdown:*),Bash(reboot:*)",
+        "--model",
+        "{model}"
+      ],
+      "prompt_via_stdin": false,
+      "env_keys": [],
+      "chat_read_only_argv": [
+        "--permission-mode",
+        "default"
+      ],
+      "lease_agent": "deepseek-api"
     },
     "gemini": {
       "executable": "gemini",
@@ -194,8 +226,9 @@
         "git,gh,python,python3,pytest,ruff,black,mypy,pre-commit,uv,pip,npm,npx,node,tsc,make,curl,ls,cat,head,tail,grep,rg,find,wc,sort,diff,mkdir,cp,mv,echo,sed,jq",
         "--deny",
         "sudo,su,gh repo delete,gh secret,gh auth,gh pr merge --admin,systemctl,shutdown,reboot",
-        "--no-auto-update",
-        "-w",
+        "--permission-mode",
+        "dontAsk",
+        "--cwd",
         "{workdir}",
         "--model",
         "{model}"
@@ -213,7 +246,7 @@
         "--output-format",
         "stream-json",
         "--approval-mode",
-        "auto-edit",
+        "yolo",
         "--channel",
         "CI",
         "--model",

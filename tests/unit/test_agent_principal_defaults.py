@@ -126,29 +126,38 @@ def test_no_overlay_configured_falls_back_to_directory_glob(
     assert mgr.verify_token("svc_test_grok_directory") is prin
 
 
-def test_merge_provisions_agent_cursor_with_bot_role_and_coordination_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("agent_id", "token_name"),
+    (
+        ("agent-cursor", "svc_test_cursor_checkin"),
+        ("agent-qwen", "svc_test_qwen_checkin"),
+        ("agent-deepseek", "svc_test_deepseek_checkin"),
+    ),
+)
+def test_merge_provisions_cli_agent_principals_with_bot_role_and_coordination_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    agent_id: str,
+    token_name: str,
 ) -> None:
-    """#4565: Cursor agent principal provisions with standard bot roles and coordination.write."""
+    """CLI lane agents provision with standard bot roles and coordination.write."""
     monkeypatch.delenv("RD_OVERLAY_PATH", raising=False)
     monkeypatch.setenv("DASHBOARD_AGENT_PRINCIPALS_FILE", str(_defaults_path()))
     id_dir = tmp_path / "id"
     id_dir.mkdir()
     tok_dir = id_dir / "agent-tokens"
     tok_dir.mkdir()
-    (tok_dir / "agent-cursor.token").write_text(
-        "svc_test_cursor_checkin\n", encoding="utf-8"
-    )
+    (tok_dir / f"{agent_id}.token").write_text(f"{token_name}\n", encoding="utf-8")
 
     mgr = IdentityManager(config_dir=id_dir)
     merge_agent_principal_defaults(mgr)
 
-    prin = mgr.principals["agent-cursor"]
+    prin = mgr.principals[agent_id]
     assert prin.roles == ["bot"]
     assert principal_has_scope(prin, "coordination.write")
     assert principal_has_scope(prin, "activity.checkin")
     assert principal_has_scope(prin, "fleet.read")
-    assert mgr.verify_token("svc_test_cursor_checkin") is prin
+    assert mgr.verify_token(token_name) is prin
 
 
 @pytest.mark.parametrize("pid", ("agent-grok", "agent-grok-vm"))
