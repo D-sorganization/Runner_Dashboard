@@ -19,18 +19,28 @@ from scripts import pre_pr
 def test_main_passes_when_both_gates_pass(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pre_pr.verify_merge_gates, "main", lambda argv=None: 0)
     monkeypatch.setattr(pre_pr.check_conflict_markers, "main", lambda argv=None: 0)
+    monkeypatch.setattr(pre_pr.check_pr_closing_board, "main", lambda argv=None: 0)
     assert pre_pr.main([]) == 0
+
+
+def test_main_fails_when_closing_board_reference_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(pre_pr.verify_merge_gates, "main", lambda argv=None: 0)
+    monkeypatch.setattr(pre_pr.check_conflict_markers, "main", lambda argv=None: 0)
+    monkeypatch.setattr(pre_pr.check_pr_closing_board, "main", lambda argv=None: 1)
+    assert pre_pr.main([]) == 1
 
 
 def test_main_fails_when_merge_gates_fail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pre_pr.verify_merge_gates, "main", lambda argv=None: 1)
     monkeypatch.setattr(pre_pr.check_conflict_markers, "main", lambda argv=None: 0)
+    monkeypatch.setattr(pre_pr.check_pr_closing_board, "main", lambda argv=None: 0)
     assert pre_pr.main([]) == 1
 
 
 def test_main_fails_when_conflict_markers_found(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pre_pr.verify_merge_gates, "main", lambda argv=None: 0)
     monkeypatch.setattr(pre_pr.check_conflict_markers, "main", lambda argv=None: 1)
+    monkeypatch.setattr(pre_pr.check_pr_closing_board, "main", lambda argv=None: 0)
     assert pre_pr.main([]) == 1
 
 
@@ -48,11 +58,12 @@ def test_main_forwards_repository_root_and_base_to_merge_gates(monkeypatch: pyte
 
     monkeypatch.setattr(pre_pr.verify_merge_gates, "main", fake_gates)
     monkeypatch.setattr(pre_pr.check_conflict_markers, "main", fake_markers)
+    monkeypatch.setattr(pre_pr.check_pr_closing_board, "main", lambda argv=None: 0)
 
     pre_pr.main(["--repository-root", "/tmp/x", "--base", "origin/develop"])
 
-    assert captured_gates["argv"] == ["--repository-root", "/tmp/x", "--base", "origin/develop"]
-    assert captured_markers["argv"] == ["--repository-root", "/tmp/x"]
+    assert captured_gates["argv"] == ["--repository-root", str(Path("/tmp/x")), "--base", "origin/develop"]
+    assert captured_markers["argv"] == ["--repository-root", str(Path("/tmp/x"))]
 
 
 def test_main_forwards_bash_and_python_to_merge_gates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -64,6 +75,7 @@ def test_main_forwards_bash_and_python_to_merge_gates(monkeypatch: pytest.Monkey
 
     monkeypatch.setattr(pre_pr.verify_merge_gates, "main", fake_gates)
     monkeypatch.setattr(pre_pr.check_conflict_markers, "main", lambda argv=None: 0)
+    monkeypatch.setattr(pre_pr.check_pr_closing_board, "main", lambda argv=None: 0)
 
     pre_pr.main(["--bash", "/bin/bash", "--python", "/usr/bin/python3"])
 

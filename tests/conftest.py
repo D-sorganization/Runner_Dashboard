@@ -6,9 +6,15 @@ import os  # noqa: E402
 import shlex  # noqa: E402
 import shutil  # noqa: E402
 import subprocess  # noqa: E402
+import sys  # noqa: E402
 import tempfile  # noqa: E402
 import threading  # noqa: E402
 from pathlib import Path  # noqa: E402
+
+if sys.platform == "win32" and "fcntl" not in sys.modules:
+    import unittest.mock
+
+    sys.modules["fcntl"] = unittest.mock.MagicMock()
 
 # Backend singletons resolve their state directories during test collection.
 # Give the whole process an isolated directory under the normal allowed config
@@ -424,8 +430,9 @@ def staff_cli_installed(monkeypatch):
     rather than host installation use this opt-in fixture so CI does not depend on
     which agent CLIs happen to be on its PATH.
     """
-    from staff import cli_version
     from staff.adapters import ProviderAdapter  # noqa: PLC0415
+
+    from staff import cli_version
 
     installed_providers: set[str] = set()
 

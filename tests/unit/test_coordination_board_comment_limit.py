@@ -400,6 +400,45 @@ def test_merge_paginated_falsy_fallback_handling() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.unit
+def test_explicit_release_wins_over_leftover_presence_for_claim_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A release after presence must clear the hold even when earlier comments remain on the board."""
+    from coordination import claims
+
+    now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+    at_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    exp_str = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    presence = {
+        "version": 1,
+        "id": "p1",
+        "kind": "presence",
+        "agent": "claude",
+        "session": "s1",
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "branch": "feat/board-hygiene",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"task": "repair"},
+        "at": at_str,
+        "expires": exp_str,
+    }
+    release = {"version": 1, "id": "r1", "kind": "release", "session": "s1", "repo": "Runner_Dashboard", "at": at_str}
+    comments = [
+        {"id": 1, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(presence)}\n```"},
+        {"id": 2, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(release)}\n```"},
+    ]
+    board_state = paginate_board_comments(lambda p, n: comments if p == 1 else [], now=now)
+    assert board_state["sessions"] == []
+
+    monkeypatch.setattr(
+        "coordination.claims.board_config", lambda: ("D-sorganization/Repository_Management", 3029, 3, [])
+    )
+    monkeypatch.setattr(board_mod, "cached_board_state", lambda: board_state)
+    assert claims._board_claim_override("Runner_Dashboard", 4574) is None
+
+
 def test_apply_event_midstream_conflict_not_poisoned_if_released() -> None:
     now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
     at_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -525,3 +564,134 @@ def test_envelope_framing_and_goals_schema(monkeypatch: pytest.MonkeyPatch) -> N
     res = claims._board_claim_override("Tools", 1)
     assert res is not None
     assert "RM #9999" in res["reason"]
+
+
+@pytest.mark.unit
+def test_board_claim_override_status_only_and_blocked_heartbeats_do_not_reserve_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Status-only / blocked heartbeats must not reserve work, while real claims and incomplete history still block."""
+    from coordination import claims
+
+    # Configured board is 3029; BOARD_ISSUE in board_mod should not override to 2539
+    monkeypatch.setattr(
+        "coordination.claims.board_config", lambda: ("D-sorganization/Repository_Management", 3029, 3, [2539, 2851])
+    )
+
+    # 1. Blocked heartbeat: goals.state == "blocked"
+    blocked_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "agent": "codex",
+        "session": "codex-desk-1",
+        "branch": "fix/4574",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"state": "blocked", "blocker": "waiting on upstream"},
+        "expires": "2099-01-01T00:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": True,
+            "sessions": [blocked_session],
+            "warnings": [],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is None, "Blocked heartbeat must not reserve work"
+
+    # 2. Status-only heartbeat: empty paths and branch == "none"
+    status_none_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "agent": "codex",
+        "session": "codex-desk-1",
+        "branch": "none",
+        "paths": [],
+        "goals": {"task": "status check"},
+        "expires": "2099-01-01T00:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": True,
+            "sessions": [status_none_session],
+            "warnings": [],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is None, "Empty paths and branch 'none' must not reserve work"
+
+    # 3. Status-only heartbeat: empty paths and branch == ""
+    status_empty_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "agent": "codex",
+        "session": "codex-desk-1",
+        "branch": "",
+        "paths": [],
+        "goals": {},
+        "expires": "2099-01-01T00:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": True,
+            "sessions": [status_empty_session],
+            "warnings": [],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is None, "Empty paths and empty branch must not reserve work"
+
+    # 4. Real active claim: has paths and branch, not blocked
+    real_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "agent": "antigravity",
+        "session": "agy-desk-1",
+        "branch": "fix/4574-board-hygiene",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"task": "implement fix"},
+        "expires": "2099-01-01T00:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": True,
+            "sessions": [real_session],
+            "warnings": [],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is not None
+    assert res["held"] is True
+    assert res["agent"] == "antigravity"
+    assert "RM #3029" in res["reason"], f"Must use configured board 3029, got {res['reason']}"
+    assert "2539" not in res["reason"]
+
+    # 5. Incomplete board history (comment limit exceeded) must still block
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": False,
+            "comment_limit_exceeded": True,
+            "sessions": [],
+            "warnings": ["RM #3029 comment limit exceeded"],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is not None
+    assert res["available"] is False
+    assert res["held"] is None
+    assert "incomplete" in res["reason"]

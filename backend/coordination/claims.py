@@ -188,9 +188,16 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
             "reason": str(state.get("reason") or "coordination board unavailable"),
             "held": None,
         }  # noqa: E501
-    b_iss = getattr(board_mod, "BOARD_ISSUE", None) or board_config()[1]
+    b_iss = board_config()[1]
     for sess in state.get("sessions") or []:
         if str(sess.get("repo") or "").casefold() == repo.casefold() and sess.get("issue") == issue:
+            goals = sess.get("goals")
+            if isinstance(goals, dict) and (goals.get("state") == "blocked" or goals.get("status") == "blocked"):
+                continue
+            branch = str(sess.get("branch") or "").strip().lower()
+            paths = sess.get("paths") or []
+            if not paths and branch in ("", "none"):
+                continue
             return {
                 "available": True,
                 "held": True,
