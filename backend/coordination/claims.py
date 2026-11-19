@@ -52,8 +52,10 @@ evidence_fetch: EvidenceFetch = gh_api_json
 
 
 def _landed_pr(repo_full: str, issue: int) -> dict[str, Any] | None:
-    """An open or merged PR whose title/body closes ``issue`` (closed-unmerged doesn't count)."""
-    pulls = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=all")
+    """An open or merged PR (among the 100 most recently updated) whose title/body closes ``issue``."""
+    # One recency-sorted page, not ``--paginate``: walking a repo's whole PR history blew the
+    # lease-release hook's 20s budget (#4546). The closing PR was just pushed, so it is recent.
+    pulls = evidence_fetch(f"/repos/{repo_full}/pulls?state=all&sort=updated&direction=desc&per_page=100")
     candidates = [
         pr for pr in (pulls if isinstance(pulls, list) else []) if pr.get("state") != "closed" or pr.get("merged_at")
     ]
