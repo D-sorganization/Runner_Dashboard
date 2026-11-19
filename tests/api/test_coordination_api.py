@@ -488,3 +488,54 @@ def test_sessions_fail_closed_on_active_conflicts_or_unclassified_warnings(rm: F
     assert body_b["complete"] is False
     assert "unclassified warning" in body_b["read_warnings"]
     assert "unclassified warning" in body_b["warnings"]
+
+
+@pytest.mark.unit
+def test_has_live_session_tolerates_non_fatal_history_degradation(rm: FakeRM) -> None:
+    """Malformed/oversized board comments (read_warnings only) must not lock sessions out (#4569)."""
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": False,
+            "degraded_history": True,
+            "read_warnings": ["malformed JSON in comment 12", "comment limit reached"],
+            "replay_warnings": [],
+            "active_conflicts": [],
+            "sessions": [session("other-s", "Tools")],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["malformed JSON in comment 12", "comment limit reached"],
+        },
+    )
+    assert board_mod.has_live_session("missing-s", "Tools") is True
+    board_mod.reset_cache()
+    assert board_mod.has_live_session("other-s", "Tools") is True
+
+
+@pytest.mark.unit
+def test_send_message_survives_degraded_board_read(rm: FakeRM, client: TestClient) -> None:
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": False,
+            "read_warnings": ["comment limit reached"],
+            "replay_warnings": [],
+            "active_conflicts": [],
+            "sessions": [],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["comment limit reached"],
+        },
+    )
+    rm.respond("agent_communicate:send", {"ok": True})
+    msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "hi"}
+    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 200
+
+
+@pytest.mark.unit
+def test_has_live_session_still_fails_closed_when_board_unavailable(rm: FakeRM) -> None:
+    rm.respond("agent_communicate:list", {"error": "github down"})
+    with pytest.raises(board_mod.RMScriptError):
+        board_mod.has_live_session("s", "Tools")

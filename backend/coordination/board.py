@@ -21,6 +21,7 @@ or ``{available: False, reason}``. Writes raise ``RMScriptError``.
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -38,6 +39,8 @@ from coordination.board_pagination import (
 from coordination.rm_scripts import ScriptResult, run_module
 
 from staff.roles import load_roles
+
+_LOG = logging.getLogger(__name__)
 
 CACHE_SECONDS = 60.0
 BOARD_REPO = "Repository_Management"
@@ -338,6 +341,11 @@ def has_live_session(session: str, repo: str) -> bool:
         return True
     if not data.get("complete", True):
         detail = "; ".join(data.get("warnings") or ["incomplete board read"])
+        # Non-fatal history degradation (malformed/oversized comments, comment limit) must not lock every
+        # session out with a 502 (#4569). Live identity conflicts and unclassified failures stay fail-closed.
+        if data.get("read_warnings") and not data.get("active_conflicts"):
+            _LOG.warning("board history degraded, proceeding without presence confirmation of %s: %s", session, detail)
+            return True
         raise RMScriptError(f"board read incomplete, cannot confirm presence of {session}: {detail}")
     return False
 
