@@ -90,6 +90,55 @@ class StaffOutcomesResponse(BaseModel):
     prs_truncated: bool = False
 
 
+class StaffScorecardMeasures(BaseModel):
+    """What one daily scorecard bucket measured (#4564). A ``None`` rate is no data, not zero."""
+
+    runs: int
+    succeeded: int
+    verified: int
+    failed_verification: int
+    cost_usd: float
+    prs: int
+    prs_unknown: int
+    merged: int
+    closed_unmerged: int
+    open: int
+    ci_known: int
+    ci_failed: int
+    ci_failure_rate: float | None
+    merge_seconds_known: int
+    merge_seconds_median: float | None
+    review_findings: int | None
+    findings_per_merged_pr: float | None
+
+
+class StaffDailyScorecardRow(StaffScorecardMeasures):
+    """One UTC day and model (#4564)."""
+
+    date: str
+    model: str
+
+
+class StaffDailyScorecardModelRow(StaffScorecardMeasures):
+    """One model summed over the window, with the UTC days it was measured on."""
+
+    model: str
+    days: int
+
+
+class StaffDailyScorecardResponse(BaseModel):
+    """``GET /api/v1/staff/scorecard/daily`` — daily per-model scorecard (#4564)."""
+
+    machine: str
+    since: str
+    until: str
+    days: int
+    rows: list[StaffDailyScorecardRow] = Field(default_factory=list)
+    models: list[StaffDailyScorecardModelRow] = Field(default_factory=list)
+    totals: StaffScorecardMeasures
+    prs_truncated: bool = False
+
+
 class StaffReportCardsResponse(BaseModel):
     """Zero-LLM-cost Agent Report Cards & Empirical Routing Leaderboard response."""
 

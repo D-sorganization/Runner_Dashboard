@@ -25,6 +25,7 @@ from dashboard_config import DEFAULT_CACHE_TTL
 from staff.store import RunRecord
 from staff.verification import ci_state
 from staff.workspace import ORG
+from time_utils import parse_github_ts
 
 log = logging.getLogger("dashboard.staff.outcomes")
 
@@ -50,6 +51,10 @@ class PrFact:
     state: str  # merged | closed_unmerged | open
     ci_first_pass: bool | None = None
     followup_fix: bool | None = None
+    # Seconds the PR stayed open (created -> merged); ``None`` when it is unmerged or a stamp is missing.
+    merge_seconds: float | None = None
+    # Inline review comments raised against the PR. ``None`` means GitHub reported no count, not zero findings.
+    review_findings: int | None = None
 
 
 def default_since(now: datetime | None = None) -> str:
@@ -72,6 +77,34 @@ def pr_key(rec: RunRecord) -> PrKey | None:
 def rate(numerator: float, denominator: float) -> float | None:
     """numerator / denominator, or None when there is nothing to divide by."""
     return round(numerator / denominator, 4) if denominator > 0 else None
+
+
+def _utc(value: datetime | None) -> datetime | None:
+    """The same instant in UTC; a stamp without an offset is UTC in this codebase."""
+    return value.replace(tzinfo=UTC) if value is not None and value.tzinfo is None else value
+
+
+def seconds_open(pr: Mapping[str, Any]) -> float | None:
+    """How long a PR was open (created -> merged), or None when it never merged or a stamp is missing."""
+    try:
+        merged = _utc(parse_github_ts(pr.get("merged_at")))
+        created = _utc(parse_github_ts(pr.get("created_at")))
+    except ValueError as exc:
+        log.info("outcomes: unreadable PR stamps: %s", exc)
+        return None
+    if merged is None or created is None:
+        return None
+    return round((merged - created).total_seconds(), 1)
+
+
+def review_findings(pr: Mapping[str, Any]) -> int | None:
+    """The count of inline review comments GitHub reported for a PR, or None when it reported none.
+
+    GitHub returns this field on the PR object we already read, so it costs nothing to keep.
+    ``None`` is no data; a real zero is a PR that drew no findings.
+    """
+    value = pr.get("review_comments")
+    return int(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
 
 
 def _row(key: str, runs: Sequence[RunRecord], facts: Mapping[PrKey, PrFact]) -> dict[str, Any]:
@@ -178,7 +211,13 @@ async def read_pr_fact(repo: str, number: int, issue: int | None) -> PrFact:
             fix = await _followup_fix(repo, number, issue, str(pr["merged_at"]))
         except gh_client.GhClientError as exc:
             log.info("outcomes: follow-up of %s#%s unknown: %s", repo, number, exc)
-    return PrFact(state=state, ci_first_pass=ci, followup_fix=fix)
+    return PrFact(
+        state=state,
+        ci_first_pass=ci,
+        followup_fix=fix,
+        merge_seconds=seconds_open(pr),
+        review_findings=review_findings(pr),
+    )
 
 
 async def read_pr_facts(wanted: Mapping[PrKey, int | None]) -> dict[PrKey, PrFact]:
