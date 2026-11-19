@@ -19,8 +19,8 @@ def _no_live_github(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _fetch(pulls: list[dict[str, Any]], branches: list[dict[str, Any]]) -> claims.EvidenceFetch:
     def fetch(path: str) -> Any:
-        if "/pulls" in path:
-            return pulls
+        if "/search/issues?" in path:
+            return {"items": pulls, "total_count": len(pulls), "incomplete_results": False}
         if "/branches" in path:
             return branches
         raise AssertionError(f"unexpected gh api path: {path}")
@@ -48,7 +48,7 @@ def test_merged_pr_closing_the_issue_is_completed(monkeypatch: pytest.MonkeyPatc
     pr = {
         "number": 88,
         "state": "closed",
-        "merged_at": "2026-10-28T00:00:00Z",
+        "pull_request": {"merged_at": "2026-10-28T00:00:00Z"},
         "title": "fix: x",
         "body": "Fixes #12",
         "html_url": "https://x/pr/88",
@@ -85,7 +85,33 @@ def test_evidence_lookup_unavailable_fails_closed_to_abandoned(monkeypatch: pyte
     def boom(_path: str) -> Any:
         raise RuntimeError("gh api: rate limited")
 
-    patch_gh_list_fetch(monkeypatch, boom)
+    monkeypatch.setattr(claims, "evidence_fetch", boom)
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
     assert result.startswith("abandoned: evidence lookup unavailable")
     assert "agent reported: work completed" in result
+
+
+@pytest.mark.unit
+def test_pr_lookup_uses_issue_scoped_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = []
+
+    def fetch(path: str) -> Any:
+        seen.append(path)
+        return {
+            "incomplete_results": False,
+            "total_count": 1,
+            "items": [
+                {"number": 88, "state": "open", "title": "fix", "body": "Closes #12", "html_url": "https://x/pr/88"}
+            ],
+        }
+
+    monkeypatch.setattr(claims, "evidence_fetch", fetch)
+    assert claims._landed_pr("D-sorganization/Tools", 12)["number"] == 88
+    assert seen[0].startswith("/search/issues?")
+    assert "12" in seen[0]
+
+
+@pytest.mark.unit
+def test_incomplete_search_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(claims, "evidence_fetch", lambda _path: {"incomplete_results": True, "items": []})
+    assert "evidence lookup unavailable" in claims.classify_release_reason("Tools", 12, agent_reason="done")

@@ -25,6 +25,7 @@ import threading
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import contextmanager
 from typing import Any
+from urllib.parse import urlencode
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
@@ -53,10 +54,14 @@ evidence_fetch: EvidenceFetch = gh_api_json
 
 def _landed_pr(repo_full: str, issue: int) -> dict[str, Any] | None:
     """An open or merged PR whose title/body closes ``issue`` (closed-unmerged doesn't count)."""
-    pulls = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=all")
-    candidates = [
-        pr for pr in (pulls if isinstance(pulls, list) else []) if pr.get("state") != "closed" or pr.get("merged_at")
-    ]
+    query = urlencode({"q": f"repo:{repo_full} is:pr {issue} in:title,body", "per_page": 100})
+    result = evidence_fetch(f"/search/issues?{query}")
+    if not isinstance(result, dict) or result.get("incomplete_results") or result.get("total_count", 0) > 100:
+        raise RuntimeError("PR evidence search incomplete")
+    candidates = []
+    for pr in result.get("items", []):
+        if pr.get("state") != "closed" or (pr.get("pull_request") or {}).get("merged_at"):
+            candidates.append(pr)
     return closing_pr_for(candidates, issue)
 
 
