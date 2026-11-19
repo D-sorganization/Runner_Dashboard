@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import importlib.util
+import sys
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
+
+if "fcntl" not in sys.modules and importlib.util.find_spec("fcntl") is None:
+    sys.modules["fcntl"] = MagicMock()
 
 import pytest
-
-from coordination.merge_shepherd_exact_head import HeadReviewPass
-from coordination.merge_shepherd_exact_head import collect_review_passes_from_store
+from coordination.merge_shepherd_exact_head import HeadReviewPass, collect_review_passes_from_store
 from coordination.merge_shepherd_pass import (
+    SHEPHERD_REPOS,
     PassConfig,
     count_armed_open_pull_requests,
     graphql_nodes,
@@ -39,9 +44,7 @@ def _review_pass(pr: int, head: str) -> HeadReviewPass:
     )
 
 
-def test_resolve_merge_shepherd_review_store_uses_runstore_path_not_repo_checkout(
-    tmp_path, monkeypatch
-) -> None:
+def test_resolve_merge_shepherd_review_store_uses_runstore_path_not_repo_checkout(tmp_path, monkeypatch) -> None:
     repo_root = tmp_path / "checkout"
     repo_root.mkdir()
     db_path = tmp_path / "config" / "staff_runs.sqlite3"
@@ -285,7 +288,10 @@ def test_plan_repo_skips_approved_without_exact_head_pass() -> None:
 
 def test_plan_repo_honours_merge_hold_callback() -> None:
     node = _open_pr_node(400, review="REVIEW_REQUIRED", paths=["docs/readme.md"])
-    holds = lambda _repo, pr: "reviewer disabled auto-merge" if pr == 400 else ""
+
+    def holds(_repo: str, pr: int) -> str:
+        return "reviewer disabled auto-merge" if pr == 400 else ""
+
     _, skips, _ = plan_repo_pass(
         "D-sorganization/Runner_Dashboard",
         [node],
@@ -470,7 +476,7 @@ def test_run_pass_is_dry_when_not_live():
         }
 
     summary = run_merge_shepherd_pass(config=PassConfig(live=False), fetch_graphql=fake_graphql)
-    assert len(summary.repos) == 6
+    assert len(summary.repos) == len(SHEPHERD_REPOS)
     assert summary.armed == []
 
 
@@ -526,7 +532,7 @@ def test_run_pass_skips_inaccessible_repo_with_warning(caplog: pytest.LogCapture
             "reason": "Resource not accessible by integration",
         }
     ]
-    assert len(summary.repos) == 5
+    assert len(summary.repos) == len(SHEPHERD_REPOS) - 1
     assert "D-sorganization/Repository_Management" not in [row["repo"] for row in summary.repos]
     assert "D-sorganization/Repository_Management" in caplog.text
     assert summary_to_json(summary)["inaccessible_repos"] == summary.inaccessible_repos
@@ -547,5 +553,10 @@ def test_run_pass_fails_when_every_repo_is_inaccessible() -> None:
     summary = run_merge_shepherd_pass(config=PassConfig(live=False), fetch_graphql=fetch)
 
     assert summary.repos == []
-    assert len(summary.inaccessible_repos) == 6
-    assert summary.errors == ["all_repos_inaccessible:6"]
+    assert len(summary.inaccessible_repos) == len(SHEPHERD_REPOS)
+    assert summary.errors == [f"all_repos_inaccessible:{len(SHEPHERD_REPOS)}"]
+
+
+def test_shepherd_repos_contains_all_seven_fleet_repos() -> None:
+    assert "D-sorganization/Tools" in SHEPHERD_REPOS
+    assert len(SHEPHERD_REPOS) == 7

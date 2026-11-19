@@ -18,7 +18,8 @@ import merge_shepherd_pass as msp  # noqa: E402
 
 
 def test_main_exits_nonzero_and_skips_graphql_when_hub_holds_unavailable(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("MERGE_SHEPHERD_HUB_HOLDS", "required")
     monkeypatch.delenv("RUNNER_DASHBOARD_URL", raising=False)
@@ -204,7 +205,7 @@ def test_main_exits_zero_and_reports_repo_the_token_cannot_read(
     assert code == 0
     assert payload["errors"] == []
     assert [row["repo"] for row in payload["inaccessible_repos"]] == ["D-sorganization/Tools_Private"]
-    assert len(payload["repos"]) == 5
+    assert len(payload["repos"]) == 6
     assert "Skipped 1 inaccessible repo(s): D-sorganization/Tools_Private" in step_summary
 
 
@@ -238,3 +239,27 @@ def test_main_exits_nonzero_when_every_repo_is_inaccessible(
 
     assert code == 1
     assert payload["errors"] == [f"all_repos_inaccessible:{len(SHEPHERD_REPOS)}"]
+
+
+def test_main_exits_nonzero_when_arm_fails_silent_green_prevention(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    from coordination.merge_shepherd_pass import PassSummary
+
+    import scripts.merge_shepherd_pass as msp
+
+    summary = PassSummary()
+    summary.armed = [{"repo": "D-sorganization/Runner_Dashboard", "pr": 42, "head_sha": "abc1234", "dry_run": False}]
+
+    monkeypatch.setattr(msp, "run_merge_shepherd_pass", lambda **kw: summary)
+    monkeypatch.setattr(msp, "_resolve_hub_holds", lambda: ([], None))
+    monkeypatch.setattr(msp, "resolve_live_arming", lambda **kw: True)
+    # Simulate arm via guard failing (exit_code=1, armed=False, e.g. 403)
+    monkeypatch.setattr(
+        msp,
+        "_arm_via_guard",
+        lambda repo, pr, **kw: {"exit_code": 1, "armed": False, "error": "GraphQL 403"},
+    )
+
+    code = msp.main(["--json"])
+    assert code == 1

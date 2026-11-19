@@ -28,6 +28,8 @@ from coordination.merge_shepherd_exact_head import (
     DEFAULT_REVIEW_PASS_TTL_HOURS,
     HeadReviewPass,
     HoldReasonFn,
+    collect_review_passes_from_comments,
+    collect_review_passes_from_github_reviews,
     collect_review_passes_from_store,
     shepherd_arm_eligibility,
 )
@@ -45,6 +47,7 @@ SHEPHERD_REPOS: tuple[str, ...] = (
     f"{ORG}/Gasification_Model",
     f"{ORG}/UpstreamDrift",
     f"{ORG}/AffineDrift",
+    f"{ORG}/Tools",
     f"{ORG}/Tools_Private",
 )
 RD_REPO = f"{ORG}/Runner_Dashboard"
@@ -101,6 +104,21 @@ query($owner: String!, $name: String!) {
         timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
           nodes {
             ... on RemovedFromMergeQueueEvent { createdAt reason }
+          }
+        }
+        comments(last: 10) {
+          nodes {
+            body
+            createdAt
+            author { login }
+          }
+        }
+        reviews(last: 10) {
+          nodes {
+            state
+            submittedAt
+            author { login }
+            commit { oid }
           }
         }
       }
@@ -513,6 +531,11 @@ def plan_repo_pass(
         paths, additions, deletions, files_complete = _pr_file_metadata(node)
         number = int(node["number"])
         head = str(node.get("headRefOid") or "")
+        node_comments = (node.get("comments") or {}).get("nodes") or []
+        comment_passes = collect_review_passes_from_comments(node_comments, pr=number)
+        node_reviews = (node.get("reviews") or {}).get("nodes") or []
+        github_passes = collect_review_passes_from_github_reviews(node_reviews, pr=number)
+        all_passes = (*review_passes, *comment_passes, *github_passes)
         eligibility, eligibility_detail = shepherd_arm_eligibility(
             review_decision=str(node.get("reviewDecision") or ""),
             file_paths=paths,
@@ -524,7 +547,7 @@ def plan_repo_pass(
             files_complete=files_complete,
             pr_number=number,
             head_sha=head,
-            review_passes=review_passes,
+            review_passes=all_passes,
             review_pass_ttl_hours=review_pass_ttl_hours,
         )
         if eligibility == "no_approval":

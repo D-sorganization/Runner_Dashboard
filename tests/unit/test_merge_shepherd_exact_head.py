@@ -80,7 +80,7 @@ def test_shepherd_arm_eligibility_reviewed_requires_pass_at_head() -> None:
     assert kind == "no_approval"
     assert detail == "missing_pass_at_head"
 
-    kind2, _ = shepherd_arm_eligibility(
+    kind2, detail2 = shepherd_arm_eligibility(
         review_decision="APPROVED",
         file_paths=["backend/x.py"],
         additions=10,
@@ -95,3 +95,97 @@ def test_shepherd_arm_eligibility_reviewed_requires_pass_at_head() -> None:
         now=datetime(2026, 11, 10, 13, tzinfo=UTC),
     )
     assert kind2 == "reviewed"
+    assert detail2 == "review_decision_approved+exact_head_pass"
+
+
+def test_shepherd_arm_eligibility_accepts_exact_head_pass_without_formal_review_decision() -> None:
+    # Acceptance #5 regression: empty reviewDecision with verified exact-head verdict arms (#4544)
+    kind, detail = shepherd_arm_eligibility(
+        review_decision="",
+        file_paths=["backend/x.py"],
+        additions=50,
+        deletions=10,
+        line_cap=300,
+        labels=(),
+        checks_state="SUCCESS",
+        files_complete=True,
+        pr_number=100,
+        head_sha="a1b2c3d4e5f6",  # pragma: allowlist secret
+        review_passes=[_pass(100, "a1b2c3d4")],  # pragma: allowlist secret
+        now=datetime(2026, 11, 10, 13, tzinfo=UTC),
+    )
+    assert kind == "reviewed"
+    assert detail == "exact_head_verdict+exact_head_pass"
+
+
+def test_collect_review_passes_from_comments() -> None:
+    from coordination.merge_shepherd_exact_head import collect_review_passes_from_comments
+
+    comments = [
+        {"body": "Looking good", "createdAt": "2026-11-10T12:00:00Z", "author": {"login": "bot"}},
+        {
+            "body": "STAFF_RESULT: review approve #55 @000011112222\nLGTM",  # pragma: allowlist secret
+            "createdAt": "2026-11-10T12:05:00Z",
+            "author": {"login": "claude-bot"},
+        },
+    ]
+    passes = collect_review_passes_from_comments(comments, pr=55)
+    assert len(passes) == 1
+    assert passes[0].pr == 55
+    assert passes[0].head_sha == "000011112222"
+    assert passes[0].verdict == "approve"
+    assert passes[0].reviewer_model == "claude-bot"
+
+
+def test_collect_review_passes_from_github_reviews() -> None:
+    from coordination.merge_shepherd_exact_head import collect_review_passes_from_github_reviews
+
+    reviews = [
+        {
+            "state": "APPROVED",
+            "submittedAt": "2026-11-10T12:10:00Z",
+            "author": {"login": "codex-bot"},
+            "commit": {"oid": "000033334444"},  # pragma: allowlist secret
+        },
+        {
+            "state": "COMMENTED",
+            "submittedAt": "2026-11-10T12:08:00Z",
+            "author": {"login": "other"},
+            "commit": {"oid": "000055556666"},
+        },
+    ]
+    passes = collect_review_passes_from_github_reviews(reviews, pr=77)
+    assert len(passes) == 1
+    assert passes[0].pr == 77
+    assert passes[0].head_sha == "000033334444"
+    assert passes[0].verdict == "approve"
+
+
+def test_collect_review_passes_from_store_accepts_acceptance_review_roles() -> None:
+    from types import SimpleNamespace
+
+    from coordination.merge_shepherd_exact_head import collect_review_passes_from_store
+
+    runs = [
+        SimpleNamespace(
+            repo="Runner_Dashboard",
+            role="acceptance-review:claude",
+            status="succeeded",
+            outcome="STAFF_RESULT: review approve #88 @000077778888",  # pragma: allowlist secret
+            ended_at="2026-11-10T12:15:00Z",
+            model="claude-3-5-sonnet",
+        ),
+        SimpleNamespace(
+            repo="Runner_Dashboard",
+            role="acceptance-review:codex",
+            status="succeeded",
+            outcome="STAFF_RESULT: review approve #89 @000099990000",  # pragma: allowlist secret
+            ended_at="2026-11-10T12:20:00Z",
+            model="gpt-6.1-sol",
+        ),
+    ]
+    store = SimpleNamespace(list_runs=lambda limit=500: runs)
+    passes = collect_review_passes_from_store(store, "Runner_Dashboard")
+    assert len(passes) == 2
+    prs = {p.pr for p in passes}
+    assert prs == {88, 89}

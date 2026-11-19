@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from coordination.merge_shepherd_low_risk import (
     DEFAULT_LOW_RISK_LINE_CAP,
     arm_eligibility_reason,
@@ -51,7 +50,7 @@ def test_is_docs_or_tests_path_rejects_product_and_ci_paths() -> None:
     assert not is_docs_or_tests_path("tests/unit/fixtures/sample.json")
 
 
-def test_classify_rejects_over_line_cap() -> None:
+def test_classify_allows_over_line_cap_as_advisory() -> None:
     verdict = classify_docs_tests_only_arm(
         file_paths=["docs/a.md"],
         additions=200,
@@ -61,8 +60,8 @@ def test_classify_rejects_over_line_cap() -> None:
         checks_state="SUCCESS",
         files_complete=True,
     )
-    assert not verdict.eligible
-    assert verdict.detail == "over_line_cap"
+    assert verdict.eligible
+    assert verdict.detail == "docs_tests_only:over_line_cap_advisory"
 
 
 def test_classify_rejects_mixed_pr() -> None:
