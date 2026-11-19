@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -27,6 +28,7 @@ _GIT_FAILURE_MARKERS = (
     "command aborted",
     "unknown option",
 )
+_SCANNED_BYTES = re.compile(r"scanned ~(\d+) bytes")
 
 
 def _repo_root() -> Path:
@@ -100,9 +102,18 @@ def _suspicious_pass(result: subprocess.CompletedProcess[str], *, staged_expecte
     for marker in _GIT_FAILURE_MARKERS:
         if marker in combined:
             return f"gitleaks git toolchain error ({marker})"
-    if staged_expected and "0 commits scanned" in combined.lower():
+    if staged_expected and "0 commits scanned" in combined.lower() and not _scanned_content(combined):
         return "gitleaks reported 0 commits scanned with staged changes present"
     return None
+
+
+def _scanned_content(output: str) -> bool:
+    """True when gitleaks reports a positive scanned byte count.
+
+    A healthy ``protect --staged`` reads the index, so it always logs
+    ``0 commits scanned``; the byte count is what proves content was read (#4560).
+    """
+    return any(int(match) > 0 for match in _SCANNED_BYTES.findall(output))
 
 
 def main(argv: list[str]) -> int:

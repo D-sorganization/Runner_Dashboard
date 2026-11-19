@@ -63,6 +63,25 @@ def test_fail_closed_zero_commits_scanned_with_staged_changes() -> None:
                 assert hook.main([]) == 1
 
 
+def _staged_scan_exit(stdout: str) -> int:
+    with mock.patch.dict(os.environ, {}, clear=True):
+        with mock.patch.object(hook, "_staged_has_changes", return_value=True):
+            with mock.patch.object(hook, "_run_gitleaks") as run:
+                run.return_value = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+                return hook.main([])
+
+
+def test_healthy_staged_scan_with_scanned_bytes_passes() -> None:
+    """A staged scan reads the index, so ``0 commits scanned`` is normal (#4560)."""
+    stdout = "INF 0 commits scanned.\nINF scanned ~222 bytes (222 bytes) in 165ms\nINF no leaks found\n"
+    assert _staged_scan_exit(stdout) == 0
+
+
+def test_fail_closed_zero_commits_and_zero_bytes_scanned() -> None:
+    stdout = "INF 0 commits scanned.\nINF scanned ~0 bytes (0) in 12ms\nINF no leaks found\n"
+    assert _staged_scan_exit(stdout) == 1
+
+
 def test_leak_exit_code_passthrough() -> None:
     with mock.patch.dict(os.environ, {}, clear=True):
         with mock.patch.object(hook, "_staged_has_changes", return_value=True):
