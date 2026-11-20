@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from coordination.fleet_efficiency import WakeCoalescer, wake_coalesce_seconds
 from coordination.postman import BoardPort, BoardSource, BusPort, CycleReport, Delivery, Postman, PostmanState
 from coordination.relay_guard import RelayGuard
 from staff.barb_continuity import DEFAULT_LEASE_TTL_SECONDS, BarbContinuityStore
@@ -53,13 +54,19 @@ class FencedBusPort:
         self._clock, self._after_send_hook = clock, after_send_hook
         self.sent_count = 0
         self.woken_recipients: list[str] = []
+        self._wake_coalescer = WakeCoalescer(window_sec=wake_coalesce_seconds())
 
     def send(self, delivery: Delivery) -> str:
         with self._continuity.fence(self._claim, now=self._clock()):
             msg_id = self._inner.send(delivery)
         self.sent_count += 1
         msg = {"to": delivery.to, "summary": delivery.body, "body": delivery.body}
-        if classify_relay_wake(msg, target_agent=delivery.to) == "wake" and delivery.to not in self.woken_recipients:
+        if (
+            classify_relay_wake(msg, target_agent=delivery.to) == "wake"
+            and delivery.to not in self.woken_recipients
+            and self._wake_coalescer.should_deliver_wake("relay_wake", delivery.to, now=self._clock().timestamp())
+        ):
+            self._wake_coalescer.record_wake("relay_wake", delivery.to, now=self._clock().timestamp())
             self.woken_recipients.append(delivery.to)
         if self._after_send_hook is not None:
             self._after_send_hook(self.sent_count)

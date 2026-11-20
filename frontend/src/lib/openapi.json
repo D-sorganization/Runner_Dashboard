@@ -13695,6 +13695,36 @@
         "tags": ["coordination"]
       }
     },
+    "/api/coordination/fleet-efficiency": {
+      "get": {
+        "description": "Read-only fleet efficiency knobs: wake coalescing, brief cap, planned reset (#4562).",
+        "operationId": "get_fleet_efficiency_api_coordination_fleet_efficiency_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Fleet Efficiency Api Coordination Fleet Efficiency Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Fleet Efficiency",
+        "tags": ["coordination"]
+      }
+    },
     "/api/coordination/inbox": {
       "get": {
         "operationId": "get_inbox_api_coordination_inbox_get",

@@ -11,6 +11,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from coordination.fleet_efficiency import enrich_lane_receipt
+
 _DEFAULT_TTL_SEC = 3600
 _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
@@ -541,7 +543,7 @@ class LanePromptStore:
                     (session_id,),
                 ).fetchone()
                 if active_self is not None and _is_lane_compatible(active_self, want_provider, want_host):
-                    return json.loads(active_self["receipt_json"])
+                    return enrich_lane_receipt(json.loads(active_self["receipt_json"]))
 
             if lane_id is not None:
                 row = conn.execute(
@@ -563,7 +565,7 @@ class LanePromptStore:
                             (lane_id,),
                         ).fetchone()
                         assert rec is not None
-                        return json.loads(rec["receipt_json"])
+                        return enrich_lane_receipt(json.loads(rec["receipt_json"]))
                     raise LaneConflictError(f"Lane {lane_id!r} already held by {held['session_id']}")
                 target = row
             else:
@@ -643,7 +645,7 @@ class LanePromptStore:
                     ts,
                 ),
             )
-            return receipt
+            return enrich_lane_receipt(receipt)
 
         return self._run_tx(_tx)
 
@@ -686,7 +688,7 @@ class LanePromptStore:
                 """,
                 (new_exp, ts, new_prog, json.dumps(receipt), checkout_id),
             )
-            return receipt
+            return enrich_lane_receipt(receipt)
 
         return self._run_tx(_tx)
 

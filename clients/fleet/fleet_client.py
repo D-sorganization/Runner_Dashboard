@@ -692,6 +692,10 @@ class FleetClient(
                 "warnings": [f"hub unreachable: {reason}"],
             }
 
+    def fleet_efficiency(self) -> Any:
+        """Wake coalescing window, 6-line brief cap, planned reset thresholds (#4562)."""
+        return self.request("GET", "/api/coordination/fleet-efficiency")
+
     def _activity_read_request(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
         raw_scopes = os.environ.get("FLEET_SCOPES", "").strip()
         if raw_scopes:

@@ -22,6 +22,7 @@ from activity_producers import emit_activity
 from coordination import board, claims, hub_sessions, roster
 from coordination import jobs as jobs_mod
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
+from coordination.fleet_efficiency import enrich_hub_session, validate_lane_brief
 from coordination.models import (
     AckBody,
     ClaimBody,
@@ -34,6 +35,7 @@ from coordination.models import (
     PresenceBody,
     ReleaseBody,
 )
+from coordination.pr_age_rule import roster_agent_id
 from coordination.staff_runs_cache import record_staff_runs_snapshot, snapshot_staff_runs
 from coordination.staff_view import staff_run_as_session, staff_runs
 from staff.rm_sync import stale_source_warning
@@ -109,7 +111,8 @@ def _bind(caller: Caller, session: str, explicit_agent: str | None = None, *, ne
     if not needs_agent:
         return None
     agent = caller.agent_for(explicit_agent)
-    if agent not in roster.agent_ids():
+    roster_id = roster_agent_id(agent)
+    if roster_id not in roster.agent_ids():
         raise UnknownAgentError(f"agent {agent!r} is not in the Repository_Management fleet roster")
     return agent
 
@@ -236,7 +239,7 @@ def register_hub_session(body: HubSessionRegisterBody, caller: Caller) -> dict[s
     else:
         agent = caller.agent_for(body.role)
     expires = (datetime.now(UTC) + timedelta(hours=float(body.ttl_hours))).isoformat().replace("+00:00", "Z")
-    row = hub_sessions.upsert(
+    row = enrich_hub_session(
         {
             "session": body.session,
             "role": body.role,
@@ -253,6 +256,7 @@ def register_hub_session(body: HubSessionRegisterBody, caller: Caller) -> dict[s
             "started_at": now_iso(),
         }
     )
+    row = hub_sessions.upsert(row)
     emit_activity(
         source="coordination",
         session_id=body.session,
@@ -296,6 +300,8 @@ def release_presence(body: ReleaseBody, caller: Caller) -> dict[str, Any]:
 def send_message(body: MessageBody, caller: Caller) -> dict[str, Any]:
     _bind(caller, body.session)
     _require_presence(body.session, body.repo)
+    if body.text.lstrip().startswith("Status:"):
+        validate_lane_brief(body.text)
     # ``--text=`` keeps a message that starts with '-' from being parsed as an option.
     result = _stamp(board.publish(body.repo, body.session, "send", "--to", body.to, f"--text={body.text}"))
     emit_activity(

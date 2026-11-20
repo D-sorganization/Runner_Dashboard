@@ -283,6 +283,11 @@ Read-only. The newest postman dry-run reports (`limit` 1 to 50, default 10), wri
 The postman runs in dry run only, so the response's `live` is always `false` and nothing is delivered
 (proposal: `docs/agents/messenger-agents.md`).
 
+### `GET /api/coordination/fleet-efficiency`
+
+Read-only. Returns wake coalescing seconds (5–10 minute window), the 6-line lane brief cap, and planned reset
+threshold metadata for lane/hub sessions (#4562). Documented for agents in `staff/prompts/rd-prompt.md`.
+
 ### `GET /api/coordination/lane-prompts/catalog`
 
 Read-only. Lists registered lane-prompt assignments and any active checkout metadata.
