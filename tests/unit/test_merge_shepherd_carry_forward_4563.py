@@ -118,40 +118,12 @@ def test_mode_only_change_requires_fresh_review() -> None:
     assert (ok, why) == (False, "missing_pass_at_head")
 
 
-def _arm(**kw: object) -> tuple[str, str]:
+def test_carry_forward_is_not_wired_into_arm_eligibility() -> None:
+    """ADR 0010: arming needs fresh exact-head acceptance; carry-forward stays advisory."""
+    import inspect
+
     from coordination.merge_shepherd_exact_head import shepherd_arm_eligibility
 
-    base: dict[str, object] = {
-        "review_decision": "",
-        "file_paths": ["backend/x.py"],
-        "additions": 5,
-        "deletions": 0,
-        "line_cap": 100,
-        "labels": [],
-        "checks_state": "SUCCESS",
-        "files_complete": True,
-        "pr_number": 7,
-        "head_sha": NEW,
-        "review_passes": [_pass(OLD)],
-        "now": NOW,
-    }
-    base.update(kw)
-    return shepherd_arm_eligibility(**base)  # type: ignore[arg-type]
-
-
-def test_arm_eligibility_carries_forward_pass_when_fingerprints_match() -> None:
-    fp = diff_fingerprint([("backend/x.py", "100644", "1")])
-    assert _arm(head_fingerprint=fp, pass_fingerprints={OLD: fp}) == (
-        "reviewed",
-        "exact_head_verdict+carried_forward_pass",
-    )
-
-
-def test_arm_eligibility_without_fingerprints_is_unchanged() -> None:
-    assert _arm()[0] == "no_approval"
-
-
-def test_arm_eligibility_rejects_changed_fingerprint() -> None:
-    old_fp = diff_fingerprint([("backend/x.py", "100644", "1")])
-    new_fp = diff_fingerprint([("backend/x.py", "100644", "2")])
-    assert _arm(head_fingerprint=new_fp, pass_fingerprints={OLD: old_fp})[0] == "no_approval"
+    params = inspect.signature(shepherd_arm_eligibility).parameters
+    assert "head_fingerprint" not in params
+    assert "pass_fingerprints" not in params

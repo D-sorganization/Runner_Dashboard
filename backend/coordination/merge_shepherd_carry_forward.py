@@ -4,6 +4,11 @@ Pure decision logic. Callers supply per-head diff fingerprints, i.e. (path, git 
 of the PR diff against ``main``. A PASS carries forward only when the fingerprint of the
 reviewed head equals the current head's, so real code changes (including mode changes) still
 need a fresh exact-head review.
+
+Only ``fix_pass_decision`` is operative. ``diff_fingerprint`` and ``pass_with_carry_forward``
+are ADVISORY and deliberately NOT wired into arming: ADR 0010 requires fresh independent
+acceptance whenever the integration tree changes, so any arming use needs an explicit ADR
+amendment first (panel th_2f46d79d092d, Option C).
 """
 
 from __future__ import annotations
