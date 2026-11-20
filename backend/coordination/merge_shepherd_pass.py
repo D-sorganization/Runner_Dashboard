@@ -33,6 +33,7 @@ from coordination.merge_shepherd_exact_head import (
     collect_review_passes_from_store,
     shepherd_arm_eligibility,
 )
+from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS, normalize_hold_label
 from coordination.merge_shepherd_low_risk import low_risk_line_cap as default_low_risk_line_cap
 from priorities.directives import get_directives
 
@@ -54,7 +55,7 @@ RD_REPO = f"{ORG}/Runner_Dashboard"
 QUEUE_BACKOFF_THRESHOLD = 6
 ARM_CAP_RD = 2
 ARM_CAP_DEFAULT = 4
-SHEPHERD_HOLD_LABELS = frozenset({"hold", "do-not-merge", "needs-dieter", "dnm"})
+SHEPHERD_HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 # The only fetch failures that mean "this token may not read this repo": GitHub's
 # 403 text for an App installation, and GraphQL's not-found for a repo it cannot see.
 _REPO_ACCESS_DENIED = "Resource not accessible by integration"
@@ -252,7 +253,7 @@ def _label_names(node: Mapping[str, Any]) -> tuple[str, ...]:
 
 def label_blocks_shepherd(node: Mapping[str, Any]) -> str:
     for name in _label_names(node):
-        normalized = name.strip().casefold()
+        normalized = normalize_hold_label(name)
         if normalized in SHEPHERD_HOLD_LABELS:
             return f"label_{normalized.replace('-', '_')}"
     return ""

@@ -239,7 +239,61 @@ def test_plan_repo_caps_rd_arms_at_two():
     assert len(actions) == 2
 
 
-def test_plan_repo_skips_without_approval_unless_docs_only():
+def test_plan_repo_zero_arms_for_needs_owner_label() -> None:
+    node = _open_pr_node(210, review="APPROVED", paths=["docs/readme.md"])
+    node["labels"] = {"nodes": [{"name": "needs-owner"}]}
+    actions, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+        review_passes=[_review_pass(210, "sha210")],
+    )
+    assert actions == []
+    assert any(
+        s.get("pr") == 210
+        and (s.get("reason") == "label_needs_owner" or s.get("reason", "").startswith("no_approval:blocked_label"))
+        for s in skips
+    )
+
+
+def test_plan_repo_zero_arms_when_approve_then_changes_requested_on_head() -> None:
+    head = "deadbeef" * 5
+    node = _open_pr_node(211, review="APPROVED", paths=["docs/readme.md"])
+    node["headRefOid"] = head
+    node["reviews"] = {
+        "nodes": [
+            {
+                "state": "APPROVED",
+                "submittedAt": "2026-11-10T12:00:00Z",
+                "author": {"login": "bot-a"},
+                "commit": {"oid": head},
+            },
+            {
+                "state": "CHANGES_REQUESTED",
+                "submittedAt": "2026-11-10T14:00:00Z",
+                "author": {"login": "bot-b"},
+                "commit": {"oid": head},
+            },
+        ]
+    }
+    actions, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+    )
+    assert actions == []
+    assert any(s.get("pr") == 211 and "rejected_at_head" in s.get("reason", "") for s in skips)
+
+
+def test_plan_repo_skips_without_approval_even_for_docs_only():
     approved, docs_only, mixed = (
         _open_pr_node(200, review="APPROVED"),
         _open_pr_node(201, review="REVIEW_REQUIRED", paths=["changes/4245.md"]),
@@ -255,10 +309,11 @@ def test_plan_repo_skips_without_approval_unless_docs_only():
         live=False,
     )
     reasons = {(s["pr"], s["reason"]) for s in skips}
-    assert (202, "no_approval:mixed_paths:backend/x.py") in reasons
+    assert (202, "no_approval:missing_pass_at_head") in reasons
+    assert (201, "no_approval:missing_pass_at_head") in reasons
     actions, _, _ = plan_repo_pass(
         "D-sorganization/Runner_Dashboard",
-        [approved, docs_only],
+        [approved],
         skip_list=frozenset(),
         holds=(),
         armed_count=0,
@@ -268,7 +323,7 @@ def test_plan_repo_skips_without_approval_unless_docs_only():
     )
     elig = {a.pr_number: a.eligibility for a in actions}
     assert elig.get(200) == "reviewed"
-    assert elig.get(201) == "docs_tests_only"
+    assert 201 not in elig
 
 
 def test_plan_repo_skips_approved_without_exact_head_pass() -> None:
@@ -287,7 +342,7 @@ def test_plan_repo_skips_approved_without_exact_head_pass() -> None:
 
 
 def test_plan_repo_honours_merge_hold_callback() -> None:
-    node = _open_pr_node(400, review="REVIEW_REQUIRED", paths=["docs/readme.md"])
+    node = _open_pr_node(400, review="APPROVED", paths=["docs/readme.md"])
 
     def holds(_repo: str, pr: int) -> str:
         return "reviewer disabled auto-merge" if pr == 400 else ""
@@ -300,6 +355,7 @@ def test_plan_repo_honours_merge_hold_callback() -> None:
         armed_count=0,
         queue_depth=0,
         live=False,
+        review_passes=[_review_pass(400, "sha400")],
         hold_reason=holds,
     )
     assert any(s.get("pr") == 400 and s.get("reason", "").startswith("merge_hold:") for s in skips)

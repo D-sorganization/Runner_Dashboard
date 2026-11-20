@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from coordination.merge_shepherd import HOLD_LABELS, PRCandidate, ShepherdAction, evaluate_pr_shepherd_eligibility
 from staff.review import PROVIDER_FAMILY
 
+# Fleet arm intake holds (review-arm only); merge-shepherd tokens live in merge_shepherd_holds.py.
 HOLD_LABELS = HOLD_LABELS | frozenset(
     {
         "c3",
@@ -17,7 +18,6 @@ HOLD_LABELS = HOLD_LABELS | frozenset(
         "sidekick-packaging",
         "assessment board",
         "assessment-board",
-        "do-not-automate",
     }
 )
 HELD_PRS = frozenset(
