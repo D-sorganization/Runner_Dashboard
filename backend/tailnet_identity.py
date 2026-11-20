@@ -153,7 +153,7 @@ def _tailscaled_whois_windows_cli(host: str, port: int) -> WhoIsIdentity | None:
         return None
     try:
         proc = subprocess.run(
-            [cli, "whois", f"{host}:{port}"],
+            [cli, "whois", "--json", f"{host}:{port}"],
             capture_output=True,
             text=True,
             timeout=_WHOIS_TIMEOUT_SECONDS,

@@ -41,10 +41,13 @@ def test_wsl_whois_parses_matching_windows_cli_output(monkeypatch: pytest.Monkey
     monkeypatch.setattr(tailnet_identity.os.path, "isfile", lambda path: True)
 
     completed = Mock(returncode=0, stdout=_payload("operator@github.com", "Operator"))
-    monkeypatch.setattr(tailnet_identity.subprocess, "run", Mock(return_value=completed))
+    run = Mock(return_value=completed)
+    monkeypatch.setattr(tailnet_identity.subprocess, "run", run)
 
     result = tailnet_identity._tailscaled_whois("127.0.0.1", 54321)
     assert result == tailnet_identity.WhoIsIdentity(login="operator@github.com", name="Operator")
+    argv = run.call_args.args[0]
+    assert "--json" in argv
 
 
 def test_wsl_whois_malformed_payload_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
