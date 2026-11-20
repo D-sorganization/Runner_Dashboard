@@ -492,6 +492,8 @@ def test_teardown_allowed_interlock_pure_helper(tmp_path: Path) -> None:
         $d1 = Test-WslTeardownAllowed -ActiveWorkers 0 -Reason 'test_clean'
         $d2 = Test-WslTeardownAllowed -ActiveWorkers 4 -Reason 'test_busy' -EmergencyOverride $false
         $d3 = Test-WslTeardownAllowed -ActiveWorkers 4 -Reason 'test_override' -EmergencyOverride $true
+        $d4 = Test-WslTeardownAllowed -ActiveWorkers -1 -Reason 'unknown'
+        Write-Output ('T4=' + $d4.allowed + ';REASON=' + $d4.decision_reason)
 
         Write-Output ('T1=' + $d1.allowed + ';REASON=' + $d1.decision_reason)
         Write-Output ('T2=' + $d2.allowed + ';REASON=' + $d2.decision_reason)
@@ -503,6 +505,7 @@ def test_teardown_allowed_interlock_pure_helper(tmp_path: Path) -> None:
     assert "T1=True;REASON=no_active_workers" in out, result.stdout + result.stderr
     assert "T2=False;REASON=active_runner_workers_running (4 active)" in out, result.stdout
     assert "T3=True;REASON=emergency_override_used (4 active workers bypassed)" in out, result.stdout
+    assert "T4=False;REASON=worker_state_unknown" in out, result.stdout
 
 
 @PWSH_REQUIRED
