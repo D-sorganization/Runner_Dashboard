@@ -69,9 +69,7 @@ def pass_at_head(
     """Return whether the latest verdict at ``head_sha`` is a fresh approve."""
     known_shas = tuple(row.head_sha for row in passes)
     at_head = [
-        row
-        for row in passes
-        if row.pr == pr and head_sha_matches(row.head_sha, head_sha, known_shas=known_shas)
+        row for row in passes if row.pr == pr and head_sha_matches(row.head_sha, head_sha, known_shas=known_shas)
     ]
     if not at_head:
         return False, "missing_pass_at_head"
