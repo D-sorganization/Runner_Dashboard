@@ -153,7 +153,7 @@ def _tailscaled_whois_via_wsl_cli(host: str, port: int) -> WhoIsIdentity | None:
         return None
     try:
         completed = subprocess.run(
-            [exe, "whois", f"{host}:{port}"],
+            [exe, "whois", "--json", f"{host}:{port}"],
             capture_output=True,
             timeout=_WHOIS_TIMEOUT_SECONDS,
             check=False,

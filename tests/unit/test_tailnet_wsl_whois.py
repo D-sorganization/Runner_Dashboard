@@ -35,9 +35,12 @@ def test_wsl_cli_whois_parses_tailscale_exe_json(monkeypatch: pytest.MonkeyPatch
     payload = {"UserProfile": {"LoginName": "alice@tail", "DisplayName": "Alice"}}
     completed = SimpleNamespace(returncode=0, stdout=json.dumps(payload).encode())
     monkeypatch.setattr(tailnet_identity, "_wsl_tailscale_exe", lambda: "/mnt/c/Program Files/Tailscale/tailscale.exe")
-    monkeypatch.setattr(tailnet_identity.subprocess, "run", Mock(return_value=completed))
+    run = Mock(return_value=completed)
+    monkeypatch.setattr(tailnet_identity.subprocess, "run", run)
     result = tailnet_identity._tailscaled_whois_via_wsl_cli("100.64.0.9", 5555)
     assert result == tailnet_identity.WhoIsIdentity(login="alice@tail", name="Alice")
+    argv = run.call_args.args[0]
+    assert "--json" in argv
 
 
 def test_wsl_cli_whois_fails_closed_on_mismatch_remains_none(monkeypatch: pytest.MonkeyPatch) -> None:
