@@ -59,8 +59,8 @@ def test_shepherd_arm_eligibility_docs_only_without_hub_pass() -> None:
         head_sha="00ff00ff",
         review_passes=(),
     )
-    assert kind == "docs_tests_only"
-    assert detail == "docs_tests_only"
+    assert kind == "no_approval"
+    assert detail == "missing_pass_at_head"
 
 
 def test_shepherd_arm_eligibility_reviewed_requires_pass_at_head() -> None:

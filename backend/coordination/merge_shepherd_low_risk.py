@@ -133,7 +133,7 @@ def arm_eligibility_reason(
     checks_state: str,
     files_complete: bool,
 ) -> tuple[str, str]:
-    """Return (eligibility, detail): reviewed | docs_tests_only | no_approval_*."""
+    """Return (eligibility, detail): reviewed | no_approval_* (docs/tests-only bypass removed)."""
     if str(review_decision or "").upper() == "APPROVED":
         return "reviewed", "review_decision_approved"
     low = classify_docs_tests_only_arm(
@@ -145,6 +145,4 @@ def arm_eligibility_reason(
         checks_state=checks_state,
         files_complete=files_complete,
     )
-    if low.eligible:
-        return "docs_tests_only", low.detail
     return "no_approval", low.detail

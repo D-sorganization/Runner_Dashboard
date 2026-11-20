@@ -7,10 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from coordination.merge_shepherd_low_risk import (
-    LOW_RISK_BLOCKED_LABELS,
-    classify_docs_tests_only_arm,
-)
+from coordination.merge_shepherd_low_risk import LOW_RISK_BLOCKED_LABELS
 
 DEFAULT_REVIEW_PASS_TTL_HOURS = 72
 
@@ -92,7 +89,7 @@ def shepherd_arm_eligibility(
     now: datetime | None = None,
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
 ) -> tuple[str, str]:
-    """Docs/tests-only may arm without a hub pass; code paths need PASS at ``head_sha``."""
+    """Arming requires an exact-head PASS at ``head_sha`` (no docs/tests-only shortcut)."""
     if str(checks_state).upper() != "SUCCESS":
         return "no_approval", "required_checks_not_green"
     if any(str(lbl).strip().casefold() in LOW_RISK_BLOCKED_LABELS for lbl in labels):
@@ -118,18 +115,7 @@ def shepherd_arm_eligibility(
     if str(review_decision or "").upper() == "APPROVED":
         return "no_approval", pass_detail
 
-    low = classify_docs_tests_only_arm(
-        file_paths=file_paths,
-        additions=additions,
-        deletions=deletions,
-        line_cap=line_cap,
-        labels=labels,
-        checks_state=checks_state,
-        files_complete=files_complete,
-    )
-    if low.eligible:
-        return "docs_tests_only", low.detail
-    return "no_approval", low.detail
+    return "no_approval", pass_detail
 
 
 def collect_review_passes_from_store(

@@ -101,7 +101,7 @@ def test_arm_eligibility_reviewed_vs_docs_only() -> None:
         checks_state="SUCCESS",
         files_complete=True,
     )
-    assert kind == "docs_tests_only"
+    assert kind == "no_approval"
     assert detail == "docs_tests_only"
 
     kind, detail = arm_eligibility_reason(
