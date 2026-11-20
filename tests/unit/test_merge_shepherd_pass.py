@@ -326,6 +326,39 @@ def test_plan_repo_skips_without_approval_even_for_docs_only():
     assert 201 not in elig
 
 
+def test_plan_repo_skips_when_head_ref_oid_missing() -> None:
+    """Absent head metadata must not plan arming (codex acceptance #4599)."""
+    node = _open_pr_node(999, review="REVIEW_REQUIRED", paths=["backend/x.py"])
+    node.pop("headRefOid")
+    actions, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+    )
+    assert actions == []
+    assert any(s.get("pr") == 999 and s.get("reason") == "no_approval:missing_pass_at_head" for s in skips)
+
+
+def test_plan_repo_skips_when_head_ref_oid_empty() -> None:
+    node = _open_pr_node(998, review="REVIEW_REQUIRED", paths=["backend/x.py"])
+    node["headRefOid"] = ""
+    actions, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+    )
+    assert actions == []
+    assert any(s.get("pr") == 998 and s.get("reason") == "no_approval:missing_pass_at_head" for s in skips)
+
+
 def test_plan_repo_skips_approved_without_exact_head_pass() -> None:
     node = _open_pr_node(300, review="APPROVED", paths=["backend/server.py"])
     _, skips, _ = plan_repo_pass(
