@@ -28,6 +28,7 @@ log = logging.getLogger("dashboard.coordination.jobs")
 
 MIN_LIMIT = 1
 MAX_LIMIT = 200
+# Job-board claiming uses the full merge-shepherd hold set (not LOW_RISK_SHEPHERD_BLOCKED_LABELS).
 HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 PRIORITY_TIERS = ("critical", "high", "medium", "low")
 _UNRANKED = len(PRIORITY_TIERS)

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from coordination.merge_shepherd_low_risk import LOW_RISK_BLOCKED_LABELS
+from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS, normalize_hold_label
 
 DEFAULT_REVIEW_PASS_TTL_HOURS = 72
 
@@ -28,15 +28,24 @@ def _normalize_sha(sha: str) -> str:
     return sha.strip().lower()
 
 
-def head_sha_matches(recorded: str, head: str) -> bool:
-    """True when ``recorded`` matches ``head`` by full SHA or unique short prefix."""
+def head_sha_matches(recorded: str, head: str, *, known_shas: Sequence[str] = ()) -> bool:
+    """True when ``recorded`` matches ``head`` by full SHA or a unique short prefix."""
     rec, act = _normalize_sha(recorded), _normalize_sha(head)
     if not rec or not act:
         return False
     if rec == act:
         return True
     shorter, longer = (rec, act) if len(rec) <= len(act) else (act, rec)
-    return len(shorter) >= 7 and longer.startswith(shorter)
+    if len(shorter) < 7 or not longer.startswith(shorter):
+        return False
+    pool = {_normalize_sha(s) for s in known_shas if _normalize_sha(s)}
+    pool.update({rec, act})
+    full_shas = {s for s in pool if len(s) == 40}
+    if not full_shas:
+        return True
+    prefix = shorter
+    matches = [s for s in full_shas if s.startswith(prefix)]
+    return len(matches) == 1
 
 
 def _parse_recorded_at(stamp: str) -> datetime | None:
@@ -57,10 +66,19 @@ def pass_at_head(
     now: datetime | None = None,
     ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
 ) -> tuple[bool, str]:
-    """Return whether an approve verdict exists for ``head_sha`` and is still fresh."""
-    matches = [
-        row for row in passes if row.pr == pr and row.verdict == "approve" and head_sha_matches(row.head_sha, head_sha)
+    """Return whether the latest verdict at ``head_sha`` is a fresh approve."""
+    known_shas = tuple(row.head_sha for row in passes)
+    at_head = [
+        row
+        for row in passes
+        if row.pr == pr and head_sha_matches(row.head_sha, head_sha, known_shas=known_shas)
     ]
+    if not at_head:
+        return False, "missing_pass_at_head"
+    latest = max(at_head, key=lambda row: row.recorded_at)
+    if latest.verdict != "approve":
+        return False, "rejected_at_head"
+    matches = [row for row in at_head if row.verdict == "approve"]
     if not matches:
         return False, "missing_pass_at_head"
     latest = max(matches, key=lambda row: row.recorded_at)
@@ -92,7 +110,7 @@ def shepherd_arm_eligibility(
     """Arming requires an exact-head PASS at ``head_sha`` (no docs/tests-only shortcut)."""
     if str(checks_state).upper() != "SUCCESS":
         return "no_approval", "required_checks_not_green"
-    if any(str(lbl).strip().casefold() in LOW_RISK_BLOCKED_LABELS for lbl in labels):
+    if any(normalize_hold_label(lbl) in MERGE_SHEPHERD_HOLD_LABELS for lbl in labels):
         return "no_approval", "blocked_label"
     if not files_complete:
         return "no_approval", "files_incomplete"
@@ -142,15 +160,16 @@ def collect_review_passes_from_store(
             continue
         text = str(getattr(rec, "outcome", "") or getattr(rec, "last_line", "") or "")
         verdict = parse_review_verdict(text)
-        if verdict.status != "succeeded" or verdict.verdict != "approve" or not verdict.pr_number:
+        if verdict.status != "succeeded" or not verdict.pr_number or not verdict.head_sha:
             continue
-        if not verdict.head_sha:
+        if verdict.verdict not in {"approve", "changes", "escalate"}:
             continue
+        mapped = "approve" if verdict.verdict == "approve" else "reject"
         rows.append(
             HeadReviewPass(
                 pr=int(verdict.pr_number),
                 head_sha=verdict.head_sha,
-                verdict="approve",
+                verdict=mapped,
                 recorded_at=str(getattr(rec, "ended_at", "") or getattr(rec, "created_at", "") or ""),
                 reviewer_model=str(getattr(rec, "model", "") or ""),
             )
@@ -171,21 +190,23 @@ def collect_review_passes_from_comments(
             continue
         body = str(c.get("body") or "")
         verdict = parse_review_verdict(body)
-        if verdict.status == "succeeded" and verdict.verdict == "approve":
-            if verdict.pr_number and int(verdict.pr_number) != pr:
-                continue
-            if not verdict.head_sha:
-                continue
-            author_login = str((c.get("author") or {}).get("login") or "")
-            rows.append(
-                HeadReviewPass(
-                    pr=pr,
-                    head_sha=verdict.head_sha,
-                    verdict="approve",
-                    recorded_at=str(c.get("createdAt") or ""),
-                    reviewer_model=author_login,
-                )
+        if verdict.status != "succeeded" or not verdict.head_sha:
+            continue
+        if verdict.pr_number and int(verdict.pr_number) != pr:
+            continue
+        if verdict.verdict not in {"approve", "changes", "escalate"}:
+            continue
+        mapped = "approve" if verdict.verdict == "approve" else "reject"
+        author_login = str((c.get("author") or {}).get("login") or "")
+        rows.append(
+            HeadReviewPass(
+                pr=pr,
+                head_sha=verdict.head_sha,
+                verdict=mapped,
+                recorded_at=str(c.get("createdAt") or ""),
+                reviewer_model=author_login,
             )
+        )
     return tuple(rows)
 
 
@@ -198,18 +219,20 @@ def collect_review_passes_from_github_reviews(
     for r in reviews:
         if not isinstance(r, Mapping):
             continue
-        if str(r.get("state") or "").upper() != "APPROVED":
+        state = str(r.get("state") or "").upper()
+        if state not in {"APPROVED", "CHANGES_REQUESTED"}:
             continue
         commit = r.get("commit") or {}
         sha = str(commit.get("oid") or "") if isinstance(commit, Mapping) else ""
         if not sha:
             continue
+        mapped = "approve" if state == "APPROVED" else "reject"
         author_login = str((r.get("author") or {}).get("login") or "")
         rows.append(
             HeadReviewPass(
                 pr=pr,
                 head_sha=sha,
-                verdict="approve",
+                verdict=mapped,
                 recorded_at=str(r.get("submittedAt") or ""),
                 reviewer_model=author_login,
             )

@@ -133,16 +133,8 @@ def arm_eligibility_reason(
     checks_state: str,
     files_complete: bool,
 ) -> tuple[str, str]:
-    """Return (eligibility, detail): reviewed | no_approval_* (docs/tests-only bypass removed)."""
+    """Return (eligibility, detail): reviewed | no_approval (exact-head PASS required)."""
+    _ = (file_paths, additions, deletions, line_cap, labels, checks_state, files_complete)
     if str(review_decision or "").upper() == "APPROVED":
         return "reviewed", "review_decision_approved"
-    low = classify_docs_tests_only_arm(
-        file_paths=file_paths,
-        additions=additions,
-        deletions=deletions,
-        line_cap=line_cap,
-        labels=labels,
-        checks_state=checks_state,
-        files_complete=files_complete,
-    )
-    return "no_approval", low.detail
+    return "no_approval", "exact_head_pass_required"

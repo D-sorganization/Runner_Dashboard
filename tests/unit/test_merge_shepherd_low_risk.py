@@ -102,7 +102,7 @@ def test_arm_eligibility_reviewed_vs_docs_only() -> None:
         files_complete=True,
     )
     assert kind == "no_approval"
-    assert detail == "docs_tests_only"
+    assert detail == "exact_head_pass_required"
 
     kind, detail = arm_eligibility_reason(
         review_decision=None,
@@ -115,4 +115,4 @@ def test_arm_eligibility_reviewed_vs_docs_only() -> None:
         files_complete=True,
     )
     assert kind == "no_approval"
-    assert "mixed_paths" in detail
+    assert detail == "exact_head_pass_required"

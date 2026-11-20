@@ -24,7 +24,27 @@ def _pass(pr: int, sha: str, *, recorded_at: str = "2026-11-10T12:00:00+00:00") 
 
 
 def test_head_sha_matches_accepts_short_prefix() -> None:
-    assert head_sha_matches("0000ab01", "0000ab0100000000000000000000000000000000")
+    head = "0000ab0100000000000000000000000000000000"
+    assert head_sha_matches("0000ab01", head, known_shas=(head,))
+
+
+def test_head_sha_matches_rejects_ambiguous_prefix() -> None:
+    head_a = "abc1234" + "0" * 33
+    head_b = "abc1234" + "1" * 33
+    assert not head_sha_matches("abc1234", head_a, known_shas=(head_a, head_b))
+
+
+def test_pass_at_head_rejects_when_later_rejection_at_same_head() -> None:
+    ok, detail = pass_at_head(
+        [
+            HeadReviewPass(1, "sha1full", "approve", "2026-11-10T12:00:00+00:00"),
+            HeadReviewPass(1, "sha1full", "reject", "2026-11-10T13:00:00+00:00"),
+        ],
+        pr=1,
+        head_sha="sha1full",
+        now=datetime(2026, 11, 10, 14, tzinfo=UTC),
+    )
+    assert not ok and detail == "rejected_at_head"
 
 
 def test_pass_at_head_rejects_wrong_sha() -> None:
@@ -43,6 +63,24 @@ def test_pass_at_head_rejects_stale_pass() -> None:
         ttl_hours=DEFAULT_REVIEW_PASS_TTL_HOURS,
     )
     assert not ok and detail == "stale_unverified"
+
+
+def test_shepherd_arm_eligibility_blocks_needs_owner_label() -> None:
+    kind, detail = shepherd_arm_eligibility(
+        review_decision="APPROVED",
+        file_paths=["docs/a.md"],
+        additions=1,
+        deletions=0,
+        line_cap=300,
+        labels=("needs-owner",),
+        checks_state="SUCCESS",
+        files_complete=True,
+        pr_number=11,
+        head_sha="a" * 40,
+        review_passes=[_pass(11, "a" * 40)],
+        now=datetime(2026, 11, 10, 13, tzinfo=UTC),
+    )
+    assert kind == "no_approval" and detail == "blocked_label"
 
 
 def test_shepherd_arm_eligibility_docs_only_without_hub_pass() -> None:
