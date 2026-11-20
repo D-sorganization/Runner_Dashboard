@@ -60,6 +60,7 @@ configure_runner() {
     local env_file="${runner_dir}/.env"
     local cache_dir="${runner_dir}/${RUNNER_PIPCACHE_SUBDIR}"
     local wanted="PIP_CACHE_DIR=${cache_dir}"
+    local uv_dir="${runner_dir}/_work/_uv-cache" conda_dir="${runner_dir}/_work/_conda-pkgs"
     if [[ ! -d "$runner_dir" || ! -x "${runner_dir}/run.sh" && ! -d "${runner_dir}/bin" ]]; then
         log "skip ${runner_dir}: not a runner directory"
         RESULT=skipped
@@ -69,7 +70,9 @@ configure_runner() {
     if [[ -f "$env_file" ]]; then
         current="$(grep -E '^PIP_CACHE_DIR=' "$env_file" | tail -1 || true)"
     fi
-    if [[ "$current" == "$wanted" && -d "$cache_dir" ]]; then
+    if [[ "$current" == "$wanted" && -d "$cache_dir" && -d "$uv_dir" && -d "$conda_dir" ]] \
+        && grep -Fxq "UV_CACHE_DIR=${uv_dir}" "$env_file" \
+        && grep -Fxq "CONDA_PKGS_DIRS=${conda_dir}" "$env_file"; then
         log "unchanged ${runner_dir} (${wanted})"
         RESULT=unchanged
         return 0
@@ -79,13 +82,13 @@ configure_runner() {
         RESULT=changed
         return 0
     fi
-    install -d -m 0755 -o "$RUNNER_USER" -g "$RUNNER_USER" "$cache_dir" 2>/dev/null || mkdir -p "$cache_dir"
+    install -d -m 0755 -o "$RUNNER_USER" -g "$RUNNER_USER" "$cache_dir" "$uv_dir" "$conda_dir" 2>/dev/null || mkdir -p "$cache_dir" "$uv_dir" "$conda_dir"
     local staged
     staged="$(mktemp "${runner_dir}/.env.XXXXXX")"
     if [[ -f "$env_file" ]]; then
-        grep -vE '^PIP_CACHE_DIR=' "$env_file" > "$staged" || true
+        grep -vE '^(PIP_CACHE_DIR|UV_CACHE_DIR|CONDA_PKGS_DIRS)=' "$env_file" > "$staged" || true
     fi
-    printf '%s\n' "$wanted" >> "$staged"
+    printf '%s\n' "$wanted" "UV_CACHE_DIR=${uv_dir}" "CONDA_PKGS_DIRS=${conda_dir}" >> "$staged"
     chown "$RUNNER_USER":"$RUNNER_USER" "$staged" 2>/dev/null || true
     chmod 0644 "$staged" 2>/dev/null || true
     mv -f "$staged" "$env_file"

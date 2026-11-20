@@ -40,6 +40,12 @@ fi
 if [ -n "${PIP_CACHE_DIR:-}" ]; then
     mkdir -m 0755 -p "$PIP_CACHE_DIR" 2>/dev/null || mkdir -p "$PIP_CACHE_DIR" 2>/dev/null || true
 fi
+if [ -n "${UV_CACHE_DIR:-}" ]; then
+    mkdir -m 0755 -p "$UV_CACHE_DIR" 2>/dev/null || mkdir -p "$UV_CACHE_DIR" 2>/dev/null || true
+fi
+if [ -n "${CONDA_PKGS_DIRS:-}" ]; then
+    mkdir -m 0755 -p "$CONDA_PKGS_DIRS" 2>/dev/null || mkdir -p "$CONDA_PKGS_DIRS" 2>/dev/null || true
+fi
 
 # -- Stale-git-lock cleanup (Runner_Dashboard#640) ---------------------------
 # Before this job's actions/checkout runs, scrub leftover lock files from a
