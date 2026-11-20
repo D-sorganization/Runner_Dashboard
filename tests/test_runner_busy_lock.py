@@ -129,3 +129,16 @@ def test_scheduler_lock_signal(
     assert busy is busy_expected
     expected_lock_exists = busy_expected if cleanup_stale is True else True
     assert lock.exists() is expected_lock_exists
+
+
+@pytest.mark.parametrize("consumer", ["backend", "scheduler"])
+def test_worker_pid_reuse_with_same_command_is_stale(tmp_path: Path, monkeypatch, consumer: str) -> None:
+    proc = _fake_proc(tmp_path, {100: WORKER_CMDLINE})
+    (proc / "100" / "stat").write_text("100 (Runner.Worker) S " + "0 " * 18 + "456 0\n")
+    body = "worker_pid=100\nworker_starttime=123\n"
+    if consumer == "backend":
+        assert rbl.lock_is_stale_by_worker_pid(body, proc)
+    else:
+        scheduler = _load_scheduler()
+        monkeypatch.setattr(scheduler, "PROC_ROOT", proc)
+        assert scheduler._lock_worker_pid_stale(body)

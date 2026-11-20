@@ -1406,3 +1406,28 @@ def test_stop_unit_cli_defers_when_worker_appears_after_freeze(monkeypatch, tmp_
     )
 
     assert runner_scheduler.main() == 1
+
+
+def test_old_legacy_lock_still_defers_stop(monkeypatch, tmp_path: Path) -> None:
+    workdir = tmp_path / "runner-5"
+    workdir.mkdir()
+    lock_dir = tmp_path / "locks"
+    lock_dir.mkdir()
+    lock = lock_dir / "runner-5.lock"
+    lock.write_text("pid=101\n", encoding="utf-8")
+    os.utime(lock, (1, 1))
+    monkeypatch.setattr(runner_scheduler, "RUNNER_BUSY_LOCK_DIR", lock_dir)
+    assert runner_scheduler.runner_busy_via_lock(workdir, cleanup_stale=True)
+    assert lock.exists()
+
+
+def test_brick_apply_target_never_mutates(monkeypatch) -> None:
+    monkeypatch.setattr(runner_scheduler.platform, "node", lambda: "Brick.example")
+    monkeypatch.setattr(sys, "argv", [str(SCHEDULER_PATH), "--apply", "--target", "2"])
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Brick must not execute scheduler operations")
+
+    monkeypatch.setattr(runner_scheduler, "load_config", forbidden)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", forbidden)
+    assert runner_scheduler.main() != 0
