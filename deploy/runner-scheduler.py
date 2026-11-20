@@ -808,7 +808,7 @@ def active_target_override() -> tuple[int | None, str | None, dict | None]:
     return runners, f"target-override ({actor})", record
 
 
-def effective_capacity(config: dict, target: int | None) -> tuple[int, str]:
+def effective_capacity(config: dict, target: int | None, *, revoke_override: bool = True) -> tuple[int, str]:
     """Desired runner count; an active maintenance hold overrides everything with 0."""
     if maintenance_active():
         return 0, "maintenance-drain"
@@ -827,7 +827,16 @@ def effective_capacity(config: dict, target: int | None) -> tuple[int, str]:
         )
     else:
         desired, reason = desired_capacity(config, None)
-    return apply_resource_floor(config, desired, reason)
+    desired, reason = apply_resource_floor(config, desired, reason)
+    if (
+        persisted is not None
+        and revoke_override
+        and ((DISK_FLOOR_LATCH_PATH.exists() and "disk_free=" in reason) or " + host-pressure (" in reason)
+    ):
+        if not target_contract.clear_target_override():
+            raise OSError("cannot revoke target override while resource guard is latched")
+        log.warning("revoked persisted target override while resource guard is latched")
+    return desired, reason
 
 
 def run_maintenance_drain(units: list[RunnerUnit], timeout: float) -> dict:
@@ -962,7 +971,7 @@ def main() -> int:
         if args.reboot:
             maintenance_report["reboot"] = reboot_if_drained(maintenance_report)
     else:
-        desired, reason = effective_capacity(config, args.target)
+        desired, reason = effective_capacity(config, args.target, revoke_override=not dry_run)
         actions = apply_capacity(units, desired, dry_run=dry_run)
         stopped = {action["unit"] for action in actions if action["action"] == "stop"}
         remaining = [replace(unit, active=False) if unit.unit in stopped else unit for unit in units]
