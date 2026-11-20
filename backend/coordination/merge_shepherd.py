@@ -178,33 +178,42 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
             ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.ALREADY_ARMED, priority=priority
         )
 
-    exact_head_detail = ""
-    if candidate.head_sha:
-        line_cap = candidate.line_cap or DEFAULT_LOW_RISK_LINE_CAP
-        eligibility, pass_detail = shepherd_arm_eligibility(
-            review_decision=candidate.review_decision or None,
-            file_paths=candidate.file_paths,
-            additions=candidate.additions,
-            deletions=candidate.deletions,
-            line_cap=line_cap,
-            labels=candidate.labels,
-            checks_state=candidate.checks_status,
-            files_complete=candidate.files_complete,
-            pr_number=pr_num,
-            head_sha=candidate.head_sha,
-            review_passes=candidate.review_passes,
-            review_pass_ttl_hours=candidate.review_pass_ttl_hours,
+    head_sha = str(candidate.head_sha or "").strip()
+    if not head_sha:
+        return ShepherdDecision(
+            ShepherdAction.SKIP,
+            pr_num,
+            repo,
+            reason=IneligibleReason.NO_EXACT_HEAD_PASS,
+            detail="missing_pass_at_head",
+            priority=priority,
         )
-        if eligibility != "reviewed":
-            return ShepherdDecision(
-                ShepherdAction.SKIP,
-                pr_num,
-                repo,
-                reason=IneligibleReason.NO_EXACT_HEAD_PASS,
-                detail=pass_detail,
-                priority=priority,
-            )
-        exact_head_detail = pass_detail
+
+    line_cap = candidate.line_cap or DEFAULT_LOW_RISK_LINE_CAP
+    eligibility, pass_detail = shepherd_arm_eligibility(
+        review_decision=candidate.review_decision or None,
+        file_paths=candidate.file_paths,
+        additions=candidate.additions,
+        deletions=candidate.deletions,
+        line_cap=line_cap,
+        labels=candidate.labels,
+        checks_state=candidate.checks_status,
+        files_complete=candidate.files_complete,
+        pr_number=pr_num,
+        head_sha=head_sha,
+        review_passes=candidate.review_passes,
+        review_pass_ttl_hours=candidate.review_pass_ttl_hours,
+    )
+    if eligibility != "reviewed":
+        return ShepherdDecision(
+            ShepherdAction.SKIP,
+            pr_num,
+            repo,
+            reason=IneligibleReason.NO_EXACT_HEAD_PASS,
+            detail=pass_detail,
+            priority=priority,
+        )
+    exact_head_detail = pass_detail
 
     flag = get_auto_merge_flag(repo)
     arm_detail = exact_head_detail or f"Arm with {flag}"
