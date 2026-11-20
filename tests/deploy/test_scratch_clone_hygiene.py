@@ -13,7 +13,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import agent_active_workdirs
 import pytest
 import scratch_clone_hygiene as scratch
 
@@ -23,7 +22,7 @@ _SCRIPT = Path(__file__).resolve().parents[2] / "deploy" / "prune_agent_worktree
 
 @pytest.fixture(autouse=True)
 def _no_live_staff_sessions(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(agent_active_workdirs, "active_staff_workdirs", lambda: set())
+    monkeypatch.setattr(scratch, "active_staff_workdirs", lambda: set())
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -210,7 +209,7 @@ def test_cli_reports_scratch_roots_only_when_asked(
     spec.loader.exec_module(cli)
     monkeypatch.setattr(cli, "discover_repo_checkouts", lambda _extra: [])
     monkeypatch.setattr(scratch, "process_working_directories", lambda: set())
-    monkeypatch.setattr(agent_active_workdirs, "active_staff_workdirs", lambda: set())
+    monkeypatch.setattr(scratch, "active_staff_workdirs", lambda: set())
     before = sorted(p.name for p in scratch_root["root"].iterdir())
 
     assert cli.main([]) == 0
