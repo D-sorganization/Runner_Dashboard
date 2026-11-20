@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from coordination import claims
+from time_utils import utc_now_iso
 
 DEFAULT_TTL_SECONDS = 45.0
 DEFAULT_BUDGET_SECONDS = 8.0
@@ -141,17 +142,13 @@ def _cache_key(repo: str, issue: int) -> str:
     return f"{repo.casefold()}#{issue}"
 
 
-def _iso_now() -> str:
-    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
-
-
 def _loader(repo: str, issue: int) -> dict[str, Any]:
     return claims.check(repo, issue)
 
 
 def _compute(repo: str, issue: int, generation: int) -> _CacheEntry:
     payload = _loader(repo, issue)
-    return _CacheEntry(payload=payload, as_of=_iso_now(), completed_mono=_clock(), generation=generation)
+    return _CacheEntry(payload=payload, as_of=utc_now_iso(), completed_mono=_clock(), generation=generation)
 
 
 def _drop_inflight(key: str, future: Future[_CacheEntry]) -> None:
