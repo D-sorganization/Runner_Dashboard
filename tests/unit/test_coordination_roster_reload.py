@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 from pathlib import Path
 
@@ -68,4 +69,41 @@ def test_roster_does_not_reread_rm_inside_check_interval(rm_tree: FakeRM, monkey
 
     assert roster_mod.agent_ids()
     assert roster_mod.agent_ids()
+    assert len(calls) == 1
+
+
+def test_git_head_timeout_falls_back_to_mtime_fingerprint(rm_tree: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    real_run = subprocess.run
+
+    def git_timeout(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        argv = args[0] if args else kwargs.get("args")
+        if argv and list(argv)[0:2] == ["git", "-C"]:
+            raise subprocess.TimeoutExpired(cmd=list(argv), timeout=float(kwargs.get("timeout", 10)))
+        return real_run(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(subprocess, "run", git_timeout)
+    now = _freeze_clock(monkeypatch)
+    first = roster_mod.agent_ids()
+    assert "gemini" in first
+    now[0] += roster_mod.CHECK_INTERVAL + 1
+    assert roster_mod.agent_ids() == first
+
+
+def test_past_check_interval_unchanged_fingerprint_skips_read_rm(
+    rm_tree: FakeRM, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = _freeze_clock(monkeypatch)
+    calls: list[int] = []
+    original = roster_mod._read_rm
+
+    def counting_read() -> tuple[str, ...] | None:
+        calls.append(1)
+        return original()
+
+    monkeypatch.setattr(roster_mod, "_read_rm", counting_read)
+    roster_mod.reset_cache()
+
+    roster_mod.agent_ids()
+    now[0] += roster_mod.CHECK_INTERVAL + 1
+    roster_mod.agent_ids()
     assert len(calls) == 1

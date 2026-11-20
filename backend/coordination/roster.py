@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import threading
 import time
@@ -33,6 +34,7 @@ STATIC_ROSTER: tuple[str, ...] = (
 )  # fmt: skip
 FALLBACK_SECONDS = 300.0
 CHECK_INTERVAL = 60.0
+GIT_HEAD_TIMEOUT_SECONDS = 10.0
 _READ = "import json; from shared_scripts.agent_identity import AGENT_IDS; print(json.dumps(list(AGENT_IDS)))"
 
 _clock = time.monotonic
@@ -50,14 +52,17 @@ def reset_cache() -> None:
 
 
 def _git_head(root: Path) -> str:
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0", GCM_INTERACTIVE="never")
     try:
         return subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
+            env=env,
             check=True,
             capture_output=True,
             text=True,
+            timeout=GIT_HEAD_TIMEOUT_SECONDS,
         ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return ""
 
 
