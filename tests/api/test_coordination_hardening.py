@@ -280,10 +280,14 @@ def test_agent_outside_rm_roster_is_422(rm: FakeRM, client: TestClient) -> None:
 
 
 @pytest.mark.unit
-def test_roster_is_read_from_rm_once_and_falls_back_to_static(rm: FakeRM) -> None:
+def test_roster_is_read_from_rm_once_and_falls_back_to_static(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    now = [1000.0]
+    monkeypatch.setattr(roster_mod, "_clock", lambda: now[0])
     assert "gemini" in roster_mod.agent_ids() and "local" not in roster_mod.agent_ids()
     rm.set_roster(("codex",))
-    assert "gemini" in roster_mod.agent_ids()  # cached
+    assert "gemini" in roster_mod.agent_ids()  # still inside CHECK_INTERVAL
+    now[0] += roster_mod.CHECK_INTERVAL + 1
+    assert roster_mod.agent_ids() == ("codex",)
     roster_mod.reset_cache()
     rm.set_roster(None)
     fallback = roster_mod.agent_ids()
