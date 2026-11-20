@@ -20,6 +20,7 @@ from coordination.merge_shepherd import (  # noqa: E402
     is_pr_held,
     rank_candidates_for_shepherding,
 )
+from coordination.merge_shepherd_exact_head import HeadReviewPass  # noqa: E402
 
 
 @pytest.mark.unit
@@ -116,6 +117,41 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
         c3 = PRCandidate("RD", 102, is_behind=True)
         ranked = rank_candidates_for_shepherding([c1, c2, c3])
         self.assertEqual([d.pr_number for d in ranked], [101, 100, 102])
+
+    def test_evaluate_wires_shepherd_arm_eligibility_when_head_sha_set(self) -> None:
+        head = "abcd1234" * 5
+        missing_pass = PRCandidate(
+            "Runner_Dashboard",
+            4573,
+            checks_status="SUCCESS",
+            head_sha=head,
+            file_paths=("backend/x.py",),
+            files_complete=True,
+        )
+        skip = evaluate_pr_shepherd_eligibility(missing_pass)
+        self.assertEqual(
+            (skip.action, skip.reason, skip.detail),
+            (ShepherdAction.SKIP, IneligibleReason.NO_EXACT_HEAD_PASS, "missing_pass_at_head"),
+        )
+        with_pass = PRCandidate(
+            "Runner_Dashboard",
+            4573,
+            checks_status="SUCCESS",
+            head_sha=head,
+            file_paths=("backend/x.py",),
+            files_complete=True,
+            review_passes=(
+                HeadReviewPass(
+                    pr=4573,
+                    head_sha=head,
+                    verdict="approve",
+                    recorded_at="2026-11-20T10:00:00+00:00",
+                ),
+            ),
+        )
+        arm = evaluate_pr_shepherd_eligibility(with_pass)
+        self.assertEqual(arm.action, ShepherdAction.AUTO_ARM)
+        self.assertIn("exact_head_pass", arm.detail)
 
 
 if __name__ == "__main__":
