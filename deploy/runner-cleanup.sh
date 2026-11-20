@@ -422,6 +422,8 @@ cleanup_runner_workdir() {
         ! -name '_tool' \
         ! -name '_tmp' \
         ! -name '_pip-cache' \
+        ! -name '_uv-cache' \
+        ! -name '_conda-pkgs' \
         -mtime +"$RUNNER_WORK_DAYS" \
         -print0 | while IFS= read -r -d '' path; do
             delete_path "$path"
