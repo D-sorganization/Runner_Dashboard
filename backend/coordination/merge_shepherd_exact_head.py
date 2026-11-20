@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -53,7 +55,8 @@ def _parse_recorded_at(stamp: str) -> datetime | None:
     if not text:
         return None
     try:
-        return datetime.fromisoformat(text.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        return parsed.astimezone(UTC) if parsed.tzinfo is not None else None
     except ValueError:
         return None
 
@@ -73,20 +76,54 @@ def pass_at_head(
     ]
     if not at_head:
         return False, "missing_pass_at_head"
-    latest = max(at_head, key=lambda row: row.recorded_at)
+    dated = [(row, _parse_recorded_at(row.recorded_at)) for row in at_head]
+    if any(stamp is None for _, stamp in dated):
+        return False, "pass_timestamp_unparseable"
+    latest, recorded = max(
+        dated, key=lambda item: (item[1] or datetime.min.replace(tzinfo=UTC), item[0].verdict != "approve")
+    )
     if latest.verdict != "approve":
         return False, "rejected_at_head"
-    matches = [row for row in at_head if row.verdict == "approve"]
-    if not matches:
-        return False, "missing_pass_at_head"
-    latest = max(matches, key=lambda row: row.recorded_at)
-    recorded = _parse_recorded_at(latest.recorded_at)
     if recorded is None:
         return False, "pass_timestamp_unparseable"
     clock = now if now is not None else datetime.now(tz=UTC)
     if clock - recorded > timedelta(hours=max(1, ttl_hours)):
         return False, "stale_unverified"
     return True, "exact_head_pass"
+
+
+def _provider_family(provider: str) -> str:
+    from staff.review import PROVIDER_FAMILY
+
+    value = provider.strip().lower()
+    known = {*PROVIDER_FAMILY.values(), "deepseek"}
+    return PROVIDER_FAMILY.get(value, value if value in known else "")
+
+
+def _login_provider(login: str) -> str:
+    """Only known authenticated fleet App logins carry provider provenance."""
+    match = re.fullmatch(r"d-sorg(codex|claude|gemini|agy|cursor|deepseek)agent\[bot\]", login.lower())
+    return {"agy": "antigravity", "cursor": "cursor-agent"}.get(match[1], match[1]) if match else ""
+
+
+def _independent(reviewer: str, author: str) -> bool:
+    reviewer_family, author_family = _provider_family(reviewer), _provider_family(author)
+    return bool(reviewer_family and author_family and reviewer_family != author_family)
+
+
+def _run_provider(rec: object) -> str:
+    """Use the successful executor, rather than the initially requested provider."""
+    chain = getattr(rec, "provider_chain", "")
+    if chain:
+        try:
+            attempts = json.loads(chain)
+        except (ValueError, TypeError):
+            return ""
+        if not isinstance(attempts, list) or not attempts or not isinstance(attempts[-1], dict):
+            return ""
+        last = attempts[-1]
+        return str(last.get("provider") or "") if last.get("outcome") == "succeeded" else ""
+    return str(getattr(rec, "provider", "") or "")
 
 
 def shepherd_arm_eligibility(
@@ -144,7 +181,20 @@ def collect_review_passes_from_store(
     list_runs = getattr(store, "list_runs", None)
     if not callable(list_runs):
         return ()
-    for rec in list_runs(limit=500):
+    runs = list_runs(limit=500)
+    authors: dict[int, set[str]] = {}
+    for rec in runs:
+        rec_role = str(getattr(rec, "role", ""))
+        if (
+            getattr(rec, "repo", "") != repo
+            or rec_role == role
+            or rec_role.startswith(("acceptance-review", "code-reviewer"))
+        ):
+            continue
+        pr = getattr(rec, "pr_number", None)
+        if pr:
+            authors.setdefault(int(pr), set()).add(_provider_family(_run_provider(rec)))
+    for rec in runs:
         if getattr(rec, "repo", "") != repo:
             continue
         rec_role = getattr(rec, "role", "")
@@ -158,11 +208,21 @@ def collect_review_passes_from_store(
             continue
         text = str(getattr(rec, "outcome", "") or getattr(rec, "last_line", "") or "")
         verdict = parse_review_verdict(text)
+        if verdict.status != "succeeded":
+            verdict = parse_review_verdict(str(getattr(rec, "last_line", "") or ""))
         if verdict.status != "succeeded" or not verdict.pr_number or not verdict.head_sha:
             continue
         if verdict.verdict not in {"approve", "changes", "escalate"}:
             continue
         mapped = "approve" if verdict.verdict == "approve" else "reject"
+        reviewer = _run_provider(rec)
+        author_families = authors.get(int(verdict.pr_number), set())
+        if mapped == "approve" and (
+            len(author_families) != 1 or not all(_independent(reviewer, a) for a in author_families)
+        ):
+            continue
+        if getattr(rec, "pr_number", None) not in (None, verdict.pr_number):
+            continue
         rows.append(
             HeadReviewPass(
                 pr=int(verdict.pr_number),
@@ -178,6 +238,8 @@ def collect_review_passes_from_store(
 def collect_review_passes_from_comments(
     comments: Sequence[Mapping[str, Any]],
     pr: int,
+    *,
+    author_login: str = "",
 ) -> tuple[HeadReviewPass, ...]:
     """Parse PASS records from PR issue comments carrying STAFF_RESULT approve verdicts."""
     from staff.review import parse_review_verdict
@@ -187,6 +249,12 @@ def collect_review_passes_from_comments(
         if not isinstance(c, Mapping):
             continue
         body = str(c.get("body") or "")
+        # This is the publisher's visible comment format, not a STAFF_RESULT line.
+        if "Independent Exact-Head Acceptance Review" in body:
+            match = re.search(r"\b(PASS|FIX-NEEDED)\s+@([0-9a-fA-F]{7,40})\b", body)
+            if match:
+                decision = "approve" if match[1] == "PASS" else "changes"
+                body = f"STAFF_RESULT: review {decision} #{pr} @{match[2]}"
         verdict = parse_review_verdict(body)
         if verdict.status != "succeeded" or not verdict.head_sha:
             continue
@@ -195,14 +263,16 @@ def collect_review_passes_from_comments(
         if verdict.verdict not in {"approve", "changes", "escalate"}:
             continue
         mapped = "approve" if verdict.verdict == "approve" else "reject"
-        author_login = str((c.get("author") or {}).get("login") or "")
+        reviewer_login = str((c.get("author") or {}).get("login") or "")
+        if mapped == "approve" and not _independent(_login_provider(reviewer_login), _login_provider(author_login)):
+            continue
         rows.append(
             HeadReviewPass(
                 pr=pr,
                 head_sha=verdict.head_sha,
                 verdict=mapped,
                 recorded_at=str(c.get("createdAt") or ""),
-                reviewer_model=author_login,
+                reviewer_model=reviewer_login,
             )
         )
     return tuple(rows)
@@ -211,6 +281,8 @@ def collect_review_passes_from_comments(
 def collect_review_passes_from_github_reviews(
     reviews: Sequence[Mapping[str, Any]],
     pr: int,
+    *,
+    author_login: str = "",
 ) -> tuple[HeadReviewPass, ...]:
     """Build PASS records from formal GitHub PR reviews in state APPROVED with commit SHA."""
     rows: list[HeadReviewPass] = []
@@ -225,14 +297,16 @@ def collect_review_passes_from_github_reviews(
         if not sha:
             continue
         mapped = "approve" if state == "APPROVED" else "reject"
-        author_login = str((r.get("author") or {}).get("login") or "")
+        reviewer_login = str((r.get("author") or {}).get("login") or "")
+        if mapped == "approve" and not _independent(_login_provider(reviewer_login), _login_provider(author_login)):
+            continue
         rows.append(
             HeadReviewPass(
                 pr=pr,
                 head_sha=sha,
                 verdict=mapped,
                 recorded_at=str(r.get("submittedAt") or ""),
-                reviewer_model=author_login,
+                reviewer_model=reviewer_login,
             )
         )
     return tuple(rows)

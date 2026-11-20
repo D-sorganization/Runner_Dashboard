@@ -63,11 +63,26 @@ def test_resolve_merge_shepherd_review_store_uses_runstore_path_not_repo_checkou
             target_ref="42",
             prompt="review",
             status="succeeded",
-            outcome="STAFF_RESULT: review approve #42 @0000ab010000",
+            outcome="review approve #42 @0000ab010000",
             ended_at="2026-11-10T12:00:00+00:00",
         )
     )
 
+    store.create_run(
+        RunRecord(
+            id="author-run-1",
+            role="implementer",
+            provider="claude",
+            model="claude-test",
+            machine="hub",
+            repo="Runner_Dashboard",
+            target_kind="issue",
+            target_ref="42",
+            prompt="implement",
+            status="succeeded",
+            pr_number=42,
+        )
+    )
     repo_only = (
         repo_root / "data" / "staff_runs.sqlite3",
         repo_root / "staff_runs.sqlite3",

@@ -151,6 +151,7 @@ class _RunStore:
             SimpleNamespace(
                 repo=_REPO,
                 role="code-reviewer",
+                provider="codex",
                 status=status,
                 outcome="",
                 last_line=last_line,
@@ -162,7 +163,7 @@ class _RunStore:
         ]
 
     def list_runs(self, limit: int = 500) -> list[Any]:
-        return list(self._runs)
+        return [*self._runs, SimpleNamespace(repo=_REPO, role="implementer", pr_number=_PR, provider="claude")]
 
     def list_runs_for_target(self, *, role: str, repo: str, target_ref: str) -> list[Any]:
         return list(self._runs)
