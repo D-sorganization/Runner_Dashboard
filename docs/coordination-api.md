@@ -166,7 +166,14 @@ precondition (409) as `messages`.
 
 ### `GET /api/coordination/claims?repo=&issue=`
 
-RM `check_agent_claim`: `{available, held, agent, session, reason, expires_at, generated_at}`. RM fails open
+RM `check_agent_claim`: `{available, held, agent, session, reason, expires_at, as_of, stale, age_sec?, generated_at}`.
+Fresh reads set `stale: false`; `as_of` is when the underlying RM check finished. Concurrent callers for the same
+`repo#issue` share one subprocess; results stay cached briefly (default ~45s, env
+`CLAIMS_CHECK_CACHE_TTL_SECONDS`). If a fresh read cannot finish within the request budget (default ~8s,
+`CLAIMS_CHECK_REQUEST_BUDGET_SECONDS`), the hub returns the last known payload with `stale: true`, `as_of`, and
+`age_sec`. When no prior payload exists yet, the hub returns **503** with `Retry-After` and guidance to retry once
+with jitter (not lockstep). Claim/release writes and presence release invalidate the cache for that issue or repo.
+RM fails open
 (`held: false, reason: "error:<Exception>"`) when GitHub cannot be read; the API reports that as
 `available: false`, never as a free issue. `held: true` may carry an empty `agent` (`do-not-automate` label, an
 open PR or a branch referencing the issue).

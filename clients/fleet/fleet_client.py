@@ -644,7 +644,22 @@ class FleetClient(
 
     def check_claim(self, repo: str, issue: int) -> Any:
         params = {"repo": _match(PATTERNS.repo, repo, "repo"), "issue": _positive_int(issue, "issue")}
-        return self.request("GET", "/api/coordination/claims", params=params)
+        return self._check_claim_with_jitter(params)
+
+    def _check_claim_with_jitter(self, params: dict[str, Any]) -> Any:
+        """One bounded retry on 503 or timeout (#4592); jitter avoids lockstep client herds."""
+        import random
+
+        for attempt in range(2):
+            try:
+                return self.request("GET", "/api/coordination/claims", params=params)
+            except FleetAPIError as exc:
+                retryable = exc.status in (503, 0, 504)
+                if attempt == 0 and retryable:
+                    time.sleep(0.2 + random.random() * 0.4)
+                    continue
+                raise
+        raise AssertionError("unreachable")
 
     def claim(
         self, repo: str, issue: int, intent: str | None = None, agent: str | None = None, session: str | None = None

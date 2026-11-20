@@ -129,9 +129,12 @@ def install(
     monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
     monkeypatch.setattr(staff_fleet, "peer_nodes", lambda: {})
     monkeypatch.setattr(identity.identity_manager, "verify_token", lambda raw: principals.get(raw))
+    from coordination import claims_check_cache as claims_cache_mod  # noqa: PLC0415
+
     resets = (
         store_mod.reset_store, runner_mod.reset_runner, scheduler_mod.reset_scheduler,
         board_mod.reset_cache, roster_mod.reset_cache, claims_mod.reset_locks,
+        claims_cache_mod.reset,
     )  # fmt: skip
     from coordination import jobs as jobs_mod  # noqa: PLC0415
 

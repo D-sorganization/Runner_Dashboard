@@ -41,6 +41,7 @@ from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
 from coordination.claims import AgingPrBlockedError, ClaimHeldError
+from coordination.claims_check_cache import ClaimCheckUnavailable
 from coordination.fleet_efficiency import BriefValidationError, fleet_efficiency_metadata
 from coordination.jobs import JobIneligibleError, StaleFenceError
 from coordination.models import (
@@ -140,7 +141,15 @@ async def get_claim(
     issue: int = Query(gt=0),
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
-    return await run_in_threadpool(service.check_claim, _repo(repo) or "", issue)
+    try:
+        return await run_in_threadpool(service.check_claim, _repo(repo) or "", issue)
+    except ClaimCheckUnavailable as exc:
+        retry = max(1, int(exc.retry_after))
+        raise HTTPException(
+            status_code=503,
+            detail=exc.to_detail(),
+            headers={"Retry-After": str(retry)},
+        ) from exc
 
 
 @router.post("/claims")
