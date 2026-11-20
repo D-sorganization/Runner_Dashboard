@@ -319,3 +319,24 @@ def test_disk_guard_never_uses_aggressive_docker_at_high_pressure(tmp_path: Path
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "docker_aggressive=0" in result.stdout
+
+
+@pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
+def test_brick_cleanup_exits_before_writes(tmp_path: Path) -> None:
+    log_dir = tmp_path / "logs"
+    env = os.environ.copy()
+    env.update({"LOG_DIR": as_bash_path(log_dir), "USER": "test"})
+    result = subprocess.run(
+        [
+            BASH,
+            "-c",
+            'hostname() { printf "Brick\\n"; }; export -f hostname; exec bash "$1" --disk-guard',
+            "test",
+            as_bash_path(CLEANUP),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2, result.stderr
+    assert not log_dir.exists()
