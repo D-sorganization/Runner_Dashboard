@@ -170,16 +170,25 @@ def _check_incomplete(data: dict[str, Any]) -> str | None:
 
 
 def _is_non_reserving_session(sess: dict[str, Any]) -> bool:
-    """Return True when a board session is blocked, handed off, or status-only without work paths."""
+    """Return True when a board session is blocked, handed off without paths, or status-only."""
     goals = sess.get("goals")
+    paths = sess.get("paths") or []
+    branch = str(sess.get("branch") or "").strip().lower()
+
     if isinstance(goals, dict):
-        non_reserving = {"blocked", "handoff", "released", "completed", "done", "idle", "stopped"}
+        terminal_states = {"blocked", "released", "completed", "done", "idle", "stopped"}
         for key in ("state", "status"):
             val = str(goals.get(key) or "").strip().casefold()
-            if val in non_reserving or "handoff" in val.split():
+            if val in terminal_states:
                 return True
-    branch = str(sess.get("branch") or "").strip().lower()
-    paths = sess.get("paths") or []
+
+        # Departing handoff exception: restricted to sessions without active work paths
+        if not paths:
+            for key in ("state", "status"):
+                val = str(goals.get(key) or "").strip().casefold()
+                if val == "handoff" or "handoff" in val.split():
+                    return True
+
     return not paths and branch in ("", "none")
 
 

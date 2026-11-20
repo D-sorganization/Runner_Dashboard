@@ -429,8 +429,16 @@ def test_explicit_release_wins_over_leftover_presence_for_claim_override(
     }
     release = {"version": 1, "id": "r1", "kind": "release", "session": "s1", "repo": "Runner_Dashboard", "at": at_str}
     comments = [
-        {"id": 1, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(presence)}\n```"},
-        {"id": 2, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(release)}\n```"},
+        {
+            "id": 1,
+            "user": {"login": "legit"},
+            "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(presence)}\n```",
+        },
+        {
+            "id": 2,
+            "user": {"login": "legit"},
+            "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(release)}\n```",
+        },
     ]
     board_state = paginate_board_comments(lambda p, n: comments if p == 1 else [], now=now)
     assert board_state["sessions"] == []
@@ -477,10 +485,7 @@ def test_predecessor_over_page_cap_bounded_read_stays_complete(monkeypatch: pyte
             assert page_m is not None
             page = int(page_m.group(1))
             calls[page] = calls.get(page, 0) + 1
-            return [
-                _noise_comment((page - 1) * 100 + i, author=f"u{i}")
-                for i in range(1, 101)
-            ]
+            return [_noise_comment((page - 1) * 100 + i, author=f"u{i}") for i in range(1, 101)]
         if "/issues/3037/comments" in path:
             return [_presence_comment(1, session="on-new-board", issue=2657)]
         raise AssertionError(path)
@@ -796,3 +801,41 @@ def test_board_claim_override_completed_handoff_without_paths_clears_custody(
     )
     res = claims._board_claim_override("Runner_Dashboard", 4576)
     assert res is not None and res["held"] is True and res["session"] == "codex-cli-oglaptop-20261119-190000"
+
+    # Active session mentioning handoff in status or prose must remain held when paths exist
+    active_handoff_prose_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4576,
+        "agent": "codex",
+        "session": "codex-cli-oglaptop-20261119-191000",
+        "branch": "fix/4576-safety",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"state": "active", "status": "implementing handoff validation"},
+        "expires": "2026-11-20T05:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {"available": True, "complete": True, "sessions": [active_handoff_prose_session], "warnings": []},
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4576)
+    assert res is not None and res["held"] is True and res["session"] == "codex-cli-oglaptop-20261119-191000"
+
+    # Active session with handoff pending acknowledgement must also remain held
+    active_pending_ack_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4576,
+        "agent": "codex",
+        "session": "codex-cli-oglaptop-20261119-192000",
+        "branch": "fix/4576-safety",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"status": "handoff pending acknowledgement"},
+        "expires": "2026-11-20T05:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {"available": True, "complete": True, "sessions": [active_pending_ack_session], "warnings": []},
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4576)
+    assert res is not None and res["held"] is True and res["session"] == "codex-cli-oglaptop-20261119-192000"
