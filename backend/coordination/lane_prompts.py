@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-
-from coordination.fleet_efficiency import enrich_lane_receipt
 import threading
 import time
 import uuid
 from pathlib import Path
 from typing import Any
+
+from coordination.fleet_efficiency import enrich_lane_receipt
 
 _DEFAULT_TTL_SEC = 3600
 _BUSY_RETRIES = 8
