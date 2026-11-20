@@ -749,3 +749,50 @@ def test_board_claim_override_status_only_and_blocked_heartbeats_do_not_reserve_
     assert res["available"] is False
     assert res["held"] is None
     assert "incomplete" in res["reason"]
+
+
+@pytest.mark.unit
+def test_board_claim_override_completed_handoff_without_paths_clears_custody(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Departing handoff status with a branch and no work paths must clear custody without clearing active claims."""
+    from coordination import claims
+
+    monkeypatch.setattr(
+        "coordination.claims.board_config", lambda: ("D-sorganization/Repository_Management", 3037, 3, [3029])
+    )
+
+    handoff_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4576,
+        "agent": "codex",
+        "session": "codex-cli-oglaptop-20261119-181333",
+        "branch": "codex-oglaptop-2/4576-runner-safety",
+        "paths": [],
+        "goals": {"status": "partial handoff"},
+        "expires": "2026-11-20T04:19:42.135878+00:00",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {"available": True, "complete": True, "sessions": [handoff_session], "warnings": []},
+    )
+    assert claims._board_claim_override("Runner_Dashboard", 4576) is None
+
+    active_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4576,
+        "agent": "codex",
+        "session": "codex-cli-oglaptop-20261119-190000",
+        "branch": "codex-oglaptop-2/4576-runner-safety",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"status": "implementing remaining safety criteria"},
+        "expires": "2026-11-20T05:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {"available": True, "complete": True, "sessions": [active_session], "warnings": []},
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4576)
+    assert res is not None and res["held"] is True and res["session"] == "codex-cli-oglaptop-20261119-190000"
