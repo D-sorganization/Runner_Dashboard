@@ -169,6 +169,29 @@ def _check_incomplete(data: dict[str, Any]) -> str | None:
     return None
 
 
+def _is_non_reserving_session(sess: dict[str, Any]) -> bool:
+    """Return True when a board session is blocked, handed off without paths, or status-only."""
+    goals = sess.get("goals")
+    paths = sess.get("paths") or []
+    branch = str(sess.get("branch") or "").strip().lower()
+
+    if isinstance(goals, dict):
+        terminal_states = {"blocked", "released", "completed", "done", "idle", "stopped"}
+        for key in ("state", "status"):
+            val = str(goals.get(key) or "").strip().casefold()
+            if val in terminal_states:
+                return True
+
+        # Departing handoff exception: restricted to sessions without active work paths
+        if not paths:
+            for key in ("state", "status"):
+                val = str(goals.get(key) or "").strip().casefold()
+                if val == "handoff" or "handoff" in val.split():
+                    return True
+
+    return not paths and branch in ("", "none")
+
+
 def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
     state = board_mod.cached_board_state()
     if state is None and board_mod.board_page_fetcher is not None:
@@ -191,12 +214,7 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
     b_iss = board_config()[1]
     for sess in state.get("sessions") or []:
         if str(sess.get("repo") or "").casefold() == repo.casefold() and sess.get("issue") == issue:
-            goals = sess.get("goals")
-            if isinstance(goals, dict) and (goals.get("state") == "blocked" or goals.get("status") == "blocked"):
-                continue
-            branch = str(sess.get("branch") or "").strip().lower()
-            paths = sess.get("paths") or []
-            if not paths and branch in ("", "none"):
+            if _is_non_reserving_session(sess):
                 continue
             return {
                 "available": True,
