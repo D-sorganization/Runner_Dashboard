@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,11 +23,13 @@ from coordination import board as board_mod
 from coordination import claims as claims_mod
 from coordination.board import BOARD_COMMENT_LIMIT, RMScriptError, paginate_board_comments
 from coordination.board_pagination import (
+    BOARD_PREDECESSOR_MAX_PAGES,
     MAX_EVENT_BYTES,
     _merge_paginated,
     _paginate_pages,
     _parse_comment_envelope,
     board_config,
+    default_board_page_fetcher,
 )
 from coordination.claims import ClaimHeldError
 from coordination.gh_cli import gh_api_json
@@ -463,6 +466,57 @@ def test_apply_event_midstream_conflict_not_poisoned_if_released() -> None:
 
 
 @pytest.mark.unit
+def test_predecessor_over_page_cap_bounded_read_stays_complete(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retired board #3029 (>1k comments) must not fail-closed hub reads when the TTL window is capped."""
+    pred_issue = 3029
+    calls: dict[int, int] = {}
+
+    def fake_gh(path: str) -> list[dict[str, Any]]:
+        if f"/issues/{pred_issue}/comments" in path:
+            page_m = re.search(r"(?:^|[&?])page=(\d+)", path)
+            assert page_m is not None
+            page = int(page_m.group(1))
+            calls[page] = calls.get(page, 0) + 1
+            return [
+                _noise_comment((page - 1) * 100 + i, author=f"u{i}")
+                for i in range(1, 101)
+            ]
+        if "/issues/3037/comments" in path:
+            return [_presence_comment(1, session="on-new-board", issue=2657)]
+        raise AssertionError(path)
+
+    monkeypatch.setattr("coordination.board_pagination.board_config", lambda: ("repo", 3037, 3, [pred_issue]))
+    monkeypatch.setattr("coordination.board_pagination.gh_api_json", fake_gh)
+
+    now = datetime.now(UTC)
+    # Page 0 is only scheduled when ``fetch_page`` is ``default_board_page_fetcher`` (identity).
+    result = paginate_board_comments(default_board_page_fetcher, per_page=100, max_pages=10, now=now)
+    assert result["available"] is True
+    assert result["complete"] is True
+    assert any("Board #3029" in w and "predecessor read capped" in w for w in result["replay_warnings"])
+    assert not any("Board #3029" in w for w in result["read_warnings"])
+    assert calls.get(BOARD_PREDECESSOR_MAX_PAGES) == 1
+    assert BOARD_PREDECESSOR_MAX_PAGES not in calls or calls.get(BOARD_PREDECESSOR_MAX_PAGES + 1) is None
+
+
+@pytest.mark.unit
+def test_current_board_page_cap_still_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Incomplete pagination on the active board must still fail closed (#3550)."""
+    comments = [_noise_comment(i) for i in range(1, 1001)]
+
+    def fetch_page(page: int, per_page: int) -> list[dict[str, Any]]:
+        if page == 0:
+            return []
+        start = (page - 1) * per_page
+        return comments[start : start + per_page]
+
+    monkeypatch.setattr("coordination.board_pagination.board_config", lambda: ("repo", 3037, 3, []))
+    result = paginate_board_comments(fetch_page, per_page=100, max_pages=10)
+    assert result["complete"] is False
+    assert result["comment_limit_exceeded"] is True
+
+
+@pytest.mark.unit
 def test_board_config_and_page_zero_fail_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = tmp_path / "config" / "agent_communication.json"
     cfg.parent.mkdir(parents=True)
@@ -479,8 +533,8 @@ def test_board_config_and_page_zero_fail_closed(tmp_path: Path, monkeypatch: pyt
 
     monkeypatch.setattr("coordination.board_pagination.board_config", lambda: ("repo", 1, 3, [100]))
     monkeypatch.setattr(
-        "coordination.board_pagination.gh_api_json",
-        lambda p: (_ for _ in ()).throw(RuntimeError("predecessor fetch failed")),
+        "coordination.board_pagination._read_predecessor_comments",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("predecessor fetch failed")),
     )  # noqa: E501
     st: dict[str, Any] = {
         "active": {},
