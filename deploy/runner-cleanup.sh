@@ -938,18 +938,21 @@ main() {
     used="$(root_used_percent)"
     log "runner cleanup starting root_used=${used}% root_size=$(bytes_human "$before") dry_run=$DRY_RUN"
     if [[ "$AGGRESSIVE_ON_PRESSURE" == "1" && "$used" -ge "$DISK_PRESSURE_PERCENT" ]]; then
-        log "disk pressure detected (${used}% >= ${DISK_PRESSURE_PERCENT}%); pruning docker aggressively and lowering retention windows"
+        log "disk pressure detected (${used}% >= ${DISK_PRESSURE_PERCENT}%); lowering retention windows"
         RUNNER_WORK_DAYS=0
         RUNNER_TEMP_DAYS=0
         TOOL_CACHE_DAYS=7
-        DOCKER_AGGRESSIVE=1
+        if [[ "$DISK_GUARD" != "1" ]]; then
+            DOCKER_AGGRESSIVE=1
+        fi
     fi
     cleanup_stale_busy_locks
     if [[ "$DISK_GUARD" == "1" ]]; then
         # Runner-safe fast pass: reclaim docker + journal + trim only. Never
         # touches runner units, so it can run on a frequent timer without
-        # bouncing idle runners every pass. Goes aggressive on docker when the
-        # pressure block above fired.
+        # bouncing idle runners every pass. Never inherit aggressive Docker
+        # pruning in this unattended guard, even under disk pressure.
+        DOCKER_AGGRESSIVE=0
         log "disk-guard mode: docker + tmp + gitconfig + journal + fstrim only (no runner bounce)"
         cleanup_docker
         cleanup_tmp
