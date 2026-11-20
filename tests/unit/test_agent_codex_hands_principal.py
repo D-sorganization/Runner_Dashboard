@@ -46,7 +46,7 @@ def test_agent_grok_has_grokbot_kind(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert mgr.principals["agent-grok"].assistant_kind == "grokbot"
 
 
-def test_agent_smithers_is_a_staff_chat_bot_without_writes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_agent_smithers_is_codex_with_narrow_work_item_scope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     defaults = Path(__file__).resolve().parents[2] / "config" / "agent_principals.yml"
     monkeypatch.setenv("DASHBOARD_AGENT_PRINCIPALS_FILE", str(defaults))
     id_dir = tmp_path / "id"
@@ -58,8 +58,8 @@ def test_agent_smithers_is_a_staff_chat_bot_without_writes(tmp_path: Path, monke
     merge_agent_principal_defaults(mgr)
 
     prin = mgr.principals["agent-smithers"]
-    assert prin.assistant_kind == "grokbot"
-    assert principal_has_scope(prin, "staff.chat")
+    assert prin.assistant_kind == "codex"
     assert principal_has_scope(prin, "staff.read")
-    assert not principal_has_scope(prin, "staff.holds.write")
-    assert not principal_has_scope(prin, "priorities.write")
+    assert principal_has_scope(prin, "staff.work_items.write")
+    assert not principal_has_scope(prin, "staff.chat")
+    assert not principal_has_scope(prin, "admin")

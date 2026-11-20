@@ -35,11 +35,13 @@ from typing import Any
 
 from coordination import job_releases as job_releases_mod
 from coordination import jobs as jobs_mod
+from coordination import lane_prompts as lane_prompts_mod
 from coordination import postman_runner, service
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
 from coordination.claims import AgingPrBlockedError, ClaimHeldError
+from coordination.fleet_efficiency import BriefValidationError, fleet_efficiency_metadata
 from coordination.jobs import JobIneligibleError, StaleFenceError
 from coordination.models import (
     AGENT_PATTERN,
@@ -59,6 +61,7 @@ from coordination.models import (
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from identity import require_fleet_peer
+from pydantic import BaseModel, Field
 from routers.repo_query import bare_repo_query as _repo
 
 log = logging.getLogger("dashboard.coordination")
@@ -77,6 +80,8 @@ async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str
     except service.ImpersonationError as exc:
         log.warning("coordination: %s refused for %s: %s", what, caller.label, exc)
         raise HTTPException(status_code=403, detail={"error": str(exc)}) from exc
+    except BriefValidationError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
     except RMScriptError as exc:
         log.warning("coordination: %s by %s failed: %s", what, caller.label, exc.error)
         raise HTTPException(status_code=502, detail=exc.to_detail()) from exc
@@ -186,6 +191,16 @@ async def get_job_releases(
     return await run_in_threadpool(job_releases_mod.list_job_releases, since=since, limit=limit)
 
 
+@router.get("/fleet-efficiency")
+async def get_fleet_efficiency(
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    """Read-only fleet efficiency knobs: wake coalescing, brief cap, planned reset (#4562)."""
+    from coordination.service import now_iso
+
+    return {**fleet_efficiency_metadata(), "generated_at": now_iso()}
+
+
 @router.get("/briefing")
 async def get_briefing(
     repo: str | None = Query(default=None, pattern=REPO_PATTERN),
@@ -203,3 +218,109 @@ async def get_postman_reports(
     """Read-only: the postman runs in dry run only, so ``live`` is always False."""
     reports = await run_in_threadpool(postman_runner.read_reports, None, limit)
     return {"live": False, "reports": reports}
+
+
+class LaneCheckoutBody(BaseModel):
+    session_id: str = Field(min_length=1, max_length=128, pattern=SESSION_PATTERN)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    lane_id: str | None = Field(default=None, max_length=64)
+    role: str | None = Field(default=None, max_length=64)
+    provider: str | None = Field(default=None, max_length=32)
+    host: str | None = Field(default=None, max_length=64)
+    ttl_sec: int = Field(default=3600, ge=60, le=14400)
+
+
+class LaneHeartbeatBody(BaseModel):
+    checkout_id: str = Field(min_length=1, max_length=64)
+    fence_token: int = Field(ge=1)
+    session_id: str = Field(min_length=1, max_length=128, pattern=SESSION_PATTERN)
+    ttl_sec: int = Field(default=3600, ge=60, le=14400)
+    progress: bool = False
+
+
+class LaneReleaseBody(BaseModel):
+    checkout_id: str = Field(min_length=1, max_length=64)
+    fence_token: int = Field(ge=1)
+    session_id: str = Field(min_length=1, max_length=128, pattern=SESSION_PATTERN)
+    reason: str = Field(default="completed", max_length=128)
+
+
+def _check_lane_session(caller: Caller, session_id: str) -> None:
+    """Keep lane checkout writes within the caller's authenticated session namespace."""
+    try:
+        caller.check_session(session_id)
+    except service.ImpersonationError as exc:
+        raise HTTPException(status_code=403, detail={"error": str(exc)}) from exc
+
+
+@router.get("/lane-prompts/catalog")
+async def get_lane_prompt_catalog(
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    lanes = await run_in_threadpool(lane_prompts_mod.get_lane_prompt_store().list_catalog)
+    return {"lanes": lanes}
+
+
+@router.get("/lane-prompts/health")
+async def get_lane_prompt_health(
+    stall_heartbeat_sec: int = 900,
+    stall_progress_sec: int = 1800,
+    expired_window_sec: int = 86400,
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    return await run_in_threadpool(
+        lane_prompts_mod.get_lane_prompt_store().health_summary,
+        stall_heartbeat_sec=stall_heartbeat_sec,
+        stall_progress_sec=stall_progress_sec,
+        expired_window_sec=expired_window_sec,
+    )
+
+
+@router.post("/lane-prompts/checkout")
+async def post_lane_prompt_checkout(body: LaneCheckoutBody, caller: Caller = WRITER) -> dict[str, Any]:
+    _check_lane_session(caller, body.session_id)
+    try:
+        return await run_in_threadpool(
+            lane_prompts_mod.get_lane_prompt_store().checkout,
+            session_id=body.session_id,
+            principal=caller.label.removeprefix("principal:"),
+            idempotency_key=body.idempotency_key,
+            lane_id=body.lane_id,
+            role=body.role,
+            provider=body.provider,
+            host=body.host,
+            ttl_sec=body.ttl_sec,
+        )
+    except lane_prompts_mod.LaneConflictError as exc:
+        raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
+
+
+@router.post("/lane-prompts/heartbeat")
+async def post_lane_prompt_heartbeat(body: LaneHeartbeatBody, caller: Caller = WRITER) -> dict[str, Any]:
+    _check_lane_session(caller, body.session_id)
+    try:
+        return await run_in_threadpool(
+            lane_prompts_mod.get_lane_prompt_store().heartbeat,
+            checkout_id=body.checkout_id,
+            fence_token=body.fence_token,
+            session_id=body.session_id,
+            ttl_sec=body.ttl_sec,
+            progress=body.progress,
+        )
+    except lane_prompts_mod.StaleLaneFenceError as exc:
+        raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
+
+
+@router.post("/lane-prompts/release")
+async def post_lane_prompt_release(body: LaneReleaseBody, caller: Caller = WRITER) -> dict[str, Any]:
+    _check_lane_session(caller, body.session_id)
+    try:
+        return await run_in_threadpool(
+            lane_prompts_mod.get_lane_prompt_store().release,
+            checkout_id=body.checkout_id,
+            fence_token=body.fence_token,
+            session_id=body.session_id,
+            reason=body.reason,
+        )
+    except lane_prompts_mod.StaleLaneFenceError as exc:
+        raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc

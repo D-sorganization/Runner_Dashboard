@@ -58,6 +58,11 @@ root = Path(sys.argv[1])
 out = Path(sys.argv[2])
 sys.path.insert(0, str(root / "backend"))
 
+if sys.platform == "win32" and "fcntl" not in sys.modules:
+    import unittest.mock
+
+    sys.modules["fcntl"] = unittest.mock.MagicMock()
+
 from fastapi.testclient import TestClient  # noqa: E402
 from server import app  # noqa: E402
 

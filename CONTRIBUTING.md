@@ -80,7 +80,7 @@ The Agent Lease Reaper workflow sweeps expired leases every 30 minutes.
 open PR.
 
 **Agent priority order** (highest wins redundancy conflicts):
-`user > maxwell-daemon > claude > codex > jules > local > gaai`
+`user > maxwell-daemon > claude > codex > jules > local`
 
 Before picking up an issue, confirm it is **pickable**: state is `open`, no
 open PR references it, no active `claim:*` lease, and the issue's

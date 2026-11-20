@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import random
 from collections.abc import Callable
@@ -42,9 +43,27 @@ NON_RETRYABLE_FAILURE_CLASSES = frozenset(
     }
 )
 
-DEFAULT_BASE_BACKOFF_SECONDS = float(os.environ.get("STAFF_RETRY_BASE_SECONDS", "2.0"))
-DEFAULT_MAX_BACKOFF_SECONDS = float(os.environ.get("STAFF_RETRY_MAX_SECONDS", "300.0"))
-DEFAULT_FALLBACK_CHAIN_CAP = max(1, int(os.environ.get("STAFF_FALLBACK_CHAIN_CAP", "3")))
+
+def _env_float(name: str, default: float) -> float:
+    """Read a finite float from the environment; malformed/blank/non-finite -> default."""
+    try:
+        value = float(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return value if math.isfinite(value) else default
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read an int from the environment; malformed/blank -> default."""
+    try:
+        return int(os.environ.get(name, ""))
+    except ValueError:
+        return default
+
+
+DEFAULT_BASE_BACKOFF_SECONDS = _env_float("STAFF_RETRY_BASE_SECONDS", 2.0)
+DEFAULT_MAX_BACKOFF_SECONDS = _env_float("STAFF_RETRY_MAX_SECONDS", 300.0)
+DEFAULT_FALLBACK_CHAIN_CAP = max(1, _env_int("STAFF_FALLBACK_CHAIN_CAP", 3))
 
 
 def compute_backoff(
@@ -54,19 +73,31 @@ def compute_backoff(
     jitter: bool = True,
 ) -> float:
     """Calculate exponential backoff with optional jitter."""
-    base = base_seconds if base_seconds is not None else float(os.environ.get("STAFF_RETRY_BASE_SECONDS", "2.0"))
-    cap = max_seconds if max_seconds is not None else float(os.environ.get("STAFF_RETRY_MAX_SECONDS", "300.0"))
-    if base <= 0:
+    base = base_seconds if base_seconds is not None else _env_float("STAFF_RETRY_BASE_SECONDS", 2.0)
+    cap = max_seconds if max_seconds is not None else _env_float("STAFF_RETRY_MAX_SECONDS", 300.0)
+    if math.isnan(base):
+        base = _env_float("STAFF_RETRY_BASE_SECONDS", 2.0)
+    if math.isnan(cap):
+        cap = _env_float("STAFF_RETRY_MAX_SECONDS", 300.0)
+    if base <= 0 or cap <= 0:
         return 0.0
 
-    exp = min(cap, base * (2.0 ** max(0, attempt - 1)))
+    # 2.0 ** n overflows a float past n=1023; saturate at the cap instead of raising.
+    try:
+        exp = min(cap, base * (2.0 ** max(0, attempt - 1)))
+    except OverflowError:
+        exp = cap
     jitter_val = random.uniform(0.0, min(1.0, exp * 0.25)) if jitter else 0.0  # noqa: S311
     return float(min(cap, exp + jitter_val))
 
 
 def compute_next_attempt_at(delay_seconds: float) -> str:
     """Return UTC ISO-8601 string for next attempt after delay_seconds."""
-    next_time = datetime.now(UTC) + timedelta(seconds=max(0.0, delay_seconds))
+    delay = 0.0 if math.isnan(delay_seconds) else max(0.0, delay_seconds)
+    try:
+        next_time = datetime.now(UTC) + timedelta(seconds=delay)
+    except OverflowError:  # inf / absurdly large delay: clamp to ~10 years
+        next_time = datetime.now(UTC) + timedelta(days=3650)
     return next_time.isoformat().replace("+00:00", "Z")
 
 

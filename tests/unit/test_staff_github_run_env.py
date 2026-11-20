@@ -17,9 +17,10 @@ from staff.github_run_env import (
     operator_token_fallback_enabled,
     strip_github_secrets_from_child_env,
 )
-from staff.roles import RoleSpec
 from staff.runner import RunRecord, RunRequest, StaffRunner
 from staff.store import RunStore
+
+from staff.roles import RoleSpec
 
 pytestmark = pytest.mark.unit
 
@@ -317,3 +318,16 @@ def test_operator_token_fallback_enabled() -> None:
     assert not operator_token_fallback_enabled()
     with patch.dict(os.environ, {"STAFF_ALLOW_OPERATOR_TOKEN": "1"}):
         assert operator_token_fallback_enabled()
+
+
+@pytest.mark.parametrize("provider", ["claude", "codex"])
+def test_read_only_run_mints_only_read_permissions(provider: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("STAFF_ALLOW_OPERATOR_TOKEN", raising=False)
+    fake = InstallationToken(token=_FAKE_GHS, expires_at=1_700_000_000.0)
+    with patch("staff.github_run_env.github_app_auth_configured", return_value=True):
+        with patch("staff.github_run_env.mint_installation_access_token", return_value=fake) as mint:
+            mint_staff_run_github_token(
+                role=_role(providers=(provider,), code_read_only=True, push_branch=True, open_pr=True),
+                repo="D-sorganization/Runner_Dashboard",
+            )
+    assert set(mint.call_args.kwargs["permissions"].values()) == {"read"}

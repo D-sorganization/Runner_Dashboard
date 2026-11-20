@@ -122,7 +122,12 @@ def _finish_bucket(key: str, bucket: dict[str, Any], *, extra: dict[str, Any] | 
 
 
 def summarize_runs_by_workflow_and_machine(runs: list[dict[str, Any]]) -> dict[str, Any]:
-    """Summarize recent runs by workflow, machine, and workflow-machine pair."""
+    """Summarize recent concluded runs by workflow, machine, and workflow-machine pair.
+
+    Runs without a ``conclusion`` (queued / in progress) are ignored: they have no
+    outcome yet and their ``updated_at`` is not a completion time.
+    """
+    runs = [run for run in runs if run.get("conclusion")]
     by_workflow: dict[tuple[str, str], dict[str, Any]] = {}
     by_machine: dict[str, dict[str, Any]] = {}
     matrix: dict[tuple[str, str, str], dict[str, Any]] = {}

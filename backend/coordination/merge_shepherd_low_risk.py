@@ -7,9 +7,11 @@ import posixpath
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from coordination.merge_shepherd_holds import LOW_RISK_SHEPHERD_BLOCKED_LABELS
+
 DEFAULT_LOW_RISK_LINE_CAP = 300
 
-LOW_RISK_BLOCKED_LABELS = frozenset({"do-not-merge", "hold", "needs-dieter"})
+LOW_RISK_BLOCKED_LABELS = LOW_RISK_SHEPHERD_BLOCKED_LABELS
 
 _AGENT_INSTRUCTION_FILENAMES = frozenset({"AGENTS.md", "CLAUDE.md", "GEMINI.md", "SKILL.md"})
 _AGENT_INSTRUCTION_PREFIXES = (
@@ -104,12 +106,12 @@ def classify_docs_tests_only_arm(
         return LowRiskClassification(False, "files_incomplete")
     if not file_paths:
         return LowRiskClassification(False, "no_changed_files")
-    changed_lines = int(additions) + int(deletions)
-    if changed_lines > line_cap:
-        return LowRiskClassification(False, "over_line_cap")
     disallowed = [p for p in file_paths if not is_docs_or_tests_path(p)]
     if disallowed:
         return LowRiskClassification(False, f"mixed_paths:{disallowed[0]}")
+    changed_lines = int(additions) + int(deletions)
+    if changed_lines > line_cap:
+        return LowRiskClassification(True, "docs_tests_only:over_line_cap_advisory")
     return LowRiskClassification(True, "docs_tests_only")
 
 
@@ -131,18 +133,8 @@ def arm_eligibility_reason(
     checks_state: str,
     files_complete: bool,
 ) -> tuple[str, str]:
-    """Return (eligibility, detail): reviewed | docs_tests_only | no_approval_*."""
+    """Return (eligibility, detail): reviewed | no_approval (exact-head PASS required)."""
+    _ = (file_paths, additions, deletions, line_cap, labels, checks_state, files_complete)
     if str(review_decision or "").upper() == "APPROVED":
         return "reviewed", "review_decision_approved"
-    low = classify_docs_tests_only_arm(
-        file_paths=file_paths,
-        additions=additions,
-        deletions=deletions,
-        line_cap=line_cap,
-        labels=labels,
-        checks_state=checks_state,
-        files_complete=files_complete,
-    )
-    if low.eligible:
-        return "docs_tests_only", low.detail
-    return "no_approval", low.detail
+    return "no_approval", "exact_head_pass_required"

@@ -30,18 +30,25 @@ assistant_profile:
 agents:
   # Optional narrow role (``runner-scaler`` preset) grants ``runners.scale`` without ``barb``
   # (#2889). Default stays ``bot`` + ``barb`` until the owner removes ``barb``.
+  # Explicit ``runners.control`` on agent-grok and agent-grok-vm (#4490, t1799u)
+  # so the grant is visible on /api/auth/me and survives a narrower barb preset.
+  # This scope also authorizes start/stop/restart of individual runners.
   - id: agent-grok
     kind: grokbot
     name: Barb (Grok fleet secretary)
     roles:
       - bot
       - barb
+    scopes:
+      - runners.control
   - id: agent-grok-vm
     kind: grokbot
     name: Barb on barb-worker VM (Grok, revocable separately from agent-grok)
     roles:
       - bot
       - barb
+    scopes:
+      - runners.control
   - id: grok-barb
     kind: grokbot
     name: Grok Barb persona principal
@@ -55,10 +62,12 @@ agents:
       - bot
       - barb
   - id: agent-smithers
-    kind: grokbot
-    name: Smithers (Grok work-task intake)
+    kind: codex
+    name: Smithers (Codex work-task intake)
+    roles: []
     scopes:
-      - fleet.read
+      - staff.read
+      - staff.work_items.write
   - id: agent-codex-hands
     kind: codex
     name: Codex hands (computer control)
@@ -124,8 +133,25 @@ agents:
       - intake.proposals.create
   - id: agent-cursor
     kind: other
-    name: Cursor cloud check-in agent
+    name: Cursor CLI agent
     roles:
-      - checkin-only
+      - bot
     scopes:
       - activity.checkin
+      - fleet.read
+  - id: agent-qwen
+    kind: other
+    name: Qwen Code CLI agent
+    roles:
+      - bot
+    scopes:
+      - activity.checkin
+      - fleet.read
+  - id: agent-deepseek
+    kind: other
+    name: DeepSeek API CLI agent
+    roles:
+      - bot
+    scopes:
+      - activity.checkin
+      - fleet.read

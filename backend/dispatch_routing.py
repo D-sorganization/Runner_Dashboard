@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from dispatch_session_policy import session_idle_ttl_seconds
+from dispatch_session_policy import max_sessions_per_repo, session_idle_ttl_seconds
 from time_utils import parse_github_ts, utc_now, utc_now_iso
 
 log = logging.getLogger("dashboard.dispatch.routing")
@@ -106,6 +106,8 @@ class QueuedDispatchItem:
     reason: str
     blocking_session_id: str
     queued_at: str = field(default_factory=utc_now_iso)
+    # overlapping_paths | same_target | repo_session_cap (#4492)
+    block_reason: str = "overlapping_paths"
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,6 +309,21 @@ def paths_overlap(paths_a: Iterable[str], paths_b: Iterable[str]) -> bool:
     return False
 
 
+TARGET_CLAIM_PREFIX = "#target/"
+
+
+def target_claim_paths(paths: list[str], target: int | None) -> list[str]:
+    """Narrow a whole-repo ``*`` claim to the dispatch's own PR / issue (#4492).
+
+    A prompt that names no files claims ``*``; when the dispatch names its target, it
+    claims only ``#target/<n>`` so sessions on other PRs / issues are not blocked. Explicit
+    paths and target-less dispatches are returned unchanged.
+    """
+    if target is not None and paths == ["*"]:
+        return [f"{TARGET_CLAIM_PREFIX}{int(target)}"]
+    return paths
+
+
 # ─── Concurrency & Queue Manager ─────────────────────────────────────────────
 
 
@@ -414,12 +431,36 @@ class DispatchQueueManager:
         run_live: Callable[[str], bool | None] | None = None,
     ) -> tuple[bool, str | None]:
         """Check if a dispatch is allowed or if overlapping sessions exist."""
+        allowed, blocker, _reason = self.admission(repository, declared_paths, run_live=run_live)
+        return allowed, blocker
+
+    def admission(
+        self,
+        repository: str,
+        declared_paths: list[str],
+        *,
+        targets: Iterable[int] = (),
+        run_live: Callable[[str], bool | None] | None = None,
+    ) -> tuple[bool, str | None, str]:
+        """``(allowed, blocking_session_id, reason)`` for a new path-occupying session (#4492).
+
+        Refuses the same PR / issue (``same_target``), overlapping claims (``overlapping_paths``)
+        and a repo already at :func:`max_sessions_per_repo` (``repo_session_cap``).
+        """
         self.expire_stale_sessions(run_live=run_live)
         active = self._blocking_sessions(repository)
+        wanted = {int(t) for t in targets if t is not None}
+        if wanted:
+            for session in active:
+                if wanted & {n for n in (session.number, session.pr_number) if n is not None}:
+                    return False, session.session_id, "same_target"
         for session in active:
             if paths_overlap(session.declared_paths, declared_paths):
-                return False, session.session_id
-        return True, None
+                return False, session.session_id, "overlapping_paths"
+        if len(active) >= max_sessions_per_repo(repository):
+            oldest = min(active, key=lambda s: s.dispatched_at)
+            return False, oldest.session_id, "repo_session_cap"
+        return True, None, ""
 
     def try_dispatch(
         self,
@@ -433,14 +474,17 @@ class DispatchQueueManager:
         occupies_paths: bool = True,
         role: str | None = None,
         run_live: Callable[[str], bool | None] | None = None,
+        pr_number: int | None = None,
     ) -> DispatchAttemptResult:
-        """Attempt to dispatch. If overlapping session exists, queue it."""
+        """Attempt to dispatch. If an overlapping session or the repo cap blocks it, queue it."""
         if not occupies_paths:
             return DispatchAttemptResult(dispatched=True, session=None)
 
-        paths = declared_paths or extract_declared_paths(prompt)
+        target = pr_number if pr_number is not None else number
+        paths = target_claim_paths(declared_paths or extract_declared_paths(prompt), target)
         decision = resolve_model_routing(labels, prompt, requested_model)
-        allowed, blocker_id = self.can_dispatch(repository, paths, run_live=run_live)
+        targets = [n for n in (number, pr_number) if n is not None]
+        allowed, blocker_id, block_reason = self.admission(repository, paths, targets=targets, run_live=run_live)
 
         if allowed:
             session_id = uuid4().hex
@@ -453,6 +497,7 @@ class DispatchQueueManager:
                 model=decision.model,
                 role=role,
                 occupies_paths=True,
+                pr_number=pr_number,
             )
             self._active_sessions[session_id] = session
             return DispatchAttemptResult(dispatched=True, session=session)
@@ -468,6 +513,7 @@ class DispatchQueueManager:
             model=decision.model,
             reason=decision.reason,
             blocking_session_id=blocker_id or "",
+            block_reason=block_reason or "overlapping_paths",
         )
         self._queued_items.append(queued)
         return DispatchAttemptResult(dispatched=False, queued_item=queued)

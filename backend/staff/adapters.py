@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
@@ -33,9 +34,11 @@ from staff.adapter_policies import (
     claude_unattended_tools,
     gemini_policy_toml,
     grok_unattended_flags,
+    unattended_argv_bypass_flags,
 )
 from staff.anthropic_api_provider import build_adapter as _build_anthropic_api_adapter
 from staff.deepseek_provider import deepseek_available, deepseek_environment
+from staff.git_identity import staff_git_identity_env
 from staff.lesson_evidence import has_supported_assistant_answer
 from staff.provider_defaults import default_model_for_provider
 from staff.qwen_provider import (
@@ -55,6 +58,14 @@ ProviderId = str
 # ``agy`` is a Windows binary reached through WSL interop, whose command line is capped near 32 K
 # characters; a longer argv fails with ``agy: Invalid argument`` (#2744). Longer prompts go on stdin.
 AGY_MAX_ARGV_PROMPT_CHARS = 16_000
+
+
+def _cursor_agent_sandbox_mode() -> str:
+    """Cursor's sandbox is unavailable on Windows; fleet runs must not pass ``enabled`` there."""
+    if sys.platform == "win32":
+        return "disabled"
+    return "enabled"
+
 
 __all__ = [
     "ADAPTERS",
@@ -165,7 +176,12 @@ class ProviderAdapter:
             "{policy}": policy or "",
         }
         out: list[str] = [self.executable]
-        for part in self.argv:
+        # Read-only Codex must not inherit writable roots or network permissions.
+        argv = self.argv
+        if read_only and self.provider_id == "codex":
+            assert argv[: len(_UNATTENDED_CODEX)] == _UNATTENDED_CODEX, "unknown Codex sandbox template"  # noqa: S101
+            argv = _READ_ONLY_CODEX + argv[len(_UNATTENDED_CODEX) :]
+        for part in argv:
             if part in ("{model}", "{policy}") and not slots[part]:
                 # Drop the flag that precedes an empty slot.
                 if out and out[-1].startswith("-"):
@@ -188,6 +204,8 @@ class ProviderAdapter:
                 )
             if self.provider_id == "antigravity" and "--mode" in out:
                 out[out.index("--mode") + 1] = "plan"
+        if self.provider_id == "cursor-agent" and "--sandbox" in out:
+            out[out.index("--sandbox") + 1] = _cursor_agent_sandbox_mode()
         if session_id:
             if self.provider_id in ("codex", "ollama"):
                 # Resume applies this invocation's config; retain explicit launch options.
@@ -199,7 +217,7 @@ class ProviderAdapter:
         if output_schema is not None:
             apply_output_schema(self.provider_id, out, workdir, output_schema)
         assert not any(slot in p for p in out for slot in slots)  # noqa: S101
-        assert not PERMISSION_BYPASS_FLAGS & set(out), "unattended argv must never bypass permissions"  # noqa: S101
+        assert not unattended_argv_bypass_flags(self.provider_id, out), "unattended argv must never bypass permissions"  # noqa: S101
         return out
 
     def chat_argv(
@@ -350,6 +368,7 @@ _UNATTENDED_CLAUDE = (
     "--model",
     "{model}",
 )
+_READ_ONLY_CODEX = ("exec", "--sandbox", "read-only", "--skip-git-repo-check", "--json")
 # workspace-write confines writes to the worktree plus its git common dir (where
 # a linked worktree's commits land); the network stays on for push and gh.
 _UNATTENDED_CODEX = (
@@ -373,8 +392,9 @@ _UNATTENDED_GROK = (
     _GROK_ALLOW,
     "--deny",
     _GROK_DENY,
-    "--no-auto-update",
-    "-w",
+    "--permission-mode",
+    "dontAsk",
+    "--cwd",
     "{workdir}",
     "--model",
     "{model}",
@@ -399,13 +419,13 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         label="DeepSeek API (explicit opt-in)",
         executable="claude",
         argv=_UNATTENDED_CLAUDE,
-        default_model="deepseek-flash",
+        default_model="deepseek-v4-pro",
         models=("deepseek-flash", "deepseek-v4-pro"),
         json_lines=True,
-        unattended=False,
+        unattended=True,
         installed_override=deepseek_available,
         env_builder=deepseek_environment,
-        notes="Paid API; requires explicit host enablement and provider selection; chat only.",
+        notes="Paid API; requires explicit host enablement (STAFF_DEEPSEEK_API_ENABLED) and provider selection.",
     ),
     "codex": ProviderAdapter(
         provider_id="codex",
@@ -485,9 +505,10 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "--model",
             "{model}",
         ),
-        default_model="grok-4.7-high",
+        default_model=None,
         models=_CURSOR_AGENT_MODELS,
         json_lines=True,
+        env_builder=staff_git_identity_env,
         notes=(
             "Cursor subscription; Grok models (grok-4.7-*, cursor-grok-4.6-*) are reached here, no separate xAI plan. "
             "Commands run inside Cursor's sandbox instead of --force (#1586); --trust only answers the "
@@ -503,7 +524,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
         notes=(
             "Standalone Grok Build CLI registry row `grok_cli` (#4130), distinct from the "
             "Cursor-hosted Grok models under `cursor-agent`. Launch flags (`--allow`/`--deny`/"
-            "`--no-auto-update`/`-w`) are a best-effort mapping from published Grok docs, not "
+            "`--permission-mode dontAsk`/`--cwd`) are mapped to Grok Build CLI 1.0.77; not "
             "yet verified against a real `grok` binary — never `--yolo`/`--always-approve` "
             "(permission bypass, #1586). Has no confirmed read-only chat flag yet, so chat "
             "turns raise ChatReadOnlyUnsupportedError rather than guess one; not in the "
@@ -521,7 +542,7 @@ ADAPTERS: dict[ProviderId, ProviderAdapter] = {
             "--output-format",
             "stream-json",
             "--approval-mode",
-            "auto-edit",
+            "yolo",
             "--channel",
             "CI",
             "--model",

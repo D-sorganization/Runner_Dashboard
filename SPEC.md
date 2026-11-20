@@ -5137,3 +5137,15 @@ scheduled-surplus trim is logged as such rather than "host overloaded".
 ### Zero-LLM-Cost Agent Report Cards, Empirical Leaderboard, Bean-Counter Ledger & Multi-Barb Continuity
 
 `backend/staff/report_cards.py` computes zero-LLM-cost empirical Agent Report Cards (`first_pass_success_rate`, Wilson 95% CI, `merge_rate`, `rework_rate`, `remediation_followups_per_pr`, `effective_tokens_per_merge`, `leaderboard_score`, `grade`, `routing_recommendations`, and `bean_counter_ledger`) directly from SQLite `runs` and cached PR facts. Exposed at `GET /api/v1/staff/report-cards`, `GET /api/v1/staff/leaderboard`, `GET /api/v1/staff/bean-counter` (and `/api/staff/*` aliases). `backend/staff/barb_continuity.py` and `backend/routers/staff_barb.py` provide multi-Barb scoped sub-role leases (`barb:front-door`, `barb:ci-shepherd`, `barb:pr-queue`, `barb:dispatch-coordinator`, `barb:issue-triage`, `barb:night-watch`), shift turnover compliance checks, active task inventory, and fenced (`fencing_epoch`) CLI <-> Desktop App task routing and handoff (`needs_desktop` -> `desktop_claimed` -> `resume_ready` -> `in_progress`).
+
+### Scoped `agent-smithers` Principal & Owner-Enforced Work Items
+
+`config/agent_principals.yml` updates `agent-smithers` to `kind: codex` with narrow `staff.read` and `staff.work_items.write` scopes. `backend/staff/work_items.py` and `backend/routers/staff_work_items.py` add per-principal `idempotency_key` deduplication (`409` on payload conflict), server-derived owner enforcement on `LIST`/`GET`/`PATCH` (`403` on cross-owner), and bounded `output_format` (`pdf`/`docx`) + traversal-checked `artifact_refs` metadata.
+
+### Durable Lane-Prompt Checkout & Fencing (PR #4549)
+
+`backend/coordination/lane_prompts.py` adds `LanePromptStore` (SQLite WAL with `BEGIN IMMEDIATE`, idempotency keys, monotonically increasing `fence_token`, and separate heartbeat/progress timestamps) exposed at `/api/coordination/lane-prompts/{catalog,checkout,heartbeat,release}` in `backend/routers/coordination.py`. The health summary reports healthy active checkouts, heartbeat/progress stalls, recently expired checkouts, and idle enabled lanes through `GET /api/coordination/lane-prompts/health`; threshold query values are integer seconds, with effective minimums of 60 seconds.
+
+### Durable Report-Run Recovery (PR #4551)
+
+`backend/report_run.py` coordinates bounded LaTeX/DOCX report builds with a process-scoped destination lock, guarded recovery from interrupted or corrupt status records, stale-artifact removal, SHA-256 artifact records, and atomic status persistence. Every result keeps `approval_ready=false`; successful builds stop at `awaiting_visual_review`. Destination, build, hash, and persistence failures remain terminal and can be reported through an independent error callback.

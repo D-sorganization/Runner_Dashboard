@@ -50,7 +50,7 @@ describe("KanbanPage", () => {
 
     render(<KanbanPage />);
 
-    await waitFor(() => expect(screen.queryByTestId("kanban-fixture-banner")).not.toBeInTheDocument());
-    expect(screen.getByText(/2 cards/)).toBeInTheDocument();
+    expect(await screen.findByText(/2 cards/)).toBeInTheDocument();
+    expect(screen.queryByTestId("kanban-fixture-banner")).not.toBeInTheDocument();
   });
 });

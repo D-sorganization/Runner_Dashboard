@@ -47,22 +47,35 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
         d_ud = evaluate_pr_shepherd_eligibility(ud)
         self.assertEqual((d_ud.action, d_ud.merge_flag), (ShepherdAction.AUTO_ARM, "--auto --squash"))
 
-    def test_eligible_update_branch_when_behind(self) -> None:
+    def test_behind_clean_pr_never_yields_update_branch(self) -> None:
+        """A behind-but-clean PR must arm directly instead of churning via UPDATE_BRANCH (panel th_25026e93f6bb)."""
         cand = PRCandidate("Runner_Dashboard", 3901, is_behind=True)
         decision = evaluate_pr_shepherd_eligibility(cand)
-        self.assertEqual(decision.action, ShepherdAction.UPDATE_BRANCH)
-        self.assertIsNone(decision.merge_flag)
+        self.assertEqual(decision.action, ShepherdAction.AUTO_ARM)
+        self.assertEqual(decision.merge_flag, "--auto")
 
     def test_ineligible_reasons(self) -> None:
         cases = [
-            (PRCandidate("RD", 1, is_behind=True, mergeable="CONFLICTING"), IneligibleReason.CONFLICT),
+            (
+                PRCandidate("RD", 1, is_behind=True, mergeable="CONFLICTING"),
+                IneligibleReason.CONFLICT,
+            ),
             (PRCandidate("RD", 2, is_draft=True), IneligibleReason.DRAFT),
             (PRCandidate("RD", 3, state="CLOSED"), IneligibleReason.NOT_OPEN),
             (PRCandidate("RD", 4, is_queued=True), IneligibleReason.ALREADY_QUEUED),
-            (PRCandidate("RD", 5, auto_merge_enabled=True), IneligibleReason.ALREADY_ARMED),
+            (
+                PRCandidate("RD", 5, auto_merge_enabled=True),
+                IneligibleReason.ALREADY_ARMED,
+            ),
             (PRCandidate("RD", 6, bounces=2), IneligibleReason.BOUNCE_LIMIT),
-            (PRCandidate("RD", 7, checks_status="PENDING"), IneligibleReason.CHECKS_PENDING),
-            (PRCandidate("RD", 8, checks_status="FAILURE"), IneligibleReason.CHECKS_FAILED),
+            (
+                PRCandidate("RD", 7, checks_status="PENDING"),
+                IneligibleReason.CHECKS_PENDING,
+            ),
+            (
+                PRCandidate("RD", 8, checks_status="FAILURE"),
+                IneligibleReason.CHECKS_FAILED,
+            ),
         ]
         for cand, expected_reason in cases:
             with self.subTest(cand=cand.pr_number):
@@ -76,6 +89,7 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
             (["do-not-merge"], "fix: normal fix"),
             (["blocked"], "fix: normal fix"),
             (["needs-decision"], "fix: normal fix"),
+            (["needs-owner"], "fix: normal fix"),
             ([], "[HOLD] refactor dispatch"),
             ([], "chore: topology sanitize deploy paths (held)"),
         ]
@@ -84,7 +98,10 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
                 self.assertTrue(is_pr_held(labels, title))
                 cand = PRCandidate("RD", 9, labels=tuple(labels), title=title)
                 dec = evaluate_pr_shepherd_eligibility(cand)
-                self.assertEqual((dec.action, dec.reason), (ShepherdAction.SKIP, IneligibleReason.HELD))
+                self.assertEqual(
+                    (dec.action, dec.reason),
+                    (ShepherdAction.SKIP, IneligibleReason.HELD),
+                )
 
     def test_drain_gate_evaluation(self) -> None:
         blocked = PRCandidate("GM", 5700, is_drained=True, is_exempt=False)

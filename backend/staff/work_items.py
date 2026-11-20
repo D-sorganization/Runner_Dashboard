@@ -59,7 +59,10 @@ VALID_TRANSITIONS: dict[str, set[str]] = {
 # Columns added after the first schema shipped. Applied with a guarded
 # ``ALTER TABLE ... ADD COLUMN`` so an existing store upgrades in place and a
 # rollback to the previous code keeps working (extra columns are ignored).
-_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (("description", "TEXT NOT NULL DEFAULT ''"),)
+_ADDED_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("description", "TEXT NOT NULL DEFAULT ''"),
+    ("idempotency_key", "TEXT NOT NULL DEFAULT ''"),
+)
 
 
 class InvalidStateTransitionError(ValueError):
@@ -189,6 +192,10 @@ class WorkItemStore:
             for name, decl in _ADDED_COLUMNS:
                 if name not in present:
                     conn.execute(f"ALTER TABLE work_items ADD COLUMN {name} {decl}")  # noqa: S608
+            conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_work_items_idempotency "
+                "ON work_items(requested_by, idempotency_key) WHERE idempotency_key != ''"
+            )
             conn.commit()
         finally:
             conn.close()
@@ -213,6 +220,7 @@ class WorkItemStore:
         links: dict[str, list[str]] | None = None,
         work_item_id: str | None = None,
         next_check_at: str | None = None,
+        idempotency_key: str = "",
     ) -> WorkItemRecord:
         """Create and persist a new work item.
 
@@ -220,6 +228,25 @@ class WorkItemStore:
         free text (e.g. a Board proposal body) and defaults to ``""``.
         Post: the returned record's ``description`` round-trips through the store.
         """
+        idem = idempotency_key.strip()
+        if idem:
+            existing_id: str | None = None
+            with self._lock:
+                conn = self._get_conn()
+                try:
+                    existing = conn.execute(
+                        "SELECT id FROM work_items WHERE requested_by = ? AND idempotency_key = ?",
+                        (requested_by, idem),
+                    ).fetchone()
+                    if existing is not None:
+                        existing_id = str(existing["id"])
+                finally:
+                    conn.close()
+            if existing_id is not None:
+                found = self.get_work_item(existing_id)
+                if found is not None:
+                    return found
+
         wid = work_item_id or f"wi-{uuid.uuid4().hex[:12]}"
         now = _now_iso()
         init_links = links or {"runs": [], "issues": [], "prs": [], "code_requests": []}
@@ -248,8 +275,8 @@ class WorkItemStore:
                     INSERT INTO work_items (
                         id, title, requested_by, thread_id, owner_role, description, state,
                         expected_by, links_json, last_progress_at, next_check_at,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        created_at, updated_at, idempotency_key
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         record.id,
@@ -265,6 +292,7 @@ class WorkItemStore:
                         record.next_check_at,
                         record.created_at,
                         record.updated_at,
+                        idem,
                     ),
                 )
                 conn.commit()
@@ -453,6 +481,7 @@ class WorkItemStore:
         owner_role: str | None = None,
         expected_by: str | None = None,
         next_check_at: str | None = None,
+        links: dict[str, list[str]] | None = None,
     ) -> WorkItemRecord:
         """Update mutable work item metadata fields."""
         with self._lock:
@@ -478,6 +507,9 @@ class WorkItemStore:
                 if next_check_at is not None:
                     updates.append("next_check_at = ?")
                     params.append(next_check_at)
+                if links is not None:
+                    updates.append("links_json = ?")
+                    params.append(json.dumps(links))
 
                 updates.append("updated_at = ?")
                 params.append(now)

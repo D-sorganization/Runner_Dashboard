@@ -4,16 +4,23 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from coordination.drain_directive_gate import (
+    classify_pr_create_exemption,
+    evaluate_repo_drain_gate,
+    pick_drain_directive,
+)
 from coordination.merge_shepherd import (
     PRCandidate,
     ShepherdAction,
     ShepherdDecision,
+    count_queue_bounces,
     get_auto_merge_flag,
     rank_candidates_for_shepherding,
 )
@@ -21,12 +28,18 @@ from coordination.merge_shepherd_exact_head import (
     DEFAULT_REVIEW_PASS_TTL_HOURS,
     HeadReviewPass,
     HoldReasonFn,
+    collect_review_passes_from_comments,
+    collect_review_passes_from_github_reviews,
     collect_review_passes_from_store,
     shepherd_arm_eligibility,
 )
+from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS, normalize_hold_label
 from coordination.merge_shepherd_low_risk import low_risk_line_cap as default_low_risk_line_cap
+from priorities.directives import get_directives
 
 log = logging.getLogger(__name__)
+
+DrainedFn = Callable[[str, int], bool]
 
 ORG = "D-sorganization"
 SHEPHERD_REPOS: tuple[str, ...] = (
@@ -35,13 +48,14 @@ SHEPHERD_REPOS: tuple[str, ...] = (
     f"{ORG}/Gasification_Model",
     f"{ORG}/UpstreamDrift",
     f"{ORG}/AffineDrift",
+    f"{ORG}/Tools",
     f"{ORG}/Tools_Private",
 )
 RD_REPO = f"{ORG}/Runner_Dashboard"
 QUEUE_BACKOFF_THRESHOLD = 6
 ARM_CAP_RD = 2
 ARM_CAP_DEFAULT = 4
-SHEPHERD_HOLD_LABELS = frozenset({"hold", "do-not-merge", "needs-dieter", "dnm"})
+SHEPHERD_HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 # The only fetch failures that mean "this token may not read this repo": GitHub's
 # 403 text for an App installation, and GraphQL's not-found for a repo it cannot see.
 _REPO_ACCESS_DENIED = "Resource not accessible by integration"
@@ -83,8 +97,29 @@ query($owner: String!, $name: String!) {
         commits(last: 1) {
           nodes {
             commit {
+              committedDate
               statusCheckRollup { state }
             }
+          }
+        }
+        timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+          nodes {
+            ... on RemovedFromMergeQueueEvent { createdAt reason }
+          }
+        }
+        comments(last: 10) {
+          nodes {
+            body
+            createdAt
+            author { login }
+          }
+        }
+        reviews(last: 10) {
+          nodes {
+            state
+            submittedAt
+            author { login }
+            commit { oid }
           }
         }
       }
@@ -124,6 +159,26 @@ class PassConfig:
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS
     hold_reason: HoldReasonFn | None = None
     review_store: object | None = None
+    #: ``(owner/repo, open PR count) -> drained``; asked only while the drain gate is on.
+    is_drained: DrainedFn | None = None
+
+
+#: Set to 1/true/yes/on to stop the shepherd arming non-exempt PRs in a drained repository.
+#: Off by default: turning it on changes fleet merge gating (#4249 B-04).
+DRAIN_GATE_ENV = "MERGE_SHEPHERD_DRAIN_GATE"
+
+
+def drain_gate_enabled(env: Mapping[str, str] | None = None) -> bool:
+    """True when the environment turns the shepherd's drain gate on."""
+    source = os.environ if env is None else env
+    return source.get(DRAIN_GATE_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def directive_drained(repo: str, open_prs: int) -> bool:
+    """Default drain source: an active operator drain-mode directive for ``repo`` (#3915)."""
+    bare = repo.rsplit("/", 1)[-1]
+    directive = pick_drain_directive(get_directives().active(), bare)
+    return bool(evaluate_repo_drain_gate(open_pr_count=open_prs, directive=directive)["drained"])
 
 
 @dataclass(frozen=True)
@@ -198,7 +253,7 @@ def _label_names(node: Mapping[str, Any]) -> tuple[str, ...]:
 
 def label_blocks_shepherd(node: Mapping[str, Any]) -> str:
     for name in _label_names(node):
-        normalized = name.strip().casefold()
+        normalized = normalize_hold_label(name)
         if normalized in SHEPHERD_HOLD_LABELS:
             return f"label_{normalized.replace('-', '_')}"
     return ""
@@ -421,7 +476,9 @@ def node_to_candidate(repo: str, node: Mapping[str, Any], *, is_drained: bool) -
         labels=_label_names(node),
         is_queued=is_queued,
         auto_merge_enabled=auto_merge,
+        bounces=count_queue_bounces(node),
         is_drained=is_drained,
+        is_exempt=classify_pr_create_exemption(title=str(node.get("title") or ""), labels=_label_names(node)),
     )
 
 
@@ -452,12 +509,16 @@ def plan_repo_pass(
     review_passes: Sequence[HeadReviewPass] = (),
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
     hold_reason: HoldReasonFn | None = None,
+    drained: bool = False,
 ) -> tuple[list[PassAction], list[dict[str, Any]], bool]:
-    """Plan arm actions for one repo. Returns actions, skip audit rows, backoff flag."""
+    """Plan arm actions for one repo. Returns actions, skip audit rows, backoff flag.
+
+    With ``drained`` only PRs exempt from drain mode (CI, security, red-main, runner) are armed.
+    """
     if armed_count + queue_depth > QUEUE_BACKOFF_THRESHOLD:
         return [], [], True
     effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
-    is_drained = False
+    is_drained = drained
     candidates: list[PRCandidate] = []
     skip_rows: list[dict[str, Any]] = []
     eligibility_by_pr: dict[int, str] = {}
@@ -471,6 +532,11 @@ def plan_repo_pass(
         paths, additions, deletions, files_complete = _pr_file_metadata(node)
         number = int(node["number"])
         head = str(node.get("headRefOid") or "")
+        node_comments = (node.get("comments") or {}).get("nodes") or []
+        comment_passes = collect_review_passes_from_comments(node_comments, pr=number)
+        node_reviews = (node.get("reviews") or {}).get("nodes") or []
+        github_passes = collect_review_passes_from_github_reviews(node_reviews, pr=number)
+        all_passes = (*review_passes, *comment_passes, *github_passes)
         eligibility, eligibility_detail = shepherd_arm_eligibility(
             review_decision=str(node.get("reviewDecision") or ""),
             file_paths=paths,
@@ -482,7 +548,7 @@ def plan_repo_pass(
             files_complete=files_complete,
             pr_number=number,
             head_sha=head,
-            review_passes=review_passes,
+            review_passes=all_passes,
             review_pass_ttl_hours=review_pass_ttl_hours,
         )
         if eligibility == "no_approval":
@@ -573,6 +639,13 @@ def run_merge_shepherd_pass(
             store=config.review_store,
             repo=full.rsplit("/", 1)[-1],
         )
+        drained = False
+        if drain_gate_enabled():
+            try:
+                drained = (config.is_drained or directive_drained)(full, len(nodes))
+            except (OSError, ValueError) as exc:
+                # A throttle, not a safety gate: report it and keep arming.
+                summary.errors.append(f"{full}: drain state unreadable: {exc}")
         actions, skips, backoff = plan_repo_pass(
             full,
             nodes,
@@ -585,6 +658,7 @@ def run_merge_shepherd_pass(
             review_passes=repo_passes,
             review_pass_ttl_hours=config.review_pass_ttl_hours,
             hold_reason=config.hold_reason,
+            drained=drained,
         )
         repo_row = {
             "repo": full,

@@ -55,7 +55,7 @@ The Agent Lease Reaper workflow sweeps expired leases every 30 minutes.
 open PR.
 
 **Agent priority order** (highest wins redundancy conflicts):
-`user > maxwell-daemon > claude > codex > jules > local > gaai`
+`user > maxwell-daemon > claude > codex > jules > local`
 
 ## Issue Taxonomy and Dispatch
 
@@ -424,7 +424,7 @@ Active agent workflows:
 
 - `Agent-Fleet-Dashboard.yml`: Fleet snapshot (regenerates `docs/fleet-in-flight.md`).
 - `Agent-Lease-Reaper.yml`: Coordination lease sweep.
-- `Agent-Redundant-PR-Closer.yml`: Duplicate PR closer (`user > maxwell-daemon > claude > codex > jules > local > gaai`).
+- `Agent-Redundant-PR-Closer.yml`: Duplicate PR closer (`user > maxwell-daemon > claude > codex > jules > local`).
 - `agent-panel-review.yml`: Multi-agent design panel.
 - `Verify-Issue-Closure.yml`: Closure evidence guard.
 

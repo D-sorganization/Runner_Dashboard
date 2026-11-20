@@ -128,6 +128,17 @@ def test_goal_outcome_with_newline_is_422(rm: FakeRM, client: TestClient) -> Non
         ("/api/coordination/presence/release", {"session": "jules-1", "repo": "Tools"}),
         ("/api/coordination/messages", {"session": "jules-1", "repo": "Tools", "to": "*", "text": "hi"}),
         ("/api/coordination/messages/ack", {"session": "jules-1", "repo": "Tools", "message_id": "m1"}),
+        (
+            "/api/coordination/sessions/register",
+            {
+                "session": "codex-1",
+                "role": "jules",
+                "provider": "cursor",
+                "machine": "cloud",
+                "repo": "Tools",
+                "ttl_hours": 2,
+            },
+        ),
     ],
 )
 def test_bot_cannot_impersonate_another_agent_or_session(rm: FakeRM, client: TestClient, path: str, body: dict) -> None:
@@ -269,10 +280,14 @@ def test_agent_outside_rm_roster_is_422(rm: FakeRM, client: TestClient) -> None:
 
 
 @pytest.mark.unit
-def test_roster_is_read_from_rm_once_and_falls_back_to_static(rm: FakeRM) -> None:
+def test_roster_is_read_from_rm_once_and_falls_back_to_static(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    now = [1000.0]
+    monkeypatch.setattr(roster_mod, "_clock", lambda: now[0])
     assert "gemini" in roster_mod.agent_ids() and "local" not in roster_mod.agent_ids()
     rm.set_roster(("codex",))
-    assert "gemini" in roster_mod.agent_ids()  # cached
+    assert "gemini" in roster_mod.agent_ids()  # still inside CHECK_INTERVAL
+    now[0] += roster_mod.CHECK_INTERVAL + 1
+    assert roster_mod.agent_ids() == ("codex",)
     roster_mod.reset_cache()
     rm.set_roster(None)
     fallback = roster_mod.agent_ids()

@@ -132,6 +132,41 @@ def rearm_pending_retries(runner: StaffRunner) -> list[str]:
     return rearmed
 
 
+_RELAUNCHED: set[str] = set()
+_RELAUNCH_LOCK = threading.Lock()
+
+
+def relaunch_stranded_queued_run(runner: StaffRunner, rec: RunRecord) -> bool:
+    """Give a queued, never-started run a worker thread again after a restart (#4249).
+
+    Pre: ``rec`` is queued, owned by ``runner.machine``, has no ``started_at`` and no
+    ``next_attempt_at`` (backoff retries are rearmed by :func:`rearm_pending_retries`).
+    Post: True means exactly one worker was launched for ``rec.id`` in this process
+    (a repeat call is a no-op that also returns True). False means the run cannot be
+    replanned (role or adapter gone) and the caller must fail it.
+    """
+    from staff.retry import retry_plan  # noqa: PLC0415
+
+    with _RELAUNCH_LOCK:
+        if rec.id in _RELAUNCHED:
+            return True
+        role = runner.roles().get(rec.role)
+        if role is None:
+            log.warning("Cannot relaunch stranded run %s: role %s is not loaded", rec.id, rec.role)
+            return False
+        try:
+            plan = retry_plan(runner, rec, role)
+        except Exception as exc:  # noqa: BLE001 — an unplannable run is failed, not stranded
+            log.warning("Cannot relaunch stranded run %s: %s", rec.id, exc)
+            return False
+        _RELAUNCHED.add(rec.id)
+    store_event = "relaunched queued run after dashboard restart (no worker thread survived)"
+    runner.store.append_event(rec.id, "reconcile", store_event)
+    runner.launch(rec, plan)
+    log.info("Relaunched stranded queued run %s", rec.id)
+    return True
+
+
 def _release_lease_with_retry(
     store: RunStore,
     rec: RunRecord,
@@ -382,6 +417,8 @@ def reconcile_orphaned_runs(
     Post: active runs owned by this machine are marked failed/orphaned,
           leases are released, clean worktrees removed, fleet events emitted,
           and interrupted chat messages and executing proposals reconciled.
+          Plain unstarted queued rows become retryable failures when requeue_queued
+          is enabled; scheduled backoff retries are preserved and re-armed.
     """
     from staff import verification  # noqa: PLC0415
 
@@ -403,6 +440,11 @@ def reconcile_orphaned_runs(
 
     store = runner.store
     active = store.active_runs()
+    # Startup reconcile runs on a background thread while the API already accepts
+    # submissions; never orphan a run whose in-process worker is alive (e.g. a
+    # queued run waiting on the concurrency semaphore).
+    live_worker_ids = getattr(runner, "active_worker_run_ids", None)
+    live_workers = live_worker_ids() if callable(live_worker_ids) else frozenset()
     reconciled_ids: list[str] = []
     ev_store = event_store if event_store is not None else get_event_store()
 
@@ -411,8 +453,16 @@ def reconcile_orphaned_runs(
         if rec.machine and rec.machine != runner.machine:
             continue
 
-        if requeue_queued and rec.status == "queued" and not rec.started_at:
+        # A run admitted on this node may still be waiting for its worker launch.
+        if rec.id in live_workers:
             continue
+
+        if requeue_queued and rec.status == "queued" and not rec.started_at:
+            if rec.next_attempt_at:
+                continue  # backoff retry; rearm_pending_retries owns it
+            if relaunch_stranded_queued_run(runner, rec):
+                continue
+            # No role/plan any more: fall through and fail it visibly (never left stranded).
 
         # Preserve scheduled retries waiting for backoff (issue #1303, SC-A7)
         if rec.status == "queued" and rec.next_attempt_at:
@@ -437,6 +487,7 @@ def reconcile_orphaned_runs(
         revoke_run_token(rec.id)
 
         # 4. Update run record
+        queued_orphan = requeue_queued and rec.status == "queued" and not rec.started_at
         err_msg = (
             f"orphaned by dashboard restart; recovery worktree preserved at {preserved_path}"
             if preserved_path
@@ -447,9 +498,13 @@ def reconcile_orphaned_runs(
             rec.id,
             RunStatus(rec.status),
             RunStatus.FAILED,
-            failure_class="orphaned",
-            retryable=False,
-            remediation=f"Run was orphaned across dashboard restart on node {runner.machine}; inspect worktree.",
+            failure_class="orphaned_queued" if queued_orphan else "orphaned",
+            retryable=bool(queued_orphan),
+            remediation=(
+                "Queued run lost its worker during restart; retry this run."
+                if queued_orphan
+                else f"Run was orphaned across dashboard restart on node {runner.machine}; inspect worktree."
+            ),
             ended_at=_now(),
             error=err_msg,
         )

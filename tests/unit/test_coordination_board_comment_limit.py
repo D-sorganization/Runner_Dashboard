@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -22,11 +23,13 @@ from coordination import board as board_mod
 from coordination import claims as claims_mod
 from coordination.board import BOARD_COMMENT_LIMIT, RMScriptError, paginate_board_comments
 from coordination.board_pagination import (
+    BOARD_PREDECESSOR_MAX_PAGES,
     MAX_EVENT_BYTES,
     _merge_paginated,
     _paginate_pages,
     _parse_comment_envelope,
     board_config,
+    default_board_page_fetcher,
 )
 from coordination.claims import ClaimHeldError
 from coordination.gh_cli import gh_api_json
@@ -400,6 +403,45 @@ def test_merge_paginated_falsy_fallback_handling() -> None:
 
 
 @pytest.mark.unit
+@pytest.mark.unit
+def test_explicit_release_wins_over_leftover_presence_for_claim_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A release after presence must clear the hold even when earlier comments remain on the board."""
+    from coordination import claims
+
+    now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+    at_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    exp_str = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    presence = {
+        "version": 1,
+        "id": "p1",
+        "kind": "presence",
+        "agent": "claude",
+        "session": "s1",
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "branch": "feat/board-hygiene",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"task": "repair"},
+        "at": at_str,
+        "expires": exp_str,
+    }
+    release = {"version": 1, "id": "r1", "kind": "release", "session": "s1", "repo": "Runner_Dashboard", "at": at_str}
+    comments = [
+        {"id": 1, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(presence)}\n```"},
+        {"id": 2, "user": {"login": "legit"}, "body": f"<!-- agent-message v1 -->\n```json\n{json.dumps(release)}\n```"},
+    ]
+    board_state = paginate_board_comments(lambda p, n: comments if p == 1 else [], now=now)
+    assert board_state["sessions"] == []
+
+    monkeypatch.setattr(
+        "coordination.claims.board_config", lambda: ("D-sorganization/Repository_Management", 3029, 3, [])
+    )
+    monkeypatch.setattr(board_mod, "cached_board_state", lambda: board_state)
+    assert claims._board_claim_override("Runner_Dashboard", 4574) is None
+
+
 def test_apply_event_midstream_conflict_not_poisoned_if_released() -> None:
     now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
     at_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -424,6 +466,57 @@ def test_apply_event_midstream_conflict_not_poisoned_if_released() -> None:
 
 
 @pytest.mark.unit
+def test_predecessor_over_page_cap_bounded_read_stays_complete(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Retired board #3029 (>1k comments) must not fail-closed hub reads when the TTL window is capped."""
+    pred_issue = 3029
+    calls: dict[int, int] = {}
+
+    def fake_gh(path: str) -> list[dict[str, Any]]:
+        if f"/issues/{pred_issue}/comments" in path:
+            page_m = re.search(r"(?:^|[&?])page=(\d+)", path)
+            assert page_m is not None
+            page = int(page_m.group(1))
+            calls[page] = calls.get(page, 0) + 1
+            return [
+                _noise_comment((page - 1) * 100 + i, author=f"u{i}")
+                for i in range(1, 101)
+            ]
+        if "/issues/3037/comments" in path:
+            return [_presence_comment(1, session="on-new-board", issue=2657)]
+        raise AssertionError(path)
+
+    monkeypatch.setattr("coordination.board_pagination.board_config", lambda: ("repo", 3037, 3, [pred_issue]))
+    monkeypatch.setattr("coordination.board_pagination.gh_api_json", fake_gh)
+
+    now = datetime.now(UTC)
+    # Page 0 is only scheduled when ``fetch_page`` is ``default_board_page_fetcher`` (identity).
+    result = paginate_board_comments(default_board_page_fetcher, per_page=100, max_pages=10, now=now)
+    assert result["available"] is True
+    assert result["complete"] is True
+    assert any("Board #3029" in w and "predecessor read capped" in w for w in result["replay_warnings"])
+    assert not any("Board #3029" in w for w in result["read_warnings"])
+    assert calls.get(BOARD_PREDECESSOR_MAX_PAGES) == 1
+    assert BOARD_PREDECESSOR_MAX_PAGES not in calls or calls.get(BOARD_PREDECESSOR_MAX_PAGES + 1) is None
+
+
+@pytest.mark.unit
+def test_current_board_page_cap_still_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Incomplete pagination on the active board must still fail closed (#3550)."""
+    comments = [_noise_comment(i) for i in range(1, 1001)]
+
+    def fetch_page(page: int, per_page: int) -> list[dict[str, Any]]:
+        if page == 0:
+            return []
+        start = (page - 1) * per_page
+        return comments[start : start + per_page]
+
+    monkeypatch.setattr("coordination.board_pagination.board_config", lambda: ("repo", 3037, 3, []))
+    result = paginate_board_comments(fetch_page, per_page=100, max_pages=10)
+    assert result["complete"] is False
+    assert result["comment_limit_exceeded"] is True
+
+
+@pytest.mark.unit
 def test_board_config_and_page_zero_fail_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cfg = tmp_path / "config" / "agent_communication.json"
     cfg.parent.mkdir(parents=True)
@@ -440,8 +533,8 @@ def test_board_config_and_page_zero_fail_closed(tmp_path: Path, monkeypatch: pyt
 
     monkeypatch.setattr("coordination.board_pagination.board_config", lambda: ("repo", 1, 3, [100]))
     monkeypatch.setattr(
-        "coordination.board_pagination.gh_api_json",
-        lambda p: (_ for _ in ()).throw(RuntimeError("predecessor fetch failed")),
+        "coordination.board_pagination._read_predecessor_comments",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("predecessor fetch failed")),
     )  # noqa: E501
     st: dict[str, Any] = {
         "active": {},
@@ -525,3 +618,134 @@ def test_envelope_framing_and_goals_schema(monkeypatch: pytest.MonkeyPatch) -> N
     res = claims._board_claim_override("Tools", 1)
     assert res is not None
     assert "RM #9999" in res["reason"]
+
+
+@pytest.mark.unit
+def test_board_claim_override_status_only_and_blocked_heartbeats_do_not_reserve_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Status-only / blocked heartbeats must not reserve work, while real claims and incomplete history still block."""
+    from coordination import claims
+
+    # Configured board is 3029; BOARD_ISSUE in board_mod should not override to 2539
+    monkeypatch.setattr(
+        "coordination.claims.board_config", lambda: ("D-sorganization/Repository_Management", 3029, 3, [2539, 2851])
+    )
+
+    # 1. Blocked heartbeat: goals.state == "blocked"
+    blocked_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "agent": "codex",
+        "session": "codex-desk-1",
+        "branch": "fix/4574",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"state": "blocked", "blocker": "waiting on upstream"},
+        "expires": "2099-01-01T00:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": True,
+            "sessions": [blocked_session],
+            "warnings": [],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is None, "Blocked heartbeat must not reserve work"
+
+    # 2. Status-only heartbeat: empty paths and branch == "none"
+    status_none_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "agent": "codex",
+        "session": "codex-desk-1",
+        "branch": "none",
+        "paths": [],
+        "goals": {"task": "status check"},
+        "expires": "2099-01-01T00:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": True,
+            "sessions": [status_none_session],
+            "warnings": [],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is None, "Empty paths and branch 'none' must not reserve work"
+
+    # 3. Status-only heartbeat: empty paths and branch == ""
+    status_empty_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "agent": "codex",
+        "session": "codex-desk-1",
+        "branch": "",
+        "paths": [],
+        "goals": {},
+        "expires": "2099-01-01T00:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": True,
+            "sessions": [status_empty_session],
+            "warnings": [],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is None, "Empty paths and empty branch must not reserve work"
+
+    # 4. Real active claim: has paths and branch, not blocked
+    real_session = {
+        "repo": "Runner_Dashboard",
+        "issue": 4574,
+        "agent": "antigravity",
+        "session": "agy-desk-1",
+        "branch": "fix/4574-board-hygiene",
+        "paths": ["backend/coordination/claims.py"],
+        "goals": {"task": "implement fix"},
+        "expires": "2099-01-01T00:00:00Z",
+    }
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": True,
+            "sessions": [real_session],
+            "warnings": [],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is not None
+    assert res["held"] is True
+    assert res["agent"] == "antigravity"
+    assert "RM #3029" in res["reason"], f"Must use configured board 3029, got {res['reason']}"
+    assert "2539" not in res["reason"]
+
+    # 5. Incomplete board history (comment limit exceeded) must still block
+    monkeypatch.setattr(
+        board_mod,
+        "cached_board_state",
+        lambda: {
+            "available": True,
+            "complete": False,
+            "comment_limit_exceeded": True,
+            "sessions": [],
+            "warnings": ["RM #3029 comment limit exceeded"],
+        },
+    )
+    res = claims._board_claim_override("Runner_Dashboard", 4574)
+    assert res is not None
+    assert res["available"] is False
+    assert res["held"] is None
+    assert "incomplete" in res["reason"]

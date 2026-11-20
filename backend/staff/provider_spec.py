@@ -22,7 +22,7 @@ RM_CONTRACT_SCHEMA = "staff-provider-spec.v1"
 SUBSCRIPTION_OAUTH_PROVIDERS = frozenset({"claude", "codex", "antigravity", "gemini", "grok", "cursor-agent"})
 
 # DeepSeek remains behind #4231 — never part of the staff launch registry.
-_EXCLUDED_PROVIDER_IDS = frozenset({"deepseek", "deepseek-api", "opencode"})
+_EXCLUDED_PROVIDER_IDS = frozenset({"deepseek", "opencode"})
 
 # Provider-keyed tables that must carry exactly the staff launch registry key set (#4267).
 FULL_REGISTRY_PARITY_TABLES: tuple[str, ...] = ("known_providers", "model_tiers")

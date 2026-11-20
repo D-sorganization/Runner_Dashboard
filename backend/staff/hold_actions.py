@@ -27,7 +27,8 @@ def execute_staff_hold(params: dict[str, Any], ctx: ActionContext) -> ActionResu
     existing = next((h for h in holds if h.id == hid or h.text.lower() == text.lower()), None)
     if existing:
         existing.active = True
-        existing.applies_to = list(set(existing.applies_to + applies_to))
+        existing.kind = "schedule"  # re-holding a role guardrail must block scheduling too (#1726)
+        existing.applies_to = sorted(set(existing.applies_to + applies_to))
     else:
         holds.append(
             Hold(
@@ -59,7 +60,8 @@ def verify_staff_hold(res: ActionResult, params: dict[str, Any], ctx: ActionCont
 
     text = str(params.get("text") or "").strip().lower()
     holds = HoldsList().load()
-    if any(h.active and (h.text.lower() == text or (res.result and h.id == res.result.get("hold_id"))) for h in holds):
+    hid = res.result.get("hold_id") if res.result else None
+    if any(h.active and h.kind == "schedule" and (h.text.lower() == text or h.id == hid) for h in holds):
         return True, "Hold verified active in ledger"
     return False, "Hold not found or inactive"
 

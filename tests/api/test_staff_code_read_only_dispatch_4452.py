@@ -9,8 +9,8 @@ import pytest
 from identity import Principal
 from staff.dispatch_service import DispatchCommand, dispatch_staff_run
 from staff.provider_failover_config import FailoverStep
-from staff.roles import RoleSpec
 
+from staff.roles import RoleSpec
 from tests.api.test_staff_fleet import staff  # noqa: F401,F811
 
 pytestmark = pytest.mark.unit
@@ -18,10 +18,10 @@ pytestmark = pytest.mark.unit
 _ROLE = RoleSpec(
     name="code-reviewer",
     title="Code Reviewer",
-    providers=("codex", "claude"),
+    providers=("cursor-agent", "claude"),
     surface="dashboard",
     permissions={"code_read_only": True, "push_branch": False, "open_pr": False, "merge": False, "lease": False},
-    failover_chain=(FailoverStep("codex"), FailoverStep("claude", "claude-opus-5-5")),
+    failover_chain=(FailoverStep("cursor-agent"), FailoverStep("claude", "claude-opus-5-5")),
 )
 
 _CALLER = Principal(
@@ -34,7 +34,7 @@ _CALLER = Principal(
 
 
 @pytest.mark.unit
-def _patch_role(staff, monkeypatch: pytest.MonkeyPatch) -> None:
+def _patch_role(staff, monkeypatch: pytest.MonkeyPatch) -> None:  # noqa: F811
     base = staff._roles_loader
 
     def _loader() -> dict:
@@ -53,7 +53,7 @@ def test_dry_run_reports_substitution(staff, monkeypatch: pytest.MonkeyPatch) ->
             DispatchCommand(
                 role="code-reviewer",
                 requested_by="operator",
-                provider="codex",
+                provider="cursor-agent",
                 prompt="review",
                 dry_run=True,
             ),
@@ -63,7 +63,7 @@ def test_dry_run_reports_substitution(staff, monkeypatch: pytest.MonkeyPatch) ->
     res = asyncio.run(_run())
     assert res["dry_run"] is True
     assert res["plan"]["provider"] == "claude"
-    assert res["requested_provider"] == "codex"
+    assert res["requested_provider"] == "cursor-agent"
     assert res["substitution_reason"] == "code_read_only"
 
 
@@ -77,7 +77,7 @@ def test_dispatch_records_substitution_event(staff, monkeypatch: pytest.MonkeyPa
                 DispatchCommand(
                     role="code-reviewer",
                     requested_by="operator",
-                    provider="codex",
+                    provider="cursor-agent",
                     prompt="review",
                 ),
                 _CALLER,

@@ -4,9 +4,15 @@ from __future__ import annotations
 
 import enum
 import logging
-import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import Any
+
+from coordination.merge_shepherd_holds import (
+    MERGE_SHEPHERD_HOLD_LABELS,
+    label_is_merge_shepherd_hold,
+    pr_title_indicates_hold,
+)
 
 
 class _StrEnum(str, enum.Enum):  # noqa: UP042
@@ -18,8 +24,11 @@ class _StrEnum(str, enum.Enum):  # noqa: UP042
 logger = logging.getLogger(__name__)
 
 MERGE_QUEUE_REPOS = frozenset({"runner_dashboard", "repository_management", "gasification_model", "rd", "rm", "gm"})
-HOLD_LABELS = frozenset({"hold", "drain-hold", "do-not-merge", "dnm", "blocked", "needs-decision", "wip"})
-_HOLD_TITLE = re.compile(r"\[hold\]|\(held\)|\(hold\)|^\s*hold\b", re.IGNORECASE)
+HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
+#: Merge-queue ejections of one head after which the shepherd stops arming it (#3932).
+BOUNCE_LIMIT = 2
+#: Ejection reasons that say nothing about the PR itself.
+NOT_A_BOUNCE = frozenset({"merged", "already_merged", "queue_cleared", "roll_back"})
 
 
 class ShepherdAction(_StrEnum):
@@ -80,11 +89,35 @@ def get_auto_merge_flag(repo: str) -> str:
     return "--auto" if _normalize_repo_name(repo) in MERGE_QUEUE_REPOS else "--auto --squash"
 
 
+def count_queue_bounces(node: Mapping[str, Any]) -> int:
+    """Count merge-queue ejections of the PR's current head (#4249 B-04).
+
+    Pre: ``node`` is a GraphQL pull-request node carrying
+    ``timelineItems.nodes[{createdAt, reason}]`` (``RemovedFromMergeQueueEvent``) and
+    ``commits.nodes[-1].commit.committedDate``.
+    Post: ejections at or before the head commit time belong to an older head and are
+    not counted, so a new push clears the count. With no head commit time every
+    ejection counts (fail closed). A reason in ``NOT_A_BOUNCE`` never counts.
+    """
+    events = (node.get("timelineItems") or {}).get("nodes") or []
+    commits = (node.get("commits") or {}).get("nodes") or []
+    last = commits[-1] if commits and isinstance(commits[-1], Mapping) else {}
+    head_at = str((last.get("commit") or {}).get("committedDate") or "")
+    bounces = 0
+    for event in events:
+        if not isinstance(event, Mapping) or not event.get("createdAt"):
+            continue
+        if str(event.get("reason") or "").casefold() in NOT_A_BOUNCE:
+            continue
+        if head_at and str(event["createdAt"]) <= head_at:
+            continue
+        bounces += 1
+    return bounces
+
+
 def is_pr_held(labels: Sequence[str] = (), title: str = "") -> bool:
     """Check if PR is marked with a hold via label or title indicator."""
-    return any(str(lbl).strip().casefold() in HOLD_LABELS for lbl in labels) or bool(
-        title and _HOLD_TITLE.search(title)
-    )
+    return any(label_is_merge_shepherd_hold(lbl) for lbl in labels) or pr_title_indicates_hold(title)
 
 
 def is_priority_candidate(candidate: PRCandidate) -> bool:
@@ -104,7 +137,7 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
         return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.CONFLICT, priority=priority)
     if is_pr_held(candidate.labels, candidate.title):
         return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.HELD, priority=priority)
-    if candidate.bounces >= 2:
+    if candidate.bounces >= BOUNCE_LIMIT:
         return ShepherdDecision(
             ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.BOUNCE_LIMIT, priority=priority
         )
@@ -113,10 +146,6 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
     if candidate.is_queued:
         return ShepherdDecision(
             ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.ALREADY_QUEUED, priority=priority
-        )
-    if candidate.is_behind:
-        return ShepherdDecision(
-            ShepherdAction.UPDATE_BRANCH, pr_num, repo, detail="Update branch via API", priority=priority
         )
 
     checks = candidate.checks_status.upper()

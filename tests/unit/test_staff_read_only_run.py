@@ -15,10 +15,11 @@ from staff.adapter_policies import (
 )
 from staff.adapters import ADAPTERS
 from staff.plan import RunRequest
-from staff.roles import RoleSpec
 from staff.runner import StaffRunner
 from staff.store import RunStore
 from staff.workspace import FLEET_RULES, READ_ONLY_FLEET_RULES, compose_prompt
+
+from staff.roles import RoleSpec
 
 
 @pytest.mark.unit
@@ -166,7 +167,7 @@ def test_staff_runner_resolve_provider_read_only(tmp_path: Path, staff_cli_insta
     role = RoleSpec(
         name="barb",
         title="Barb",
-        providers=("codex", "claude"),
+        providers=("cursor-agent", "claude"),
         permissions={"push_branch": False, "open_pr": False, "code_read_only": True},
         surface="dashboard",
     )
@@ -179,12 +180,14 @@ def test_staff_runner_resolve_provider_read_only(tmp_path: Path, staff_cli_insta
     assert plan.provider == "claude"
 
     # Substitutes to a read-only provider when caller names a non-read-only provider (#4452)
-    plan_forced = runner.plan(RunRequest(role="barb", provider="codex", prompt="read only"))
+    plan_forced = runner.plan(RunRequest(role="barb", provider="cursor-agent", prompt="read only"))
     assert plan_forced.provider == "claude"
-    assert plan_forced.requested_provider == "codex"
+    assert plan_forced.requested_provider == "cursor-agent"
 
-    with pytest.raises(ValueError, match="runs code-read-only; provider 'codex' has no read-only unattended mode"):
-        runner.plan(RunRequest(role="barb", provider="codex", prompt="read only", strict_provider=True))
+    with pytest.raises(
+        ValueError, match="runs code-read-only; provider 'cursor-agent' has no read-only unattended mode"
+    ):
+        runner.plan(RunRequest(role="barb", provider="cursor-agent", prompt="read only", strict_provider=True))
 
 
 @pytest.mark.unit
@@ -211,3 +214,38 @@ def test_validator_accepts_boolean_code_read_only(value: object, ok: bool) -> No
     role_dict["permissions"] = {**_VALID_ROLE_DICT["permissions"], "code_read_only": value}
     problems = validate_role_data(role_dict)
     assert (problems == []) is ok, problems
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("session_id", [None, "previous-session"])
+def test_codex_read_only_sandbox(session_id: str | None) -> None:
+    argv = ADAPTERS["codex"].build_command(
+        "review repo", "/w", read_only=True, gitdir="/git-common", session_id=session_id
+    )
+    assert argv[argv.index("--sandbox") + 1] == "read-only"
+    assert not PERMISSION_BYPASS_FLAGS.intersection(argv)
+    assert not {"workspace-write", "--add-dir", "--full-auto", "--ask-for-approval", "-a"}.intersection(argv)
+    assert not any("sandbox_workspace_write" in arg for arg in argv)
+    if session_id:
+        assert argv[-3:] == ["resume", session_id, "review repo"]
+
+
+@pytest.mark.unit
+def test_codex_write_sandbox_unchanged() -> None:
+    adapter = ADAPTERS["codex"]
+    argv = adapter.build_command("fix repo", "/w", "gpt-6.1-sol", gitdir="/git-common")
+    assert argv == [
+        adapter.executable,
+        "exec",
+        "--sandbox",
+        "workspace-write",
+        "--add-dir",
+        "/git-common",
+        "-c",
+        "sandbox_workspace_write.network_access=true",
+        "--skip-git-repo-check",
+        "--json",
+        "--model",
+        "gpt-6.1-sol",
+        "fix repo",
+    ]

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
-from coordination.merge_shepherd_low_risk import arm_eligibility_reason
+from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS, normalize_hold_label
 
 DEFAULT_REVIEW_PASS_TTL_HOURS = 72
 
@@ -27,15 +28,24 @@ def _normalize_sha(sha: str) -> str:
     return sha.strip().lower()
 
 
-def head_sha_matches(recorded: str, head: str) -> bool:
-    """True when ``recorded`` matches ``head`` by full SHA or unique short prefix."""
+def head_sha_matches(recorded: str, head: str, *, known_shas: Sequence[str] = ()) -> bool:
+    """True when ``recorded`` matches ``head`` by full SHA or a unique short prefix."""
     rec, act = _normalize_sha(recorded), _normalize_sha(head)
     if not rec or not act:
         return False
     if rec == act:
         return True
     shorter, longer = (rec, act) if len(rec) <= len(act) else (act, rec)
-    return len(shorter) >= 7 and longer.startswith(shorter)
+    if len(shorter) < 7 or not longer.startswith(shorter):
+        return False
+    pool = {_normalize_sha(s) for s in known_shas if _normalize_sha(s)}
+    pool.update({rec, act})
+    full_shas = {s for s in pool if len(s) == 40}
+    if not full_shas:
+        return True
+    prefix = shorter
+    matches = [s for s in full_shas if s.startswith(prefix)]
+    return len(matches) == 1
 
 
 def _parse_recorded_at(stamp: str) -> datetime | None:
@@ -56,10 +66,17 @@ def pass_at_head(
     now: datetime | None = None,
     ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
 ) -> tuple[bool, str]:
-    """Return whether an approve verdict exists for ``head_sha`` and is still fresh."""
-    matches = [
-        row for row in passes if row.pr == pr and row.verdict == "approve" and head_sha_matches(row.head_sha, head_sha)
+    """Return whether the latest verdict at ``head_sha`` is a fresh approve."""
+    known_shas = tuple(row.head_sha for row in passes)
+    at_head = [
+        row for row in passes if row.pr == pr and head_sha_matches(row.head_sha, head_sha, known_shas=known_shas)
     ]
+    if not at_head:
+        return False, "missing_pass_at_head"
+    latest = max(at_head, key=lambda row: row.recorded_at)
+    if latest.verdict != "approve":
+        return False, "rejected_at_head"
+    matches = [row for row in at_head if row.verdict == "approve"]
     if not matches:
         return False, "missing_pass_at_head"
     latest = max(matches, key=lambda row: row.recorded_at)
@@ -88,19 +105,16 @@ def shepherd_arm_eligibility(
     now: datetime | None = None,
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
 ) -> tuple[str, str]:
-    """Docs/tests-only may arm without a hub pass; code paths need PASS at ``head_sha``."""
-    kind, detail = arm_eligibility_reason(
-        review_decision=review_decision,
-        file_paths=file_paths,
-        additions=additions,
-        deletions=deletions,
-        line_cap=line_cap,
-        labels=labels,
-        checks_state=checks_state,
-        files_complete=files_complete,
-    )
-    if kind != "reviewed":
-        return kind, detail
+    """Arming requires an exact-head PASS at ``head_sha`` (no docs/tests-only shortcut)."""
+    if str(checks_state).upper() != "SUCCESS":
+        return "no_approval", "required_checks_not_green"
+    if any(normalize_hold_label(lbl) in MERGE_SHEPHERD_HOLD_LABELS for lbl in labels):
+        return "no_approval", "blocked_label"
+    if not files_complete:
+        return "no_approval", "files_incomplete"
+    if not file_paths:
+        return "no_approval", "no_changed_files"
+
     ok, pass_detail = pass_at_head(
         review_passes,
         pr=pr_number,
@@ -108,9 +122,16 @@ def shepherd_arm_eligibility(
         now=now,
         ttl_hours=review_pass_ttl_hours,
     )
-    if not ok:
+    if ok:
+        decision_label = (
+            "review_decision_approved" if str(review_decision or "").upper() == "APPROVED" else "exact_head_verdict"
+        )
+        return "reviewed", f"{decision_label}+{pass_detail}"
+
+    if str(review_decision or "").upper() == "APPROVED":
         return "no_approval", pass_detail
-    return "reviewed", f"{detail}+{pass_detail}"
+
+    return "no_approval", pass_detail
 
 
 def collect_review_passes_from_store(
@@ -124,23 +145,94 @@ def collect_review_passes_from_store(
     if not callable(list_runs):
         return ()
     for rec in list_runs(limit=500):
-        if getattr(rec, "repo", "") != repo or getattr(rec, "role", "") != role:
+        if getattr(rec, "repo", "") != repo:
+            continue
+        rec_role = getattr(rec, "role", "")
+        if (
+            rec_role != role
+            and not rec_role.startswith("acceptance-review")
+            and not rec_role.startswith("code-reviewer")
+        ):
             continue
         if getattr(rec, "status", "") != "succeeded":
             continue
         text = str(getattr(rec, "outcome", "") or getattr(rec, "last_line", "") or "")
         verdict = parse_review_verdict(text)
-        if verdict.status != "succeeded" or verdict.verdict != "approve" or not verdict.pr_number:
+        if verdict.status != "succeeded" or not verdict.pr_number or not verdict.head_sha:
             continue
-        if not verdict.head_sha:
+        if verdict.verdict not in {"approve", "changes", "escalate"}:
             continue
+        mapped = "approve" if verdict.verdict == "approve" else "reject"
         rows.append(
             HeadReviewPass(
                 pr=int(verdict.pr_number),
                 head_sha=verdict.head_sha,
-                verdict="approve",
+                verdict=mapped,
                 recorded_at=str(getattr(rec, "ended_at", "") or getattr(rec, "created_at", "") or ""),
                 reviewer_model=str(getattr(rec, "model", "") or ""),
+            )
+        )
+    return tuple(rows)
+
+
+def collect_review_passes_from_comments(
+    comments: Sequence[Mapping[str, Any]],
+    pr: int,
+) -> tuple[HeadReviewPass, ...]:
+    """Parse PASS records from PR issue comments carrying STAFF_RESULT approve verdicts."""
+    from staff.review import parse_review_verdict
+
+    rows: list[HeadReviewPass] = []
+    for c in comments:
+        if not isinstance(c, Mapping):
+            continue
+        body = str(c.get("body") or "")
+        verdict = parse_review_verdict(body)
+        if verdict.status != "succeeded" or not verdict.head_sha:
+            continue
+        if verdict.pr_number and int(verdict.pr_number) != pr:
+            continue
+        if verdict.verdict not in {"approve", "changes", "escalate"}:
+            continue
+        mapped = "approve" if verdict.verdict == "approve" else "reject"
+        author_login = str((c.get("author") or {}).get("login") or "")
+        rows.append(
+            HeadReviewPass(
+                pr=pr,
+                head_sha=verdict.head_sha,
+                verdict=mapped,
+                recorded_at=str(c.get("createdAt") or ""),
+                reviewer_model=author_login,
+            )
+        )
+    return tuple(rows)
+
+
+def collect_review_passes_from_github_reviews(
+    reviews: Sequence[Mapping[str, Any]],
+    pr: int,
+) -> tuple[HeadReviewPass, ...]:
+    """Build PASS records from formal GitHub PR reviews in state APPROVED with commit SHA."""
+    rows: list[HeadReviewPass] = []
+    for r in reviews:
+        if not isinstance(r, Mapping):
+            continue
+        state = str(r.get("state") or "").upper()
+        if state not in {"APPROVED", "CHANGES_REQUESTED"}:
+            continue
+        commit = r.get("commit") or {}
+        sha = str(commit.get("oid") or "") if isinstance(commit, Mapping) else ""
+        if not sha:
+            continue
+        mapped = "approve" if state == "APPROVED" else "reject"
+        author_login = str((r.get("author") or {}).get("login") or "")
+        rows.append(
+            HeadReviewPass(
+                pr=pr,
+                head_sha=sha,
+                verdict=mapped,
+                recorded_at=str(r.get("submittedAt") or ""),
+                reviewer_model=author_login,
             )
         )
     return tuple(rows)

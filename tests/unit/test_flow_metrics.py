@@ -78,3 +78,62 @@ async def test_collect_flow_metrics_uses_injected_fetcher() -> None:
     row = payload["repos"][0]
     assert row["weekly_issue_burn"]["net"] == 3
     assert row["open_pr_age"]["count"] == 1
+
+
+def _fake_gh_factory(open_pulls: str, seen_paths: list[str] | None = None):
+    async def fake_gh(args: list[str], timeout: int) -> tuple[int, str, str]:
+        path = args[-1]
+        if seen_paths is not None:
+            seen_paths.append(path)
+        if "/pulls?state=open" in path:
+            return 0, open_pulls, ""
+        if "state=closed" in path:
+            return 0, "[]", ""
+        if "/search/issues" in path:
+            return 0, '{"total_count": 0}', ""
+        return 1, "", f"unexpected args {args}"
+
+    return fake_gh
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_aging_prs_use_injected_now_consistently_with_summary() -> None:
+    from flow_metrics import collect_repo_metrics
+
+    now = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
+    # 2026-10-30T00:00Z -> 2026-11-02T12:00Z is exactly 84 hours.
+    gh = _fake_gh_factory('[{"number": 7, "created_at": "2026-10-30T00:00:00Z"}]')
+    row = await collect_repo_metrics("Runner_Dashboard", run_gh=gh, now=now)
+    assert row["open_pr_age"]["max_hours"] == 84.0
+    assert row["open_pr_age"]["over_rule_hours"] == 1
+    assert [p["age_hours"] for p in row["aging_prs"]] == [84.0]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_unparseable_created_at_is_not_counted_as_zero_hour_pr() -> None:
+    from flow_metrics import collect_repo_metrics
+
+    now = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
+    gh = _fake_gh_factory(
+        '[{"number": 1, "created_at": "2026-10-30T00:00:00Z"}, {"number": 2, "created_at": "garbage"}, {"number": 3}]'
+    )
+    row = await collect_repo_metrics("Runner_Dashboard", run_gh=gh, now=now)
+    # Only the one PR with a real timestamp has a measurable age; zeros must not drag p50 down.
+    assert row["open_pr_age"]["count"] == 1
+    assert row["open_pr_age"]["p50_hours"] == 84.0
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_issue_search_window_ends_on_injected_now_date() -> None:
+    from flow_metrics import collect_repo_metrics
+
+    now = datetime(2026, 11, 2, 12, 0, tzinfo=UTC)
+    seen: list[str] = []
+    await collect_repo_metrics("Runner_Dashboard", run_gh=_fake_gh_factory("[]", seen), now=now)
+    searches = [p for p in seen if "/search/issues" in p]
+    assert len(searches) == 2
+    # 7-day inclusive window ending 2026-11-02 starts 2026-10-27 (URL-encoded "..").
+    assert all("2026-10-27..2026-11-02" in p for p in searches)

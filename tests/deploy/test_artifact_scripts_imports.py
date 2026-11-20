@@ -63,7 +63,7 @@ def test_backend_scripts_import_modules_exist_in_repo() -> None:
 def _stage_minimal_artifact(stage: Path, *, include_automerge: bool = True, include_clients_fleet: bool = True) -> None:
     """Stage backend/ + scripts/ + clients/fleet/ the way the packager does (without npm/wheels)."""
     stage.mkdir(parents=True, exist_ok=True)
-    subdirs = ["backend", "scripts"]
+    subdirs = ["backend", "scripts", "shared_scripts"]
     if include_clients_fleet:
         subdirs.append("clients/fleet")
     for sub in subdirs:

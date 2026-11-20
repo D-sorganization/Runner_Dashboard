@@ -283,6 +283,38 @@ Read-only. The newest postman dry-run reports (`limit` 1 to 50, default 10), wri
 The postman runs in dry run only, so the response's `live` is always `false` and nothing is delivered
 (proposal: `docs/agents/messenger-agents.md`).
 
+### `GET /api/coordination/fleet-efficiency`
+
+Read-only. Returns wake coalescing seconds (5–10 minute window), the 6-line lane brief cap, and planned reset
+threshold metadata for lane/hub sessions (#4562). Documented for agents in `staff/prompts/rd-prompt.md`.
+
+### `GET /api/coordination/lane-prompts/catalog`
+
+Read-only. Lists registered lane-prompt assignments and any active checkout metadata.
+
+### `GET /api/coordination/lane-prompts/health`
+
+Returns a health summary with `healthy_active`, `stalled_heartbeat`, `stalled_progress`, `expired_recent`, and
+`idle_lanes` entries, plus `needs_attention`. Query thresholds are `stall_heartbeat_sec` (default 900),
+`stall_progress_sec` (default 1800), and `expired_window_sec` (default 86400); each has an effective minimum of
+60 seconds. Expired active checkouts are marked expired while building the summary, and recovered or disabled lanes
+are excluded from recent-expiration alerts.
+
+### `POST /api/coordination/lane-prompts/checkout`
+
+Body `{session_id, idempotency_key, lane_id?, role?, ttl_sec?}` → atomically resumes an active session
+checkout or claims an eligible lane slot with a monotonically increasing `fence_token` (`409` on conflict).
+
+### `POST /api/coordination/lane-prompts/heartbeat`
+
+Body `{checkout_id, fence_token, session_id, ttl_sec?, progress?}` → extends checkout TTL when `fence_token`
+and `session_id` match (`409` on stale fence).
+
+### `POST /api/coordination/lane-prompts/release`
+
+Body `{checkout_id, fence_token, session_id, reason?}` → releases an active lane-prompt checkout (`409` on
+stale fence).
+
 ## Configuration
 
 | Variable                  | Meaning                                                                       |

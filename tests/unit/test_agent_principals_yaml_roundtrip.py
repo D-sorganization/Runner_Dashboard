@@ -59,7 +59,7 @@ def test_agent_inline_strings_round_trip(loaded: dict[str, dict]) -> None:
     truncated = [
         (agent_id, key, text, loaded[agent_id][key])
         for agent_id, key, text in written
-        if key in loaded[agent_id] and loaded[agent_id][key] != text
+        if key in loaded[agent_id] and isinstance(loaded[agent_id][key], str) and loaded[agent_id][key] != text
     ]
     assert not truncated, f"quote these values in {_DEFAULTS.name}: {truncated}"
 

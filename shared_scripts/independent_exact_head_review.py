@@ -38,14 +38,23 @@ def normalize_model_token(value: str) -> str:
     return value.strip().lower()
 
 
-def head_sha_matches(recorded: str, head: str) -> bool:
+def head_sha_matches(recorded: str, head: str, *, known_shas: Sequence[str] = ()) -> bool:
     rec, act = normalize_model_token(recorded), normalize_model_token(head)
     if not rec or not act:
         return False
     if rec == act:
         return True
     shorter, longer = (rec, act) if len(rec) <= len(act) else (act, rec)
-    return len(shorter) >= 7 and longer.startswith(shorter)
+    if len(shorter) < 7 or not longer.startswith(shorter):
+        return False
+    pool = {normalize_model_token(s) for s in known_shas if normalize_model_token(s)}
+    pool.update({rec, act})
+    full_shas = {s for s in pool if len(s) == 40}
+    if not full_shas:
+        return True
+    prefix = shorter
+    matches = [s for s in full_shas if s.startswith(prefix)]
+    return len(matches) == 1
 
 
 def models_are_independent(author_model: str, reviewer_model: str) -> bool:

@@ -77,6 +77,22 @@ def test_emit_activity_never_raises_when_ingest_itself_fails(
 
 
 @pytest.mark.unit
+def test_record_input_gate_activity_emits_blocked_and_unblocked_kinds(store: ActivityStore) -> None:
+    activity_producers.record_input_gate_activity(
+        session_id="sess-gate",
+        node="node-c",
+        kind="blocked_on_input",
+        reason="notification",
+        prompt="Approve MCP tool?",
+    )
+    activity_producers.record_input_gate_activity(session_id="sess-gate", node="node-c", kind="unblocked")
+    page = store.read(session_id="sess-gate")
+    assert [item.kind for item in page.items] == ["blocked_on_input", "unblocked"]
+    assert page.items[0].payload["reason"] == "notification"
+    assert page.items[0].payload["prompt"] == "Approve MCP tool?"
+
+
+@pytest.mark.unit
 def test_record_job_claim_activity_emits_required_fields_and_redacts_secret_fencing_token(
     store: ActivityStore,
 ) -> None:
