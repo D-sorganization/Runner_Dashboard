@@ -57,8 +57,7 @@ def pm_sidekick_role_data() -> dict[str, Any]:
         "name": ROLE,
         "title": "PM-Sidekick — Sidekick Project Manager",
         "summary": (
-            "Report-only project manager for the Tools repository: "
-            "one weekday priority digest, no push or merge."
+            "Report-only project manager for the Tools repository: one weekday priority digest, no push or merge."
         ),
         "playbook": "docs/operations/persona-cutover.md",
         "prompt_template": None,
