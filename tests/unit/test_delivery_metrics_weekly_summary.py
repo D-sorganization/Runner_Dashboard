@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 import pytest
 from delivery_metrics.db import init_db
@@ -21,6 +20,7 @@ REPO = "D-sorganization/Runner_Dashboard"
 SINCE = datetime(2026, 10, 1, tzinfo=UTC)
 UNTIL = datetime(2026, 10, 31, tzinfo=UTC)
 PINNED_NOW = datetime(2026, 10, 25, 0, 0, 0, tzinfo=UTC)
+FUTURE_NOW = datetime(2035, 1, 1, 0, 0, 0, tzinfo=UTC)
 
 
 class _FixtureCollector:
@@ -40,8 +40,29 @@ class _FixtureCollector:
         return self._runs
 
 
+@pytest.fixture(params=[PINNED_NOW, FUTURE_NOW], ids=["pinned_date", "future_wall_clock"])
+def wall_clock(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> datetime:
+    simulated: datetime = request.param
+
+    class _MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is not None:
+                return simulated.astimezone(tz)
+            return simulated
+
+    import delivery_metrics.report as report_mod
+    import delivery_metrics.sync as sync_mod
+    import delivery_metrics.weekly_summary as ws_mod
+
+    monkeypatch.setattr(sync_mod, "datetime", _MockDatetime)
+    monkeypatch.setattr(report_mod, "datetime", _MockDatetime)
+    monkeypatch.setattr(ws_mod, "datetime", _MockDatetime)
+    return simulated
+
+
 @pytest.fixture
-def metrics_conn(tmp_path: Path):
+def metrics_conn(tmp_path: Path, wall_clock: datetime):
     db_path = init_db(tmp_path / "metrics.db")
     pr = json.loads((FIXTURES / "pr_2111.json").read_text(encoding="utf-8"))
     checks = json.loads((FIXTURES / "check_runs_pr_2111.json").read_text(encoding="utf-8"))
@@ -127,21 +148,3 @@ def test_build_weekly_summary_composes_delivery_staff_and_cost(metrics_conn) -> 
     assert body["staff"]["cost_per_merged_pr"]["median_usd"] == 4.5
     assert "markdown" in body
     assert "Weekly delivery summary" in body["markdown"]
-
-
-def test_build_weekly_summary_deterministic_under_future_wall_clock(metrics_conn: Any) -> None:
-    future_now = datetime(2035, 1, 1, 0, 0, 0, tzinfo=UTC)
-    session_metrics = {
-        "cost_per_merged_pr": {"count": 2, "median_usd": 4.5, "p90_usd": 6.0},
-        "total_sessions": 3,
-    }
-    body = build_weekly_summary(
-        metrics_conn,
-        since=SINCE,
-        until=UNTIL,
-        runs=[_run()],
-        proposals=[],
-        session_metrics=session_metrics,
-        now=future_now,
-    )
-    assert body["delivery"]["summary"]["prs"] >= 1
