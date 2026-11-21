@@ -1,9 +1,9 @@
 """PM-Sidekick RD persona role runtime, capsule schema, shadow-mode execution, and Grok Bot fallback drill (#3699).
 
 Mirrors the Bob port (#3296) and the PM-Gasification port (#3696): PM-Sidekick is a
-report-only project manager for Sidekick (one weekday digest slot) instead of Bob's
-three productivity slots. The Sidekick packaging hold is unaffected by this persona
-port (role-seats.md: "Sidekick packaging hold stays").
+report-only project manager for the Sidekick product in the Tools repository (one
+weekday digest slot) instead of Bob's three productivity slots. The Sidekick packaging
+hold is unaffected by this persona port (role-seats.md: "Sidekick packaging hold stays").
 """
 
 from __future__ import annotations
@@ -56,11 +56,14 @@ def pm_sidekick_role_data() -> dict[str, Any]:
     return {
         "name": ROLE,
         "title": "PM-Sidekick — Sidekick Project Manager",
-        "summary": "Report-only project manager for Sidekick: one weekday priority digest, no push or merge.",
+        "summary": (
+            "Report-only project manager for the Tools repository: "
+            "one weekday priority digest, no push or merge."
+        ),
         "playbook": "docs/operations/persona-cutover.md",
         "prompt_template": None,
         "instructions": (
-            "You are PM-Sidekick, project manager for the Sidekick repo. Report-only, "
+            "You are PM-Sidekick, project manager for the Tools repository. Report-only, "
             "never dispatches, opens PRs, or merges. Schedule: 0 9 * * 1-5 (sidekick_digest, weekday "
             "priority digest) in America/Los_Angeles. Message Barb via persona_notify with open "
             "Sidekick blockers. Never touches Sidekick packaging; that hold stays separate."
@@ -69,7 +72,7 @@ def pm_sidekick_role_data() -> dict[str, Any]:
         "model": "claude-opus-5-5",
         "schedule": "0 9 * * 1-5",
         "window": None,
-        "repos": ["Sidekick"],
+        "repos": ["Tools"],
         "scope": {"schedules": dict(PM_SIDEKICK_SCHEDULE_ENTRIES), "timezone": DEFAULT_TZ, "report_only": True},
         "budget": {"usd_per_run": 0.0, "usd_per_day": 0.0},
         "permissions": perms,
