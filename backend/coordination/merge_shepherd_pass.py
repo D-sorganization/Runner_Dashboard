@@ -119,6 +119,7 @@ query($owner: String!, $name: String!) {
         reviews(last: 10) {
           nodes {
             state
+            body
             submittedAt
             author { login }
             commit { oid }
