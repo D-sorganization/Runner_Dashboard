@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from delivery_metrics.db import init_db
@@ -19,6 +20,7 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "delivery_metrics"
 REPO = "D-sorganization/Runner_Dashboard"
 SINCE = datetime(2026, 10, 1, tzinfo=UTC)
 UNTIL = datetime(2026, 10, 31, tzinfo=UTC)
+PINNED_NOW = datetime(2026, 10, 25, 0, 0, 0, tzinfo=UTC)
 
 
 class _FixtureCollector:
@@ -45,7 +47,7 @@ def metrics_conn(tmp_path: Path):
     checks = json.loads((FIXTURES / "check_runs_pr_2111.json").read_text(encoding="utf-8"))
     import asyncio
 
-    asyncio.run(collect_delivery_metrics_once(_FixtureCollector(pr, checks), [REPO], db_path=db_path))
+    asyncio.run(collect_delivery_metrics_once(_FixtureCollector(pr, checks), [REPO], db_path=db_path, now=PINNED_NOW))
     import sqlite3
 
     conn = sqlite3.connect(str(db_path))
@@ -117,6 +119,7 @@ def test_build_weekly_summary_composes_delivery_staff_and_cost(metrics_conn) -> 
         runs=[_run()],
         proposals=[],
         session_metrics=session_metrics,
+        now=PINNED_NOW,
     )
     assert body["delivery"]["summary"]["prs"] >= 1
     assert body["staff"]["runs"] == 1
@@ -124,3 +127,21 @@ def test_build_weekly_summary_composes_delivery_staff_and_cost(metrics_conn) -> 
     assert body["staff"]["cost_per_merged_pr"]["median_usd"] == 4.5
     assert "markdown" in body
     assert "Weekly delivery summary" in body["markdown"]
+
+
+def test_build_weekly_summary_deterministic_under_future_wall_clock(metrics_conn: Any) -> None:
+    future_now = datetime(2035, 1, 1, 0, 0, 0, tzinfo=UTC)
+    session_metrics = {
+        "cost_per_merged_pr": {"count": 2, "median_usd": 4.5, "p90_usd": 6.0},
+        "total_sessions": 3,
+    }
+    body = build_weekly_summary(
+        metrics_conn,
+        since=SINCE,
+        until=UNTIL,
+        runs=[_run()],
+        proposals=[],
+        session_metrics=session_metrics,
+        now=future_now,
+    )
+    assert body["delivery"]["summary"]["prs"] >= 1

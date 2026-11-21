@@ -17,6 +17,7 @@ from delivery_metrics.sync import collect_delivery_metrics_once
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "delivery_metrics"
 REPO = "D-sorganization/Runner_Dashboard"
+PINNED_NOW = datetime(2026, 10, 25, 0, 0, 0, tzinfo=UTC)
 
 
 class _FixtureCollector:
@@ -42,7 +43,7 @@ async def seeded_conn(tmp_path: Path) -> sqlite3.Connection:
     db_path = init_db(tmp_path / "dm.db")
     pr = json.loads((FIXTURES / "pr_2111.json").read_text(encoding="utf-8"))
     checks = json.loads((FIXTURES / "check_runs_pr_2111.json").read_text(encoding="utf-8"))
-    await collect_delivery_metrics_once(_FixtureCollector(pr, checks), [REPO], db_path=db_path)
+    await collect_delivery_metrics_once(_FixtureCollector(pr, checks), [REPO], db_path=db_path, now=PINNED_NOW)
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     yield conn
@@ -62,10 +63,21 @@ def test_ci_rounds_from_recorded_check_runs() -> None:
 async def test_build_metrics_report_from_seeded_db(seeded_conn: sqlite3.Connection) -> None:
     since = datetime(2026, 10, 1, tzinfo=UTC)
     until = datetime(2026, 10, 31, tzinfo=UTC)
-    report = build_metrics_report(seeded_conn, since=since, until=until, repo_full=REPO)
+    report = build_metrics_report(seeded_conn, since=since, until=until, repo_full=REPO, now=PINNED_NOW)
     assert report["summary"]["prs"] >= 1
     assert report["weekly_trends"]
     assert report["pr_drill_down"]
     drill = pr_drill_down(seeded_conn, REPO, 2111)
     assert drill["pull"]["number"] == 2111
     assert drill["check_runs"]
+
+
+@pytest.mark.asyncio
+async def test_build_metrics_report_deterministic_under_future_wall_clock(
+    seeded_conn: sqlite3.Connection,
+) -> None:
+    future_now = datetime(2035, 1, 1, 0, 0, 0, tzinfo=UTC)
+    since = datetime(2026, 10, 1, tzinfo=UTC)
+    until = datetime(2026, 10, 31, tzinfo=UTC)
+    report = build_metrics_report(seeded_conn, since=since, until=until, repo_full=REPO, now=future_now)
+    assert report["summary"]["prs"] >= 1
