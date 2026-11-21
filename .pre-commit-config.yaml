@@ -28,7 +28,6 @@ repos:
         args: ["--fix", "--exit-non-zero-on-fix"]
         types: [python]
         files: ^(backend|clients)/.*\.pyi?$
-
       - id: ruff-format
         name: "ruff format (Python)"
         types: [python]
@@ -43,6 +42,7 @@ repos:
         types_or: [yaml, markdown, json]
         exclude: '(package-lock\.json|\.ipynb|node_modules/)$'
         args: ["--write"]
+        stages: [pre-commit]
 
   # ===========================================================================
   # QUALITY CHECKS
@@ -66,6 +66,7 @@ repos:
         language: system
         files: ^changes/[^/]+\.md$
         exclude: ^changes/README\.md$
+        stages: [pre-commit]
 
       - id: no-duplicate-subprocess-env
         name: "no duplicate subprocess env scrubbers"
@@ -81,7 +82,6 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
-
   # ===========================================================================
   # SECRET SCANNING (Issue #396)
   # ===========================================================================
@@ -125,6 +125,16 @@ repos:
   # ===========================================================================
   # PRE-PUSH HOOKS (Slower - run before push only)
   # ===========================================================================
+
+  - repo: local
+    hooks:
+      - id: branch-fragment-and-prettier
+        name: "branch change fragments and prettier"
+        entry: python scripts/pre_push_branch_checks.py
+        language: system
+        stages: [pre-push]
+        always_run: true
+        pass_filenames: false
 
   # MyPy - Python type checking (pre-push only)
   - repo: https://github.com/pre-commit/mirrors-mypy
