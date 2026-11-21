@@ -76,7 +76,8 @@ class FakeGitHub:
             if self.review_post_status >= 400:
                 return httpx.Response(self.review_post_status, json={"message": "Resource not accessible"})
             if self.review_post_is_recorded:
-                row = {"id": 7, "state": "APPROVED", "commit_id": self.review_recorded_at, "user": _BOT}
+                state = "CHANGES_REQUESTED" if json["event"] == "REQUEST_CHANGES" else "APPROVED"
+                row = {"id": 7, "state": state, "commit_id": self.review_recorded_at, "user": _BOT}
                 self.reviews.append(row)
             return httpx.Response(200, json={"id": 7})
         if url.endswith(f"/issues/{_PR}/comments"):
@@ -294,7 +295,8 @@ def test_a_fix_needed_verdict_read_back_on_the_exact_sha_is_accepted(github: Fak
     out = _finalize(_INDEPENDENT_FIX)
 
     assert out.status == "succeeded"
-    assert github.posted("/reviews") == 0
+    assert github.posted("/reviews") == 1
+    assert github.reviews[-1]["state"] == "CHANGES_REQUESTED"
     assert f"FIX-NEEDED @{_HEAD}" in github.comments[501]
 
 

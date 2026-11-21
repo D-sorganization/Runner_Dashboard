@@ -36,5 +36,6 @@ def test_runner_dashboard_has_approved_at_head() -> None:
         {"id": 1, "state": "APPROVED", "commit_id": _HEAD[:7], "user": _BOT},
         {"id": 2, "state": "APPROVED", "commit_id": _OLD, "user": _BOT},
     ]
-    assert runner_dashboard_has_approved_at_head(reviews, head_sha=_HEAD) is True
+    assert runner_dashboard_has_approved_at_head(reviews[:1], head_sha=_HEAD) is True
+    assert runner_dashboard_has_approved_at_head(reviews, head_sha=_HEAD) is False
     assert runner_dashboard_has_approved_at_head(reviews[:1], head_sha=_OLD) is False
