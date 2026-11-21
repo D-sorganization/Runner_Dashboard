@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -20,6 +20,8 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "delivery_metrics"
 REPO = "D-sorganization/Runner_Dashboard"
 READER = Principal(id="r", type="user", name="Reader", roles=["viewer"], scopes=["fleet.read"])
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
+PINNED_NOW = datetime(2026, 10, 25, 0, 0, 0, tzinfo=UTC)
+FUTURE_NOW = datetime(2035, 1, 1, 0, 0, 0, tzinfo=UTC)
 
 
 class _FixtureCollector:
@@ -40,12 +42,35 @@ class _FixtureCollector:
         return self._runs
 
 
+@pytest.fixture(params=[PINNED_NOW, FUTURE_NOW], ids=["pinned_date", "future_wall_clock"])
+def wall_clock(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> datetime:
+    simulated: datetime = request.param
+
+    class _MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is not None:
+                return simulated.astimezone(tz)
+            return simulated
+
+    import delivery_metrics.report as report_mod
+    import delivery_metrics.sync as sync_mod
+    import delivery_metrics.weekly_summary as ws_mod
+    import routers.delivery_metrics as dm_mod
+
+    monkeypatch.setattr(sync_mod, "datetime", _MockDatetime)
+    monkeypatch.setattr(report_mod, "datetime", _MockDatetime)
+    monkeypatch.setattr(ws_mod, "datetime", _MockDatetime)
+    monkeypatch.setattr(dm_mod, "datetime", _MockDatetime)
+    return simulated
+
+
 @pytest.fixture
-def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FastAPI:
+def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wall_clock: datetime) -> FastAPI:
     db_path = init_db(tmp_path / "metrics.db")
     pr = json.loads((FIXTURES / "pr_2111.json").read_text(encoding="utf-8"))
     checks = json.loads((FIXTURES / "check_runs_pr_2111.json").read_text(encoding="utf-8"))
-    asyncio.run(collect_delivery_metrics_once(_FixtureCollector(pr, checks), [REPO], db_path=db_path))
+    asyncio.run(collect_delivery_metrics_once(_FixtureCollector(pr, checks), [REPO], db_path=db_path, now=PINNED_NOW))
     dm_routes.set_db_path(db_path)
     monkeypatch.setenv("DASHBOARD_ENABLE_DELIVERY_METRICS", "true")
     application = FastAPI()
