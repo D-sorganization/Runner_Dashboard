@@ -17,7 +17,16 @@ _DEFAULT_TTL_SEC = 3600
 _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
 
-_PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini", "deepseek", "qwen", "grok")
+_PROVIDER_PREFIXES = (
+    "codex",
+    "claude",
+    "agy",
+    "cursor",
+    "gemini",
+    "deepseek",
+    "qwen",
+    "grok",
+)
 
 # Staff registry and lane catalog use different provider spellings; normalize to lane ids
 # (short prefix form) before comparing checkout callers to seeded assignments.
@@ -62,6 +71,17 @@ _DEFAULT_QWEN_MODEL = "qwen3.8-flash"
 _DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
 
 DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "lane_id": "codex-ct-1",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "AffineDrift"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "gpt-6-luna",
+        "max_children": 3,
+        "task_focus": "ControlTower UpstreamDrift and AffineDrift backlog completion.",
+        "enabled": True,
+    },
     {
         "lane_id": "cursor-ct-1",
         "role": "backlog-completion",
@@ -154,7 +174,7 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
 
 
 def _load_host_aliases() -> dict[str, str]:
-    aliases: dict[str, str] = {}
+    aliases: dict[str, str] = {"controltower": "ct"}
     cfg_dir = Path(
         os.environ.get(
             "RUNNER_DASHBOARD_CONFIG_DIR",
