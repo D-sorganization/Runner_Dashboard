@@ -38,6 +38,7 @@ def test_merge_of_main_excludes_legacy_files_but_keeps_branch_files(
         git(tmp_path, "add", ".")
         git(tmp_path, "commit", "-m", "modify legacy")
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("PRE_COMMIT_TO_REF", raising=False)
     calls: list[list[str]] = []
 
     def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
