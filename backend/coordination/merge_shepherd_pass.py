@@ -86,6 +86,7 @@ query($owner: String!, $name: String!) {
         mergeStateStatus
         reviewDecision
         headRefOid
+        author { login }
         additions
         deletions
         labels(first: 30) { nodes { name } }
@@ -557,9 +558,10 @@ def plan_repo_pass(
         number = int(node["number"])
         head = str(node.get("headRefOid") or "")
         node_comments = (node.get("comments") or {}).get("nodes") or []
-        comment_passes = collect_review_passes_from_comments(node_comments, pr=number)
+        author_login = str((node.get("author") or {}).get("login") or "")
+        comment_passes = collect_review_passes_from_comments(node_comments, pr=number, author_login=author_login)
         node_reviews = (node.get("reviews") or {}).get("nodes") or []
-        github_passes = collect_review_passes_from_github_reviews(node_reviews, pr=number)
+        github_passes = collect_review_passes_from_github_reviews(node_reviews, pr=number, author_login=author_login)
         all_passes = (*review_passes, *comment_passes, *github_passes)
         cand = node_to_candidate(
             repo,

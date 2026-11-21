@@ -11,6 +11,7 @@ from typing import Any
 from coordination.merge_shepherd_exact_head import (
     DEFAULT_REVIEW_PASS_TTL_HOURS,
     HeadReviewPass,
+    pass_at_head,
     shepherd_arm_eligibility,
 )
 from coordination.merge_shepherd_holds import (
@@ -39,6 +40,7 @@ NOT_A_BOUNCE = frozenset({"merged", "already_merged", "queue_cleared", "roll_bac
 
 class ShepherdAction(_StrEnum):
     AUTO_ARM = "auto_arm"
+    DISARM = "disarm"
     UPDATE_BRANCH = "update_branch"
     SKIP = "skip"
 
@@ -147,6 +149,11 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
 
     if candidate.state.upper() != "OPEN":
         return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.NOT_OPEN, priority=priority)
+    # Pure decision only: live disarm execution remains deferred under #2657/#2880.
+    if candidate.auto_merge_enabled or candidate.is_queued:
+        _, verdict_detail = pass_at_head(candidate.review_passes, pr=pr_num, head_sha=candidate.head_sha)
+        if verdict_detail == "rejected_at_head":
+            return ShepherdDecision(ShepherdAction.DISARM, pr_num, repo, detail=verdict_detail, priority=priority)
     if candidate.is_draft:
         return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.DRAFT, priority=priority)
     if candidate.mergeable.upper() == "CONFLICTING":
