@@ -293,3 +293,35 @@ def test_injected_config_boundary_crash_keeps_original_snapshot(
     assert (result.old_issue, result.new_issue, result.predecessors) == (3029, 3040, [2539, 2851, 3029])
     assert sum(cmd[1:3] == ["issue", "create"] for cmd in calls) == 1
     assert calls[-1][3] == "3029"
+
+
+@pytest.mark.unit
+def test_rollover_notice_is_valid_agent_message_v1_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = _make_rm_config(tmp_path)
+    journal = tmp_path / "journal.json"
+    calls: list[list[str]] = []
+
+    def run(cmd: list[str]) -> MagicMock:
+        calls.append(cmd)
+        if cmd[1:3] == ["issue", "create"]:
+            return MagicMock(
+                returncode=0, stdout="https://github.com/D-sorganization/Repository_Management/issues/3040\n"
+            )
+        return MagicMock(returncode=0, stdout='{"comments": 505}')
+
+    monkeypatch.setattr("coordination.board.reset_cache", MagicMock())
+    br_mod.execute_board_rollover(root, runner=run, journal_path=journal)
+
+    comment_calls = [c for c in calls if c[1:3] == ["issue", "comment"]]
+    assert len(comment_calls) == 1
+    body = comment_calls[0][comment_calls[0].index("--body") + 1]
+    prefix, suffix = "<!-- agent-message v1 -->\n```json\n", "\n```"
+    assert body.startswith(prefix) and body.endswith(suffix), f"Malformed notice: {body!r}"
+    payload = json.loads(body[len(prefix) : -len(suffix)])
+    assert payload["version"] == 1
+    assert payload["kind"] == "message"
+    assert payload["session"] == "board-rollover"
+    assert payload["repo"] == "Repository_Management"
+    assert payload["recipient"] == "*"
+    assert "#3040" in payload["text"]
+    assert payload["at"].endswith("+00:00")
