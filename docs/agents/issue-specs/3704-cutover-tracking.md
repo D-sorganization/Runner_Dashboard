@@ -35,7 +35,7 @@ For each:
 
 - Persona modules: `backend/staff/*_persona.py`
 - Tests: `tests/unit/test_*_persona.py`
-- Also: bob, PM-*, fleet-dispatcher, expert-panel
+- Also: bob, PM-\*, fleet-dispatcher, expert-panel
 
 ## Acceptance criteria
 

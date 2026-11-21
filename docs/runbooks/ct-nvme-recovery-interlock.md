@@ -14,7 +14,7 @@ idle check and `systemctl stop`.
    a live Worker or busy lock, then stop. Implemented in
    `deploy/runner-scheduler.py` (`stop_runner_safely`, CLI `--stop-unit`).
    `deploy/runner-cleanup.sh` calls `/usr/local/bin/runner-scheduler --apply
-   --stop-unit` instead of a bare `systemctl stop`.
+--stop-unit` instead of a bare `systemctl stop`.
 3. **Defer, don't kill** — If a job appears after the freeze, thaw the unit and
    skip this pass. Python helpers share the lock rule:
    `backend.runner_recovery_interlock.should_defer_runner_stop`.

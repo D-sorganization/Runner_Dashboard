@@ -8,12 +8,12 @@
 The dashboard **used to** add a read-only shared-memory context pack to Barb's prompt. That server-side injection is
 **off by default** and requires an explicit operator opt-in. Configure only when you intentionally keep a legacy bridge:
 
-| Variable                           | Contract                                                                                                                                                                                  |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BARB_SHARED_MEMORY_CONTEXT_PACK` | Set to `1` to opt in to injecting context-pack data into dashboard Barb chat. Default unset/off — missing config does not add an "unavailable" block to the prompt.                      |
-| `BARB_SHARED_MEMORY_URL`           | Shared API origin, such as `https://node-a.example`; only the fixed `/api/v1/memory/context-pack` path is requested. Required when injection is opted in.                                  |
-| `BARB_SHARED_MEMORY_TOKEN_FILE`    | Absolute token file: `memory.read` for context only; explicitly opted-in summaries also require `memory.shared.summarize`. Never grant general `memory.write`. On POSIX, use mode `0600`. |
-| `BARB_SHARED_MEMORY_ALLOW_HTTP`    | Optional operator opt-in for non-loopback HTTP; set to `1` only when the origin is protected by a trusted private transport.                                                              |
+| Variable                          | Contract                                                                                                                                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BARB_SHARED_MEMORY_CONTEXT_PACK` | Set to `1` to opt in to injecting context-pack data into dashboard Barb chat. Default unset/off — missing config does not add an "unavailable" block to the prompt.                       |
+| `BARB_SHARED_MEMORY_URL`          | Shared API origin, such as `https://node-a.example`; only the fixed `/api/v1/memory/context-pack` path is requested. Required when injection is opted in.                                 |
+| `BARB_SHARED_MEMORY_TOKEN_FILE`   | Absolute token file: `memory.read` for context only; explicitly opted-in summaries also require `memory.shared.summarize`. Never grant general `memory.write`. On POSIX, use mode `0600`. |
+| `BARB_SHARED_MEMORY_ALLOW_HTTP`   | Optional operator opt-in for non-loopback HTTP; set to `1` only when the origin is protected by a trusted private transport.                                                              |
 
 The URL must be a bare HTTP(S) origin without embedded credentials, a path, query or fragment, and must fit
 within 256 characters. HTTPS is the default. Plain HTTP is allowed for loopback origins; remote HTTP requires

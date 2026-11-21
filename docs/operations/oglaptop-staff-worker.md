@@ -12,8 +12,8 @@ This setup did not change hub-a or node-a or enable a second scheduler.
 
 | Item                                | Verified value                                                           |
 | ----------------------------------- | ------------------------------------------------------------------------ |
-| Windows host / WSL distro           | `node-b` / `Ubuntu`                                                    |
-| Linux user / home                   | `fleet-operator` / `/home/fleet-operator`                                      |
+| Windows host / WSL distro           | `node-b` / `Ubuntu`                                                      |
+| Linux user / home                   | `fleet-operator` / `/home/fleet-operator`                                |
 | Dashboard service                   | `runner-dashboard`, active; loopback port `8321`                         |
 | Dashboard version / deployed commit | `4.10.0` / `31a91047463695d8506495dcca674a7ae58fdd6b`                    |
 | Required changes                    | Includes #1250, #1253, #1256, #1261 and #1262; built from merged main    |
@@ -243,19 +243,19 @@ Cursor lists these Grok model families:
 
 Paths beginning with `~` below refer to `/home/fleet-operator` in **Ubuntu WSL**.
 
-| Setting / resource      | Location or value                                                                 |
-| ----------------------- | --------------------------------------------------------------------------------- |
-| Live application        | `~/actions-runners/dashboard`                                                     |
-| Service environment     | `~/.config/runner-dashboard/env`                                                  |
-| Service drop-in         | `/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf`                   |
-| Claude seat config      | `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude`                             |
-| Claude on Ollama config | `~/.config/runner-dashboard/claude-ollama`; isolated from the Claude seat         |
-| Staff git config        | `GIT_CONFIG_GLOBAL=~/.config/runner-dashboard/staff.gitconfig`                    |
-| Linux repository root   | `STAFF_REPOS_ROOT=~/staff-repos`                                                  |
-| Staff worktree root     | `STAFF_WORKTREES_ROOT=~/staff-worktrees`                                          |
+| Setting / resource      | Location or value                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------ |
+| Live application        | `~/actions-runners/dashboard`                                                        |
+| Service environment     | `~/.config/runner-dashboard/env`                                                     |
+| Service drop-in         | `/etc/systemd/system/runner-dashboard.service.d/staff-hub.conf`                      |
+| Claude seat config      | `CLAUDE_CONFIG_DIR=~/.config/runner-dashboard/claude`                                |
+| Claude on Ollama config | `~/.config/runner-dashboard/claude-ollama`; isolated from the Claude seat            |
+| Staff git config        | `GIT_CONFIG_GLOBAL=~/.config/runner-dashboard/staff.gitconfig`                       |
+| Linux repository root   | `STAFF_REPOS_ROOT=~/staff-repos`                                                     |
+| Staff worktree root     | `STAFF_WORKTREES_ROOT=~/staff-worktrees`                                             |
 | Live RM clone           | `STAFF_RM_ROOT=/home/fleet-operator/staff-repos/Repository_Management`               |
 | Live role source        | `STAFF_ROLES_DIR=/home/fleet-operator/staff-repos/Repository_Management/staff/roles` |
-| Windows setup artifacts | `C:\Users\fleet-operator\Repositories\_deploy`                                             |
+| Windows setup artifacts | `C:\Users\fleet-operator\Repositories\_deploy`                                       |
 
 The old `~/staff-bundle/rm` directory is retained for rollback only. The active
 user timer `runner-dashboard-rm-sync.timer` refreshes the Linux clone at most

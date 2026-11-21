@@ -7,11 +7,11 @@ Implementation: `backend/kanban_github_ingestion.py`, route `GET /api/kanban/git
 
 ## Cache and budget
 
-| Knob | Default | Env override |
-| --- | --- | --- |
-| Board TTL | 60s | `KANBAN_GITHUB_CACHE_TTL_SECONDS` |
-| Cold sync API budget | 40 calls | `KANBAN_GITHUB_COLD_BUDGET` |
-| Warm sync API budget | 5 calls | `KANBAN_GITHUB_WARM_BUDGET` |
+| Knob                 | Default  | Env override                      |
+| -------------------- | -------- | --------------------------------- |
+| Board TTL            | 60s      | `KANBAN_GITHUB_CACHE_TTL_SECONDS` |
+| Cold sync API budget | 40 calls | `KANBAN_GITHUB_COLD_BUDGET`       |
+| Warm sync API budget | 5 calls  | `KANBAN_GITHUB_WARM_BUDGET`       |
 
 Issue lists use GitHub `Link` pagination (same semantics as `gh_client.paginate`).
 A warm sync returns the cached board when TTL has not expired (0 GitHub calls).

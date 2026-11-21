@@ -77,15 +77,15 @@ Sub-issues **#2118–#2123** are closed. Below maps each acceptance checkbox to 
 
 ### Epic acceptance criteria (#2117 body)
 
-| Epic checkbox                                                           | Verdict  | Notes                                                                                        |
-| ----------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------- |
-| Incremental GitHub collection + cache + rate limits + existing auth     | **Pass** | #2118 evidence                                                                               |
-| Metrics: CI rounds, failing checks, lead time, Dieter wait, churn, cost | **Pass** | Weekly summary + per-PR rollups; `rework_seconds` (**#2936**)                                |
-| **Escapes** (red main, reverts, failed rollouts)                        | **Pass** | `weighted_escapes` in `aggregate_window` (**#2706**)                                         |
-| `GET /api/v1/metrics/*` + dashboard page, default-off flag              | **Pass** | #2121, #2122                                                                                 |
-| Weekly summary for staff/board                                          | **Pass** | #2123                                                                                        |
-| Drill-down to PRs and workflow runs; no vanity leaderboards             | **Pass** | PR + check runs + grouped Actions runs (`workflow_runs`); anti-leaderboard copy in UI       |
-| Role/agent/model grouping                                               | **Pass** | `groupings` + UI filters (**#2955**)                                                         |
+| Epic checkbox                                                           | Verdict  | Notes                                                                                 |
+| ----------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------- |
+| Incremental GitHub collection + cache + rate limits + existing auth     | **Pass** | #2118 evidence                                                                        |
+| Metrics: CI rounds, failing checks, lead time, Dieter wait, churn, cost | **Pass** | Weekly summary + per-PR rollups; `rework_seconds` (**#2936**)                         |
+| **Escapes** (red main, reverts, failed rollouts)                        | **Pass** | `weighted_escapes` in `aggregate_window` (**#2706**)                                  |
+| `GET /api/v1/metrics/*` + dashboard page, default-off flag              | **Pass** | #2121, #2122                                                                          |
+| Weekly summary for staff/board                                          | **Pass** | #2123                                                                                 |
+| Drill-down to PRs and workflow runs; no vanity leaderboards             | **Pass** | PR + check runs + grouped Actions runs (`workflow_runs`); anti-leaderboard copy in UI |
+| Role/agent/model grouping                                               | **Pass** | `groupings` + UI filters (**#2955**)                                                  |
 
 ---
 

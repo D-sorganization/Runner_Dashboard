@@ -19,11 +19,11 @@ Lanes also typically filter on **taxonomy** (complexity, tier, repo). Issues **w
 
 ## Spec gaps blocking persona lanes
 
-| Issue | Blocker |
-| ----- | ------- |
+| Issue        | Blocker                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | #3700 George | `judgement:design` + `blocked` until Barb/Dieter confirm schedule/duty—spec on issue body + `docs/agents/issue-specs/3700-george-persona-port.md` |
-| #3702 Linus | `judgement:design` + `blocked` until Dieter scope ruling—`3702-linus-persona-port.md` |
-| #3704 | **Closed** checklist epic—not pickable (`state != open`); pick #3792 or newly labeled CLI tasks |
+| #3702 Linus  | `judgement:design` + `blocked` until Dieter scope ruling—`3702-linus-persona-port.md`                                                             |
+| #3704        | **Closed** checklist epic—not pickable (`state != open`); pick #3792 or newly labeled CLI tasks                                                   |
 
 ## Why agy / rd-barb can still show “nothing claimable” (2026-11-02)
 

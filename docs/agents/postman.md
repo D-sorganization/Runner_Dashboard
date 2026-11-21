@@ -4,14 +4,14 @@ Panel synthesis `th_e54ff7081c60` (2026-10-27): build **one model-free postman r
 
 ## Decision summary
 
-| Topic | Choice |
-| ----- | ------ |
-| Core | Single relay leader + delivery adapters (Claude push, Codex/agy hook or poll) |
-| Canonical transport | Hub threads `GET/POST /api/v1/staff/threads` (ADR 0007, `scripts/rd_threads_envelope.py`) |
-| Cloud Duet bridge | Barbara `barb-inbox` store-and-forward (#3217); same rd-threads envelope (#3072) |
-| Topology | rd-barb #3117: leader on Desk, warm standby on node-a; shares #3073 leader lease when bound (#3237) |
-| Safety | Refuse secrets (never redact), recipient allowlist, no dispatch/staff-run authority, Dieter only via rd-barb webhook (#3233) |
-| Role file | RM#2461 stays decoupled |
+| Topic               | Choice                                                                                                                       |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Core                | Single relay leader + delivery adapters (Claude push, Codex/agy hook or poll)                                                |
+| Canonical transport | Hub threads `GET/POST /api/v1/staff/threads` (ADR 0007, `scripts/rd_threads_envelope.py`)                                    |
+| Cloud Duet bridge   | Barbara `barb-inbox` store-and-forward (#3217); same rd-threads envelope (#3072)                                             |
+| Topology            | rd-barb #3117: leader on Desk, warm standby on node-a; shares #3073 leader lease when bound (#3237)                          |
+| Safety              | Refuse secrets (never redact), recipient allowlist, no dispatch/staff-run authority, Dieter only via rd-barb webhook (#3233) |
+| Role file           | RM#2461 stays decoupled                                                                                                      |
 
 Related issues: [#3226](https://github.com/D-sorganization/Runner_Dashboard/issues/3226), [#3217](https://github.com/D-sorganization/Runner_Dashboard/issues/3217), [#3073](https://github.com/D-sorganization/Runner_Dashboard/issues/3073), [#3117](https://github.com/D-sorganization/Runner_Dashboard/issues/3117), [RM#2461](https://github.com/D-sorganization/Repository_Management/issues/2461).
 
@@ -19,11 +19,11 @@ Related issues: [#3226](https://github.com/D-sorganization/Runner_Dashboard/issu
 
 As of the probe run date (`scripts/postman_provider_caps.py` → `as_of`), **Codex CLI** and **agy (Antigravity / Gemini CLI)** have **no native session-to-session messaging**. They integrate through **hooks** (`UserPromptSubmit` / `Stop` for Codex; `AfterAgent` / `AfterTool` / `Stop` or fleet hook group for agy) or fall back to **hub poll**.
 
-| Provider | Native mesh | Relay delivery | Detection (read-only) |
-| -------- | ----------- | -------------- | --------------------- |
-| Claude Code | Cross-session push (local socket / Channels) | `push` when `CLAUDE_CODE_SSE_PORT` is set or `settings.json` has `channels.enabled` | Env var **names** + config flags only; token values never read |
-| Codex CLI | None | `hook` when `~/.codex/hooks.json` lists `UserPromptSubmit` or `Stop` commands; else `poll` | Parse hooks JSON locally |
-| agy | None | `hook` when Antigravity/Gemini hook files list events; else `poll` | `ANTIGRAVITY_HOME` / `~/.gemini` settings and `.agents/hooks.json` |
+| Provider    | Native mesh                                  | Relay delivery                                                                             | Detection (read-only)                                              |
+| ----------- | -------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| Claude Code | Cross-session push (local socket / Channels) | `push` when `CLAUDE_CODE_SSE_PORT` is set or `settings.json` has `channels.enabled`        | Env var **names** + config flags only; token values never read     |
+| Codex CLI   | None                                         | `hook` when `~/.codex/hooks.json` lists `UserPromptSubmit` or `Stop` commands; else `poll` | Parse hooks JSON locally                                           |
+| agy         | None                                         | `hook` when Antigravity/Gemini hook files list events; else `poll`                         | `ANTIGRAVITY_HOME` / `~/.gemini` settings and `.agents/hooks.json` |
 
 Run on each fleet node (no network, no model spend):
 
@@ -37,9 +37,20 @@ Example shape:
 {
   "as_of": "2026-10-27",
   "providers": {
-    "claude_code": {"delivery": "push", "evidence": ["env:CLAUDE_CODE_SSE_PORT is set"]},
-    "codex_cli": {"delivery": "hook", "evidence": ["hooks.json:Stop configured"]},
-    "agy": {"delivery": "poll", "evidence": ["no hook events configured; agy has no native session-to-session messaging"]}
+    "claude_code": {
+      "delivery": "push",
+      "evidence": ["env:CLAUDE_CODE_SSE_PORT is set"]
+    },
+    "codex_cli": {
+      "delivery": "hook",
+      "evidence": ["hooks.json:Stop configured"]
+    },
+    "agy": {
+      "delivery": "poll",
+      "evidence": [
+        "no hook events configured; agy has no native session-to-session messaging"
+      ]
+    }
   }
 }
 ```

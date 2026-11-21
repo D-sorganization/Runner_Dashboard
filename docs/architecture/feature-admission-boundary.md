@@ -8,11 +8,11 @@ on a freshness-evidence activation PR.
 
 ## Work kinds
 
-| `DashboardWorkKind` | Authoritative `dispatch_kind` examples | Quota |
-| ------------------- | ------------------------------------ | ----- |
-| `new_feature` | `implementation`, `design`, `pr`, `expand_epic_children` | Yes |
-| `operational` | `ci_fix:*`, `conflict`, unknown kinds (fail-safe) | No |
-| `continuation` | `continue`, `needs_input_resume`, `continuation` | No |
+| `DashboardWorkKind` | Authoritative `dispatch_kind` examples                   | Quota |
+| ------------------- | -------------------------------------------------------- | ----- |
+| `new_feature`       | `implementation`, `design`, `pr`, `expand_epic_children` | Yes   |
+| `operational`       | `ci_fix:*`, `conflict`, unknown kinds (fail-safe)        | No    |
+| `continuation`      | `continue`, `needs_input_resume`, `continuation`         | No    |
 
 Classification uses **`dispatch_kind` only** (signed dispatch envelope / staff
 router). It must not read Quick Dispatch `task_kind` or workflow `force` flags.

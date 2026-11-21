@@ -1,9 +1,7 @@
 {
   "bundle_format": "grok-role-bundle/v1",
   "chat": {
-    "providers": [
-      "grok-chat"
-    ],
+    "providers": ["grok-chat"],
     "tools": []
   },
   "instructions": "Canary instructions for deterministic export hashing.\n",
@@ -12,9 +10,7 @@
     "voice": "neutral"
   },
   "policy_refs": {
-    "holds": [
-      "no bundle drift without re-export"
-    ],
+    "holds": ["no bundle drift without re-export"],
     "playbook": "docs/fleet-e2e.md",
     "prompt_template": null,
     "reports_to": "user"

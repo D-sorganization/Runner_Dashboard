@@ -9,19 +9,68 @@ gates:
   - id: types
     tool: mypy
     version: 1.13.0
-    command: [uvx, --from, mypy==1.13.0, mypy, backend/, clients/fleet/, --ignore-missing-imports, --no-implicit-optional]
+    command:
+      [
+        uvx,
+        --from,
+        mypy==1.13.0,
+        mypy,
+        backend/,
+        clients/fleet/,
+        --ignore-missing-imports,
+        --no-implicit-optional,
+      ]
   - id: tests
     tool: pytest
     version: 9.0.3
-    command: [uvx, --from, pytest==9.0.3, pytest, tests/, --tb=short, -m, "not integration and not playwright"]
+    command:
+      [
+        uvx,
+        --from,
+        pytest==9.0.3,
+        pytest,
+        tests/,
+        --tb=short,
+        -m,
+        "not integration and not playwright",
+      ]
   - id: coverage
     tool: pytest-cov
     version: 6.1.1
-    command: [uvx, --with, pytest-cov==6.1.1, --from, pytest==9.0.3, pytest, tests/, --tb=short, -m, "not integration and not playwright", --cov=backend, --cov-report=term-missing]
+    command:
+      [
+        uvx,
+        --with,
+        pytest-cov==6.1.1,
+        --from,
+        pytest==9.0.3,
+        pytest,
+        tests/,
+        --tb=short,
+        -m,
+        "not integration and not playwright",
+        --cov=backend,
+        --cov-report=term-missing,
+      ]
   - id: secret-scan
     tool: gitleaks
     version: 8.24.0
-    command: [gitleaks, detect, --source, ., --config, .gitleaks.toml, --redact, --report-path, /tmp/gitleaks-report.json, --report-format, json, --exit-code, "1"]
+    command:
+      [
+        gitleaks,
+        detect,
+        --source,
+        .,
+        --config,
+        .gitleaks.toml,
+        --redact,
+        --report-path,
+        /tmp/gitleaks-report.json,
+        --report-format,
+        json,
+        --exit-code,
+        "1",
+      ]
   - id: secret-baseline
     tool: detect-secrets
     version: 1.5.0
