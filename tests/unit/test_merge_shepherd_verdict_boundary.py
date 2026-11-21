@@ -210,3 +210,46 @@ def test_rejection_at_previous_head_does_not_disarm() -> None:
         review_passes=(row("reject", NOW.isoformat()),),
     )
     assert evaluate_pr_shepherd_eligibility(candidate).action.value == "skip"
+
+
+def test_commented_fix_needed_review_disarms_queued_pr_even_when_ci_green() -> None:
+    from coordination.merge_shepherd import ShepherdAction
+
+    approve_review = {
+        "state": "APPROVED",
+        "commit": {"oid": HEAD},
+        "author": {"login": "d-sorgclaudeagent[bot]"},
+        "submittedAt": "2026-11-21T17:10:00Z",
+    }
+    plain_comment_review = {
+        "state": "COMMENTED",
+        "body": "Looks reasonable overall; minor nit.",
+        "commit": {"oid": HEAD},
+        "author": {"login": "d-sorgcodexagent[bot]"},
+        "submittedAt": "2026-11-21T17:15:00Z",
+    }
+    late_fix_needed = {
+        "state": "COMMENTED",
+        "body": f"### Independent Exact-Head Acceptance Review - Verdict: FIX-NEEDED @{HEAD}",
+        "commit": {"oid": HEAD},
+        "author": {"login": "d-sorgcodexagent[bot]"},
+        "submittedAt": "2026-11-21T17:29:05Z",
+    }
+    passes = collect_review_passes_from_github_reviews(
+        [approve_review, plain_comment_review, late_fix_needed],
+        15425,
+        author_login="d-sorgagyagent[bot]",
+    )
+    assert [row.verdict for row in passes] == ["approve", "reject"]
+    candidate = PRCandidate(
+        repo="UpstreamDrift",
+        pr_number=15425,
+        head_sha=HEAD,
+        auto_merge_enabled=True,
+        is_queued=True,
+        checks_status="SUCCESS",
+        review_passes=passes,
+    )
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.action == ShepherdAction.DISARM
+    assert decision.detail == "rejected_at_head"

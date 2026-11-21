@@ -278,25 +278,45 @@ def collect_review_passes_from_comments(
     return tuple(rows)
 
 
+def _commented_review_is_fix_needed(body: str, commit_sha: str) -> bool:
+    if not body:
+        return False
+    if re.search(r"\bFIX-NEEDED\b", body, re.IGNORECASE):
+        return True
+    from staff.review import parse_review_verdict
+
+    verdict = parse_review_verdict(body)
+    if verdict.status == "succeeded" and verdict.verdict in {"changes", "escalate"}:
+        return not verdict.head_sha or head_sha_matches(verdict.head_sha, commit_sha)
+    return False
+
+
 def collect_review_passes_from_github_reviews(
     reviews: Sequence[Mapping[str, Any]],
     pr: int,
     *,
     author_login: str = "",
 ) -> tuple[HeadReviewPass, ...]:
-    """Build PASS records from formal GitHub PR reviews in state APPROVED with commit SHA."""
+    """Build verdict records from GitHub PR reviews (APPROVED, CHANGES_REQUESTED, or COMMENTED FIX-NEEDED)."""
     rows: list[HeadReviewPass] = []
     for r in reviews:
         if not isinstance(r, Mapping):
             continue
         state = str(r.get("state") or "").upper()
-        if state not in {"APPROVED", "CHANGES_REQUESTED"}:
+        if state not in {"APPROVED", "CHANGES_REQUESTED", "COMMENTED"}:
             continue
         commit = r.get("commit") or {}
         sha = str(commit.get("oid") or "") if isinstance(commit, Mapping) else ""
         if not sha:
             continue
-        mapped = "approve" if state == "APPROVED" else "reject"
+        if state == "APPROVED":
+            mapped = "approve"
+        elif state == "CHANGES_REQUESTED":
+            mapped = "reject"
+        elif _commented_review_is_fix_needed(str(r.get("body") or ""), sha):
+            mapped = "reject"
+        else:
+            continue
         reviewer_login = str((r.get("author") or {}).get("login") or "")
         if mapped == "approve" and not _independent(_login_provider(reviewer_login), _login_provider(author_login)):
             continue
