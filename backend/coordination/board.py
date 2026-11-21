@@ -2,18 +2,8 @@
 
 The board (Repository_Management issue #1576) stays the single message store;
 this module only calls ``python -m scripts.agent_communicate``. Reads are
-cached in-process for ``CACHE_SECONDS`` so one GitHub read serves every
-caller: ``list --all-repos`` when RM supports it, else one ``list`` per fleet
-repo (in parallel), merged. A board read takes seconds, so an expired entry is
-served stale while one background thread refreshes it (stale-while-revalidate);
-only the very first read, and the first read after a write, waits. Writes
-invalidate the cache and bump a generation counter: a read that started
-before the write is never stored afterwards (#1244). Concurrent misses on one
-key share a single load (single-flight). ``reset_cache`` also bumps the
-generation, so a refresh still running from before a reset cannot repopulate
-the cache; ``join_refreshes`` waits for background refreshes (tests, shutdown).
-The per-repo fallback cannot see
-sessions in repos outside ``fleet_repos()``, so it is never ``complete``.
+cached in-process for ``CACHE_SECONDS``. Writes invalidate the cache (#1244).
+Per-repo fallback never returns ``complete`` when it omits repos outside ``fleet_repos()``.
 
 Read results: ``{available, complete, sessions, messages, conflicts, warnings}``
 or ``{available: False, reason}``. Writes raise ``RMScriptError``.
@@ -21,6 +11,7 @@ or ``{available: False, reason}``. Writes raise ``RMScriptError``.
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -38,6 +29,8 @@ from coordination.board_pagination import (
 from coordination.rm_scripts import ScriptResult, run_module
 
 from staff.roles import load_roles
+
+_LOG = logging.getLogger(__name__)
 
 CACHE_SECONDS = 60.0
 BOARD_REPO = "Repository_Management"
@@ -337,6 +330,9 @@ def has_live_session(session: str, repo: str) -> bool:
         return True
     if not data.get("complete", True):
         detail = "; ".join(data.get("warnings") or ["incomplete board read"])
+        if data.get("read_warnings") and not data.get("active_conflicts"):
+            _LOG.warning("board history degraded, proceeding without presence confirmation of %s: %s", session, detail)
+            return True
         raise RMScriptError(f"board read incomplete, cannot confirm presence of {session}: {detail}")
     return False
 
