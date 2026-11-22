@@ -550,6 +550,81 @@ def disarm_if_held(repo: str, pr: int, *, runner: CommandRunner | None = None) -
     return verdict
 
 
+_MERGE_QUEUE_EVENTS_JQ = (
+    '.[] | select(.event == "added_to_merge_queue" '
+    'or .event == "removed_from_merge_queue") | .event'
+)
+
+
+@dataclass(frozen=True)
+class MergeDisposition:
+    """Auto-merge arm and merge-queue presence read from GitHub."""
+
+    auto_merge_on: bool
+    in_merge_queue: bool
+
+
+def read_merge_disposition(repo: str, pr: int, *, runner: CommandRunner | None = None) -> MergeDisposition:
+    """Read whether ``repo#pr`` is armed and/or in the merge queue."""
+    run = runner or _default_runner
+    proc = run(["gh", "api", f"repos/{repo}/pulls/{pr}", "--jq", ".auto_merge != null"])
+    if proc.returncode != 0:
+        return MergeDisposition(True, True)
+    auto_on = proc.stdout.strip().lower() == "true"
+    try:
+        events = _gh_lines(
+            run,
+            [
+                f"repos/{repo}/issues/{pr}/timeline?per_page=100",
+                "--paginate",
+                "--jq",
+                _MERGE_QUEUE_EVENTS_JQ,
+            ],
+        )
+    except RuntimeError:
+        in_mq = True
+    else:
+        in_mq = bool(events) and events[-1] == "added_to_merge_queue"
+    return MergeDisposition(auto_on, in_mq)
+
+
+def disposition_cleared(disposition: MergeDisposition) -> bool:
+    """True when auto-merge is off and the PR is not waiting in the merge queue."""
+    return not disposition.auto_merge_on and not disposition.in_merge_queue
+
+
+def disarm_for_shepherd(
+    repo: str,
+    pr: int,
+    *,
+    detail: str = "",
+    runner: CommandRunner | None = None,
+) -> tuple[MergeDisposition, MergeDisposition, HoldVerdict]:
+    """Disarm with before/after readback for merge-shepherd executor paths (#4618).
+
+    ``main()`` with ``--disarm-if-held`` returns exit code 1 when a hold applies
+    even after a successful disarm; callers must not equate that exit code with
+    ``disarmed=False``.
+    """
+    run = runner or _default_runner
+    before = read_merge_disposition(repo, pr, runner=run)
+    verdict = evaluate_hold(repo, pr, runner=run)
+    shepherd_reject = detail == "rejected_at_head"
+    if shepherd_reject or verdict.held:
+        if before.auto_merge_on:
+            if _disarm_auto_merge(repo, pr, run):
+                why = verdict.describe() if verdict.held else f"merge shepherd ({detail})"
+                _mark_guard_disarm(repo, pr, why, run)
+        elif shepherd_reject and before.in_merge_queue:
+            _disarm_auto_merge(repo, pr, run)
+            _mark_guard_disarm(repo, pr, f"merge shepherd ({detail})", run)
+        elif verdict.held:
+            if _disarm_auto_merge(repo, pr, run):
+                _mark_guard_disarm(repo, pr, verdict.describe(), run)
+    after = read_merge_disposition(repo, pr, runner=run)
+    return before, after, verdict
+
+
 def _mark_guard_disarm(repo: str, pr: int, why: str, run: CommandRunner) -> None:
     """Comment that the guard made this disarm, so it is not read as a reviewer's.
 

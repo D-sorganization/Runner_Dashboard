@@ -153,22 +153,26 @@ def _resolve_hub_holds() -> tuple[list[dict[str, Any]], str | None]:
     )
 
 
-def _disarm_via_guard(repo: str, pr: int, *, repo_root: Path) -> dict[str, Any]:
+def _disarm_via_guard(repo: str, pr: int, *, repo_root: Path, detail: str = "") -> dict[str, Any]:
     _SCRIPT_DIR = str(Path(__file__).resolve().parent)
     if _SCRIPT_DIR not in sys.path:
         sys.path.insert(0, _SCRIPT_DIR)
     import automerge_guard  # noqa: PLC0415
 
-    argv = [
-        repo,
-        str(pr),
-        "--disarm-if-held",
-        "--require-app-token",
-        "--repo-root",
-        str(repo_root),
-    ]
-    code = automerge_guard.main(argv)
-    return {"exit_code": code, "disarmed": code == 0}
+    _ = repo_root
+    before, after, verdict = automerge_guard.disarm_for_shepherd(repo, pr, detail=detail or "")
+    needed_clearing = not automerge_guard.disposition_cleared(before)
+    disarmed = automerge_guard.disposition_cleared(after) if needed_clearing else True
+    exit_code = 0 if disarmed else 1
+    return {
+        "exit_code": exit_code,
+        "disarmed": disarmed,
+        "hold_held": verdict.held,
+        "before_auto_merge": before.auto_merge_on,
+        "before_in_merge_queue": before.in_merge_queue,
+        "after_auto_merge": after.auto_merge_on,
+        "after_in_merge_queue": after.in_merge_queue,
+    }
 
 
 def _arm_via_guard(repo: str, pr: int, *, strategy: str, head_sha: str, repo_root: Path) -> dict[str, Any]:
@@ -264,6 +268,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 str(row["repo"]),
                 int(row["pr"]),
                 repo_root=config.repo_root,
+                detail=str(row.get("detail") or ""),
             )
             executed_disarms.append({"repo": row["repo"], "pr": row["pr"], **result})
         for row in summary.armed:
