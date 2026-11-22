@@ -126,6 +126,7 @@ async def collect_delivery_metrics_once(
     *,
     db_path: Path | None = None,
     conn: sqlite3.Connection | None = None,
+    now: datetime | None = None,
 ) -> SyncStats:
     """Idempotent incremental sync for ``repos`` (full ``owner/name`` slugs)."""
     if not repos:
@@ -140,7 +141,7 @@ async def collect_delivery_metrics_once(
     rate_limited = False
     try:
         for repo in repos:
-            p, c, limited = await sync_repo(collector, conn, repo)
+            p, c, limited = await sync_repo(collector, conn, repo, now=now)
             pulls_total += p
             checks_total += c
             if limited:

@@ -42,6 +42,25 @@ def roster_agent_id(agent: str) -> str:
     return lowered
 
 
+def lease_agent_id(agent: str, roster_ids: Sequence[str]) -> str | None:
+    """Agent id to send to RM for a lease or presence write.
+
+    An id that is already a roster entry is posted unchanged. Lane checkout
+    ids that are not roster entries use :func:`roster_agent_id`
+    (``cursor`` -> ``cursor-agent``, ``agy`` -> ``antigravity``). ``gemini``
+    stays ``gemini`` because it is itself a roster entry, even though the
+    alias map points it at ``antigravity``.
+    """
+    canonical = agent.strip().lower()
+    ids = {item.strip().lower() for item in roster_ids if isinstance(item, str)}
+    if canonical in ids:
+        return canonical
+    alias = roster_agent_id(agent)
+    if alias in ids:
+        return alias
+    return None
+
+
 def _agent_from_pr_labels(pr: Mapping[str, Any], agent_ids: Sequence[str]) -> str | None:
     labels = pr.get("labels")
     if not isinstance(labels, list):

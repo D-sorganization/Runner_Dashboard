@@ -22,6 +22,7 @@ import asyncio
 import contextlib
 import datetime as _dt_mod
 import errno
+import faulthandler
 import json
 import logging
 import logging.handlers
@@ -32,6 +33,7 @@ import re
 import secrets
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -64,7 +66,17 @@ def _require_single_worker() -> None:
             raise SystemExit(1)
 
 
+def _enable_fault_diagnostics() -> None:
+    """Enable faulthandler and SIGUSR1 thread dumps for diagnosing event-loop hangs."""
+    faulthandler.enable(all_threads=True)
+    sigusr1 = getattr(signal, "SIGUSR1", None)
+    register = getattr(faulthandler, "register", None)
+    if sigusr1 is not None and register is not None:
+        register(sigusr1, all_threads=True, chain=False)
+
+
 _require_single_worker()
+_enable_fault_diagnostics()
 
 # Issue #3248: the Docker CMD invokes this module as `python -m backend.server`
 # from WORKDIR /app, where sys.path[0] is /app (not /app/backend). The

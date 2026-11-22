@@ -131,6 +131,22 @@ def _validate_journal(journal: Any, repo: str, current_issue: int, current_preds
     raise ValueError("Rollover journal conflicts with current configuration")
 
 
+def _rollover_notice_envelope(repo: str, new_issue: int) -> str:
+    """Format a valid ``agent-message v1`` envelope for the retired board."""
+    repo_name = repo.rsplit("/", 1)[-1] or "Repository_Management"
+    payload = {
+        "version": 1,
+        "id": str(uuid4()),
+        "kind": "message",
+        "session": "board-rollover",
+        "repo": repo_name,
+        "at": datetime.now(UTC).isoformat(),
+        "recipient": "*",
+        "text": f"Rollover: active board moved to #{new_issue}.",
+    }
+    return f"<!-- agent-message v1 -->\n```json\n{json.dumps(payload, ensure_ascii=False)}\n```"
+
+
 def execute_board_rollover(
     rm_path: Path | None = None,
     *,
@@ -205,7 +221,7 @@ def execute_board_rollover(
                 "--repo",
                 repo,
                 "--body",
-                f"<!-- agent-message v1 -->\nRollover: active board moved to #{new_issue}.",
+                _rollover_notice_envelope(repo, new_issue),
             ]
         )
     except Exception as exc:  # noqa: BLE001

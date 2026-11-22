@@ -59,12 +59,12 @@ def runner_dashboard_has_approved_at_head(
     head_sha: str,
     bot_login: str = RUNNER_DASHBOARD_BOT_LOGIN,
 ) -> bool:
-    for item in reviews:
-        if str(item.get("state") or "").upper() != "APPROVED":
-            continue
+    for item in reversed(reviews):
         if not is_runner_dashboard_bot_review(item, bot_login=bot_login):
             continue
+        state = str(item.get("state") or "").upper()
+        if state not in {"APPROVED", "CHANGES_REQUESTED"}:
+            continue
         commit = str(item.get("commit_id") or "").strip()
-        if commit and head_sha_matches(commit, head_sha):
-            return True
+        return state == "APPROVED" and bool(commit) and head_sha_matches(commit, head_sha)
     return False

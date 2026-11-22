@@ -241,6 +241,20 @@ def parse_review_verdict(text: str, *, same_provider: bool = False) -> ReviewVer
     Malformed: Line exists but fails to match contract -> status="failed"
     Missing: No STAFF_RESULT line -> status="needs_input"
     """
+    # RunStore persists the normalized outcome, without the STAFF_RESULT prefix.
+    normalized = re.fullmatch(
+        r"review (approve|changes|escalate) #\d+(?: @[0-9a-fA-F]{7,40})?(?: \(same-provider\))?", text.strip()
+    )
+    if normalized:
+        text = f"STAFF_RESULT: {text.strip()}"
+    independent = re.search(
+        r"STAFF_RESULT:\s*independent_review\s+(PASS|FIX-NEEDED)\s+#(\d+)\s+@([0-9a-fA-F]{7,40})\b",
+        text,
+        re.IGNORECASE,
+    )
+    if independent:
+        decision = "approve" if independent.group(1).upper() == "PASS" else "changes"
+        text = f"STAFF_RESULT: review {decision} #{independent.group(2)} @{independent.group(3)}"
     if not text or "STAFF_RESULT:" not in text:
         return ReviewVerdict(verdict=None, pr_number=None, outcome="", status="needs_input")
 
@@ -250,7 +264,7 @@ def parse_review_verdict(text: str, *, same_provider: bool = False) -> ReviewVer
         pr = int(match.group(2))
         head_sha = (match.group(3) or "").lower()
         suffix = " (same-provider)" if same_provider else ""
-        at_sha = f" @{head_sha[:7]}" if head_sha else ""
+        at_sha = f" @{head_sha}" if head_sha else ""
         outcome = f"review {verdict} #{pr}{at_sha}{suffix}"
         return ReviewVerdict(
             verdict=verdict,
