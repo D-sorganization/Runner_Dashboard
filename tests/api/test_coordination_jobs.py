@@ -102,6 +102,36 @@ def test_jobs_claim_check_fail_open_is_excluded_with_warning(
 
 
 @pytest.mark.unit
+def test_jobs_pr_lookup_failure_is_cached_per_request(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+
+    def fetch(path: str) -> Any:
+        calls.append(path)
+        if path == f"/repos/{TOOLS}/issues?state=open":
+            return [_issue(1), _issue(2), _issue(3)]
+        if path == f"/repos/{GAMES}/issues?state=open":
+            return [_issue(4, repo="Games")]
+        if path == f"/repos/{TOOLS}/pulls?state=open":
+            raise RuntimeError("lookup timed out")
+        return []
+
+    monkeypatch.setattr(jobs_mod.gh_cli, "gh_api_json_all", fetch)
+    rm.respond("check_agent_claim", claim_status(False))
+    body = client.get("/api/coordination/jobs?include_excluded=true").json()
+
+    assert calls.count(f"/repos/{TOOLS}/pulls?state=open") == 1
+    assert body["complete"] is False
+    assert any("Tools" in warning and "PR lookup unavailable" in warning for warning in body["warnings"])
+    assert [(job["repo"], job["issue"]) for job in body["jobs"]] == [("Games", 4)]
+    assert {item["issue"] for item in body["excluded"]} == {1, 2, 3}
+
+    client.get("/api/coordination/jobs")
+    assert calls.count(f"/repos/{TOOLS}/pulls?state=open") == 2
+
+
+@pytest.mark.unit
 def test_jobs_sorted_by_priority_then_board(rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     issues = {
         TOOLS: [
