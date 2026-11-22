@@ -200,8 +200,12 @@ def _comment_limit_reached(data: dict[str, Any]) -> bool:
     count = data.get("comment_count")
     if isinstance(count, int) and count > BOARD_COMMENT_LIMIT and not data.get("complete", False):
         return True
-    warnings = [str(w).lower() for w in data.get("warnings") or []]
-    return any("page limit" in w or "comment limit" in w or "comment-limit" in w for w in warnings)
+    return _has_limit_warning(data.get("warnings") or [])
+
+
+def _has_limit_warning(warnings: list[Any]) -> bool:
+    lowered = [str(w).lower() for w in warnings]
+    return any("page limit" in w or "comment limit" in w or "comment-limit" in w for w in lowered)
 
 
 def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, Any]:
@@ -330,7 +334,12 @@ def has_live_session(session: str, repo: str) -> bool:
         return True
     if not data.get("complete", True):
         detail = "; ".join(data.get("warnings") or ["incomplete board read"])
-        if data.get("read_warnings") and not data.get("active_conflicts"):
+        truncated = bool(data.get("comment_limit_exceeded")) or _has_limit_warning(
+            [*(data.get("read_warnings") or []), *(data.get("warnings") or [])]
+        )
+        # Truncated history may hide the session's registration: fail closed. Only tolerate
+        # non-truncation degradation (e.g. a malformed comment) with no live identity conflicts.
+        if data.get("read_warnings") and not data.get("active_conflicts") and not truncated:
             _LOG.warning("board history degraded, proceeding without presence confirmation of %s: %s", session, detail)
             return True
         raise RMScriptError(f"board read incomplete, cannot confirm presence of {session}: {detail}")
