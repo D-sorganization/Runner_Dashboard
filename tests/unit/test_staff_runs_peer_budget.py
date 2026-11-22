@@ -146,3 +146,38 @@ def test_sessions_endpoint_returns_peer_runs_within_deadline_when_peer_hangs(mon
     assert [r["id"] for r in result["staff_runs"]] == ["local-1"]
     assert "staff runs read timed out" not in result["warnings"]
     assert any("Slow" in w for w in result["warnings"])
+    assert result["staff_complete"] is False
+
+
+def test_sessions_endpoint_marks_complete_false_when_peer_is_stale(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stale cached peer staff runs must propagate complete=False into sessions()."""
+    _forbid_aggregate(monkeypatch)
+    monkeypatch.setattr(service, "SESSION_RESPONSE_DEADLINE_SECONDS", 1.0)
+    monkeypatch.setattr(staff_view, "STAFF_RUNS_PEER_BUDGET_SECONDS", 0.1)
+    monkeypatch.setattr(
+        service.board,
+        "read_sessions",
+        lambda repo=None: {
+            "available": True,
+            "complete": True,
+            "sessions": [],
+            "messages": [],
+            "conflicts": [],
+            "warnings": [],
+        },
+    )
+    monkeypatch.setattr(staff_fleet, "peer_nodes", lambda: {"Slow": "http://slow"})
+    staff_fleet._LAST_GOOD_PEER_BOARD[("Slow", "http://slow")] = (
+        time.monotonic() - 5.0,
+        {"machine": "Slow", "running": [_run("cached-1")], "queued": []},
+    )
+
+    async def hang(url: str, headers: dict[str, str]) -> dict[str, Any]:
+        await asyncio.sleep(30)
+        return {}
+
+    monkeypatch.setattr(staff_fleet, "get_json", hang)
+    result = asyncio.run(service.sessions(None))
+    assert {r["id"] for r in result["staff_runs"]} == {"local-1", "cached-1"}
+    assert any("Slow" in w and "stale" in w for w in result["warnings"])
+    assert result["staff_complete"] is False
