@@ -83,12 +83,12 @@ def _excluded(repo: str, issue: dict[str, Any], reason: str) -> dict[str, Any]:
 
 
 def _closing_pr(repo_full: str, issue_number: int, pulls_by_repo: dict[str, list[Any]]) -> dict[str, Any] | None:
-    """An open/merged PR closing ``issue_number``; one pulls fetch per repo."""
+    """An open PR closing ``issue_number``; one pulls fetch per repo."""
     pulls = pulls_by_repo.get(repo_full)
     if pulls is None:
-        raw = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=all")
+        raw = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=open")
         candidates = raw if isinstance(raw, list) else []
-        pulls = [pr for pr in candidates if pr.get("state") != "closed" or pr.get("merged_at")]
+        pulls = candidates
         pulls_by_repo[repo_full] = pulls
     return closing_pr_for(pulls, issue_number)
 
@@ -116,6 +116,7 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
     jobs: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
     pulls_by_repo: dict[str, list[Any]] = {}
+    pull_errors: dict[str, str] = {}
     complete = True
     holds_available = True
     priorities, priority_warnings = _safe_top_priorities(50)
@@ -149,9 +150,14 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
             if gate_or_hold_reason:
                 excluded.append(_excluded(one_repo, issue, gate_or_hold_reason))
                 continue
+            if repo_full in pull_errors:
+                excluded.append(_excluded(one_repo, issue, f"PR lookup unavailable: {pull_errors[repo_full]}"))
+                continue
             try:
                 hit = _closing_pr(repo_full, number, pulls_by_repo)
             except Exception as exc:  # noqa: BLE001
+                pull_errors[repo_full] = str(exc)
+                complete = False
                 excluded.append(_excluded(one_repo, issue, f"PR lookup unavailable: {exc}"))
                 warnings.append(f"{one_repo}#{number}: PR lookup unavailable ({exc})")
                 continue

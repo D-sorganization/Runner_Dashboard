@@ -36,8 +36,8 @@ def _fake_evidence(issues: dict[str, list[dict[str, Any]]], pulls: dict[str, lis
                 return repo_issues
         for repo_full, repo_pulls in pulls.items():
             if path in (
-                f"/repos/{repo_full}/pulls?state=all&per_page=100",
-                f"/repos/{repo_full}/pulls?state=all",
+                f"/repos/{repo_full}/pulls?state=open&per_page=100",
+                f"/repos/{repo_full}/pulls?state=open",
             ):
                 return repo_pulls
         return []
@@ -102,6 +102,36 @@ def test_jobs_claim_check_fail_open_is_excluded_with_warning(
 
 
 @pytest.mark.unit
+def test_jobs_pr_lookup_failure_is_cached_per_request(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[str] = []
+
+    def fetch(path: str) -> Any:
+        calls.append(path)
+        if path == f"/repos/{TOOLS}/issues?state=open":
+            return [_issue(1), _issue(2), _issue(3)]
+        if path == f"/repos/{GAMES}/issues?state=open":
+            return [_issue(4, repo="Games")]
+        if path == f"/repos/{TOOLS}/pulls?state=open":
+            raise RuntimeError("lookup timed out")
+        return []
+
+    monkeypatch.setattr(jobs_mod.gh_cli, "gh_api_json_all", fetch)
+    rm.respond("check_agent_claim", claim_status(False))
+    body = client.get("/api/coordination/jobs?include_excluded=true").json()
+
+    assert calls.count(f"/repos/{TOOLS}/pulls?state=open") == 1
+    assert body["complete"] is False
+    assert any("Tools" in warning and "PR lookup unavailable" in warning for warning in body["warnings"])
+    assert [(job["repo"], job["issue"]) for job in body["jobs"]] == [("Games", 4)]
+    assert {item["issue"] for item in body["excluded"]} == {1, 2, 3}
+
+    client.get("/api/coordination/jobs")
+    assert calls.count(f"/repos/{TOOLS}/pulls?state=open") == 2
+
+
+@pytest.mark.unit
 def test_jobs_sorted_by_priority_then_board(rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     issues = {
         TOOLS: [
@@ -157,7 +187,7 @@ def _claim_fetch(number: int, *, labels: list[str] | None = None) -> Any:
     def fetch(path: str) -> Any:
         if path.endswith(f"/issues/{number}"):
             return payload
-        if path.endswith("/pulls?state=all&per_page=100"):
+        if path.endswith("/pulls?state=open&per_page=100"):
             return []
         return []
 
@@ -301,7 +331,7 @@ def _ttl_fetch(number: int) -> Any:
             return [payload]
         if path.endswith(f"/issues/{number}"):
             return payload
-        if path.endswith("/pulls?state=all") or path.endswith("/pulls?state=all&per_page=100"):
+        if path.endswith("/pulls?state=open") or path.endswith("/pulls?state=open&per_page=100"):
             return []
         return []
 
@@ -374,3 +404,19 @@ def test_jobs_heartbeat_extends_ttl(rm: FakeRM, client: TestClient, monkeypatch:
     hb = {"session": claimed["session"], "repo": "Tools", "issue": 71, "fence": claimed["fence"], "ttl_hours": 2}
     assert client.post("/api/coordination/jobs/heartbeat", json=hb, headers=_BOT).status_code == 200
     assert jobs_mod.sweep_expired_job_claims(now=datetime.now(UTC) + timedelta(minutes=30))["released"] == 0
+
+
+@pytest.mark.unit
+def test_closing_pr_fetches_open_pulls_once_per_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    pulls = [_pr(50, closes=12)]
+
+    def fetch(path: str) -> list[dict[str, Any]]:
+        calls.append(path)
+        return pulls
+
+    monkeypatch.setattr(jobs_mod.gh_cli, "gh_api_json_all", fetch)
+    cache: dict[str, list[Any]] = {}
+    assert jobs_mod._closing_pr(TOOLS, 12, cache) == pulls[0]
+    assert jobs_mod._closing_pr(TOOLS, 13, cache) is None
+    assert calls == [f"/repos/{TOOLS}/pulls?state=open"]
