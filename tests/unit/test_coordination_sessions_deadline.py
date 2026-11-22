@@ -8,7 +8,6 @@ import time
 from types import SimpleNamespace
 
 import pytest
-
 from coordination import hub_sessions, service, staff_view
 from coordination.staff_runs_cache import reset_staff_runs_cache
 
@@ -86,10 +85,7 @@ def test_slow_staff_read_preserves_board_sessions(monkeypatch) -> None:
     runner = SimpleNamespace(machine="Desk", store=SimpleNamespace(active_runs=slow_active_runs))
     monkeypatch.setattr(staff_view, "get_runner", lambda: runner)
 
-    async def empty_peer_board(local):
-        return {"running": [], "queued": []}
-
-    monkeypatch.setattr(staff_view.staff_fleet, "aggregate_board", empty_peer_board)
+    monkeypatch.setattr(staff_view.staff_fleet, "peer_nodes", lambda: {})
     try:
         result = asyncio.run(service.sessions("Tools"))
         assert result["available"] is True and result["complete"] is True
