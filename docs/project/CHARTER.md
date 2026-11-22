@@ -32,11 +32,13 @@ Provide a unified, secure web control console and AI Staff Console for the D-sor
 | F11 | Code Requests and Proposals Pipeline    | shipped     | #1279    | Agent-agnostic planner-to-executor pipeline and board suggestion box.     |
 | F12 | Multi-Host Node Infrastructure          | shipped     | #1258    | Node cluster synchronization, self-updating roles, and Ollama bridges.    |
 | F13 | Projects and Fleet Stewardship          | shipped     | #1248    | Per-repo charters, status reporting, and deferred-plan owner tracking.    |
-| F14 | Staff Hub Reliability and Watchdogs     | in-progress | #1347    | Process tree cleanup, orphan run reconciliation, and error boundaries.    |
+| F14 | Staff Hub Reliability and Watchdogs     | shipped     | #1347    | Process tree cleanup, orphan run reconciliation, and error boundaries.    |
 | F15 | Maxwell Control Plane Proxy             | shipped     | #1338    | HTTP proxy interface and contract tests for external Maxwell daemon.      |
 | F16 | Fleet Coordination and Priorities       | shipped     | #1233    | Priorities API, board meetings, directives, and lease tracking.           |
 | F17 | Board Deliberation and Group Threads    | shipped     | #1339    | Multi-seat group threads coordinated by Board-Secretary.                  |
 | F18 | Offline Release Artifact Pipeline       | parked      | #1085    | Checksummed bundle distribution bypassing machine-local npm installs.     |
+| DV-#2613 | Security scanner: real scan-VM end-to-end validation | parked | - | DV-#2613: [plan](../operations/security-scanning.md); catalog [`deferred-validation.json`](../planning/deferred-validation.json); external prerequisites (dedicated scan VM) unavailable. |
+| DV-#2511 | Fleet-decision panel preset: live hub run with Barb turnover | parked | - | DV-#2511: [plan](../agents/issue-specs/2511-fleet-decision-preset.md); catalog [`deferred-validation.json`](../planning/deferred-validation.json); needs a live hub run by an operator. |
 
 ## Links
 
