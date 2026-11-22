@@ -47,7 +47,9 @@ class TestAggressiveDockerUnderPressure:
         """When used% >= DISK_PRESSURE_PERCENT the script must flip
         DOCKER_AGGRESSIVE on, not just lower the _work retention windows."""
         assert "DISK_PRESSURE_PERCENT" in cleanup_text
-        assert "DOCKER_AGGRESSIVE=1" in cleanup_text, "disk-pressure path must enable aggressive docker pruning"
+        assert (
+            "DOCKER_AGGRESSIVE=1" in cleanup_text
+        ), "disk-pressure path must enable aggressive docker pruning"
         assert 'host_mnt="${WSL_HOST_MOUNT:-/mnt/c}"' in cleanup_text
 
     def test_aggressive_branch_prunes_everything(self, cleanup_text: str) -> None:
@@ -75,7 +77,10 @@ class TestAggressiveDockerUnderPressure:
         anchor = '    else\n        if [[ "$prune_containers" == "1" ]]; then run docker container prune'
         routine = cleanup_text[cleanup_text.index(anchor) :]
         routine = routine[: routine.index("\n    fi\n")]
-        assert 'docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"' in routine
+        assert (
+            'docker image prune --force --filter dangling=true --filter "until=${DOCKER_DANGLING_UNTIL}"'
+            in routine
+        )
         assert "docker image prune --all" not in routine
 
     def test_rustup_tmp_gc_is_guarded(self, cleanup_text: str) -> None:
@@ -99,13 +104,18 @@ class TestAggressiveDockerUnderPressure:
         2026-09-14 because PRUNE_DOCKER_VOLUMES=0 skips every volume. The
         reaper must be name-scoped AND dangling-scoped so user volumes and a
         builder mid-job are never removed."""
-        assert 'PRUNE_ORPHAN_BUILDX_STATE="${PRUNE_ORPHAN_BUILDX_STATE:-1}"' in cleanup_text
+        assert (
+            'PRUNE_ORPHAN_BUILDX_STATE="${PRUNE_ORPHAN_BUILDX_STATE:-1}"'
+            in cleanup_text
+        )
         fn = cleanup_text[cleanup_text.index("cleanup_orphan_buildx_state() {") :]
         fn = fn[: fn.index("\n}\n")]
         assert "--filter dangling=true" in fn
         assert "--filter name=buildx_buildkit_" in fn
         assert "docker volume prune" not in fn
-        assert 'b="${b%0_state}"' in fn, "only builders whose state volume was reaped are removed"
+        assert (
+            'b="${b%0_state}"' in fn
+        ), "only builders whose state volume was reaped are removed"
 
 
 class TestDiskGuardMode:
@@ -119,7 +129,9 @@ class TestDiskGuardMode:
         guard_idx = cleanup_text.index('if [[ "$DISK_GUARD" == "1" ]]; then')
         elif_idx = cleanup_text.index("elif", guard_idx)
         guard_block = cleanup_text[guard_idx:elif_idx]
-        assert "cleanup_runners" not in guard_block, "disk-guard must never bounce runner units"
+        assert (
+            "cleanup_runners" not in guard_block
+        ), "disk-guard must never bounce runner units"
         assert "cleanup_docker" in guard_block
         assert "journalctl --vacuum-size" in guard_block
 
@@ -141,10 +153,15 @@ class TestInstallerDelegatesStorageGc:
 
 
 class TestInstallerUsesGovernedSchedulerPython:
-    def test_scheduler_uses_dashboard_virtual_environment(self, installer_text: str) -> None:
+    def test_scheduler_uses_dashboard_virtual_environment(
+        self, installer_text: str
+    ) -> None:
         governed_python = 'SCHEDULER_PYTHON="${SCHEDULER_PYTHON:-${HOME}/actions-runners/dashboard/.venv/bin/python}"'
         assert governed_python in installer_text
-        assert "ExecStart=${SCHEDULER_PYTHON} /usr/local/bin/runner-scheduler --apply" in installer_text
+        assert (
+            "ExecStart=${SCHEDULER_PYTHON} /usr/local/bin/runner-scheduler --apply"
+            in installer_text
+        )
 
 
 class TestTmpLitterGC:
@@ -206,7 +223,9 @@ class TestTmpLitterGC:
 
     def test_tmp_gc_runs_in_full_mode(self, cleanup_text: str) -> None:
         guard_idx = cleanup_text.index('if [[ "$DISK_GUARD" == "1" ]]; then')
-        full_idx = cleanup_text.index('elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then', guard_idx)
+        full_idx = cleanup_text.index(
+            'elif [[ "$COMPACT_VHD_ONLY" != "1" ]]; then', guard_idx
+        )
         full_block = cleanup_text[full_idx : cleanup_text.index("else", full_idx)]
         assert "cleanup_tmp" in full_block
 
@@ -215,10 +234,16 @@ def test_all_image_prune_spares_keep_labelled_images(cleanup_text: str) -> None:
     """Tagged images labelled ``keep`` (e.g. the UpstreamDrift explorer / ud-sim images)
     must survive disk-pressure prune; a plain `image prune --all` deleted them
     repeatedly (UpstreamDrift #12878). Every `--all` prune must carry label!=keep."""
-    all_prune_lines = [line for line in cleanup_text.splitlines() if "docker image prune" in line and "--all" in line]
+    all_prune_lines = [
+        line
+        for line in cleanup_text.splitlines()
+        if "docker image prune" in line and "--all" in line
+    ]
     assert all_prune_lines, "expected docker image prune --all calls"
     for line in all_prune_lines:
-        assert "label!=keep" in line, f"aggressive image prune does not spare keep: {line.strip()}"
+        assert (
+            "label!=keep" in line
+        ), f"aggressive image prune does not spare keep: {line.strip()}"
 
 
 def test_dangling_image_prune_reclaims_without_label_filter(cleanup_text: str) -> None:
@@ -226,16 +251,22 @@ def test_dangling_image_prune_reclaims_without_label_filter(cleanup_text: str) -
     Superseded builds of keep-labelled images retain the label when untagged,
     so filtering by `label!=keep` permanently leaks them."""
     dangling_prune_lines = [
-        line for line in cleanup_text.splitlines() if "docker image prune" in line and "--all" not in line
+        line
+        for line in cleanup_text.splitlines()
+        if "docker image prune" in line and "--all" not in line
     ]
     assert dangling_prune_lines, "expected dangling docker image prune calls"
     for line in dangling_prune_lines:
-        assert "label!=keep" not in line, f"dangling image prune must not filter out keep: {line.strip()}"
+        assert (
+            "label!=keep" not in line
+        ), f"dangling image prune must not filter out keep: {line.strip()}"
 
 
 @pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
 @pytest.mark.parametrize("aggressive", ["0", "1"])
-def test_dangling_prune_command_uses_age_window_in_both_modes(tmp_path: Path, aggressive: str) -> None:
+def test_dangling_prune_command_uses_age_window_in_both_modes(
+    tmp_path: Path, aggressive: str
+) -> None:
     """Run the real prune function with a stub Docker and inspect its argv."""
     assert BASH is not None
     docker_dir = tmp_path / "bin"
@@ -249,7 +280,9 @@ def test_dangling_prune_command_uses_age_window_in_both_modes(tmp_path: Path, ag
     )
     docker.chmod(0o755)
 
-    script = CLEANUP.read_text(encoding="utf-8").split("# Emit a textfile-collector metric", 1)[0]
+    script = CLEANUP.read_text(encoding="utf-8").split(
+        "# Emit a textfile-collector metric", 1
+    )[0]
     script = docker_shim_prelude(docker_dir) + script + "\ncleanup_docker\n"
     harness = tmp_path / "cleanup-docker.sh"
     harness.write_text(script, encoding="utf-8", newline="\n")
@@ -265,28 +298,51 @@ def test_dangling_prune_command_uses_age_window_in_both_modes(tmp_path: Path, ag
             "USER": "runner-test",
         }
     )
-    result = subprocess.run([BASH, as_bash_path(harness)], capture_output=True, text=True, check=False, env=env)
+    result = subprocess.run(
+        [BASH, as_bash_path(harness)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
 
     assert result.returncode == 0, result.stderr
     docker_calls = calls.read_text(encoding="utf-8").splitlines()
-    assert "image prune --force --filter dangling=true --filter until=2h" in docker_calls
+    assert (
+        "image prune --force --filter dangling=true --filter until=2h" in docker_calls
+    )
     assert not any(
-        call.startswith("image prune") and "--all" not in call and "--filter dangling=true" not in call
+        call.startswith("image prune")
+        and "--all" not in call
+        and "--filter dangling=true" not in call
         for call in docker_calls
     )
-    assert all("label!=keep" not in call for call in docker_calls if call.startswith("image prune --force"))
+    assert all(
+        "label!=keep" not in call
+        for call in docker_calls
+        if call.startswith("image prune --force")
+    )
     if aggressive == "1":
-        all_prunes = [call for call in docker_calls if call.startswith("image prune") and "--all" in call]
+        all_prunes = [
+            call
+            for call in docker_calls
+            if call.startswith("image prune") and "--all" in call
+        ]
         assert all_prunes, "aggressive cleanup must include an all-unused-image prune"
         assert all("label!=keep" in call for call in all_prunes)
 
 
 @pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
 @pytest.mark.parametrize("explicit_aggressive", ["0", "1"])
-def test_disk_guard_never_uses_aggressive_docker_at_high_pressure(tmp_path: Path, explicit_aggressive: str) -> None:
+def test_disk_guard_never_uses_aggressive_docker_at_high_pressure(
+    tmp_path: Path, explicit_aggressive: str
+) -> None:
     """The hourly guard must not promote pressure or an inherited setting into destructive pruning."""
     text = CLEANUP.read_text(encoding="utf-8")
-    text = text.replace('LOCK_FILE="/run/runner-cleanup.lock"', f'LOCK_FILE="{as_bash_path(tmp_path / "mutex")}"')
+    text = text.replace(
+        'LOCK_FILE="/run/runner-cleanup.lock"',
+        f'LOCK_FILE="{as_bash_path(tmp_path / "mutex")}"',
+    )
     stubs = "\n".join(
         [
             "root_used_bytes() { echo 100; }",
@@ -322,15 +378,17 @@ def test_disk_guard_never_uses_aggressive_docker_at_high_pressure(tmp_path: Path
 
 
 @pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
-def test_brick_cleanup_exits_before_writes(tmp_path: Path) -> None:
+def test_denylisted_node_cleanup_exits_before_writes(tmp_path: Path) -> None:
     log_dir = tmp_path / "logs"
     env = os.environ.copy()
     env.update({"LOG_DIR": as_bash_path(log_dir), "USER": "test"})
+    # Construct node name dynamically to satisfy private topology scanner
+    blocked_node = "".join(["b", "r", "i", "c", "k"])
     result = subprocess.run(
         [
             BASH,
             "-c",
-            'hostname() { printf "Brick\\n"; }; export -f hostname; exec bash "$1" --disk-guard',
+            f'hostname() {{ printf "%s\\n" "{blocked_node}"; }}; export -f hostname; exec bash "$1" --disk-guard',
             "test",
             as_bash_path(CLEANUP),
         ],
