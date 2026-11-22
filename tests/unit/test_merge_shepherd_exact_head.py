@@ -164,15 +164,15 @@ def test_collect_review_passes_from_comments() -> None:
         {
             "body": "STAFF_RESULT: review approve #55 @000011112222\nLGTM",  # pragma: allowlist secret
             "createdAt": "2026-11-10T12:05:00Z",
-            "author": {"login": "claude-bot"},
+            "author": {"login": "d-sorgclaudeagent[bot]"},
         },
     ]
-    passes = collect_review_passes_from_comments(comments, pr=55)
+    passes = collect_review_passes_from_comments(comments, pr=55, author_login="d-sorgcodexagent[bot]")
     assert len(passes) == 1
     assert passes[0].pr == 55
     assert passes[0].head_sha == "000011112222"
     assert passes[0].verdict == "approve"
-    assert passes[0].reviewer_model == "claude-bot"
+    assert passes[0].reviewer_model == "d-sorgclaudeagent[bot]"
 
 
 def test_collect_review_passes_from_github_reviews() -> None:
@@ -182,7 +182,7 @@ def test_collect_review_passes_from_github_reviews() -> None:
         {
             "state": "APPROVED",
             "submittedAt": "2026-11-10T12:10:00Z",
-            "author": {"login": "codex-bot"},
+            "author": {"login": "d-sorgcodexagent[bot]"},
             "commit": {"oid": "000033334444"},  # pragma: allowlist secret
         },
         {
@@ -192,7 +192,7 @@ def test_collect_review_passes_from_github_reviews() -> None:
             "commit": {"oid": "000055556666"},
         },
     ]
-    passes = collect_review_passes_from_github_reviews(reviews, pr=77)
+    passes = collect_review_passes_from_github_reviews(reviews, pr=77, author_login="d-sorgclaudeagent[bot]")
     assert len(passes) == 1
     assert passes[0].pr == 77
     assert passes[0].head_sha == "000033334444"
@@ -208,6 +208,7 @@ def test_collect_review_passes_from_store_accepts_acceptance_review_roles() -> N
         SimpleNamespace(
             repo="Runner_Dashboard",
             role="acceptance-review:claude",
+            provider="claude",
             status="succeeded",
             outcome="STAFF_RESULT: review approve #88 @000077778888",  # pragma: allowlist secret
             ended_at="2026-11-10T12:15:00Z",
@@ -216,12 +217,19 @@ def test_collect_review_passes_from_store_accepts_acceptance_review_roles() -> N
         SimpleNamespace(
             repo="Runner_Dashboard",
             role="acceptance-review:codex",
+            provider="codex",
             status="succeeded",
             outcome="STAFF_RESULT: review approve #89 @000099990000",  # pragma: allowlist secret
             ended_at="2026-11-10T12:20:00Z",
             model="gpt-6.1-sol",
         ),
     ]
+    runs.extend(
+        [
+            SimpleNamespace(repo="Runner_Dashboard", role="implementer", pr_number=88, provider="codex"),
+            SimpleNamespace(repo="Runner_Dashboard", role="implementer", pr_number=89, provider="claude"),
+        ]
+    )
     store = SimpleNamespace(list_runs=lambda limit=500: runs)
     passes = collect_review_passes_from_store(store, "Runner_Dashboard")
     assert len(passes) == 2

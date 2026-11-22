@@ -16,6 +16,8 @@ from delivery_metrics.sync import collect_delivery_metrics_once
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "delivery_metrics"
 REPO = "D-sorganization/Runner_Dashboard"
+PINNED_NOW = datetime(2026, 10, 25, 0, 0, 0, tzinfo=UTC)
+FUTURE_NOW = datetime(2035, 1, 1, 0, 0, 0, tzinfo=UTC)
 
 
 class _FixtureCollector:
@@ -42,6 +44,23 @@ class _FixtureCollector:
         return self._runs
 
 
+@pytest.fixture(params=[PINNED_NOW, FUTURE_NOW], ids=["pinned_date", "future_wall_clock"])
+def wall_clock(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> datetime:
+    simulated: datetime = request.param
+
+    class _MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is not None:
+                return simulated.astimezone(tz)
+            return simulated
+
+    import delivery_metrics.sync as sync_mod
+
+    monkeypatch.setattr(sync_mod, "datetime", _MockDatetime)
+    return simulated
+
+
 @pytest.fixture
 def mem_db(tmp_path: Path) -> Path:
     return init_db(tmp_path / "dm.db")
@@ -55,9 +74,13 @@ def collector() -> GitHubDeliveryCollectorPort:
 
 
 @pytest.mark.asyncio
-async def test_collect_once_is_idempotent(mem_db: Path, collector: GitHubDeliveryCollectorPort) -> None:
-    first = await collect_delivery_metrics_once(collector, [REPO], db_path=mem_db)
-    second = await collect_delivery_metrics_once(collector, [REPO], db_path=mem_db)
+async def test_collect_once_is_idempotent(
+    mem_db: Path,
+    collector: GitHubDeliveryCollectorPort,
+    wall_clock: datetime,
+) -> None:
+    first = await collect_delivery_metrics_once(collector, [REPO], db_path=mem_db, now=PINNED_NOW)
+    second = await collect_delivery_metrics_once(collector, [REPO], db_path=mem_db, now=PINNED_NOW)
     assert first.pulls_upserted >= 1
     assert first.check_runs_upserted >= 20
     assert second.pulls_upserted == 0
@@ -66,8 +89,12 @@ async def test_collect_once_is_idempotent(mem_db: Path, collector: GitHubDeliver
 
 
 @pytest.mark.asyncio
-async def test_sync_cursor_advances(mem_db: Path, collector: GitHubDeliveryCollectorPort) -> None:
-    await collect_delivery_metrics_once(collector, [REPO], db_path=mem_db)
+async def test_sync_cursor_advances(
+    mem_db: Path,
+    collector: GitHubDeliveryCollectorPort,
+    wall_clock: datetime,
+) -> None:
+    await collect_delivery_metrics_once(collector, [REPO], db_path=mem_db, now=PINNED_NOW)
     conn = sqlite3.connect(str(mem_db))
     conn.row_factory = sqlite3.Row
     cursor = get_repo_sync_cursor(conn, REPO)
@@ -81,7 +108,35 @@ def test_upsert_pull_detects_change(mem_db: Path) -> None:
     snap = parse_pr_snapshot(REPO, pr)
     conn = sqlite3.connect(str(mem_db))
     conn.row_factory = sqlite3.Row
-    now = datetime.now(UTC)
+    now = PINNED_NOW
     assert upsert_pull(conn, snap, synced_at=now) is True
     assert upsert_pull(conn, snap, synced_at=now) is False
     conn.close()
+
+
+@pytest.mark.asyncio
+async def test_future_wall_clock_simulation_verifies_clock_pinning(
+    mem_db: Path,
+    collector: GitHubDeliveryCollectorPort,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Demonstrate that with wall clock frozen in 2035+, pinning now preserves October fixtures."""
+
+    class _MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is not None:
+                return FUTURE_NOW.astimezone(tz)
+            return FUTURE_NOW
+
+    import delivery_metrics.sync as sync_mod
+
+    monkeypatch.setattr(sync_mod, "datetime", _MockDatetime)
+
+    # 1. Without pinning now, future wall clock causes 30-day lookback to filter out October fixtures:
+    unpinned = await collect_delivery_metrics_once(collector, [REPO], db_path=mem_db)
+    assert unpinned.pulls_upserted == 0
+
+    # 2. With pinned now, collection succeeds deterministically under the same simulated 2035 wall clock:
+    pinned = await collect_delivery_metrics_once(collector, [REPO], db_path=mem_db, now=PINNED_NOW)
+    assert pinned.pulls_upserted >= 1

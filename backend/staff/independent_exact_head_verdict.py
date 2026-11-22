@@ -307,9 +307,8 @@ def publish_independent_exact_head_verdict(
 ) -> None:
     """Publish one exact-head verdict and read it back; raises :class:`VerdictPostError` on failure.
 
-    For ``PASS`` the formal APPROVE review goes first, so a refused review (for example
-    HTTP 403) leaves no PASS comment on the PR. Post: the verdict comment, and for
-    ``PASS`` the APPROVE review, were read back from GitHub at ``head_sha`` (#4249).
+    The formal APPROVE or REQUEST_CHANGES review goes first and is read back at
+    ``head_sha`` before the verdict comment is published (#4249, #4616).
     When the comment fails after the APPROVE, the comment and the APPROVE this call
     posted are withdrawn (best effort) before the error is raised.
     """
@@ -338,6 +337,11 @@ def publish_independent_exact_head_verdict(
             body=body,
         )
         approved_now = posted is True
+    elif verdict.upper() == "FIX-NEEDED":
+        from staff.staff_github_pr_review import ensure_runner_dashboard_formal_changes_requested  # noqa: PLC0415
+
+        ensure_runner_dashboard_formal_changes_requested(repo=repo, pr_number=pr_number, head_sha=head_sha, body=body)
+        approved_now = False
     else:
         approved_now = False
     comment_id: int | None = None

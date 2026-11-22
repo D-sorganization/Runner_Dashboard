@@ -35,7 +35,7 @@ from coordination.models import (
     PresenceBody,
     ReleaseBody,
 )
-from coordination.pr_age_rule import roster_agent_id
+from coordination.pr_age_rule import lease_agent_id
 from coordination.staff_runs_cache import record_staff_runs_snapshot, snapshot_staff_runs
 from coordination.staff_view import staff_run_as_session, staff_runs
 from staff.rm_sync import stale_source_warning
@@ -111,10 +111,10 @@ def _bind(caller: Caller, session: str, explicit_agent: str | None = None, *, ne
     if not needs_agent:
         return None
     agent = caller.agent_for(explicit_agent)
-    roster_id = roster_agent_id(agent)
-    if roster_id not in roster.agent_ids():
+    posted = lease_agent_id(agent, roster.agent_ids())
+    if posted is None:
         raise UnknownAgentError(f"agent {agent!r} is not in the Repository_Management fleet roster")
-    return agent
+    return posted
 
 
 def _require_presence(session: str, repo: str) -> None:

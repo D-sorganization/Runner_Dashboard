@@ -8,7 +8,11 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from coordination.merge_shepherd_exact_head import collect_review_passes_from_store, pass_at_head, shepherd_arm_eligibility
+from coordination.merge_shepherd_exact_head import (
+    collect_review_passes_from_store,
+    pass_at_head,
+    shepherd_arm_eligibility,
+)
 from staff.review import REVIEWER_ROLE, _already_reviewed, auto_review_if_eligible
 from staff.store import RunRecord, RunStore
 
@@ -87,13 +91,15 @@ def test_collect_review_passes_ignores_approve_at_a_stale_head() -> None:
             SimpleNamespace(
                 repo=_REPO,
                 role=REVIEWER_ROLE,
+                provider="codex",
                 status="succeeded",
                 outcome=f"STAFF_RESULT: review approve #{_PR} @{_HEAD}",
                 last_line="",
                 ended_at=_ENDED,
                 created_at=_ENDED,
                 model="gpt-test",
-            )
+            ),
+            SimpleNamespace(repo=_REPO, role="implementer", pr_number=_PR, provider="claude"),
         ]
     )
     passes = collect_review_passes_from_store(store, _REPO)

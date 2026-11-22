@@ -39,6 +39,24 @@ def test_pm_sidekick_yaml_passes_schema_validation_and_loads_into_roster(tmp_pat
     assert slots["sidekick_digest"].startswith("2026-11-02T09:00:00")
 
 
+def test_pm_sidekick_role_targets_tools_and_keeps_packaging_hold(tmp_path: Path) -> None:
+    """Scheduled runs clone Tools. Packaging stays held and the role stays report-only (#4604)."""
+    raw = ps.pm_sidekick_role_data()
+    assert raw["repos"] == ["Tools"]
+    assert "Tools repository" in raw["instructions"]
+    assert "Sidekick packaging" in raw["instructions"]
+    assert "hold stays separate" in raw["instructions"]
+    assert raw["scope"]["report_only"] is True
+    assert raw["permissions"]["push_branch"] is False
+    assert raw["permissions"]["open_pr"] is False
+    assert raw["permissions"]["merge"] is False
+    assert raw["permissions"]["host_shell"] is False
+    ps.write_pm_sidekick_role_yaml(tmp_path)
+    parsed = ps.load_pm_sidekick_role_spec(tmp_path, raw=True)
+    assert parsed["repos"] == ["Tools"]
+    assert validate_role_data(parsed) == []
+
+
 def test_pm_sidekick_resolved_chain_puts_opus_5_5_first_and_override_emits_one_fyi(tmp_path: Path) -> None:
     ps.write_pm_sidekick_role_yaml(tmp_path)
     resolved = resolve_failover_chain(ps.load_pm_sidekick_role_spec(tmp_path))
