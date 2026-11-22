@@ -598,6 +598,8 @@ def disarm_for_shepherd(
     pr: int,
     *,
     detail: str = "",
+    head_sha: str,
+    revalidate: Callable[[], bool],
     runner: CommandRunner | None = None,
 ) -> tuple[MergeDisposition, MergeDisposition, HoldVerdict]:
     """Disarm with before/after readback for merge-shepherd executor paths (#4618).
@@ -607,8 +609,12 @@ def disarm_for_shepherd(
     ``disarmed=False``.
     """
     run = runner or _default_runner
+    if not check_token_identity(require_app_token=True, runner=run):
+        raise RuntimeError("App identity required for disarm")
     before = read_merge_disposition(repo, pr, runner=run)
     verdict = evaluate_hold(repo, pr, runner=run)
+    if not head_sha or not revalidate():
+        raise RuntimeError("disarm revalidation failed")
     shepherd_reject = detail == "rejected_at_head"
     if shepherd_reject or verdict.held:
         if before.auto_merge_on:

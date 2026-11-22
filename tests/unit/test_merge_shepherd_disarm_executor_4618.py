@@ -66,13 +66,16 @@ class ShepherdDisarmGh:
         raise AssertionError(f"unexpected gh call: {joined}")
 
 
-def test_disarm_for_shepherd_reports_disarmed_when_hold_exit_code_would_invert() -> None:
+def test_disarm_for_shepherd_reports_disarmed_when_hold_exit_code_would_invert(monkeypatch: pytest.MonkeyPatch) -> None:
     """Held PR disarm succeeds via readback even though --disarm-if-held would exit 1."""
+    monkeypatch.setattr(automerge_guard, "check_token_identity", lambda **kw: True)
     fake = ShepherdDisarmGh(auto_merge_on=True, in_merge_queue=False)
     before, after, verdict = automerge_guard.disarm_for_shepherd(
         "o/r",
         7,
         detail="rejected_at_head",
+        head_sha="a" * 40,
+        revalidate=lambda: True,
         runner=fake,
     )
     assert before.auto_merge_on is True
@@ -82,27 +85,22 @@ def test_disarm_for_shepherd_reports_disarmed_when_hold_exit_code_would_invert()
 
 
 def _guard_module():
-    import importlib.util
-    import sys
+    import importlib
 
-    path = msp.Path(__file__).resolve().parents[2] / "scripts" / "automerge_guard.py"
-    spec = importlib.util.spec_from_file_location("automerge_guard", path)
-    assert spec and spec.loader
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules.setdefault("automerge_guard", mod)
-    spec.loader.exec_module(mod)
-    return mod
+    return importlib.import_module("automerge_guard")
 
 
 def test_disarm_via_guard_uses_readback_not_cli_exit_code(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(msp, "_revalidate_disarm", lambda **kw: True)
     fake = ShepherdDisarmGh(auto_merge_on=True)
     guard_mod = _guard_module()
+    monkeypatch.setattr(automerge_guard, "check_token_identity", lambda **kw: True)
     monkeypatch.setattr(
         guard_mod,
         "disarm_for_shepherd",
         lambda *a, **k: automerge_guard.disarm_for_shepherd(*a, **k, runner=fake),
     )
-    result = msp._disarm_via_guard("o/r", 7, repo_root=msp.Path.cwd(), detail="rejected_at_head")
+    result = msp._disarm_via_guard("o/r", 7, repo_root=msp.Path.cwd(), detail="rejected_at_head", head_sha="a" * 40)
     assert result["disarmed"] is True
     assert result["exit_code"] == 0
     assert result["after_auto_merge"] is False
@@ -135,6 +133,7 @@ def test_main_executes_planned_disarm_with_detail(
     captured: dict[str, str] = {}
 
     def _fake_disarm(repo: str, pr: int, **kw: object) -> dict[str, object]:
+        captured["head_sha"] = str(kw.get("head_sha") or "")
         captured["detail"] = str(kw.get("detail") or "")
         return {
             "exit_code": 0,
@@ -151,5 +150,36 @@ def test_main_executes_planned_disarm_with_detail(
     code = msp.main(["--json"])
     assert code == 0
     assert captured.get("detail") == "rejected_at_head"
+    assert captured.get("head_sha") == "abc"
     out = json.loads(capsys.readouterr().out)
     assert out["executed_disarms"][0]["disarmed"] is True
+
+
+def test_disarm_refuses_without_app_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = ShepherdDisarmGh()
+    monkeypatch.setattr(automerge_guard, "check_token_identity", lambda **kw: False)
+    with pytest.raises(RuntimeError, match="identity"):
+        automerge_guard.disarm_for_shepherd("o/r", 7, head_sha="a" * 40, revalidate=lambda: True, runner=fake)
+    assert not any("DELETE" in call or "POST" in call for call in fake.calls)
+
+
+def test_disarm_refuses_new_head_after_planning(monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.unit.test_merge_shepherd_disarm_4618 import HEAD, _disarm_node
+
+    node = _disarm_node(number=7)
+    monkeypatch.setattr(msp, "_graphql", lambda *a: {})
+    monkeypatch.setattr(msp, "graphql_nodes", lambda payload: ([node], 1, 0))
+    monkeypatch.setattr(msp, "resolve_merge_shepherd_review_store", lambda **kw: None)
+    assert msp._revalidate_disarm(repo="o/r", pr=7, head_sha=HEAD, repo_root=msp.Path.cwd())
+    node["headRefOid"] = "b" * 40
+    fake = ShepherdDisarmGh()
+    monkeypatch.setattr(automerge_guard, "check_token_identity", lambda **kw: True)
+    with pytest.raises(RuntimeError, match="revalidation"):
+        automerge_guard.disarm_for_shepherd(
+            "o/r",
+            7,
+            head_sha=HEAD,
+            revalidate=lambda: msp._revalidate_disarm(repo="o/r", pr=7, head_sha=HEAD, repo_root=msp.Path.cwd()),
+            runner=fake,
+        )
+    assert not any("DELETE" in call or "POST" in call for call in fake.calls)

@@ -22,7 +22,10 @@ from coordination.merge_shepherd_pass import (  # noqa: E402
     OPEN_PRS_QUERY,
     PassConfig,
     armed_pull_requests_has_next_page,
+    collect_review_passes_from_store,
+    graphql_nodes,
     holds_gate_failed_payload,
+    plan_repo_disarms,
     resolve_hub_holds_policy,
     resolve_live_arming,
     resolve_merge_shepherd_review_store,
@@ -153,14 +156,33 @@ def _resolve_hub_holds() -> tuple[list[dict[str, Any]], str | None]:
     )
 
 
-def _disarm_via_guard(repo: str, pr: int, *, repo_root: Path, detail: str = "") -> dict[str, Any]:
+def _revalidate_disarm(*, repo: str, pr: int, head_sha: str, repo_root: Path) -> bool:
+    owner, name = repo.split("/", 1)
+    nodes, _, _ = graphql_nodes(_graphql(owner, name))
+    passes = collect_review_passes_from_store(store=resolve_merge_shepherd_review_store(repo_root=repo_root), repo=name)
+    actions = plan_repo_disarms(repo, nodes, skip_list=frozenset(), holds=(), live=True, review_passes=passes)
+    return any(
+        action.pr_number == pr and action.head_sha == head_sha and action.detail == "rejected_at_head"
+        for action in actions
+    )
+
+
+def _disarm_via_guard(repo: str, pr: int, *, repo_root: Path, head_sha: str, detail: str = "") -> dict[str, Any]:
     _SCRIPT_DIR = str(Path(__file__).resolve().parent)
     if _SCRIPT_DIR not in sys.path:
         sys.path.insert(0, _SCRIPT_DIR)
     import automerge_guard  # noqa: PLC0415
 
-    _ = repo_root
-    before, after, verdict = automerge_guard.disarm_for_shepherd(repo, pr, detail=detail or "")
+    try:
+        before, after, verdict = automerge_guard.disarm_for_shepherd(
+            repo,
+            pr,
+            detail=detail,
+            head_sha=head_sha,
+            revalidate=lambda: _revalidate_disarm(repo=repo, pr=pr, head_sha=head_sha, repo_root=repo_root),
+        )
+    except (RuntimeError, OSError, ValueError) as exc:
+        return {"exit_code": 1, "disarmed": False, "error": str(exc)}
     needed_clearing = not automerge_guard.disposition_cleared(before)
     disarmed = automerge_guard.disposition_cleared(after) if needed_clearing else True
     exit_code = 0 if disarmed else 1
@@ -268,6 +290,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 str(row["repo"]),
                 int(row["pr"]),
                 repo_root=config.repo_root,
+                head_sha=str(row.get("head_sha") or ""),
                 detail=str(row.get("detail") or ""),
             )
             executed_disarms.append({"repo": row["repo"], "pr": row["pr"], **result})
