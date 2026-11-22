@@ -279,15 +279,25 @@ def collect_review_passes_from_comments(
 
 
 def _commented_review_is_fix_needed(body: str, commit_sha: str) -> bool:
+    """True only for structured FIX-NEEDED verdicts at ``commit_sha``, not quoted mentions."""
     if not body:
         return False
-    if re.search(r"\bFIX-NEEDED\b", body, re.IGNORECASE):
-        return True
     from staff.review import parse_review_verdict
 
+    if "Independent Exact-Head Acceptance Review" in body:
+        match = re.search(r"\bFIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b", body)
+        if match:
+            return head_sha_matches(match.group(1), commit_sha)
     verdict = parse_review_verdict(body)
     if verdict.status == "succeeded" and verdict.verdict in {"changes", "escalate"}:
         return not verdict.head_sha or head_sha_matches(verdict.head_sha, commit_sha)
+    match = re.search(
+        r"(?:Verdict:\s*[`'\"]?|^\s*)FIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b",
+        body,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    if match:
+        return head_sha_matches(match.group(1), commit_sha)
     return False
 
 

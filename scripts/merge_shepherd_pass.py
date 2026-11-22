@@ -153,6 +153,24 @@ def _resolve_hub_holds() -> tuple[list[dict[str, Any]], str | None]:
     )
 
 
+def _disarm_via_guard(repo: str, pr: int, *, repo_root: Path) -> dict[str, Any]:
+    _SCRIPT_DIR = str(Path(__file__).resolve().parent)
+    if _SCRIPT_DIR not in sys.path:
+        sys.path.insert(0, _SCRIPT_DIR)
+    import automerge_guard  # noqa: PLC0415
+
+    argv = [
+        repo,
+        str(pr),
+        "--disarm-if-held",
+        "--require-app-token",
+        "--repo-root",
+        str(repo_root),
+    ]
+    code = automerge_guard.main(argv)
+    return {"exit_code": code, "disarmed": code == 0}
+
+
 def _arm_via_guard(repo: str, pr: int, *, strategy: str, head_sha: str, repo_root: Path) -> dict[str, Any]:
     _SCRIPT_DIR = str(Path(__file__).resolve().parent)
     if _SCRIPT_DIR not in sys.path:
@@ -237,7 +255,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         holds=holds,
     )
     executed: list[dict[str, Any]] = []
+    executed_disarms: list[dict[str, Any]] = []
     if live:
+        for row in summary.disarmed:
+            if row.get("dry_run"):
+                continue
+            result = _disarm_via_guard(
+                str(row["repo"]),
+                int(row["pr"]),
+                repo_root=config.repo_root,
+            )
+            executed_disarms.append({"repo": row["repo"], "pr": row["pr"], **result})
         for row in summary.armed:
             if row.get("dry_run"):
                 continue
@@ -249,6 +277,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repo_root=config.repo_root,
             )
             executed.append({"repo": row["repo"], "pr": row["pr"], **result})
+    for ex in executed_disarms:
+        log.info(
+            "merge shepherd disarm repo=%s pr=%s disarmed=%s exit_code=%s",
+            ex.get("repo"),
+            ex.get("pr"),
+            ex.get("disarmed"),
+            ex.get("exit_code"),
+        )
     for ex in executed:
         log.info(
             "merge shepherd arm repo=%s pr=%s armed=%s exit_code=%s",
@@ -260,11 +296,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload = summary_to_json(summary)
     payload["live"] = live
     payload["executed"] = executed
+    payload["executed_disarms"] = executed_disarms
     _write_step_summary(payload)
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     arm_failed = any(not ex.get("armed") for ex in executed)
-    return 1 if summary.errors or arm_failed else 0
+    disarm_failed = any(not ex.get("disarmed") for ex in executed_disarms)
+    return 1 if summary.errors or arm_failed or disarm_failed else 0
 
 
 if __name__ == "__main__":
