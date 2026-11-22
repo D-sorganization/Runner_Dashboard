@@ -11,11 +11,146 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from coordination.fleet_efficiency import enrich_lane_receipt
+
 _DEFAULT_TTL_SEC = 3600
 _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
 
-_PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini")
+_PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini", "deepseek", "qwen", "grok")
+
+# Staff registry and lane catalog use different provider spellings; normalize to lane ids
+# (short prefix form) before comparing checkout callers to seeded assignments.
+_LANE_PROVIDER_ALIASES: dict[str, str] = {
+    "cursor-agent": "cursor",
+    "cursor_agent": "cursor",
+    "deepseek-api": "deepseek",
+    "deepseek_api": "deepseek",
+    "antigravity": "agy",
+    "gemini": "agy",
+    "grok": "cursor",
+    "grok-cli": "cursor",
+    "grok_cli": "cursor",
+    "qwen-code": "qwen",
+    "qwen_cli": "qwen",
+    "qwen-code-cli": "qwen",
+    "codex-cli": "codex",
+    "codex_cli": "codex",
+    "claude-code": "claude",
+    "claude-cli": "claude",
+    "claude_code_cli": "claude",
+}
+
+
+def normalize_lane_provider(provider: str | None) -> str | None:
+    """Map staff or registry provider ids onto lane checkout provider ids."""
+    if provider is None:
+        return None
+    key = provider.strip().lower()
+    if not key:
+        return None
+    return _LANE_PROVIDER_ALIASES.get(key, key)
+
+
+# Hub-provisioned Cursor CLI lanes (#4565). ``release_sha`` / ``package_hash`` are
+# placeholders until the hub publishes a fleet prompt package revision.
+_DEFAULT_RELEASE_SHA = "bootstrap"
+_DEFAULT_PACKAGE_HASH = "bootstrap"
+_DEFAULT_CURSOR_MODEL = "composer-2.5"
+_DEFAULT_GROK_CURSOR_MODEL = "grok-4.7-high"
+_DEFAULT_QWEN_MODEL = "qwen3.8-flash"
+_DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
+
+DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "lane_id": "cursor-ct-1",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_CURSOR_MODEL,
+        "max_children": 2,
+        "task_focus": "CT host Cursor CLI lane (Composer 2.5).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-oglaptop-1",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_CURSOR_MODEL,
+        "max_children": 2,
+        "task_focus": "node-b host Cursor CLI lane (Composer 2.5).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-ct-2",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_GROK_CURSOR_MODEL,
+        "max_children": 1,
+        "task_focus": "CT host Cursor CLI lane (Grok 4.7 via cursor-agent).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-oglaptop-2",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_GROK_CURSOR_MODEL,
+        "max_children": 1,
+        "task_focus": "node-b host Cursor CLI lane (Grok 4.7 via cursor-agent).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "qwen-ct-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_QWEN_MODEL,
+        "max_children": 1,
+        "task_focus": "CT host Qwen Code CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "qwen-oglaptop-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_QWEN_MODEL,
+        "max_children": 1,
+        "task_focus": "node-b host Qwen Code CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "deepseek-ct-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_DEEPSEEK_MODEL,
+        "max_children": 1,
+        "task_focus": "CT host DeepSeek API CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "deepseek-oglaptop-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_DEEPSEEK_MODEL,
+        "max_children": 1,
+        "task_focus": "node-b host DeepSeek API CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+)
 
 
 def _load_host_aliases() -> dict[str, str]:
@@ -52,17 +187,19 @@ def _load_host_aliases() -> dict[str, str]:
 def _infer_provider(session_id: str, explicit_provider: str | None, principal: str | None = None) -> str | None:
     raw = (explicit_provider or "").strip().lower()
     if raw:
-        return "agy" if raw in ("gemini", "antigravity") else raw
+        return normalize_lane_provider(raw)
     sid = session_id.strip().lower()
     for prefix in _PROVIDER_PREFIXES:
         if sid.startswith(f"{prefix}-") or sid == prefix:
-            return "agy" if prefix == "gemini" else prefix
+            inferred = "agy" if prefix == "gemini" else prefix
+            return normalize_lane_provider(inferred)
     prin = (principal or "").strip().lower()
     if prin.startswith("agent-"):
         tail = prin[len("agent-") :]
         for prefix in _PROVIDER_PREFIXES:
             if tail == prefix or tail.startswith(f"{prefix}-"):
-                return "agy" if prefix == "gemini" else prefix
+                inferred = "agy" if prefix == "gemini" else prefix
+                return normalize_lane_provider(inferred)
     return None
 
 
@@ -99,8 +236,9 @@ def _infer_host(session_id: str, explicit_host: str | None) -> str | None:
 
 
 def _is_lane_compatible(cand: sqlite3.Row, want_provider: str | None, want_host: str | None) -> bool:
-    cand_prov = _lane_provider(cand["lane_id"], cand["subagent_model"])
-    if cand_prov is not None and (want_provider is None or cand_prov != want_provider):
+    cand_prov = normalize_lane_provider(_lane_provider(cand["lane_id"], cand["subagent_model"]))
+    want_norm = normalize_lane_provider(want_provider)
+    if cand_prov is not None and (want_norm is None or cand_prov != want_norm):
         return False
     cand_host = _lane_host(cand["lane_id"])
     if cand_host is not None and (want_host is None or cand_host != want_host):
@@ -112,7 +250,11 @@ def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
     lid = lane_id.strip().lower()
     for prefix in _PROVIDER_PREFIXES:
         if lid.startswith(f"{prefix}-"):
-            return "agy" if prefix == "gemini" else prefix
+            if prefix == "gemini":
+                return "agy"
+            if prefix == "deepseek":
+                return "deepseek"
+            return prefix
     model = (subagent_model or "").strip().lower()
     if model.startswith("claude-"):
         return "claude"
@@ -120,6 +262,10 @@ def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
         return "agy"
     if model.startswith("gpt-"):
         return "codex"
+    if model.startswith("deepseek-"):
+        return "deepseek"
+    if model.startswith("qwen"):
+        return "qwen"
     if model.startswith("composer-") or model.startswith("grok-"):
         return "cursor"
     return None
@@ -237,6 +383,11 @@ class LanePromptStore:
                 """)
         finally:
             conn.close()
+
+    def seed_defaults(self) -> None:
+        """Register :data:`DEFAULT_LANE_ASSIGNMENTS` (idempotent upsert per lane_id)."""
+        for row in DEFAULT_LANE_ASSIGNMENTS:
+            self.register_assignment(**row)
 
     def register_assignment(
         self,
@@ -392,7 +543,7 @@ class LanePromptStore:
                     (session_id,),
                 ).fetchone()
                 if active_self is not None and _is_lane_compatible(active_self, want_provider, want_host):
-                    return json.loads(active_self["receipt_json"])
+                    return enrich_lane_receipt(json.loads(active_self["receipt_json"]))
 
             if lane_id is not None:
                 row = conn.execute(
@@ -414,7 +565,7 @@ class LanePromptStore:
                             (lane_id,),
                         ).fetchone()
                         assert rec is not None
-                        return json.loads(rec["receipt_json"])
+                        return enrich_lane_receipt(json.loads(rec["receipt_json"]))
                     raise LaneConflictError(f"Lane {lane_id!r} already held by {held['session_id']}")
                 target = row
             else:
@@ -494,7 +645,7 @@ class LanePromptStore:
                     ts,
                 ),
             )
-            return receipt
+            return enrich_lane_receipt(receipt)
 
         return self._run_tx(_tx)
 
@@ -537,7 +688,7 @@ class LanePromptStore:
                 """,
                 (new_exp, ts, new_prog, json.dumps(receipt), checkout_id),
             )
-            return receipt
+            return enrich_lane_receipt(receipt)
 
         return self._run_tx(_tx)
 
@@ -689,4 +840,5 @@ def get_lane_prompt_store() -> LanePromptStore:
     with _default_store_lock:
         if _default_store is None:
             _default_store = LanePromptStore()
+            _default_store.seed_defaults()
         return _default_store

@@ -64,8 +64,8 @@ def main(argv: list[str] | None = None) -> int:
         "--scratch-root",
         action="append",
         default=[],
-        help="Directory such as /tmp whose git clones and aged task folders are reported (repeatable). "
-        "Report only: --apply never removes anything under a scratch root.",
+        help="Directory such as /tmp whose git clones and aged task folders are scanned (repeatable). "
+        "Eligible paths are removed only with --apply.",
     )
     parser.add_argument(
         "--scratch-min-age-hours",
@@ -96,13 +96,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     scratch_roots = [Path(p).expanduser() for p in args.scratch_root]
     if scratch_roots:
+        protected_repos = DEFAULT_PROTECTED_REPOS + tuple(args.protect_repo)
         report["scratch"] = {
             "clones": plan_scratch_clones(
                 scratch_roots,
+                apply=apply,
                 min_age_hours=float(args.scratch_min_age_hours),
-                protected_repos=DEFAULT_PROTECTED_REPOS + tuple(args.protect_repo),
+                protected_repos=protected_repos,
             ),
-            "task_folders": plan_aged_task_folders(scratch_roots, min_age_hours=float(args.task_folder_min_age_hours)),
+            "task_folders": plan_aged_task_folders(
+                scratch_roots,
+                apply=apply,
+                min_age_hours=float(args.task_folder_min_age_hours),
+            ),
         }
     sys.stdout.write(json.dumps(report, indent=2) + "\n")
     return 0

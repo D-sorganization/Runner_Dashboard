@@ -12,6 +12,14 @@ from coordination.gh_cli import gh_api_json
 from staff.workspace import rm_root
 
 BOARD_COMMENT_LIMIT, BOARD_PAGE_SIZE, BOARD_MAX_PAGES = 1000, 100, 100
+# Predecessors only need the presence/claim TTL window (RM uses MAX_PAGES=10 per issue).
+BOARD_PREDECESSOR_MAX_PAGES = 10
+PRESENCE_TTL_HOURS = 8
+_PREDECESSOR_TRUNCATION = (
+    "predecessor read capped at {max_pages} pages inside the {ttl_h}h presence TTL; "
+    "older binding history may be missing"
+)
+_last_predecessor_warnings: list[str] = []
 SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "paths", "goals", "expires", "at")
 MAX_EVENT_BYTES = 24000
 BoardPageFetcher = Callable[[int, int], list[dict[str, Any]]]
@@ -117,6 +125,27 @@ def _apply_event(env: dict[str, Any], author: str, ref_now: datetime, st: dict[s
                 acks.add((sess, mid))
 
 
+def _read_predecessor_comments(
+    repo: str, issue: int, since_p: str, per_page: int, max_pages: int
+) -> list[dict[str, Any]]:
+    """Bounded TTL-window read for a retired board; truncation is advisory only."""
+    global _last_predecessor_warnings
+    res: list[dict[str, Any]] = []
+    for pp in range(1, max_pages + 1):
+        b = gh_api_json(f"/repos/{repo}/issues/{issue}/comments?per_page={per_page}&page={pp}&since={since_p}")
+        if not isinstance(b, list):
+            raise RuntimeError(f"Predecessor issue {issue} returned non-list comments payload")
+        res.extend(b)
+        if len(b) < per_page:
+            break
+        if pp == max_pages and len(b) >= per_page:
+            _last_predecessor_warnings.append(
+                f"Board #{issue}: {_PREDECESSOR_TRUNCATION.format(max_pages=max_pages, ttl_h=PRESENCE_TTL_HOURS)}"
+            )
+            break
+    return res
+
+
 def board_config() -> tuple[str, int, int, list[int]]:
     root, repo, issue, days, preds = rm_root(), "D-sorganization/Repository_Management", 2539, 3, []
     if root and (cfg := root / "config" / "agent_communication.json").is_file():
@@ -136,17 +165,12 @@ def board_config() -> tuple[str, int, int, list[int]]:
 def default_board_page_fetcher(page: int, per_page: int) -> list[dict[str, Any]]:
     repo, issue, days, preds = board_config()
     if page == 0:
-        since_p, res = (datetime.now(UTC) - timedelta(hours=8)).strftime("%Y-%m-%dT%H:%M:%SZ"), []
+        global _last_predecessor_warnings
+        _last_predecessor_warnings = []
+        since_p = (datetime.now(UTC) - timedelta(hours=PRESENCE_TTL_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        res: list[dict[str, Any]] = []
         for p in preds[-3:]:
-            for pp in range(1, BOARD_MAX_PAGES + 1):
-                b = gh_api_json(f"/repos/{repo}/issues/{p}/comments?per_page={per_page}&page={pp}&since={since_p}")
-                if not isinstance(b, list):
-                    raise RuntimeError(f"Predecessor issue {p} returned non-list comments payload")
-                res.extend(b)
-                if len(b) < per_page:
-                    break
-                if pp == BOARD_MAX_PAGES and len(b) >= per_page:
-                    raise RuntimeError(f"Predecessor issue {p} exceeded max pages ({BOARD_MAX_PAGES})")
+            res.extend(_read_predecessor_comments(repo, p, since_p, per_page, BOARD_PREDECESSOR_MAX_PAGES))
         return res
     since = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     data = gh_api_json(f"/repos/{repo}/issues/{issue}/comments?per_page={per_page}&page={page}&since={since}")
@@ -177,6 +201,8 @@ def _paginate_pages(
             st["read_w"].append(f"Board comment page {page} returned invalid payload")
             return False, total
         total += len(batch) if page > 0 else 0
+        if page == 0:
+            st["replay_w"].extend(w for w in _last_predecessor_warnings if w not in st["replay_w"])
         for c in batch:
             if isinstance(c, dict):
                 env, author, err = _parse_comment_envelope(c)

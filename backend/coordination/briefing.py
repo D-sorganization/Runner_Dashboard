@@ -51,6 +51,7 @@ ENDPOINTS = {
     "friction": "GET|POST /api/v1/fleet/friction",
     "owner_questions": "GET|POST /api/v1/fleet/owner-questions",
     "brief": "GET /api/v1/fleet/brief?repo=&limit=&format=json|markdown",
+    "fleet_efficiency": "GET /api/coordination/fleet-efficiency",
     "overload": "GET /api/v1/fleet/overload?repo=&open_count_threshold=",
     "activity_checkins": "POST /api/v1/activity/checkins",
     "activity_context": "GET /api/v1/activity/context?repo=&budget_tokens=",

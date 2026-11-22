@@ -89,14 +89,14 @@ def runner_dashboard_has_approved_at_head(
     head_sha: str,
     bot_login: str = RUNNER_DASHBOARD_BOT_LOGIN,
 ) -> bool:
-    for item in reviews:
-        if str(item.get("state") or "").upper() != "APPROVED":
-            continue
+    for item in reversed(reviews):
         if not is_runner_dashboard_bot_review(item, bot_login=bot_login):
             continue
+        state = str(item.get("state") or "").upper()
+        if state not in {"APPROVED", "CHANGES_REQUESTED"}:
+            continue
         commit = str(item.get("commit_id") or "").strip()
-        if commit and head_sha_matches(commit, head_sha):
-            return True
+        return state == "APPROVED" and bool(commit) and head_sha_matches(commit, head_sha)
     return False
 
 
@@ -243,6 +243,35 @@ def ensure_runner_dashboard_formal_approve(
             return True
     raise VerdictPostError(
         f"Formal APPROVE for {full_repo}#{pr_number} at {sha[:7]} was not found on read-back; the head stays unreviewed"
+    )
+
+
+def ensure_runner_dashboard_formal_changes_requested(*, repo: str, pr_number: int, head_sha: str, body: str) -> None:
+    """Post and verify a blocking review at the reviewed commit."""
+    from staff.independent_exact_head_verdict import _repo_slug
+
+    full_repo = f"{ORG}/{_repo_slug(repo)}"
+    sha = head_sha.lower()
+    cred = mint_runner_dashboard_verdict_token(repo)
+    submit_pull_request_review(
+        full_repo=full_repo,
+        pr_number=pr_number,
+        commit_id=sha,
+        event="REQUEST_CHANGES",
+        body=body,
+        token=cred.token,
+    )
+    for attempt in range(READ_BACK_ATTEMPTS):
+        if attempt:
+            time.sleep(READ_BACK_DELAY_SECONDS)
+        reviews = fetch_pull_reviews(full_repo=full_repo, pr_number=pr_number, token=cred.token)
+        own = [review for review in reviews if is_runner_dashboard_bot_review(review)]
+        if own and str(own[-1].get("state") or "").upper() == "CHANGES_REQUESTED":
+            commit = str(own[-1].get("commit_id") or "").strip()
+            if commit and head_sha_matches(commit, sha):
+                return
+    raise VerdictPostError(
+        f"Formal REQUEST_CHANGES for {full_repo}#{pr_number} at {sha[:7]} was not found on read-back"
     )
 
 

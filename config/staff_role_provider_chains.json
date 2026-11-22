@@ -4,14 +4,16 @@
   "provider_models": {
     "codex": "gpt-6.1-sol",
     "claude": "claude-opus-5-5",
-    "cursor-agent": null,
-    "antigravity": "gemini-3.8-flash-high"
+    "cursor-agent": "composer-2.5",
+    "antigravity": "gemini-3.8-flash-high",
+    "qwen": "qwen3.8-flash",
+    "deepseek-api": "deepseek-v4-pro"
   },
   "roles": {
     "code-reviewer": ["codex", "claude", "cursor-agent"],
     "issue-remediator": ["claude", "codex", "cursor-agent"],
     "ad-hoc": ["claude", "codex", "cursor-agent"],
-    "mad-scientist": ["claude", "codex", "cursor-agent"],
+    "mad-scientist": ["claude", "codex", "cursor-agent", "qwen", "deepseek-api"],
     "pr-remediator": ["codex", "cursor-agent", "claude"],
     "test-hygiene": ["codex", "cursor-agent", "claude"],
     "chief-architect": ["claude", "codex", "cursor-agent"],

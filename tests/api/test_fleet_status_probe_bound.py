@@ -99,5 +99,8 @@ async def test_stale_flag_while_refreshing(monkeypatch: pytest.MonkeyPatch) -> N
         return {"hub-a": {"hostname": "fresh"}}
 
     served = await serve_fleet_status(cache_key, slow_collect, wait_timeout=0.01)
-    assert served.get("_stale") is True
+    assert served.get("_cache_stale") is True
+    assert "_stale" not in served
     assert served["hub-a"]["hostname"] == "cached"
+    assert served["hub-a"]["stale"] is True
+    assert served["hub-a"]["_sampled_at"] is None

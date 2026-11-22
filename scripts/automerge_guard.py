@@ -34,6 +34,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -602,6 +603,38 @@ def _verdict_from(raw: dict[str, Any], pull: _PullRequest, reasons: list[str], p
     )
 
 
+_CLOSING_BOARD_REF = re.compile(
+    r"(?i)\b(?:close[sd]?|fix(?:es|ed)?|resolve[sd]?)\s+(?:(?:[A-Za-z0-9_.-]+/)?[A-Za-z0-9_.-]+)?#(\d+)\b"
+)
+
+
+def _configured_board_issues() -> set[int]:
+    """Return the set of active and predecessor coordination board issue numbers."""
+    try:
+        from coordination.board_pagination import board_config
+
+        _repo, issue, _days, preds = board_config()
+        return {issue, *preds}
+    except Exception:
+        return {3029, 2539, 2851}
+
+
+def _closing_board_reasons(body: str, board_issues: set[int] | None = None) -> list[str]:
+    """Refuse auto-merge if PR body contains Closes/Fixes referencing the coordination board (#4574)."""
+    if not body:
+        return []
+    targets = board_issues if board_issues is not None else _configured_board_issues()
+    reasons: list[str] = []
+    for match in _CLOSING_BOARD_REF.finditer(body):
+        num = int(match.group(1))
+        if num in targets:
+            reasons.append(
+                f"PR body contains closing reference for coordination board RM #{num} "
+                f"('{match.group(0).strip()}'); closing the board via PR is forbidden (#4574)"
+            )
+    return reasons
+
+
 def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) -> HoldVerdict:
     """Decide whether ``repo#pr`` is held back from auto-merge.
 
@@ -614,6 +647,7 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
        commit — a reviewer said no and nobody has pushed since
     4. the diff deletes tracked files with no acknowledgement
     5. an independent exact-head review is ``FIX-NEEDED`` at the current head
+    6. the PR body references closing the active coordination board
 
     Fails closed: any error computing the verdict returns ``held=True``.
     """
@@ -631,6 +665,7 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
         reasons += _deletion_reasons(run, repo, pr, pull)
         review_reasons, pass_head_sha = _independent_review_state(run, repo, pr, pull)
         reasons += review_reasons
+        reasons += _closing_board_reasons(pull.body)
     except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
         # Fail closed. An unknown state is not a licence to arm.
         return HoldVerdict(True, (), error=str(exc))

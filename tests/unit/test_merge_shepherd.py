@@ -20,6 +20,30 @@ from coordination.merge_shepherd import (  # noqa: E402
     is_pr_held,
     rank_candidates_for_shepherding,
 )
+from coordination.merge_shepherd_exact_head import HeadReviewPass  # noqa: E402
+
+
+def _armable_candidate(repo: str, pr_number: int, **kwargs: object) -> PRCandidate:
+    head = str(kwargs.pop("head_sha", "abcd1234" * 5))
+    return PRCandidate(
+        repo,
+        pr_number,
+        head_sha=head,
+        file_paths=kwargs.pop("file_paths", ("backend/x.py",)),
+        files_complete=kwargs.pop("files_complete", True),
+        review_passes=kwargs.pop(
+            "review_passes",
+            (
+                HeadReviewPass(
+                    pr=pr_number,
+                    head_sha=head,
+                    verdict="approve",
+                    recorded_at="2026-11-20T10:00:00+00:00",
+                ),
+            ),
+        ),
+        **kwargs,
+    )
 
 
 @pytest.mark.unit
@@ -39,20 +63,25 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
                 self.assertEqual(get_auto_merge_flag(repo), expected)
 
     def test_eligible_auto_arm(self) -> None:
-        rd = PRCandidate("Runner_Dashboard", 3900)
-        d_rd = evaluate_pr_shepherd_eligibility(rd)
+        d_rd = evaluate_pr_shepherd_eligibility(_armable_candidate("Runner_Dashboard", 3900))
         self.assertEqual((d_rd.action, d_rd.merge_flag), (ShepherdAction.AUTO_ARM, "--auto"))
 
-        ud = PRCandidate("UpstreamDrift", 14000)
-        d_ud = evaluate_pr_shepherd_eligibility(ud)
+        d_ud = evaluate_pr_shepherd_eligibility(_armable_candidate("UpstreamDrift", 14000))
         self.assertEqual((d_ud.action, d_ud.merge_flag), (ShepherdAction.AUTO_ARM, "--auto --squash"))
 
     def test_behind_clean_pr_never_yields_update_branch(self) -> None:
         """A behind-but-clean PR must arm directly instead of churning via UPDATE_BRANCH (panel th_25026e93f6bb)."""
-        cand = PRCandidate("Runner_Dashboard", 3901, is_behind=True)
-        decision = evaluate_pr_shepherd_eligibility(cand)
+        decision = evaluate_pr_shepherd_eligibility(_armable_candidate("Runner_Dashboard", 3901, is_behind=True))
         self.assertEqual(decision.action, ShepherdAction.AUTO_ARM)
         self.assertEqual(decision.merge_flag, "--auto")
+
+    def test_ineligible_without_head_sha(self) -> None:
+        missing = PRCandidate("Runner_Dashboard", 4574, checks_status="SUCCESS", file_paths=("backend/x.py",))
+        decision = evaluate_pr_shepherd_eligibility(missing)
+        self.assertEqual(
+            (decision.action, decision.reason, decision.detail),
+            (ShepherdAction.SKIP, IneligibleReason.NO_EXACT_HEAD_PASS, "missing_pass_at_head"),
+        )
 
     def test_ineligible_reasons(self) -> None:
         cases = [
@@ -89,6 +118,7 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
             (["do-not-merge"], "fix: normal fix"),
             (["blocked"], "fix: normal fix"),
             (["needs-decision"], "fix: normal fix"),
+            (["needs-owner"], "fix: normal fix"),
             ([], "[HOLD] refactor dispatch"),
             ([], "chore: topology sanitize deploy paths (held)"),
         ]
@@ -106,15 +136,50 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
         blocked = PRCandidate("GM", 5700, is_drained=True, is_exempt=False)
         self.assertEqual(evaluate_pr_shepherd_eligibility(blocked).reason, IneligibleReason.DRAINED)
 
-        exempt = PRCandidate("GM", 5701, is_drained=True, is_exempt=True)
+        exempt = _armable_candidate("GM", 5701, is_drained=True, is_exempt=True)
         self.assertEqual(evaluate_pr_shepherd_eligibility(exempt).action, ShepherdAction.AUTO_ARM)
 
     def test_rank_candidates(self) -> None:
-        c1 = PRCandidate("RD", 100)
-        c2 = PRCandidate("RD", 101, labels=("merge:priority",))
-        c3 = PRCandidate("RD", 102, is_behind=True)
+        c1 = _armable_candidate("RD", 100)
+        c2 = _armable_candidate("RD", 101, labels=("merge:priority",))
+        c3 = _armable_candidate("RD", 102, is_behind=True)
         ranked = rank_candidates_for_shepherding([c1, c2, c3])
         self.assertEqual([d.pr_number for d in ranked], [101, 100, 102])
+
+    def test_evaluate_wires_shepherd_arm_eligibility_when_head_sha_set(self) -> None:
+        head = "abcd1234" * 5
+        missing_pass = PRCandidate(
+            "Runner_Dashboard",
+            4573,
+            checks_status="SUCCESS",
+            head_sha=head,
+            file_paths=("backend/x.py",),
+            files_complete=True,
+        )
+        skip = evaluate_pr_shepherd_eligibility(missing_pass)
+        self.assertEqual(
+            (skip.action, skip.reason, skip.detail),
+            (ShepherdAction.SKIP, IneligibleReason.NO_EXACT_HEAD_PASS, "missing_pass_at_head"),
+        )
+        with_pass = PRCandidate(
+            "Runner_Dashboard",
+            4573,
+            checks_status="SUCCESS",
+            head_sha=head,
+            file_paths=("backend/x.py",),
+            files_complete=True,
+            review_passes=(
+                HeadReviewPass(
+                    pr=4573,
+                    head_sha=head,
+                    verdict="approve",
+                    recorded_at="2026-11-20T10:00:00+00:00",
+                ),
+            ),
+        )
+        arm = evaluate_pr_shepherd_eligibility(with_pass)
+        self.assertEqual(arm.action, ShepherdAction.AUTO_ARM)
+        self.assertIn("exact_head_pass", arm.detail)
 
 
 if __name__ == "__main__":

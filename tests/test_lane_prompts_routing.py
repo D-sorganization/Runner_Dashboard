@@ -217,3 +217,61 @@ def test_cursor_lane_routing_and_composer_model(tmp_path: Path) -> None:
         host="desk",
     )
     assert res["lane_id"] == "cursor-desk-1"
+
+
+def test_checkout_accepts_staff_registry_provider_aliases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Explicit ``cursor-agent`` / ``deepseek-api`` must match seeded lane provider ids."""
+    from coordination.lane_prompts import LaneConflictError, LanePromptStore, normalize_lane_provider
+
+    monkeypatch.setenv("RUNNER_DASHBOARD_HOST_ALIASES", '{"hub-a":"hub-a"}')
+    assert normalize_lane_provider("cursor-agent") == "cursor"
+    assert normalize_lane_provider("deepseek-api") == "deepseek"
+    assert normalize_lane_provider("grok-cli") == "cursor"
+
+    store = LanePromptStore(db_path=tmp_path / "lane_prompts.sqlite3")
+    store.register_assignment(
+        lane_id="deepseek-hub-a-1",
+        role="mad-scientist",
+        repos=["Runner_Dashboard"],
+        release_sha="abc",
+        package_hash="pkg",
+        subagent_model="deepseek-v4-pro",
+        max_children=1,
+    )
+    store.register_assignment(
+        lane_id="cursor-hub-a-1",
+        role="backlog-completion",
+        repos=["Runner_Dashboard"],
+        release_sha="abc",
+        package_hash="pkg",
+        subagent_model="composer-2.5",
+        max_children=2,
+    )
+
+    deepseek = store.checkout(
+        session_id="staff-deepseek-hub-a-20261119-1",
+        principal="agent-deepseek",
+        idempotency_key="k-deepseek-api",
+        provider="deepseek-api",
+        host="hub-a",
+    )
+    assert deepseek["lane_id"] == "deepseek-hub-a-1"
+
+    cursor = store.checkout(
+        session_id="staff-cursor-hub-a-20261119-1",
+        principal="agent-cursor",
+        idempotency_key="k-cursor-agent",
+        provider="cursor-agent",
+        host="hub-a",
+    )
+    assert cursor["lane_id"] == "cursor-hub-a-1"
+
+    with pytest.raises(LaneConflictError, match="incompatible"):
+        store.checkout(
+            session_id="staff-cursor-hub-a-20261119-2",
+            principal="agent-cursor",
+            idempotency_key="k-wrong-prov",
+            lane_id="deepseek-hub-a-1",
+            provider="cursor-agent",
+            host="hub-a",
+        )

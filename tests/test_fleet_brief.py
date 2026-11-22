@@ -69,7 +69,9 @@ async def test_build_fleet_brief_combines_every_source(monkeypatch: pytest.Monke
 
     assert brief["repo"] == "D-sorganization/Runner_Dashboard"
     assert brief["queue"] == {"queued_count": 2, "in_progress_count": 1}
-    assert brief["hub_status"] == {"hub": {"status": "online"}}
+    assert brief["hub_status"] == {
+        "hub": {"status": "online", "stale": True, "_sampled_at": None},
+    }
     assert brief["prs"] == {"items": [1, 2]}
     assert brief["issues"] == {"items": [1]}
     assert brief["holds"] == [{"text": "no deploy"}]

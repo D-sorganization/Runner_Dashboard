@@ -100,7 +100,8 @@ def test_grok_unattended_argv_never_bypasses_permissions() -> None:
     assert "--always-approve" not in argv
     assert "--allow" in argv and argv[argv.index("--allow") + 1]
     assert "--deny" in argv and argv[argv.index("--deny") + 1]
-    assert argv[argv.index("-w") + 1] == "/tmp/wt"
+    assert argv[argv.index("--cwd") + 1] == "/tmp/wt"
+    assert argv[argv.index("--permission-mode") + 1] == "dontAsk"
     assert argv[argv.index("--model") + 1] == "grok-4-fast"
 
 
@@ -111,10 +112,8 @@ def test_qwen_unattended_argv_never_bypasses_permissions(monkeypatch: pytest.Mon
     qwen = adapters_mod.ADAPTERS["qwen"]
     argv = qwen.build_command("do it", "/tmp/wt", model="qwen3.8-flash")
     assert argv[0] == "qwen"
-    assert "--yolo" not in argv
-    assert "-y" not in argv
+    assert argv[argv.index("--approval-mode") + 1] == "yolo"
     assert "sk-sp-test-plan-key" not in argv  # pragma: allowlist secret
-    assert argv[argv.index("--approval-mode") + 1] == "auto-edit"
     assert argv[-1] == "do it"
     env = qwen.runtime_env()
     assert env["OPENAI_API_KEY"] == "sk-sp-test-plan-key"  # pragma: allowlist secret

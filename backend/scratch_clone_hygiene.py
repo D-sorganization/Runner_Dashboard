@@ -1,8 +1,9 @@
 """Account for git clones and aged task folders in a scratch root such as ``/tmp`` (#4440).
 
 Agents leave review clones and task output in ``/tmp``; no timer looks at them, and on
-2026-11-14 they helped push a node under its disk floor. This module answers "what is there,
-how big is it, and what holds no work?". **It only reports. Nothing here deletes.**
+2026-11-14 they helped push a node under its disk floor. This module answers what is reclaimable
+under the same fail-closed rules as worktree hygiene. With ``apply=False`` (default) nothing is
+deleted; with ``apply=True`` eligible paths are removed after a second check.
 
 A clone is reported as reclaimable only when every check passes; anything that cannot be
 read counts as a reason to keep it:
@@ -22,18 +23,22 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import shutil
 import time
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from agent_active_workdirs import active_staff_workdirs
 from agent_worktree_hygiene import (
     DEFAULT_PROTECTED_REPOS,
+    _active_session_reason,
     _count_by_reason,
     _git,
     _origin_url,
     _submodule_problem,
     is_protected_repo,
+    isolated_git_config,
 )
 
 DEFAULT_SCRATCH_MIN_AGE_HOURS = 24.0
@@ -76,18 +81,28 @@ def _children(root: Path) -> list[Path]:
         return []
 
 
-def _walk_files(folder: Path) -> Iterator[os.stat_result]:
-    """``lstat`` of every entry below ``folder``; symlinks are counted, never followed."""
+def _walk_files(folder: Path, problems: list[str] | None = None) -> Iterator[os.stat_result]:
+    """``lstat`` of every entry below ``folder``; symlinks are counted, never followed.
+
+    When ``problems`` is given, unreadable paths are appended as ``"unreadable"`` and any
+    ``.git`` entry (a clone or worktree) as ``"contains_git"`` so callers can fail closed.
+    """
     stack = [folder]
     while stack:
         try:
             entries = list(os.scandir(stack.pop()))
         except OSError:
+            if problems is not None:
+                problems.append("unreadable")
             continue
         for entry in entries:
+            if problems is not None and entry.name == ".git":
+                problems.append("contains_git")
             try:
                 info = entry.stat(follow_symlinks=False)
             except OSError:
+                if problems is not None:
+                    problems.append("unreadable")
                 continue
             yield info
             if entry.is_dir(follow_symlinks=False):
@@ -116,6 +131,22 @@ def _in_use(clone: Path, busy: Iterable[Path]) -> bool:
     return any(resolved == cwd.resolve() or resolved in cwd.resolve().parents for cwd in busy)
 
 
+def _foreign_owned(child: Path) -> bool:
+    """True when ``child`` or its ``.git`` is owned by another user (it could plant repo-local config)."""
+    if not hasattr(os, "getuid"):
+        return False
+    me = os.getuid()
+    for target in (child, child / ".git"):
+        try:
+            if target.lstat().st_uid != me:
+                return True
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return True
+    return False
+
+
 def _holds_work(clone: Path) -> str:
     """Why ``clone`` may hold work that exists nowhere else, or ``""`` (fail-closed)."""
     worktrees = _git(clone, "worktree", "list", "--porcelain")
@@ -142,7 +173,13 @@ def _holds_work(clone: Path) -> str:
 
 
 def _keep_reason(
-    clone: Path, age_hours: float | None, min_age_hours: float, protected_repos: tuple[str, ...], busy_dirs: BusyDirs
+    clone: Path,
+    age_hours: float | None,
+    min_age_hours: float,
+    protected_repos: tuple[str, ...],
+    busy_dirs: BusyDirs,
+    *,
+    active_workdirs: set[Path] | None,
 ) -> str:
     if is_protected_repo(clone, _origin_url(clone), protected_repos):
         return "private_repo"
@@ -150,6 +187,9 @@ def _keep_reason(
         return "unreadable"
     if age_hours < min_age_hours:
         return "too_young"
+    session = _active_session_reason(clone, active_workdirs)
+    if session:
+        return session
     busy = busy_dirs()
     if busy is None:
         return "in_use_unknown"
@@ -158,18 +198,53 @@ def _keep_reason(
     return _holds_work(clone)
 
 
+def _remove_tree(path: Path) -> bool:
+    try:
+        shutil.rmtree(path)
+    except OSError:
+        return False
+    return not path.exists()
+
+
 def plan_scratch_clones(
     roots: Iterable[Path],
     *,
+    apply: bool = False,
     min_age_hours: float = DEFAULT_SCRATCH_MIN_AGE_HOURS,
     protected_repos: tuple[str, ...] = DEFAULT_PROTECTED_REPOS,
     now: float | None = None,
-    busy_dirs: BusyDirs = process_working_directories,
+    busy_dirs: BusyDirs | None = None,
+    active_workdirs: set[Path] | None | object = ...,
 ) -> dict[str, Any]:
-    """Report the git clones directly under each root. Post: no file is changed."""
+    """List git clones directly under each root; optionally remove reclaimable ones."""
+    with isolated_git_config():
+        return _plan_scratch_clones(
+            roots,
+            apply=apply,
+            min_age_hours=min_age_hours,
+            protected_repos=protected_repos,
+            now=now,
+            busy_dirs=busy_dirs,
+            active_workdirs=active_workdirs,
+        )
+
+
+def _plan_scratch_clones(
+    roots: Iterable[Path],
+    *,
+    apply: bool,
+    min_age_hours: float,
+    protected_repos: tuple[str, ...],
+    now: float | None,
+    busy_dirs: BusyDirs | None,
+    active_workdirs: set[Path] | None | object,
+) -> dict[str, Any]:
     ts = now if now is not None else time.time()
+    workdirs = active_staff_workdirs() if active_workdirs is ... else cast("set[Path] | None", active_workdirs)
+    busy_probe = busy_dirs or process_working_directories
     reclaimable: list[dict[str, Any]] = []
     kept: list[dict[str, str]] = []
+    removed = 0
     for root in roots:
         for child in _children(root):
             git_entry = child / ".git"
@@ -182,52 +257,110 @@ def plan_scratch_clones(
                 continue
             if not git_entry.is_dir():
                 continue
+            if _foreign_owned(child):
+                kept.append({"path": str(child), "reason": "foreign_owned"})
+                continue
             age = _age_hours(child, ts)
-            reason = _keep_reason(child, age, min_age_hours, protected_repos, busy_dirs)
+            reason = _keep_reason(child, age, min_age_hours, protected_repos, busy_probe, active_workdirs=workdirs)
             if reason:
                 kept.append({"path": str(child), "reason": reason})
                 continue
             row = {"path": str(child), "size_bytes": _size_bytes(child), "age_hours": round(age or 0.0, 1)}
             reclaimable.append({**row, "origin": _origin_url(child)})
+            if not apply:
+                continue
+            if _keep_reason(child, age, min_age_hours, protected_repos, busy_probe, active_workdirs=workdirs):
+                kept.append({"path": str(child), "reason": "re_check_failed"})
+                reclaimable.pop()
+                continue
+            if _remove_tree(child):
+                removed += 1
     return {
-        "mode": "report-only",
+        "dry_run": not apply,
         "min_age_hours": min_age_hours,
         "reclaimable": reclaimable,
         "reclaimable_bytes": sum(row["size_bytes"] for row in reclaimable),
         "kept": kept,
         "kept_by_reason": _count_by_reason(kept),
+        "removed": removed,
     }
+
+
+def _in_use_reason(folder: Path, active_workdirs: set[Path] | None, busy_probe: BusyDirs) -> str:
+    """Why ``folder`` must not be removed right now, or ``""``; an unreadable busy probe counts as in use."""
+    session = _active_session_reason(folder, active_workdirs)
+    if session:
+        return session
+    busy = busy_probe()
+    if busy is None:
+        return "in_use_unknown"
+    return "in_use" if _in_use(folder, busy) else ""
 
 
 def plan_aged_task_folders(
     roots: Iterable[Path],
     *,
+    apply: bool = False,
     patterns: tuple[str, ...] = DEFAULT_TASK_FOLDER_PATTERNS,
     min_age_hours: float = DEFAULT_TASK_FOLDER_MIN_AGE_HOURS,
     now: float | None = None,
+    busy_dirs: BusyDirs | None = None,
+    active_workdirs: set[Path] | None | object = ...,
 ) -> dict[str, Any]:
-    """Report task-output folders whose newest file is older than ``min_age_hours``. Post: no file is changed."""
+    """List (and optionally remove) task-output folders past ``min_age_hours`` with no active session."""
     ts = now if now is not None else time.time()
+    workdirs = active_staff_workdirs() if active_workdirs is ... else cast("set[Path] | None", active_workdirs)
+    busy_probe = busy_dirs or process_working_directories
     aged: list[dict[str, Any]] = []
+    kept: list[dict[str, str]] = []
+    removed = 0
     for root in roots:
         for child in _children(root):
             if child.is_symlink() or not child.is_dir():
                 continue
             if not any(fnmatch.fnmatchcase(child.name, pattern) for pattern in patterns):
                 continue
-            infos = list(_walk_files(child))
+            if _foreign_owned(child):
+                kept.append({"path": str(child), "reason": "foreign_owned"})
+                continue
+            in_use = _in_use_reason(child, workdirs, busy_probe)
+            if in_use:
+                kept.append({"path": str(child), "reason": in_use})
+                continue
+            problems: list[str] = []
+            infos = list(_walk_files(child, problems))
+            if problems:
+                # A nested clone never went through the clone checks (dirty, stash, unpushed), and an
+                # unreadable subtree makes the newest-file age a guess: keep the whole folder.
+                kept.append(
+                    {"path": str(child), "reason": "contains_git" if "contains_git" in problems else "unreadable"}
+                )
+                continue
             try:
                 newest = max([info.st_mtime for info in infos] + [child.stat().st_mtime])
             except OSError:
                 continue
             age = (ts - newest) / 3600.0
-            if age >= min_age_hours:
-                size = sum(info.st_size for info in infos)
-                aged.append({"path": str(child), "size_bytes": size, "age_hours": round(age, 1)})
+            if age < min_age_hours:
+                continue
+            size = sum(info.st_size for info in infos)
+            aged.append({"path": str(child), "size_bytes": size, "age_hours": round(age, 1)})
+            if not apply:
+                continue
+            in_use = _in_use_reason(child, workdirs, busy_probe)
+            if in_use:
+                kept.append({"path": str(child), "reason": "re_check_failed"})
+                aged.pop()
+                continue
+            if _remove_tree(child):
+                removed += 1
     return {
-        "mode": "report-only",
+        "dry_run": not apply,
+        "kept": kept,
+        "kept_by_reason": _count_by_reason(kept),
         "patterns": list(patterns),
         "min_age_hours": min_age_hours,
         "aged": aged,
         "aged_bytes": sum(row["size_bytes"] for row in aged),
+        "removed": removed,
     }

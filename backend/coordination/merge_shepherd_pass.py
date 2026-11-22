@@ -17,10 +17,12 @@ from coordination.drain_directive_gate import (
     pick_drain_directive,
 )
 from coordination.merge_shepherd import (
+    IneligibleReason,
     PRCandidate,
     ShepherdAction,
     ShepherdDecision,
     count_queue_bounces,
+    evaluate_pr_shepherd_eligibility,
     get_auto_merge_flag,
     rank_candidates_for_shepherding,
 )
@@ -31,8 +33,8 @@ from coordination.merge_shepherd_exact_head import (
     collect_review_passes_from_comments,
     collect_review_passes_from_github_reviews,
     collect_review_passes_from_store,
-    shepherd_arm_eligibility,
 )
+from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS, normalize_hold_label
 from coordination.merge_shepherd_low_risk import low_risk_line_cap as default_low_risk_line_cap
 from priorities.directives import get_directives
 
@@ -54,7 +56,7 @@ RD_REPO = f"{ORG}/Runner_Dashboard"
 QUEUE_BACKOFF_THRESHOLD = 6
 ARM_CAP_RD = 2
 ARM_CAP_DEFAULT = 4
-SHEPHERD_HOLD_LABELS = frozenset({"hold", "do-not-merge", "needs-dieter", "dnm"})
+SHEPHERD_HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 # The only fetch failures that mean "this token may not read this repo": GitHub's
 # 403 text for an App installation, and GraphQL's not-found for a repo it cannot see.
 _REPO_ACCESS_DENIED = "Resource not accessible by integration"
@@ -84,6 +86,7 @@ query($owner: String!, $name: String!) {
         mergeStateStatus
         reviewDecision
         headRefOid
+        author { login }
         additions
         deletions
         labels(first: 30) { nodes { name } }
@@ -116,6 +119,7 @@ query($owner: String!, $name: String!) {
         reviews(last: 10) {
           nodes {
             state
+            body
             submittedAt
             author { login }
             commit { oid }
@@ -252,7 +256,7 @@ def _label_names(node: Mapping[str, Any]) -> tuple[str, ...]:
 
 def label_blocks_shepherd(node: Mapping[str, Any]) -> str:
     for name in _label_names(node):
-        normalized = name.strip().casefold()
+        normalized = normalize_hold_label(name)
         if normalized in SHEPHERD_HOLD_LABELS:
             return f"label_{normalized.replace('-', '_')}"
     return ""
@@ -446,7 +450,20 @@ def pre_filter_skip_reason(
     return ""
 
 
-def node_to_candidate(repo: str, node: Mapping[str, Any], *, is_drained: bool) -> PRCandidate:
+def node_to_candidate(
+    repo: str,
+    node: Mapping[str, Any],
+    *,
+    is_drained: bool,
+    head_sha: str = "",
+    review_passes: Sequence[HeadReviewPass] = (),
+    review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
+    line_cap: int | None = None,
+    file_paths: Sequence[str] = (),
+    additions: int = 0,
+    deletions: int = 0,
+    files_complete: bool = True,
+) -> PRCandidate:
     number = int(node["number"])
     mergeable = str(node.get("mergeable") or "UNKNOWN").upper()
     merge_state = str(node.get("mergeStateStatus") or "").upper()
@@ -464,6 +481,7 @@ def node_to_candidate(repo: str, node: Mapping[str, Any], *, is_drained: bool) -
         checks_status = "FAILURE"
     is_queued = (node.get("mergeQueueEntry") or {}).get("position") is not None
     auto_merge = node.get("autoMergeRequest") is not None
+    effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
     return PRCandidate(
         repo=repo,
         pr_number=number,
@@ -478,6 +496,15 @@ def node_to_candidate(repo: str, node: Mapping[str, Any], *, is_drained: bool) -
         bounces=count_queue_bounces(node),
         is_drained=is_drained,
         is_exempt=classify_pr_create_exemption(title=str(node.get("title") or ""), labels=_label_names(node)),
+        head_sha=head_sha,
+        review_passes=tuple(review_passes),
+        review_decision=str(node.get("reviewDecision") or ""),
+        file_paths=tuple(file_paths),
+        additions=additions,
+        deletions=deletions,
+        line_cap=effective_line_cap,
+        files_complete=files_complete,
+        review_pass_ttl_hours=review_pass_ttl_hours,
     )
 
 
@@ -532,35 +559,35 @@ def plan_repo_pass(
         number = int(node["number"])
         head = str(node.get("headRefOid") or "")
         node_comments = (node.get("comments") or {}).get("nodes") or []
-        comment_passes = collect_review_passes_from_comments(node_comments, pr=number)
+        author_login = str((node.get("author") or {}).get("login") or "")
+        comment_passes = collect_review_passes_from_comments(node_comments, pr=number, author_login=author_login)
         node_reviews = (node.get("reviews") or {}).get("nodes") or []
-        github_passes = collect_review_passes_from_github_reviews(node_reviews, pr=number)
+        github_passes = collect_review_passes_from_github_reviews(node_reviews, pr=number, author_login=author_login)
         all_passes = (*review_passes, *comment_passes, *github_passes)
-        eligibility, eligibility_detail = shepherd_arm_eligibility(
-            review_decision=str(node.get("reviewDecision") or ""),
-            file_paths=paths,
-            additions=additions,
-            deletions=deletions,
-            line_cap=effective_line_cap,
-            labels=_label_names(node),
-            checks_state=_checks_state(node),
-            files_complete=files_complete,
-            pr_number=number,
+        cand = node_to_candidate(
+            repo,
+            node,
+            is_drained=is_drained,
             head_sha=head,
             review_passes=all_passes,
             review_pass_ttl_hours=review_pass_ttl_hours,
+            line_cap=effective_line_cap,
+            file_paths=paths,
+            additions=additions,
+            deletions=deletions,
+            files_complete=files_complete,
         )
-        if eligibility == "no_approval":
-            skip_rows.append(
-                {
-                    "repo": repo,
-                    "pr": number,
-                    "reason": f"no_approval:{eligibility_detail}",
-                }
-            )
+        gate = evaluate_pr_shepherd_eligibility(cand)
+        if gate.action != ShepherdAction.AUTO_ARM:
+            if gate.action == ShepherdAction.SKIP:
+                if gate.reason == IneligibleReason.NO_EXACT_HEAD_PASS:
+                    skip_reason = f"no_approval:{gate.detail}"
+                else:
+                    skip_reason = gate.reason.value if gate.reason else gate.detail or "skip"
+                skip_rows.append({"repo": repo, "pr": number, "reason": skip_reason})
             continue
-        eligibility_by_pr[number] = eligibility
-        candidates.append(node_to_candidate(repo, node, is_drained=is_drained))
+        eligibility_by_pr[number] = "reviewed"
+        candidates.append(cand)
     decisions = [normalize_pass_decision(d) for d in rank_candidates_for_shepherding(candidates)]
     cap = _repo_arm_cap(repo)
     actions: list[PassAction] = []

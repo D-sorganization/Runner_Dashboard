@@ -19,9 +19,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from activity_producers import emit_activity
-from coordination import board, claims, hub_sessions, roster
+from coordination import board, claims, claims_check_cache, hub_sessions, roster
 from coordination import jobs as jobs_mod
 from coordination.auth import Caller, ImpersonationError, MissingAgentError
+from coordination.fleet_efficiency import enrich_hub_session, validate_lane_brief
 from coordination.models import (
     AckBody,
     ClaimBody,
@@ -34,6 +35,7 @@ from coordination.models import (
     PresenceBody,
     ReleaseBody,
 )
+from coordination.pr_age_rule import lease_agent_id
 from coordination.staff_runs_cache import record_staff_runs_snapshot, snapshot_staff_runs
 from coordination.staff_view import staff_run_as_session, staff_runs
 from staff.rm_sync import stale_source_warning
@@ -109,9 +111,10 @@ def _bind(caller: Caller, session: str, explicit_agent: str | None = None, *, ne
     if not needs_agent:
         return None
     agent = caller.agent_for(explicit_agent)
-    if agent not in roster.agent_ids():
+    posted = lease_agent_id(agent, roster.agent_ids())
+    if posted is None:
         raise UnknownAgentError(f"agent {agent!r} is not in the Repository_Management fleet roster")
-    return agent
+    return posted
 
 
 def _require_presence(session: str, repo: str) -> None:
@@ -236,7 +239,7 @@ def register_hub_session(body: HubSessionRegisterBody, caller: Caller) -> dict[s
     else:
         agent = caller.agent_for(body.role)
     expires = (datetime.now(UTC) + timedelta(hours=float(body.ttl_hours))).isoformat().replace("+00:00", "Z")
-    row = hub_sessions.upsert(
+    row = enrich_hub_session(
         {
             "session": body.session,
             "role": body.role,
@@ -253,6 +256,7 @@ def register_hub_session(body: HubSessionRegisterBody, caller: Caller) -> dict[s
             "started_at": now_iso(),
         }
     )
+    row = hub_sessions.upsert(row)
     emit_activity(
         source="coordination",
         session_id=body.session,
@@ -289,6 +293,7 @@ def register_presence(body: PresenceBody, caller: Caller) -> dict[str, Any]:
 def release_presence(body: ReleaseBody, caller: Caller) -> dict[str, Any]:
     _bind(caller, body.session)
     result = _stamp(board.publish(body.repo, body.session, "release"))
+    claims_check_cache.invalidate_repo(body.repo)
     emit_activity(source="coordination", session_id=body.session, node="hub", kind="presence_release", repo=body.repo)
     return result
 
@@ -296,6 +301,8 @@ def release_presence(body: ReleaseBody, caller: Caller) -> dict[str, Any]:
 def send_message(body: MessageBody, caller: Caller) -> dict[str, Any]:
     _bind(caller, body.session)
     _require_presence(body.session, body.repo)
+    if body.text.lstrip().startswith("Status:"):
+        validate_lane_brief(body.text)
     # ``--text=`` keeps a message that starts with '-' from being parsed as an option.
     result = _stamp(board.publish(body.repo, body.session, "send", "--to", body.to, f"--text={body.text}"))
     emit_activity(
@@ -316,13 +323,13 @@ def ack_message(body: AckBody, caller: Caller) -> dict[str, Any]:
 
 
 def check_claim(repo: str, issue: int) -> dict[str, Any]:
-    return _stamp(claims.check(repo, issue))
+    return _stamp(claims_check_cache.read(repo, issue))
 
 
 def claim_issue(body: ClaimBody, caller: Caller) -> dict[str, Any]:
     agent = _bind(caller, body.session, body.agent, needs_agent=True)
     assert agent is not None
-    return _stamp(
+    result = _stamp(
         claims.claim(
             body.repo,
             body.issue,
@@ -333,12 +340,14 @@ def claim_issue(body: ClaimBody, caller: Caller) -> dict[str, Any]:
             paths=body.paths,
         )
     )
+    claims_check_cache.invalidate(body.repo, body.issue)
+    return result
 
 
 def release_claim(body: ClaimReleaseBody, caller: Caller) -> dict[str, Any]:
     agent = _bind(caller, body.session, body.agent, needs_agent=True)
     assert agent is not None
-    return _stamp(
+    result = _stamp(
         claims.release(
             body.repo,
             body.issue,
@@ -348,12 +357,14 @@ def release_claim(body: ClaimReleaseBody, caller: Caller) -> dict[str, Any]:
             holder_principal=caller.label.removeprefix("principal:"),
         )
     )
+    claims_check_cache.invalidate(body.repo, body.issue)
+    return result
 
 
 def claim_job(body: JobClaimBody, caller: Caller) -> dict[str, Any]:
     agent = _bind(caller, body.session, body.agent, needs_agent=True)
     assert agent is not None
-    return _stamp(
+    result = _stamp(
         jobs_mod.claim_job(
             body.repo,
             body.issue,
@@ -364,6 +375,8 @@ def claim_job(body: JobClaimBody, caller: Caller) -> dict[str, Any]:
             ttl_hours=body.ttl_hours,
         )
     )
+    claims_check_cache.invalidate(body.repo, body.issue)
+    return result
 
 
 def heartbeat_job(body: JobHeartbeatBody, caller: Caller) -> dict[str, Any]:
@@ -385,7 +398,7 @@ def heartbeat_job(body: JobHeartbeatBody, caller: Caller) -> dict[str, Any]:
 def release_job(body: JobReleaseBody, caller: Caller) -> dict[str, Any]:
     agent = _bind(caller, body.session, body.agent, needs_agent=True)
     assert agent is not None
-    return _stamp(
+    result = _stamp(
         jobs_mod.release_job(
             body.repo,
             body.issue,
@@ -396,6 +409,8 @@ def release_job(body: JobReleaseBody, caller: Caller) -> dict[str, Any]:
             holder_principal=caller.label.removeprefix("principal:"),
         )
     )
+    claims_check_cache.invalidate(body.repo, body.issue)
+    return result
 
 
 BOARD_SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "expires")

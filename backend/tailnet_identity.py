@@ -42,6 +42,7 @@ import json
 import logging
 import os
 import socket
+import subprocess
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -61,6 +62,7 @@ _TRANSPORT_PEER_PORT_SCOPE_KEY = "rd.transport_peer_port"
 TAILNET_APPROVER_ROLE = "tailnet-approver"
 
 _DEFAULT_TAILSCALED_SOCKET = "/var/run/tailscale/tailscaled.sock"
+_DEFAULT_WINDOWS_TAILSCALE_CLI = "/mnt/c/Program Files/Tailscale/tailscale.exe"
 _WHOIS_TIMEOUT_SECONDS = 2.0
 
 
@@ -93,17 +95,39 @@ def _tailscaled_socket_path() -> str:
     return os.environ.get("DASHBOARD_TAILSCALED_SOCKET", _DEFAULT_TAILSCALED_SOCKET)
 
 
-def _tailscaled_whois(host: str | None, port: int | None) -> WhoIsIdentity | None:
-    """Ask tailscaled's LocalAPI who owns the connection seen at ``host:port``.
+def _wsl_windows_whois_enabled() -> bool:
+    return os.environ.get("DASHBOARD_TAILSCALE_WSL_WHOIS", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
 
-    Only ``tailscaled`` itself — proxying a real ``tailscale serve`` request or
-    a direct tailnet socket — has a WhoIs record for that exact peer/port. An
-    unrelated local process spoofing identity headers over its own loopback
-    connection has none, so this fails closed (``None``) on any lookup
-    failure, timeout or malformed response, not just a clean "not found".
-    """
-    if not host or not port:
+
+def _running_in_wsl() -> bool:
+    if os.environ.get("WSL_DISTRO_NAME", "").strip():
+        return True
+    try:
+        with open("/proc/version", encoding="utf-8") as version_file:
+            return "microsoft" in version_file.read().lower()
+    except OSError:
+        return False
+
+
+def _tailscale_whois_cli_path() -> str:
+    return os.environ.get("DASHBOARD_TAILSCALE_WHOIS_CLI", _DEFAULT_WINDOWS_TAILSCALE_CLI)
+
+
+def _whois_identity_from_payload(data: object) -> WhoIsIdentity | None:
+    profile = data.get("UserProfile") if isinstance(data, dict) else None
+    login = profile.get("LoginName") if isinstance(profile, dict) else None
+    if not isinstance(login, str) or not login.strip():
         return None
+    display = profile.get("DisplayName") if isinstance(profile, dict) else None
+    name = display.strip() if isinstance(display, str) and display.strip() else login.strip()
+    return WhoIsIdentity(login=login.strip(), name=name)
+
+
+def _tailscaled_whois_localapi(host: str, port: int) -> WhoIsIdentity | None:
     try:
         conn = _UnixSocketHTTPConnection(_tailscaled_socket_path())
         try:
@@ -115,15 +139,56 @@ def _tailscaled_whois(host: str | None, port: int | None) -> WhoIsIdentity | Non
             data = json.loads(body)
         finally:
             conn.close()
-    except (OSError, ValueError, http.client.HTTPException):
+    except (OSError, ValueError, http.client.HTTPException, json.JSONDecodeError):
         return None
-    profile = data.get("UserProfile") if isinstance(data, dict) else None
-    login = profile.get("LoginName") if isinstance(profile, dict) else None
-    if not isinstance(login, str) or not login.strip():
+    return _whois_identity_from_payload(data)
+
+
+def _tailscaled_whois_windows_cli(host: str, port: int) -> WhoIsIdentity | None:
+    """Opt-in whois via the Windows ``tailscale.exe`` when RD runs in WSL2 (#4577)."""
+    if not (_wsl_windows_whois_enabled() and _running_in_wsl()):
         return None
-    display = profile.get("DisplayName") if isinstance(profile, dict) else None
-    name = display.strip() if isinstance(display, str) and display.strip() else login.strip()
-    return WhoIsIdentity(login=login.strip(), name=name)
+    cli = _tailscale_whois_cli_path()
+    if not os.path.isfile(cli):
+        return None
+    try:
+        proc = subprocess.run(
+            [cli, "whois", "--json", f"{host}:{port}"],
+            capture_output=True,
+            text=True,
+            timeout=_WHOIS_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+    return _whois_identity_from_payload(data)
+
+
+def _tailscaled_whois(host: str | None, port: int | None) -> WhoIsIdentity | None:
+    """Ask tailscaled's LocalAPI who owns the connection seen at ``host:port``.
+
+    Only ``tailscaled`` itself — proxying a real ``tailscale serve`` request or
+    a direct tailnet socket — has a WhoIs record for that exact peer/port. An
+    unrelated local process spoofing identity headers over its own loopback
+    connection has none, so this fails closed (``None``) on any lookup
+    failure, timeout or malformed response, not just a clean "not found".
+
+    When the LocalAPI Unix socket is unavailable inside WSL2 and
+    ``DASHBOARD_TAILSCALE_WSL_WHOIS=1``, falls back to the Windows-hosted
+    ``tailscale.exe whois`` transport (still fail-closed on any mismatch).
+    """
+    if not host or not port:
+        return None
+    verified = _tailscaled_whois_localapi(host, port)
+    if verified is not None:
+        return verified
+    return _tailscaled_whois_windows_cli(host, port)
 
 
 class TransportPeerMiddleware:
