@@ -23,10 +23,7 @@
       ],
       "prompt_via_stdin": false,
       "env_keys": [],
-      "chat_read_only_argv": [
-        "--permission-mode",
-        "default"
-      ],
+      "chat_read_only_argv": ["--permission-mode", "default"],
       "lease_agent": "anthropic-api"
     },
     "antigravity": {
@@ -47,10 +44,7 @@
       ],
       "prompt_via_stdin": false,
       "env_keys": [],
-      "chat_read_only_argv": [
-        "--mode",
-        "plan"
-      ],
+      "chat_read_only_argv": ["--mode", "plan"],
       "lease_agent": "antigravity"
     },
     "claude": {
@@ -74,10 +68,7 @@
       ],
       "prompt_via_stdin": false,
       "env_keys": [],
-      "chat_read_only_argv": [
-        "--permission-mode",
-        "default"
-      ],
+      "chat_read_only_argv": ["--permission-mode", "default"],
       "lease_agent": "claude"
     },
     "claude-ollama": {
@@ -106,10 +97,7 @@
         "ANTHROPIC_BASE_URL",
         "CLAUDE_CONFIG_DIR"
       ],
-      "chat_read_only_argv": [
-        "--permission-mode",
-        "default"
-      ],
+      "chat_read_only_argv": ["--permission-mode", "default"],
       "lease_agent": "local"
     },
     "codex": {
@@ -130,10 +118,7 @@
       ],
       "prompt_via_stdin": false,
       "env_keys": [],
-      "chat_read_only_argv": [
-        "--sandbox",
-        "read-only"
-      ],
+      "chat_read_only_argv": ["--sandbox", "read-only"],
       "lease_agent": "codex"
     },
     "cursor-agent": {
@@ -158,10 +143,7 @@
         "GIT_COMMITTER_EMAIL",
         "GIT_COMMITTER_NAME"
       ],
-      "chat_read_only_argv": [
-        "--mode",
-        "ask"
-      ],
+      "chat_read_only_argv": ["--mode", "ask"],
       "lease_agent": "cursor-agent"
     },
     "deepseek-api": {
@@ -185,10 +167,7 @@
       ],
       "prompt_via_stdin": false,
       "env_keys": [],
-      "chat_read_only_argv": [
-        "--permission-mode",
-        "default"
-      ],
+      "chat_read_only_argv": ["--permission-mode", "default"],
       "lease_agent": "deepseek-api"
     },
     "gemini": {
@@ -206,13 +185,8 @@
         "{model}"
       ],
       "prompt_via_stdin": false,
-      "env_keys": [
-        "GEMINI_CLI_TRUST_WORKSPACE"
-      ],
-      "chat_read_only_argv": [
-        "--approval-mode",
-        "plan"
-      ],
+      "env_keys": ["GEMINI_CLI_TRUST_WORKSPACE"],
+      "chat_read_only_argv": ["--approval-mode", "plan"],
       "lease_agent": "gemini"
     },
     "grok": {
@@ -254,14 +228,8 @@
         "{prompt}"
       ],
       "prompt_via_stdin": false,
-      "env_keys": [
-        "OPENAI_BASE_URL",
-        "OPENAI_MODEL"
-      ],
-      "chat_read_only_argv": [
-        "--approval-mode",
-        "plan"
-      ],
+      "env_keys": ["OPENAI_BASE_URL", "OPENAI_MODEL"],
+      "chat_read_only_argv": ["--approval-mode", "plan"],
       "lease_agent": "qwen"
     },
     "ollama": {
@@ -284,14 +252,8 @@
         "{prompt}"
       ],
       "prompt_via_stdin": false,
-      "env_keys": [
-        "CODEX_OSS_BASE_URL",
-        "OLLAMA_HOST"
-      ],
-      "chat_read_only_argv": [
-        "--sandbox",
-        "read-only"
-      ],
+      "env_keys": ["CODEX_OSS_BASE_URL", "OLLAMA_HOST"],
+      "chat_read_only_argv": ["--sandbox", "read-only"],
       "lease_agent": "local"
     }
   }
