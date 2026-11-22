@@ -25,15 +25,16 @@
 | F13      | Projects and Fleet Stewardship                               | shipped | 100%     | Epic #1248 closed (#1254)                                                            |
 | F14      | Staff Hub Reliability and Watchdogs                          | shipped | 100%     | Epic SC-A closed 2026-10-14 (#1347); charter status corrected this run              |
 | F15      | Maxwell Control Plane Proxy                                  | shipped | 100%     | Maxwell proxy and contract tests (#1338)                                             |
-| F16      | Fleet Coordination and Priorities                            | shipped | 100%     | Coordination board, lane-prompt checkout and claims work (#4549, #4574, #4589)      |
+| F16      | Fleet Coordination and Priorities                            | shipped | 100%     | Coordination board, lane-prompt checkout and claims work (PR #4549/#4589; issue #4574) |
 | F17      | Board Deliberation and Group Threads                         | shipped | 100%     | Epic #1339 closed (#1480, #1763, #1772)                                              |
-| F18      | Offline Release Artifact Pipeline                            | parked  | 15%      | Tracking #1085 closed 2026-08-27; README now qualifies offline `npm ci` (#4541)     |
+| F18      | Offline Release Artifact Pipeline                            | parked  | 15%      | Tracking #1085 closed 2026-08-27; README now qualifies offline `npm ci` (issue #4541) |
 | DV-#2613 | Security scanner: real scan-VM end-to-end validation         | parked  | -        | Deferred-validation record; see catalog                                              |
 | DV-#2511 | Fleet-decision panel preset: live hub run with Barb turnover | parked  | -        | Deferred-validation record; see catalog                                              |
 
 ## Blockers
 
 - **BR-18 / #1811** — Autonomous release gate (cross-client journeys and recovery drills) is still open. Humans only until its evidence matrix is complete.
+- **#2657 (rd-2657)** — Runner Dashboard deploy/release **HOLD** on staff dispatch (Dieter hold 2026-10-23). Issue **#2657** is closed and enforcement PR **#2658** is merged, but the fleet hold remains active until Dieter lifts it (`rd-2658-disarmed` in fleet policy). Merged enforcement does not lift the hold.
 - **Provider credentials (live hub, 2026-11-20)** — `/api/staff/summary` reports Claude OAuth tokens expired on DeskComputer and ControlTower, stale codex and antigravity subscription tokens, and a stale Claude credential mirror on OGLaptop. All four machines are online. Remediation is in `docs/runbooks/durable-provider-credentials.md` and needs the owner to act.
 
 ## Risks
@@ -48,7 +49,7 @@
 
 - **Main CI is green.** On `main` head `c35f721` (2026-11-20), every push workflow succeeded: CI Standard, Frontend Tests, API Contract Regeneration, Docker Build & Trivy Scan, Architecture Map Contract, Publish Guard, CI Secrets and Standalone Smoke. `Wait for CI gate` and `Publish dashboard release when CI gate is green` also succeeded. The frontend-required/E2E red recorded on 2026-10-25 is resolved.
 - **Throughput.** GitHub search counts **1,065 PRs merged** since 2026-10-25, and `main` gained ~1,040 commits. The queue is now **8 open PRs** and **61 open issues**, down from 65 open PRs on 2026-10-25.
-- **Closed since last run:** epic **#2117** (delivery metrics, closed 2026-10-28); the RD deploy/release HOLD enforcement **#2657**/PR **#2658** (merged 2026-11-14); legacy-route sunset PR **#2721** (merged 2026-10-28); origin issue **#2613** (closed 2026-10-23, its acceptance migrated to DV-#2613).
+- **Closed since last run:** epic **#2117** (delivery metrics, closed 2026-10-28); RD deploy/release HOLD enforcement issue **#2657** (closed) with staff dispatch guard PR **#2658** (merged 2026-11-14); the **rd-2657** fleet hold remains active until the owner lifts it; legacy-route sunset PR **#2721** (merged 2026-10-28); origin issue **#2613** (closed 2026-10-23, its acceptance migrated to DV-#2613).
 - **Still open:** Fleet Job Board epic **#2781**; BR-18 **#1811**; issue **#2511**, retained for the DV-#2511 live run.
 - **Recent themes on main:** merge-shepherd exact-head PASS gate and carry-forward (#4599, #4571); coordination board hygiene, claims custody and roster reload (#4578, #4589, #4588); lane-prompt checkout, fencing and health (#4549, #4554, #4555); staff lane provider routing (#4575, #4579, #4495); codex read-only sandbox for read-only roles (#4483).
 - **Charter:** F14 corrected from `in-progress` to `shipped` (epic #1347 closed 2026-10-14). The two deferred-validation catalog records are now listed as parked features.
