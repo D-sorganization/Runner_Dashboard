@@ -38,13 +38,13 @@ def test_lane_prompt_store_seeds_cursor_qwen_deepseek_hub_lanes(tmp_path: Path) 
     assert _lane_provider("cursor-ct-2", "grok-4.7-high") == "cursor"
 
 
-def test_seed_adds_controltower_codex_worker_without_changing_review_seats(
+def test_seed_adds_ct_host_codex_worker_without_changing_review_seats(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from coordination.lane_prompts import LaneConflictError, LanePromptStore
 
     monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(tmp_path))
-    monkeypatch.delenv("RUNNER_DASHBOARD_HOST_ALIASES", raising=False)
+    monkeypatch.setenv("RUNNER_DASHBOARD_HOST_ALIASES", '{"example-ct-host": "ct"}')
     store = LanePromptStore(db_path=tmp_path / "lane_prompts.sqlite3")
     for lane in ("codex-ct-test", "claude-ct-1"):
         store.register_assignment(
@@ -72,7 +72,7 @@ def test_seed_adds_controltower_codex_worker_without_changing_review_seats(
             principal="agent-codex",
             idempotency_key="wrong-host",
             provider="codex",
-            host="deskcomputer",
+            host="example-other-host",
             role="backlog-completion",
         )
     receipt = store.checkout(
@@ -80,7 +80,7 @@ def test_seed_adds_controltower_codex_worker_without_changing_review_seats(
         principal="agent-codex",
         idempotency_key="1",
         provider="codex",
-        host="controltower",
+        host="example-ct-host",
         role="backlog-completion",
     )
     assert receipt["lane_id"] == "codex-ct-1"
@@ -90,7 +90,7 @@ def test_seed_adds_controltower_codex_worker_without_changing_review_seats(
             principal="agent-codex",
             idempotency_key="2",
             provider="codex",
-            host="controltower",
+            host="example-ct-host",
             role="backlog-completion",
         )
     review = store.checkout(
@@ -98,7 +98,7 @@ def test_seed_adds_controltower_codex_worker_without_changing_review_seats(
         principal="agent-codex",
         idempotency_key="3",
         provider="codex",
-        host="controltower",
+        host="example-ct-host",
         role="acceptance-review",
     )
     assert review["lane_id"] == "codex-ct-test"

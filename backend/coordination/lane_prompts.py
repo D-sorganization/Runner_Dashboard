@@ -79,7 +79,7 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
         "package_hash": _DEFAULT_PACKAGE_HASH,
         "subagent_model": "gpt-6-luna",
         "max_children": 3,
-        "task_focus": "ControlTower UpstreamDrift and AffineDrift backlog completion.",
+        "task_focus": "CT host Codex lane: UpstreamDrift and AffineDrift backlog completion.",
         "enabled": True,
     },
     {
@@ -174,7 +174,9 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
 
 
 def _load_host_aliases() -> dict[str, str]:
-    aliases: dict[str, str] = {"controltower": "ct"}
+    # Private host names are never baked in; supply them via host_aliases.json
+    # or RUNNER_DASHBOARD_HOST_ALIASES (e.g. {"<full-hostname>": "ct"}).
+    aliases: dict[str, str] = {}
     cfg_dir = Path(
         os.environ.get(
             "RUNNER_DASHBOARD_CONFIG_DIR",
