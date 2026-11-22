@@ -1396,6 +1396,7 @@ def test_stop_unit_cli_defers_when_worker_appears_after_freeze(monkeypatch, tmp_
     workdir = tmp_path / "runner-2"
     workdir.mkdir()
     unit = runner_scheduler.RunnerUnit(num=2, unit=unit_name, workdir=workdir, active=True, busy=False)
+    monkeypatch.setattr(runner_scheduler, "run_cmd", lambda *_a, **_k: _process_result())
     monkeypatch.setattr(runner_scheduler, "lookup_unit", lambda _name, **_kw: unit)
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_process", lambda _w: False)
     monkeypatch.setattr(runner_scheduler, "runner_busy_via_lock", lambda _w, _u=None, **_kwargs: True)
