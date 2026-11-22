@@ -78,6 +78,42 @@ def test_quoted_fix_needed_in_commented_review_is_ignored() -> None:
     assert rows == ()
 
 
+def test_quoted_fix_needed_with_matching_sha_in_commented_review_is_ignored() -> None:
+    review_blockquote = {
+        "state": "COMMENTED",
+        "body": (
+            "### Independent Exact-Head Acceptance Review\n"
+            f"> FIX-NEEDED @{HEAD}\n"
+            "The above quote should not trigger disarm."
+        ),
+        "commit": {"oid": HEAD},
+        "author": {"login": "d-sorgcodexagent[bot]"},
+        "submittedAt": "2026-11-21T17:29:05Z",
+    }
+    rows = collect_review_passes_from_github_reviews([review_blockquote], 42, author_login="d-sorgagyagent[bot]")
+    assert rows == ()
+
+    review_inline_quote = {
+        "state": "COMMENTED",
+        "body": f'### Independent Exact-Head Acceptance Review\nEarlier verdict was "FIX-NEEDED @{HEAD}".',
+        "commit": {"oid": HEAD},
+        "author": {"login": "d-sorgcodexagent[bot]"},
+        "submittedAt": "2026-11-21T17:29:05Z",
+    }
+    rows2 = collect_review_passes_from_github_reviews([review_inline_quote], 42, author_login="d-sorgagyagent[bot]")
+    assert rows2 == ()
+
+    review_backticks = {
+        "state": "COMMENTED",
+        "body": f"### Independent Exact-Head Acceptance Review\nReferencing `FIX-NEEDED @{HEAD}`.",
+        "commit": {"oid": HEAD},
+        "author": {"login": "d-sorgcodexagent[bot]"},
+        "submittedAt": "2026-11-21T17:29:05Z",
+    }
+    rows3 = collect_review_passes_from_github_reviews([review_backticks], 42, author_login="d-sorgagyagent[bot]")
+    assert rows3 == ()
+
+
 def test_genuine_fix_needed_still_disarms() -> None:
     node = _disarm_node(number=42, queued=True)
     passes = node["reviews"]["nodes"]

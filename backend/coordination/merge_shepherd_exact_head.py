@@ -235,6 +235,21 @@ def collect_review_passes_from_store(
     return tuple(rows)
 
 
+def _strip_quoted_text(body: str) -> str:
+    """Exclude markdown blockquotes, code blocks, inline code, and quoted strings not defining a verdict."""
+    if not body:
+        return ""
+    # Remove fenced code blocks
+    text = re.sub(r"```.*?```", "", body, flags=re.DOTALL)
+    # Remove blockquote lines
+    text = re.sub(r"(?m)^\s*>.*$", "", text)
+    # Remove double quotes, single quotes, and backticks unless immediately preceded by Verdict:
+    text = re.sub(r'(?<!Verdict:\s)(?<!Verdict: )"[^"\n]*"', "", text)
+    text = re.sub(r"(?<!Verdict:\s)(?<!Verdict: )'[^'\n]*'", "", text)
+    text = re.sub(r"(?<!Verdict:\s)(?<!Verdict: )`[^`\n]*`", "", text)
+    return text
+
+
 def collect_review_passes_from_comments(
     comments: Sequence[Mapping[str, Any]],
     pr: int,
@@ -249,12 +264,17 @@ def collect_review_passes_from_comments(
         if not isinstance(c, Mapping):
             continue
         body = str(c.get("body") or "")
+        unquoted = _strip_quoted_text(body)
         # This is the publisher's visible comment format, not a STAFF_RESULT line.
-        if "Independent Exact-Head Acceptance Review" in body:
-            match = re.search(r"\b(PASS|FIX-NEEDED)\s+@([0-9a-fA-F]{7,40})\b", body)
+        if "Independent Exact-Head Acceptance Review" in unquoted:
+            match = re.search(
+                r"(?:Verdict:\s*[`'\"]?|^\s*)(PASS|FIX-NEEDED)\s+@([0-9a-fA-F]{7,40})\b",
+                unquoted,
+                re.IGNORECASE | re.MULTILINE,
+            )
             if match:
-                decision = "approve" if match[1] == "PASS" else "changes"
-                body = f"STAFF_RESULT: review {decision} #{pr} @{match[2]}"
+                decision = "approve" if match.group(1).upper() == "PASS" else "changes"
+                body = f"STAFF_RESULT: review {decision} #{pr} @{match.group(2)}"
         verdict = parse_review_verdict(body)
         if verdict.status != "succeeded" or not verdict.head_sha:
             continue
@@ -284,16 +304,21 @@ def _commented_review_is_fix_needed(body: str, commit_sha: str) -> bool:
         return False
     from staff.review import parse_review_verdict
 
-    if "Independent Exact-Head Acceptance Review" in body:
-        match = re.search(r"\bFIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b", body)
+    unquoted = _strip_quoted_text(body)
+    if "Independent Exact-Head Acceptance Review" in unquoted:
+        match = re.search(
+            r"(?:Verdict:\s*[`'\"]?|^\s*)FIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b",
+            unquoted,
+            re.IGNORECASE | re.MULTILINE,
+        )
         if match:
             return head_sha_matches(match.group(1), commit_sha)
-    verdict = parse_review_verdict(body)
+    verdict = parse_review_verdict(unquoted)
     if verdict.status == "succeeded" and verdict.verdict in {"changes", "escalate"}:
         return not verdict.head_sha or head_sha_matches(verdict.head_sha, commit_sha)
     match = re.search(
         r"(?:Verdict:\s*[`'\"]?|^\s*)FIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b",
-        body,
+        unquoted,
         re.IGNORECASE | re.MULTILINE,
     )
     if match:

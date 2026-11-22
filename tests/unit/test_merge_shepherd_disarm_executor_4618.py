@@ -86,7 +86,11 @@ def test_disarm_for_shepherd_reports_disarmed_when_hold_exit_code_would_invert(m
 
 def _guard_module():
     import importlib
+    import sys
 
+    scripts_dir = str(msp.Path(__file__).resolve().parents[2] / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
     return importlib.import_module("automerge_guard")
 
 
