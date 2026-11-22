@@ -83,12 +83,12 @@ def _excluded(repo: str, issue: dict[str, Any], reason: str) -> dict[str, Any]:
 
 
 def _closing_pr(repo_full: str, issue_number: int, pulls_by_repo: dict[str, list[Any]]) -> dict[str, Any] | None:
-    """An open/merged PR closing ``issue_number``; one pulls fetch per repo."""
+    """An open PR closing ``issue_number``; one pulls fetch per repo."""
     pulls = pulls_by_repo.get(repo_full)
     if pulls is None:
-        raw = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=all")
+        raw = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=open")
         candidates = raw if isinstance(raw, list) else []
-        pulls = [pr for pr in candidates if pr.get("state") != "closed" or pr.get("merged_at")]
+        pulls = candidates
         pulls_by_repo[repo_full] = pulls
     return closing_pr_for(pulls, issue_number)
 
