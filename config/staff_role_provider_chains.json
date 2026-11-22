@@ -13,7 +13,13 @@
     "code-reviewer": ["codex", "claude", "cursor-agent"],
     "issue-remediator": ["claude", "codex", "cursor-agent"],
     "ad-hoc": ["claude", "codex", "cursor-agent"],
-    "mad-scientist": ["claude", "codex", "cursor-agent", "qwen", "deepseek-api"],
+    "mad-scientist": [
+      "claude",
+      "codex",
+      "cursor-agent",
+      "qwen",
+      "deepseek-api"
+    ],
     "pr-remediator": ["codex", "cursor-agent", "claude"],
     "test-hygiene": ["codex", "cursor-agent", "claude"],
     "chief-architect": ["claude", "codex", "cursor-agent"],
