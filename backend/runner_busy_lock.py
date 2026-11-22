@@ -13,7 +13,7 @@ and ``_lock_worker_pid_stale`` in ``deploy/runner-scheduler.py``): a lock is
 stale-by-pid ONLY when it carries ``worker_pid=`` AND that pid is dead or its
 cmdline no longer contains ``Runner.Worker`` (pid reuse). A lock without
 ``worker_pid`` (older hook versions), with a malformed one, or on a host with
-no proc filesystem is never stale-by-pid; callers fall back to their age rule.
+no proc filesystem is never stale-by-pid; age alone only raises an alert.
 """
 
 from __future__ import annotations
@@ -69,6 +69,26 @@ def lock_is_stale_by_worker_pid(text: str, proc_root: Path | None = None) -> boo
         return True  # exited between the two checks
     except OSError:
         return False  # alive but unreadable: not provably stale
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            fields.setdefault(key, value.strip())
+    try:
+        expected_boot = fields.get("boot_id", "")
+        actual_boot = (root / "sys/kernel/random/boot_id").read_text().strip()
+        if expected_boot and actual_boot and actual_boot != expected_boot:
+            return True
+    except OSError:
+        pass
+    expected_start = fields.get("worker_starttime", "")
+    if expected_start.isdigit():
+        try:
+            actual_start = (pid_dir / "stat").read_text().rsplit(")", 1)[1].split()[19]
+            if actual_start.isdigit() and actual_start != expected_start:
+                return True
+        except (OSError, IndexError):
+            pass
     return WORKER_MARKER not in cmdline
 
 

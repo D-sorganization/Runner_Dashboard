@@ -16,7 +16,10 @@ pytestmark = pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
 
 def _snapshot(root: Path) -> dict[str, tuple[bytes | None, int]]:
     return {
-        str(path.relative_to(root)): (path.read_bytes() if path.is_file() else None, path.stat().st_mtime_ns)
+        str(path.relative_to(root)): (
+            path.read_bytes() if path.is_file() else None,
+            path.stat().st_mtime_ns,
+        )
         for path in root.rglob("*")
     }
 
@@ -25,7 +28,12 @@ def _seed_runtime(root: Path, existing: bool) -> None:
     locks = root / "busy"
     locks.mkdir(parents=True)
     (root / "proc").mkdir()
-    for name, body in {"aged": "pid=10\n", "dead": "worker_pid=999999\n"}.items():
+    # Issue #4576: locks without worker_pid or with living/unproven workers remain protective regardless of age.
+    # A lock is only reaped if its worker_pid is dead or identity mismatched.
+    for name, body in {
+        "aged": "worker_pid=999998\n",
+        "dead": "worker_pid=999999\n",
+    }.items():
         lock = locks / f"{name}.lock"
         lock.write_text(body, encoding="utf-8")
         if name == "aged":
@@ -34,18 +42,23 @@ def _seed_runtime(root: Path, existing: bool) -> None:
     if existing:
         (root / "mutex").write_text("existing lock evidence\n", encoding="utf-8")
         (root / "metrics").mkdir()
-        (root / "metrics/cleanup.prom").write_text("previous real run\n", encoding="utf-8")
+        (root / "metrics/cleanup.prom").write_text(
+            "previous real run\n", encoding="utf-8"
+        )
 
 
 def _harness(tmp_path: Path, fail: bool) -> Path:
     """Exercise real startup, main, busy GC and EXIT trap; stub host actions."""
     shims = tmp_path / "bin"
     shims.mkdir()
-    (shims / "docker").write_text("#!/usr/bin/env bash\nexit 97\n", encoding="utf-8", newline="\n")
+    (shims / "docker").write_text(
+        "#!/usr/bin/env bash\nexit 97\n", encoding="utf-8", newline="\n"
+    )
     (shims / "docker").chmod(0o755)
     text = CLEANUP.read_text(encoding="utf-8")
     text = text.replace(
-        'LOCK_FILE="/run/runner-cleanup.lock"', f'LOCK_FILE="{as_bash_path(tmp_path / "runtime/mutex")}"'
+        'LOCK_FILE="/run/runner-cleanup.lock"',
+        f'LOCK_FILE="{as_bash_path(tmp_path / "runtime/mutex")}"',
     )
     stubs = [
         "flock() { return 0; }",
@@ -67,7 +80,9 @@ def _harness(tmp_path: Path, fail: bool) -> Path:
     return script
 
 
-def _run(tmp_path: Path, *, dry_run: str, fail: bool = False) -> subprocess.CompletedProcess[str]:
+def _run(
+    tmp_path: Path, *, dry_run: str, fail: bool = False
+) -> subprocess.CompletedProcess[str]:
     assert BASH is not None
     root = tmp_path / "runtime"
     env = os.environ | {
@@ -83,23 +98,31 @@ def _run(tmp_path: Path, *, dry_run: str, fail: bool = False) -> subprocess.Comp
     args = [BASH, as_bash_path(_harness(tmp_path, fail)), "--disk-guard"]
     if dry_run == "flag":
         args.append("--dry-run")
-    return subprocess.run(args, env=env, capture_output=True, text=True, check=False, timeout=30)
+    return subprocess.run(
+        args, env=env, capture_output=True, text=True, check=False, timeout=30
+    )
 
 
 @pytest.mark.parametrize("dry_run", ["flag", "env"])
 @pytest.mark.parametrize("existing", [False, True])
 @pytest.mark.parametrize("fail", [False, True])
-def test_dry_run_preserves_runtime_state(tmp_path: Path, dry_run: str, existing: bool, fail: bool) -> None:
+def test_dry_run_preserves_runtime_state(
+    tmp_path: Path, dry_run: str, existing: bool, fail: bool
+) -> None:
     root = tmp_path / "runtime"
     _seed_runtime(root, existing)
     before = _snapshot(root)
     result = _run(tmp_path, dry_run=dry_run, fail=fail)
     assert result.returncode == (1 if fail else 0), result.stdout + result.stderr
-    assert _snapshot(root) == before, "preview must not create, truncate, remove or rewrite runtime state"
+    assert (
+        _snapshot(root) == before
+    ), "preview must not create, truncate, remove or rewrite runtime state"
 
 
 @pytest.mark.parametrize("fail", [False, True])
-def test_real_run_still_reaps_locks_and_publishes_metrics(tmp_path: Path, fail: bool) -> None:
+def test_real_run_still_reaps_locks_and_publishes_metrics(
+    tmp_path: Path, fail: bool
+) -> None:
     root = tmp_path / "runtime"
     _seed_runtime(root, existing=False)
     result = _run(tmp_path, dry_run="live", fail=fail)
@@ -108,7 +131,9 @@ def test_real_run_still_reaps_locks_and_publishes_metrics(tmp_path: Path, fail: 
     assert (root / "mutex").exists()
     assert (root / "logs").is_dir()
     outcome = "failed" if fail else "ok"
-    assert f'result="{outcome}"}} 1' in (root / "metrics/cleanup.prom").read_text(encoding="utf-8")
+    assert f'result="{outcome}"}} 1' in (root / "metrics/cleanup.prom").read_text(
+        encoding="utf-8"
+    )
 
 
 @pytest.mark.parametrize("dry_run", ["0", "1"])
@@ -147,6 +172,8 @@ def test_runner_preview_preserves_restart_marker(tmp_path: Path, dry_run: str) -
         newline="\n",
     )
     assert BASH is not None
-    result = subprocess.run([BASH, as_bash_path(script)], capture_output=True, text=True, timeout=30)
+    result = subprocess.run(
+        [BASH, as_bash_path(script)], capture_output=True, text=True, timeout=30
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     assert marker.exists() is (dry_run == "1")

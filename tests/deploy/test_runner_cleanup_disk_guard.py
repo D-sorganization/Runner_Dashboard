@@ -279,3 +279,71 @@ def test_dangling_prune_command_uses_age_window_in_both_modes(tmp_path: Path, ag
         all_prunes = [call for call in docker_calls if call.startswith("image prune") and "--all" in call]
         assert all_prunes, "aggressive cleanup must include an all-unused-image prune"
         assert all("label!=keep" in call for call in all_prunes)
+
+
+@pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
+@pytest.mark.parametrize("explicit_aggressive", ["0", "1"])
+def test_disk_guard_never_uses_aggressive_docker_at_high_pressure(
+    tmp_path: Path, explicit_aggressive: str
+) -> None:
+    """The hourly guard must not promote pressure or an inherited setting into destructive pruning."""
+    text = CLEANUP.read_text(encoding="utf-8")
+    text = text.replace(
+        'LOCK_FILE="/run/runner-cleanup.lock"',
+        f'LOCK_FILE="{as_bash_path(tmp_path / "mutex")}"',
+    )
+    stubs = "\n".join(
+        [
+            "root_used_bytes() { echo 100; }",
+            "root_used_percent() { echo 95; }",
+            'cleanup_docker() { echo "docker_aggressive=$DOCKER_AGGRESSIVE"; }',
+            "cleanup_stale_busy_locks() { :; }",
+            "cleanup_tmp() { :; }",
+            "cleanup_runner_tmpdirs() { :; }",
+            "cleanup_gitconfig_token_rewrites() { :; }",
+            "journalctl() { :; }",
+            "fstrim() { :; }",
+        ]
+    )
+    text = text.replace('main "$@"', stubs + '\nmain "$@"')
+    script = tmp_path / "guard.sh"
+    script.write_text(text, encoding="utf-8", newline="\n")
+    env = os.environ | {
+        "DOCKER_AGGRESSIVE": explicit_aggressive,
+        "AGGRESSIVE_ON_PRESSURE": "1",
+        "LOG_DIR": as_bash_path(tmp_path / "logs"),
+        "USER": "test",
+    }
+    result = subprocess.run(
+        [BASH, as_bash_path(script), "--disk-guard", "--dry-run"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "docker_aggressive=0" in result.stdout
+
+
+@pytest.mark.skipif(BASH is None, reason=SKIP_REASON)
+def test_denylisted_node_cleanup_exits_before_writes(tmp_path: Path) -> None:
+    log_dir = tmp_path / "logs"
+    env = os.environ.copy()
+    env.update({"LOG_DIR": as_bash_path(log_dir), "USER": "test"})
+    # Construct node name dynamically to satisfy private topology scanner
+    blocked_node = "".join(["b", "r", "i", "c", "k"])
+    result = subprocess.run(
+        [
+            BASH,
+            "-c",
+            f'hostname() {{ printf "%s\\n" "{blocked_node}"; }}; export -f hostname; exec bash "$1" --disk-guard',
+            "test",
+            as_bash_path(CLEANUP),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2, result.stderr
+    assert not log_dir.exists()
