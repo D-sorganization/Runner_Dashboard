@@ -1,0 +1,122 @@
+[
+  {
+    "mode": "before",
+    "viewport": "desktop-1280",
+    "dimensions": "1280x800",
+    "state": "partial-staff-read",
+    "filename": "before-desktop-1280-partial-staff-read.png",
+    "panel_filename": "before-desktop-1280-partial-staff-read-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": false
+  },
+  {
+    "mode": "before",
+    "viewport": "phone-390x844",
+    "dimensions": "390x844",
+    "state": "partial-staff-read",
+    "filename": "before-phone-390x844-partial-staff-read.png",
+    "panel_filename": "before-phone-390x844-partial-staff-read-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": false
+  },
+  {
+    "mode": "before",
+    "viewport": "desktop-1280",
+    "dimensions": "1280x800",
+    "state": "partial-board-read",
+    "filename": "before-desktop-1280-partial-board-read.png",
+    "panel_filename": "before-desktop-1280-partial-board-read-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": true
+  },
+  {
+    "mode": "before",
+    "viewport": "phone-390x844",
+    "dimensions": "390x844",
+    "state": "partial-board-read",
+    "filename": "before-phone-390x844-partial-board-read.png",
+    "panel_filename": "before-phone-390x844-partial-board-read-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": true
+  },
+  {
+    "mode": "before",
+    "viewport": "desktop-1280",
+    "dimensions": "1280x800",
+    "state": "healthy",
+    "filename": "before-desktop-1280-healthy.png",
+    "panel_filename": "before-desktop-1280-healthy-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": false
+  },
+  {
+    "mode": "before",
+    "viewport": "phone-390x844",
+    "dimensions": "390x844",
+    "state": "healthy",
+    "filename": "before-phone-390x844-healthy.png",
+    "panel_filename": "before-phone-390x844-healthy-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": false
+  },
+  {
+    "mode": "after",
+    "viewport": "desktop-1280",
+    "dimensions": "1280x800",
+    "state": "partial-staff-read",
+    "filename": "after-desktop-1280-partial-staff-read.png",
+    "panel_filename": "after-desktop-1280-partial-staff-read-panel.png",
+    "has_partial_staff_badge": true,
+    "has_partial_board_badge": false
+  },
+  {
+    "mode": "after",
+    "viewport": "phone-390x844",
+    "dimensions": "390x844",
+    "state": "partial-staff-read",
+    "filename": "after-phone-390x844-partial-staff-read.png",
+    "panel_filename": "after-phone-390x844-partial-staff-read-panel.png",
+    "has_partial_staff_badge": true,
+    "has_partial_board_badge": false
+  },
+  {
+    "mode": "after",
+    "viewport": "desktop-1280",
+    "dimensions": "1280x800",
+    "state": "partial-board-read",
+    "filename": "after-desktop-1280-partial-board-read.png",
+    "panel_filename": "after-desktop-1280-partial-board-read-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": true
+  },
+  {
+    "mode": "after",
+    "viewport": "phone-390x844",
+    "dimensions": "390x844",
+    "state": "partial-board-read",
+    "filename": "after-phone-390x844-partial-board-read.png",
+    "panel_filename": "after-phone-390x844-partial-board-read-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": true
+  },
+  {
+    "mode": "after",
+    "viewport": "desktop-1280",
+    "dimensions": "1280x800",
+    "state": "healthy",
+    "filename": "after-desktop-1280-healthy.png",
+    "panel_filename": "after-desktop-1280-healthy-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": false
+  },
+  {
+    "mode": "after",
+    "viewport": "phone-390x844",
+    "dimensions": "390x844",
+    "state": "healthy",
+    "filename": "after-phone-390x844-healthy.png",
+    "panel_filename": "after-phone-390x844-healthy-panel.png",
+    "has_partial_staff_badge": false,
+    "has_partial_board_badge": false
+  }
+]
