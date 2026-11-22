@@ -182,7 +182,14 @@ async def sessions(repo: str | None) -> dict[str, Any]:
         seen.add(key)
         sessions_out.append(row)
     data = {**data, "sessions": sessions_out}
-    return _stamp({**data, "staff_runs": runs, "warnings": [*data.get("warnings", []), *warnings, *staff_warnings]})
+    return _stamp(
+        {
+            **data,
+            "staff_runs": runs,
+            "staff_complete": not staff_warnings,
+            "warnings": [*data.get("warnings", []), *warnings, *staff_warnings],
+        }
+    )
 
 
 def _shared_session_read(key: str, read: Any) -> concurrent.futures.Future[Any]:

@@ -118,6 +118,17 @@ def resolve_machine(name: str, local_machine: str, peers: dict[str, str]) -> str
     return None
 
 
+def _stale_peer_board(key: tuple[str, str]) -> dict[str, Any] | None:
+    """Last-good board for ``key`` when younger than the grace window, marked stale."""
+    cached = _LAST_GOOD_PEER_BOARD.get(key)
+    if cached is None:
+        return None
+    age = time.monotonic() - cached[0]
+    if not 0.0 <= age <= PEER_STALE_GRACE_SECONDS:
+        return None
+    return {**cached[1], "status": "online", "stale": True, "stale_age_seconds": round(age, 1)}
+
+
 async def fetch_peer_board(name: str, url: str) -> tuple[str, dict[str, Any]]:
     key = (name, url)
     try:
@@ -127,15 +138,53 @@ async def fetch_peer_board(name: str, url: str) -> tuple[str, dict[str, Any]]:
         return name, data
     except Exception as exc:  # noqa: BLE001
         if isinstance(exc, (TimeoutError, httpx.TimeoutException)):
-            cached = _LAST_GOOD_PEER_BOARD.get(key)
-            if cached is not None:
-                age = time.monotonic() - cached[0]
-                if 0.0 <= age <= PEER_STALE_GRACE_SECONDS:
-                    log.info("staff.fleet: peer %s timed out (%s); serving %.1fs cached board", name, exc, age)
-                    stale_board = {**cached[1], "status": "online", "stale": True, "stale_age_seconds": round(age, 1)}
-                    return name, stale_board
+            stale_board = _stale_peer_board(key)
+            if stale_board is not None:
+                log.info("staff.fleet: peer %s timed out (%s); serving cached board", name, exc)
+                return name, stale_board
         log.info("staff.fleet: peer %s board unavailable: %s", name, exc)
         return name, {"machine": name, "status": "offline", "error": str(exc)[:200]}
+
+
+async def fetch_peer_boards_bounded(
+    peers: dict[str, str], budget_seconds: float
+) -> tuple[dict[str, dict[str, Any]], list[str]]:
+    """Fetch peer boards concurrently, giving up on stragglers after ``budget_seconds`` (#4619).
+
+    Pre: ``budget_seconds`` > 0.
+    Post: never blocks longer than the budget (plus cancellation). Returns ``(online_boards, warnings)``.
+    A straggler contributes its last-good board (marked stale) when one is fresh enough, otherwise it
+    is omitted; every straggler, offline peer and stale board is named in ``warnings`` so callers can
+    report an incomplete view truthfully.
+    """
+    if budget_seconds <= 0:
+        raise ValueError("budget_seconds must be positive")
+    boards: dict[str, dict[str, Any]] = {}
+    warnings: list[str] = []
+    tasks = {asyncio.ensure_future(fetch_peer_board(n, u)): (n, u) for n, u in peers.items()}
+    if not tasks:
+        return boards, warnings
+    done, pending = await asyncio.wait(tasks, timeout=budget_seconds)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+    for task in done:
+        name, board = task.result()
+        if board.get("status") != "online":
+            warnings.append(f"peer {name} unavailable: {board.get('error', 'offline')}")
+        else:
+            boards[name] = board
+            if board.get("stale"):
+                warnings.append(f"peer {name} stale ({board.get('stale_age_seconds')}s old)")
+    for task in pending:
+        name, url = tasks[task]
+        stale_board = _stale_peer_board((name, url))
+        if stale_board is not None:
+            boards[name] = stale_board
+            warnings.append(f"peer {name} timed out; serving stale board ({stale_board['stale_age_seconds']}s old)")
+        else:
+            warnings.append(f"peer {name} timed out after {budget_seconds:g}s; its runs are missing")
+    return boards, warnings
 
 
 def scheduler_watchdog_alerts(machines: dict[str, dict[str, Any]], now: datetime) -> list[dict[str, Any]]:

@@ -153,6 +153,7 @@ export interface BoardConflict {
 
 export interface SessionsResponse extends Availability {
   complete?: boolean;
+  staff_complete?: boolean;
   sessions: BoardSession[];
   staff_runs: StaffRunSummary[];
   messages?: BoardMessage[];
