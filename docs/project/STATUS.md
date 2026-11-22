@@ -8,34 +8,34 @@
 
 ## Progress
 
-| ID       | Feature                                                      | Status  | Progress | Last change                                                                          |
-| -------- | ------------------------------------------------------------ | ------- | -------- | ------------------------------------------------------------------------------------ |
+| ID       | Feature                                                      | Status  | Progress | Last change                                                                                |
+| -------- | ------------------------------------------------------------ | ------- | -------- | ------------------------------------------------------------------------------------------ |
 | F1       | Fleet Monitoring and Machine Inventory                       | shipped | 100%     | Epic #1324 (fleet monitoring); per-host telemetry freshness on `/api/fleet/status` (#4584) |
-| F2       | Operations Console and Unified Dispatch                      | shipped | 100%     | Epic #1325 (operations console)                                                      |
-| F3       | Queue Health and Automated Job Reaper                        | shipped | 100%     | Stale queue detection and periodic reaper scripts on main                            |
-| F4       | Authentication and RBAC Perimeter                            | shipped | 100%     | Scoped staff mutations and reads (#1295); WSL2 tailscale whois fix (#4580)          |
-| F5       | Staff Console Conversation Engine                            | shipped | 100%     | Epic SC-B closed 2026-10-14 (#1348)                                                  |
-| F6       | Barb Routing and Follow-Up Engine                            | shipped | 100%     | Epic SC-C closed 2026-10-14 (#1349)                                                  |
-| F7       | Fleet Maintenance Automation                                 | shipped | 100%     | Epic SC-E closed 2026-10-14 (#1351)                                                  |
-| F8       | Staff Agent and Tooling APIs                                 | shipped | 100%     | Epic SC-F closed 2026-10-14 (#1352)                                                  |
-| F9       | Staff Console Shell and Navigation                           | shipped | 100%     | Epic SC-D closed 2026-10-14 (#1350)                                                  |
-| F10      | UI Modernization and Legacy Pruning                          | shipped | 100%     | Epic SC-G closed 2026-10-14 (#1353); legacy 410 route sunset merged (#2721)         |
-| F11      | Code Requests and Proposals Pipeline                         | shipped | 100%     | Epic #1279 closed (#1432, #1443, #1456)                                              |
-| F12      | Multi-Host Node Infrastructure                               | shipped | 100%     | Epic #1258 closed (#1262, #1272)                                                     |
-| F13      | Projects and Fleet Stewardship                               | shipped | 100%     | Epic #1248 closed (#1254)                                                            |
-| F14      | Staff Hub Reliability and Watchdogs                          | shipped | 100%     | Epic SC-A closed 2026-10-14 (#1347); charter status corrected this run              |
-| F15      | Maxwell Control Plane Proxy                                  | shipped | 100%     | Maxwell proxy and contract tests (#1338)                                             |
-| F16      | Fleet Coordination and Priorities                            | shipped | 100%     | Coordination board, lane-prompt checkout and claims work (PR #4549/#4589; issue #4574) |
-| F17      | Board Deliberation and Group Threads                         | shipped | 100%     | Epic #1339 closed (#1480, #1763, #1772)                                              |
-| F18      | Offline Release Artifact Pipeline                            | parked  | 15%      | Tracking #1085 closed 2026-08-27; README now qualifies offline `npm ci` (issue #4541) |
-| DV-#2613 | Security scanner: real scan-VM end-to-end validation         | parked  | -        | Deferred-validation record; see catalog                                              |
-| DV-#2511 | Fleet-decision panel preset: live hub run with Barb turnover | parked  | -        | Deferred-validation record; see catalog                                              |
+| F2       | Operations Console and Unified Dispatch                      | shipped | 100%     | Epic #1325 (operations console)                                                            |
+| F3       | Queue Health and Automated Job Reaper                        | shipped | 100%     | Stale queue detection and periodic reaper scripts on main                                  |
+| F4       | Authentication and RBAC Perimeter                            | shipped | 100%     | Scoped staff mutations and reads (#1295); WSL2 tailscale whois fix (#4580)                 |
+| F5       | Staff Console Conversation Engine                            | shipped | 100%     | Epic SC-B closed 2026-10-14 (#1348)                                                        |
+| F6       | Barb Routing and Follow-Up Engine                            | shipped | 100%     | Epic SC-C closed 2026-10-14 (#1349)                                                        |
+| F7       | Fleet Maintenance Automation                                 | shipped | 100%     | Epic SC-E closed 2026-10-14 (#1351)                                                        |
+| F8       | Staff Agent and Tooling APIs                                 | shipped | 100%     | Epic SC-F closed 2026-10-14 (#1352)                                                        |
+| F9       | Staff Console Shell and Navigation                           | shipped | 100%     | Epic SC-D closed 2026-10-14 (#1350)                                                        |
+| F10      | UI Modernization and Legacy Pruning                          | shipped | 100%     | Epic SC-G closed 2026-10-14 (#1353); legacy 410 route sunset merged (#2721)                |
+| F11      | Code Requests and Proposals Pipeline                         | shipped | 100%     | Epic #1279 closed (#1432, #1443, #1456)                                                    |
+| F12      | Multi-Host Node Infrastructure                               | shipped | 100%     | Epic #1258 closed (#1262, #1272)                                                           |
+| F13      | Projects and Fleet Stewardship                               | shipped | 100%     | Epic #1248 closed (#1254)                                                                  |
+| F14      | Staff Hub Reliability and Watchdogs                          | shipped | 100%     | Epic SC-A closed 2026-10-14 (#1347); charter status corrected this run                     |
+| F15      | Maxwell Control Plane Proxy                                  | shipped | 100%     | Maxwell proxy and contract tests (#1338)                                                   |
+| F16      | Fleet Coordination and Priorities                            | shipped | 100%     | Coordination board, lane-prompt checkout and claims work (PR #4549/#4589; issue #4574)     |
+| F17      | Board Deliberation and Group Threads                         | shipped | 100%     | Epic #1339 closed (#1480, #1763, #1772)                                                    |
+| F18      | Offline Release Artifact Pipeline                            | parked  | 15%      | Tracking #1085 closed 2026-08-27; README now qualifies offline `npm ci` (issue #4541)      |
+| DV-#2613 | Security scanner: real scan-VM end-to-end validation         | parked  | -        | Deferred-validation record; see catalog                                                    |
+| DV-#2511 | Fleet-decision panel preset: live hub run with Barb turnover | parked  | -        | Deferred-validation record; see catalog                                                    |
 
 ## Blockers
 
 - **BR-18 / #1811** — Autonomous release gate (cross-client journeys and recovery drills) is still open. Humans only until its evidence matrix is complete.
 - **#2657 (rd-2657)** — Runner Dashboard deploy/release **HOLD** on staff dispatch (Dieter hold 2026-10-23). Issue **#2657** is closed and enforcement PR **#2658** is merged, but the fleet hold remains active until Dieter lifts it (`rd-2658-disarmed` in fleet policy). Merged enforcement does not lift the hold.
-- **Provider credentials (live hub, 2026-11-20)** — `/api/staff/summary` reports Claude OAuth tokens expired on DeskComputer and ControlTower, stale codex and antigravity subscription tokens, and a stale Claude credential mirror on OGLaptop. All four machines are online. Remediation is in `docs/runbooks/durable-provider-credentials.md` and needs the owner to act.
+- **Provider credentials (live hub, 2026-11-20)** — `/api/staff/summary` reports Claude OAuth tokens expired on hub-a and node-a, stale codex and antigravity subscription tokens, and a stale Claude credential mirror on node-b. All four machines are online. Remediation is in `docs/runbooks/durable-provider-credentials.md` and needs the owner to act.
 
 ## Risks
 
