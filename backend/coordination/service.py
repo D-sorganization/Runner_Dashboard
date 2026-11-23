@@ -35,8 +35,8 @@ from coordination.models import (
     PresenceBody,
     ReleaseBody,
 )
-from coordination.presence_binding import resolve_release_repo
 from coordination.pr_age_rule import lease_agent_id
+from coordination.presence_binding import resolve_release_repo
 from coordination.staff_runs_cache import record_staff_runs_snapshot, snapshot_staff_runs
 from coordination.staff_view import staff_run_as_session, staff_runs
 from staff.rm_sync import stale_source_warning
