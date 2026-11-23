@@ -236,17 +236,19 @@ def collect_review_passes_from_store(
 
 
 def _strip_quoted_text(body: str) -> str:
-    """Exclude markdown blockquotes, code blocks, inline code, and quoted strings not defining a verdict."""
+    """Exclude markdown blockquotes, code blocks, and quoted verdict mentions (not prose contractions)."""
     if not body:
         return ""
     # Remove fenced code blocks
     text = re.sub(r"```.*?```", "", body, flags=re.DOTALL)
     # Remove blockquote lines
     text = re.sub(r"(?m)^\s*>.*$", "", text)
-    # Remove double quotes, single quotes, and backticks unless immediately preceded by Verdict:
-    text = re.sub(r'(?<!Verdict:\s)(?<!Verdict: )"[^"\n]*"', "", text)
-    text = re.sub(r"(?<!Verdict:\s)(?<!Verdict: )'[^'\n]*'", "", text)
-    text = re.sub(r"(?<!Verdict:\s)(?<!Verdict: )`[^`\n]*`", "", text)
+    # Remove only quoted/backticked FIX-NEEDED or PASS @sha mentions (not arbitrary apostrophe prose).
+    verdict_in_quotes = (
+        r"(?<!Verdict:\s)(?<!Verdict: )"
+        r'["`][^"\n`]*(?:FIX-NEEDED|PASS)\s+@[0-9a-fA-F]{7,40}[^"\n`]*["`]'
+    )
+    text = re.sub(verdict_in_quotes, "", text, flags=re.IGNORECASE)
     return text
 
 
@@ -268,7 +270,7 @@ def collect_review_passes_from_comments(
         # This is the publisher's visible comment format, not a STAFF_RESULT line.
         if "Independent Exact-Head Acceptance Review" in unquoted:
             match = re.search(
-                r"(?:Verdict:\s*[`'\"]?|^\s*)(PASS|FIX-NEEDED)\s+@([0-9a-fA-F]{7,40})\b",
+                r"(?:Verdict:\s*[`'\"]?|^\s*|Blocking:\s*)(PASS|FIX-NEEDED)\s+@([0-9a-fA-F]{7,40})\b",
                 unquoted,
                 re.IGNORECASE | re.MULTILINE,
             )
@@ -307,7 +309,7 @@ def _commented_review_is_fix_needed(body: str, commit_sha: str) -> bool:
     unquoted = _strip_quoted_text(body)
     if "Independent Exact-Head Acceptance Review" in unquoted:
         match = re.search(
-            r"(?:Verdict:\s*[`'\"]?|^\s*)FIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b",
+            r"(?:Verdict:\s*[`'\"]?|^\s*|Blocking:\s*)FIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b",
             unquoted,
             re.IGNORECASE | re.MULTILINE,
         )
@@ -317,9 +319,17 @@ def _commented_review_is_fix_needed(body: str, commit_sha: str) -> bool:
     if verdict.status == "succeeded" and verdict.verdict in {"changes", "escalate"}:
         return not verdict.head_sha or head_sha_matches(verdict.head_sha, commit_sha)
     match = re.search(
-        r"(?:Verdict:\s*[`'\"]?|^\s*)FIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b",
+        r"(?:Verdict:\s*[`'\"]?|^\s*|Blocking:\s*)FIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b",
         unquoted,
         re.IGNORECASE | re.MULTILINE,
+    )
+    if match:
+        return head_sha_matches(match.group(1), commit_sha)
+    # After quoted mentions are stripped, a bound FIX-NEEDED @sha is a real verdict (not prose).
+    match = re.search(
+        r"\bFIX-NEEDED\s+@([0-9a-fA-F]{7,40})\b",
+        unquoted,
+        re.IGNORECASE,
     )
     if match:
         return head_sha_matches(match.group(1), commit_sha)

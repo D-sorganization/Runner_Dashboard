@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from coordination.merge_shepherd import ShepherdAction
-from coordination.merge_shepherd_exact_head import collect_review_passes_from_github_reviews
+from coordination.merge_shepherd_exact_head import (
+    _commented_review_is_fix_needed,
+    collect_review_passes_from_github_reviews,
+)
 from coordination.merge_shepherd_pass import plan_repo_disarms, plan_repo_pass
 
 HEAD = "c" * 40
@@ -76,6 +79,16 @@ def test_quoted_fix_needed_in_commented_review_is_ignored() -> None:
     }
     rows = collect_review_passes_from_github_reviews([review], 42, author_login="d-sorgagyagent[bot]")
     assert rows == ()
+
+
+def test_contractions_do_not_strip_real_fix_needed_verdict() -> None:
+    body = f"It doesn't handle X. FIX-NEEDED @{HEAD}: it isn't safe"
+    assert _commented_review_is_fix_needed(body, HEAD) is True
+
+
+def test_blocking_prefix_fix_needed_is_detected() -> None:
+    body = f"Blocking: FIX-NEEDED @{HEAD} for merge-shepherd disarm"
+    assert _commented_review_is_fix_needed(body, HEAD) is True
 
 
 def test_quoted_fix_needed_with_matching_sha_in_commented_review_is_ignored() -> None:
