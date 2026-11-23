@@ -193,12 +193,14 @@ class PassAction:
     dry_run: bool
     detail: str
     eligibility: str = ""
+    kind: str = "arm"
 
 
 @dataclass
 class PassSummary:
     repos: list[dict[str, Any]] = field(default_factory=list)
     armed: list[dict[str, Any]] = field(default_factory=list)
+    disarmed: list[dict[str, Any]] = field(default_factory=list)
     skipped: list[dict[str, Any]] = field(default_factory=list)
     backoff: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -522,6 +524,70 @@ def normalize_pass_decision(decision: ShepherdDecision) -> ShepherdDecision:
     return decision
 
 
+def plan_repo_disarms(
+    repo: str,
+    nodes: Sequence[Mapping[str, Any]],
+    *,
+    skip_list: frozenset[tuple[str, int]],
+    holds: Sequence[Mapping[str, Any]],
+    live: bool,
+    line_cap: int | None = None,
+    review_passes: Sequence[HeadReviewPass] = (),
+    review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
+    drained: bool = False,
+) -> list[PassAction]:
+    """Plan disarm actions for queued/armed PRs with a fresh FIX-NEEDED at head (#4618).
+
+    Runs even when the merge queue is in backoff (arming is throttled, safety disarm is not).
+    """
+    effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
+    is_drained = drained
+    actions: list[PassAction] = []
+    for node in nodes:
+        if node.get("isDraft"):
+            continue
+        pre = pre_filter_skip_reason(node, repo=repo, skip_list=skip_list, holds=holds)
+        if pre:
+            continue
+        paths, additions, deletions, files_complete = _pr_file_metadata(node)
+        number = int(node["number"])
+        head = str(node.get("headRefOid") or "")
+        node_comments = (node.get("comments") or {}).get("nodes") or []
+        author_login = str((node.get("author") or {}).get("login") or "")
+        comment_passes = collect_review_passes_from_comments(node_comments, pr=number, author_login=author_login)
+        node_reviews = (node.get("reviews") or {}).get("nodes") or []
+        github_passes = collect_review_passes_from_github_reviews(node_reviews, pr=number, author_login=author_login)
+        all_passes = (*review_passes, *comment_passes, *github_passes)
+        cand = node_to_candidate(
+            repo,
+            node,
+            is_drained=is_drained,
+            head_sha=head,
+            review_passes=all_passes,
+            review_pass_ttl_hours=review_pass_ttl_hours,
+            line_cap=effective_line_cap,
+            file_paths=paths,
+            additions=additions,
+            deletions=deletions,
+            files_complete=files_complete,
+        )
+        gate = evaluate_pr_shepherd_eligibility(cand)
+        if gate.action != ShepherdAction.DISARM:
+            continue
+        actions.append(
+            PassAction(
+                repo=repo,
+                pr_number=number,
+                head_sha=head,
+                strategy="disarm",
+                dry_run=not live,
+                detail=gate.detail,
+                kind="disarm",
+            )
+        )
+    return actions
+
+
 def plan_repo_pass(
     repo: str,
     nodes: Sequence[Mapping[str, Any]],
@@ -672,6 +738,18 @@ def run_merge_shepherd_pass(
             except (OSError, ValueError) as exc:
                 # A throttle, not a safety gate: report it and keep arming.
                 summary.errors.append(f"{full}: drain state unreadable: {exc}")
+        live_pass = config.live and not config.dry_run
+        disarm_actions = plan_repo_disarms(
+            full,
+            nodes,
+            skip_list=skip_list,
+            holds=hold_rows,
+            live=live_pass,
+            line_cap=config.low_risk_line_cap,
+            review_passes=repo_passes,
+            review_pass_ttl_hours=config.review_pass_ttl_hours,
+            drained=drained,
+        )
         actions, skips, backoff = plan_repo_pass(
             full,
             nodes,
@@ -679,7 +757,7 @@ def run_merge_shepherd_pass(
             holds=hold_rows,
             armed_count=armed_count,
             queue_depth=queue_depth,
-            live=config.live and not config.dry_run,
+            live=live_pass,
             line_cap=config.low_risk_line_cap,
             review_passes=repo_passes,
             review_pass_ttl_hours=config.review_pass_ttl_hours,
@@ -692,10 +770,22 @@ def run_merge_shepherd_pass(
             "armed_count": armed_count,
             "queue_depth": queue_depth,
             "planned_arms": len(actions),
+            "planned_disarms": len(disarm_actions),
             "skipped": len(skips),
         }
         summary.repos.append(repo_row)
         summary.skipped.extend(skips)
+        for act in disarm_actions:
+            summary.disarmed.append(
+                {
+                    "repo": act.repo,
+                    "pr": act.pr_number,
+                    "head_sha": act.head_sha,
+                    "strategy": act.strategy,
+                    "dry_run": act.dry_run,
+                    "detail": act.detail,
+                }
+            )
         if backoff:
             summary.backoff.append(full)
             continue
@@ -721,6 +811,7 @@ def summary_to_json(summary: PassSummary) -> dict[str, Any]:
     return {
         "repos": summary.repos,
         "armed": summary.armed,
+        "disarmed": summary.disarmed,
         "skipped": summary.skipped,
         "backoff": summary.backoff,
         "errors": summary.errors,
