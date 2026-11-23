@@ -114,6 +114,7 @@ def test_cli_import_closure_stays_small() -> None:
         "backend/staff/repo_roots.py",
         "backend/platform_utils/__init__.py",
         "backend/platform_utils/wsl_paths.py",
+        "backend/worktree_ignored_policy.py",
     }
 
 
