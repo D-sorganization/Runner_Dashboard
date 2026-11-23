@@ -1,4 +1,4 @@
-"""#4582: pm-sidekick Tools repo map; offload Brick schedule homes across worker nodes."""
+"""#4582: pm-sidekick Tools repo map; offload node-c schedule homes across worker nodes."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ import pytest
 from staff import role_routing_config as rrc
 from staff import schedule_placement as sp
 from staff.role_provider_chains import _CONFIG_PATH as PROVIDER_CHAINS_PATH
+
 pytestmark = pytest.mark.unit
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
 _PROVIDER_CHAINS_SNAPSHOT = PROVIDER_CHAINS_PATH.read_text(encoding="utf-8")
 
 
@@ -20,11 +20,12 @@ def test_reference_repo_routing_maps_pm_sidekick_to_tools() -> None:
     assert routing["roles"]["pm-sidekick"]["repos"] == ["Tools"]
 
 
-def test_reference_schedule_placements_offload_brick_remediator_roles() -> None:
+def test_reference_schedule_placements_offload_node_c_remediator_roles() -> None:
     placements = rrc.load_reference_schedule_placements()
-    brick_roles = frozenset(rrc.brick_offload_roles())
-    for role in brick_roles:
-        assert placements[role] != rrc.BRICK_HOST
+    offload_roles = frozenset(rrc.offload_roles_from_overload_host())
+    overload = rrc.overload_source_host()
+    for role in offload_roles:
+        assert placements[role] != overload
     assert placements["night-watch"] in {"node-a", "node-b"}
     assert placements["pr-remediator"] in {"node-a", "node-b"}
     assert placements["fleet-critic"] in {"node-a", "node-b"}
@@ -34,14 +35,14 @@ def test_reference_schedule_placements_offload_brick_remediator_roles() -> None:
 def test_desk_is_fallback_only_not_primary_home_for_offloaded_roles() -> None:
     placements = rrc.load_reference_schedule_placements()
     desk = rrc.desk_fallback_host()
-    for role in rrc.brick_offload_roles():
+    for role in rrc.offload_roles_from_overload_host():
         assert placements[role] != desk
 
 
-def test_brick_migration_targets_list_desk_last() -> None:
-    targets = rrc.brick_offload_migration_targets()
+def test_overload_migration_targets_list_desk_last() -> None:
+    targets = rrc.overload_offload_migration_targets()
     assert targets[-1] == rrc.desk_fallback_host()
-    assert rrc.BRICK_HOST not in targets
+    assert rrc.overload_source_host() not in targets
     assert targets[:2] == ("node-a", "node-b")
 
 
@@ -72,7 +73,7 @@ def test_provider_chains_unchanged_for_offloaded_roles() -> None:
     assert data["roles"]["pm-sidekick"] == ["claude", "codex", "cursor-agent"]
 
 
-def test_migrate_off_brick_using_policy_targets(tmp_path: Path) -> None:
+def test_migrate_off_overload_host_using_policy_targets(tmp_path: Path) -> None:
     from staff.role_spec import RoleSpec
 
     reg = {
@@ -104,19 +105,20 @@ def test_migrate_off_brick_using_policy_targets(tmp_path: Path) -> None:
             providers=("claude",),
         ),
     }
-    placements = {name: "node-c" for name in roles}
+    source = rrc.overload_source_host()
+    placements = {name: source for name in roles}
     state = {name: {"cursor": "1"} for name in roles}
     result = sp.migrate_placements_off_host(
-        rrc.BRICK_HOST,
+        source,
         roles=roles,
         placements=placements,
         state=state,
         registry=reg,
-        targets=rrc.brick_offload_migration_targets(),
+        targets=rrc.overload_offload_migration_targets(),
     )
     assert len(result.moved) == 3
     assert {host for _, host in result.moved} == {"node-a"}
-    assert all(placements[r] != "node-c" for r in roles)
+    assert all(placements[r] != source for r in roles)
 
 
 def test_pm_sidekick_persona_still_documents_packaging_hold() -> None:

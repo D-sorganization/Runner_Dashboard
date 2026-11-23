@@ -2,7 +2,7 @@
 
 Shipped JSON under ``config/`` is the fleet policy source of truth for:
 - Repository scope overlays (e.g. pm-sidekick → Tools while RM may lag).
-- Schedule placement homes after offloading overloaded Brick (node-c).
+- Schedule placement homes after offloading overloaded node-c.
 
 Provider chains in ``staff_role_provider_chains.json`` are intentionally not edited here.
 """
@@ -21,7 +21,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _REPO_ROUTING_PATH = _REPO_ROOT / "config" / "staff_role_repo_routing.reference.json"
 _SCHEDULE_PLACEMENTS_PATH = _REPO_ROOT / "config" / "staff_schedule_placements.reference.json"
 
-BRICK_HOST = "node-c"
+OVERLOAD_SOURCE_HOST = "node-c"
 _DESK_FALLBACK_DEFAULT = "hub-a"
 
 
@@ -66,8 +66,8 @@ def desk_fallback_host() -> str:
     return str(raw).strip() or _DESK_FALLBACK_DEFAULT
 
 
-def brick_offload_roles() -> tuple[str, ...]:
-    raw = _schedule_reference_raw().get("brick_offload_roles") or ()
+def offload_roles_from_overload_host() -> tuple[str, ...]:
+    raw = _schedule_reference_raw().get("offload_roles") or ()
     if not isinstance(raw, list):
         return ()
     return tuple(str(r).strip() for r in raw if str(r).strip())
@@ -80,8 +80,13 @@ def worker_schedule_hosts() -> frozenset[str]:
     return frozenset(str(h).strip() for h in raw if str(h).strip())
 
 
-def brick_offload_migration_targets() -> tuple[str, ...]:
-    """Preferred migration order: ControlTower and OGLaptop before Desk fallback."""
+def overload_source_host() -> str:
+    raw = _schedule_reference_raw().get("overload_source_host", OVERLOAD_SOURCE_HOST)
+    return str(raw).strip() or OVERLOAD_SOURCE_HOST
+
+
+def overload_offload_migration_targets() -> tuple[str, ...]:
+    """Preferred migration order: node-a and node-b before hub-a desk fallback."""
     desk = desk_fallback_host()
     return ("node-a", "node-b", desk)
 
@@ -118,16 +123,16 @@ def validate_fleet_routing_policy() -> list[str]:
     problems: list[str] = []
     placements = load_reference_schedule_placements()
     desk = desk_fallback_host()
-    brick = str(_schedule_reference_raw().get("brick_host") or BRICK_HOST).strip() or BRICK_HOST
+    overload_host = overload_source_host()
     workers = worker_schedule_hosts()
 
-    for role in brick_offload_roles():
+    for role in offload_roles_from_overload_host():
         host = placements.get(role)
         if not host:
             problems.append(f"reference placements missing schedule home for '{role}'")
             continue
-        if host == brick:
-            problems.append(f"role '{role}' must not schedule on brick host '{brick}'")
+        if host == overload_host:
+            problems.append(f"role '{role}' must not schedule on overload source host '{overload_host}'")
         if host == desk:
             problems.append(f"role '{role}' must not use desk fallback '{desk}' as primary schedule home")
         if workers and host not in workers:
