@@ -24,9 +24,9 @@ from staff.worktree_links import (
     refuse_worktree_links,
     unlink_worktree_links,
 )
+from worktree_ignored_policy import ignored_files_removal_blocker
 
 from staff import cli_projects
-from worktree_ignored_policy import ignored_files_removal_blocker
 
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
 
