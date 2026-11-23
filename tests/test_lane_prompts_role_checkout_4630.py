@@ -14,7 +14,7 @@ if str(BACKEND_DIR) not in sys.path:
 
 def _seed_review_and_backlog_lanes(store) -> None:
     store.register_assignment(
-        lane_id="codex-oglaptop-2",
+        lane_id="codex-node-b-2",
         role="backlog-completion",
         repos=["Tools"],
         release_sha="abc",
@@ -42,12 +42,12 @@ def test_checkout_with_lane_id_and_requested_role_must_not_substitute(tmp_path: 
 
     with pytest.raises(LaneRoleUnavailableError) as excinfo:
         store.checkout(
-            session_id="codex-cli-oglaptop-20261122-170757",
+            session_id="codex-cli-node-b-20261122-170757",
             principal="agent-codex",
             idempotency_key="idem-review-4630",
-            lane_id="codex-oglaptop-2",
+            lane_id="codex-node-b-2",
             role="acceptance-review",
-            host="oglaptop",
+            host="node-b",
         )
     err = excinfo.value
     assert err.requested_role == "acceptance-review"

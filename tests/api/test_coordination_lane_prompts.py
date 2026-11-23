@@ -210,7 +210,7 @@ def test_checkout_role_mismatch_returns_role_unavailable(
     store = lane_prompts.LanePromptStore(db_path=tmp_path / "role-4630.sqlite3")
     monkeypatch.setattr(lane_prompts, "_default_store", store)
     store.register_assignment(
-        lane_id="codex-oglaptop-2",
+        lane_id="codex-node-b-2",
         role="backlog-completion",
         repos=["Runner_Dashboard"],
         release_sha="release-1",
@@ -222,11 +222,11 @@ def test_checkout_role_mismatch_returns_role_unavailable(
     response = client.post(
         "/api/coordination/lane-prompts/checkout",
         json={
-            "session_id": "codex-cli-oglaptop-20261122-170757",
+            "session_id": "codex-cli-node-b-20261122-170757",
             "idempotency_key": "idem-role-4630",
-            "lane_id": "codex-oglaptop-2",
+            "lane_id": "codex-node-b-2",
             "role": "acceptance-review",
-            "host": "oglaptop",
+            "host": "node-b",
         },
         headers=_CODEX,
     )
