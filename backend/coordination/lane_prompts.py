@@ -11,6 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from coordination.default_host_aliases import DEFAULT_HOST_ALIASES
 from coordination.fleet_efficiency import enrich_lane_receipt
 
 _DEFAULT_TTL_SEC = 3600
@@ -174,9 +175,9 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
 
 
 def _load_host_aliases() -> dict[str, str]:
-    # Private host names are never baked in; supply them via host_aliases.json
-    # or RUNNER_DASHBOARD_HOST_ALIASES (e.g. {"<full-hostname>": "ct"}).
-    aliases: dict[str, str] = {}
+    # Built-in defaults live in default_host_aliases (the one allowlisted module);
+    # host_aliases.json and RUNNER_DASHBOARD_HOST_ALIASES override them.
+    aliases: dict[str, str] = dict(DEFAULT_HOST_ALIASES)
     cfg_dir = Path(
         os.environ.get(
             "RUNNER_DASHBOARD_CONFIG_DIR",

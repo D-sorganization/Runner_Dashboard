@@ -102,3 +102,48 @@ def test_seed_adds_ct_host_codex_worker_without_changing_review_seats(
         role="acceptance-review",
     )
     assert review["lane_id"] == "codex-ct-test"
+
+
+def test_default_host_alias_routes_ct_checkout_without_alias_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#4607 (3): checkout by the CT hostname works with no alias file or env."""
+    from coordination.default_host_aliases import DEFAULT_HOST_ALIASES
+    from coordination.lane_prompts import LaneConflictError, LanePromptStore
+
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(tmp_path))  # empty: no host_aliases.json
+    monkeypatch.delenv("RUNNER_DASHBOARD_HOST_ALIASES", raising=False)
+    assert not (tmp_path / "host_aliases.json").exists()
+    ct_host = next(k for k, v in DEFAULT_HOST_ALIASES.items() if v == "ct")
+    store = LanePromptStore(db_path=tmp_path / "lane_prompts.sqlite3")
+    store.seed_defaults()
+    receipt = store.checkout(
+        session_id="worker",
+        principal="agent-codex",
+        idempotency_key="default-alias",
+        provider="codex",
+        host=ct_host,
+        role="backlog-completion",
+    )
+    assert receipt["lane_id"] == "codex-ct-1"
+    with pytest.raises(LaneConflictError):
+        store.checkout(
+            session_id="wrong-host",
+            principal="agent-codex",
+            idempotency_key="wrong-host-default",
+            provider="codex",
+            host="example-other-host",
+            role="backlog-completion",
+        )
+
+
+def test_user_host_aliases_override_builtin_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from coordination.default_host_aliases import DEFAULT_HOST_ALIASES
+    from coordination.lane_prompts import _load_host_aliases
+
+    ct_host = next(iter(DEFAULT_HOST_ALIASES))
+    monkeypatch.setenv("RUNNER_DASHBOARD_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("RUNNER_DASHBOARD_HOST_ALIASES", f'{{"{ct_host}": "other", "extra-host": "ct"}}')
+    aliases = _load_host_aliases()
+    assert aliases[ct_host] == "other"
+    assert aliases["extra-host"] == "ct"
