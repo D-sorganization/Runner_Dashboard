@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 
 import pytest
+from staff.role_provider_chains import _CONFIG_PATH as PROVIDER_CHAINS_PATH
+
 from staff import role_routing_config as rrc
 from staff import schedule_placement as sp
-from staff.role_provider_chains import _CONFIG_PATH as PROVIDER_CHAINS_PATH
 
 pytestmark = pytest.mark.unit
 
@@ -103,6 +104,7 @@ def test_migrate_off_overload_host_using_policy_targets(tmp_path: Path) -> None:
             title="fleet-critic",
             schedule="0 4 * * *",
             providers=("claude",),
+            tier="complex",
         ),
     }
     source = rrc.overload_source_host()
@@ -119,6 +121,40 @@ def test_migrate_off_overload_host_using_policy_targets(tmp_path: Path) -> None:
     assert len(result.moved) == 3
     assert {host for _, host in result.moved} == {"node-a"}
     assert all(placements[r] != source for r in roles)
+
+
+def test_migrate_complex_role_prefers_worker_before_desk_fallback() -> None:
+    """Regression (#4634): tier=complex must not land on desk while workers accept the role."""
+    from staff.role_spec import RoleSpec
+
+    reg = {
+        "version": 1,
+        "machines": [
+            {"name": "node-c", "portable": True},
+            {"name": "node-a", "staff": {"roles_enabled": ["*"]}},
+            {"name": "node-b", "staff": {"roles_enabled": ["*"]}},
+            {"name": "hub-a", "staff": {"roles_enabled": ["*"]}},
+        ],
+    }
+    role = RoleSpec(
+        name="fleet-critic",
+        title="critic",
+        tier="complex",
+        schedule="0 4 * * *",
+        providers=("claude",),
+    )
+    source = rrc.overload_source_host()
+    placements = {"fleet-critic": source}
+    sp.migrate_placements_off_host(
+        source,
+        roles={"fleet-critic": role},
+        placements=placements,
+        state={"fleet-critic": {"cursor": "1"}},
+        registry=reg,
+        targets=rrc.overload_offload_migration_targets(),
+    )
+    assert placements["fleet-critic"] in {"node-a", "node-b"}
+    assert placements["fleet-critic"] != rrc.desk_fallback_host()
 
 
 def test_pm_sidekick_persona_still_documents_packaging_hold() -> None:
