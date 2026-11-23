@@ -67,7 +67,7 @@ def board_secretary_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iter
             BOARD_PROPOSAL_ROLE,
             "claude",
             None,
-            "DeskComputer",
+            "node-c",
             "Runner_Dashboard",
             "prompt",
             "",
