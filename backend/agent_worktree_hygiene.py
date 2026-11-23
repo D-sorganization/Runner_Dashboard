@@ -29,12 +29,14 @@ from worktree_ignored_policy import IGNORED_FILES_REASON, ignored_files_removal_
 
 log = logging.getLogger("dashboard.agent_worktree_hygiene")
 
+
 def _ignored_files_problem(worktree: Path) -> str:
     """``ignored_files`` when non-regenerable ignored paths exist; ``dirty`` when git fails."""
     res = _git(worktree, "status", "--porcelain", "--ignored")
     if res.returncode != 0:
         return "dirty"
     return ignored_files_removal_blocker(res.stdout)
+
 
 DEFAULT_PROTECTED_WORKTREES: tuple[str, ...] = ("pr-10507", "pr-10633")
 DEFAULT_PROTECTED_REPOS: tuple[str, ...] = ("work_private", "Tools_Private", "glass")
