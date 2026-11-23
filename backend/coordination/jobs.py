@@ -28,6 +28,7 @@ log = logging.getLogger("dashboard.coordination.jobs")
 
 MIN_LIMIT = 1
 MAX_LIMIT = 200
+CLOSING_PR_PULLS_PER_PAGE = 100
 # Job-board claiming uses the full merge-shepherd hold set (not LOW_RISK_SHEPHERD_BLOCKED_LABELS).
 HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 PRIORITY_TIERS = ("critical", "high", "medium", "low")
@@ -82,13 +83,26 @@ def _excluded(repo: str, issue: dict[str, Any], reason: str) -> dict[str, Any]:
     }
 
 
+def bounded_open_pulls_path(repo_full: str) -> str:
+    """GitHub path for one recency-sorted page of open PRs (closing-evidence lookup).
+
+    Pre: ``repo_full`` is ``owner/name``.
+    Post: path requests at most ``CLOSING_PR_PULLS_PER_PAGE`` open PRs, newest-updated first.
+    """
+    if repo_full.count("/") != 1:
+        raise ValueError("repo_full must be owner/name")
+    return (
+        f"/repos/{repo_full}/pulls?state=open&sort=updated&direction=desc"
+        f"&per_page={CLOSING_PR_PULLS_PER_PAGE}"
+    )
+
+
 def _closing_pr(repo_full: str, issue_number: int, pulls_by_repo: dict[str, list[Any]]) -> dict[str, Any] | None:
-    """An open PR closing ``issue_number``; one pulls fetch per repo."""
+    """An open PR closing ``issue_number``; one bounded pulls fetch per repo (#4622)."""
     pulls = pulls_by_repo.get(repo_full)
     if pulls is None:
-        raw = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=open")
-        candidates = raw if isinstance(raw, list) else []
-        pulls = candidates
+        raw = gh_cli.gh_api_json(bounded_open_pulls_path(repo_full))
+        pulls = raw if isinstance(raw, list) else []
         pulls_by_repo[repo_full] = pulls
     return closing_pr_for(pulls, issue_number)
 
