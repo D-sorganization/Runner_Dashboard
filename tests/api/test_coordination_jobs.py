@@ -434,6 +434,7 @@ def test_jobs_excludes_issue_when_closing_pr_is_beyond_first_open_page(
             return {
                 "items": [{"number": 500, "title": "land", "body": "Closes #42", "state": "open"}],
                 "total_count": 1,
+                "incomplete_results": False,
             }
         return []
 

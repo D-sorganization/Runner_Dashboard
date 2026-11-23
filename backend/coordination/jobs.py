@@ -96,22 +96,38 @@ def bounded_open_pulls_path(repo_full: str) -> str:
 
 
 def closing_pr_search_path(repo_full: str, issue_number: int) -> str:
-    """One GitHub search request for open PRs whose body references ``#{issue_number}``.
+    """One GitHub search request for open PRs whose title/body references ``#{issue_number}``.
 
     Pre: ``repo_full`` is ``owner/name``; ``issue_number`` is positive.
     Post: returns a ``/search/issues`` path with ``per_page`` capped at 10.
     """
     if repo_full.count("/") != 1 or int(issue_number) <= 0:
         raise ValueError("closing_pr_search_path needs owner/name and a positive issue number")
-    query = quote(f'repo:{repo_full} is:pr is:open "#{issue_number}" in:body', safe="")
+    query = quote(f'repo:{repo_full} is:pr is:open "#{issue_number}" in:title,body', safe="")
     return f"/search/issues?q={query}&per_page=10"
 
 
 def _search_open_closing_pr(repo_full: str, issue_number: int) -> dict[str, Any] | None:
-    """Targeted closing evidence when the recency page of open pulls is truncated (#4627)."""
+    """Return closing evidence; only a complete, fully examined search proves absence.
+
+    Inconclusive evidence raises so ``list_jobs`` excludes the issue and marks
+    completeness false. Never paginate searches to resolve uncertainty.
+    """
     raw = gh_cli.gh_api_json(closing_pr_search_path(repo_full, issue_number))
-    items = raw.get("items") if isinstance(raw, dict) else []
-    return closing_pr_for(items if isinstance(items, list) else [], issue_number)
+    if not isinstance(raw, dict) or raw.get("incomplete_results") is not False:
+        raise ValueError("closing PR search is incomplete or malformed")
+    items = raw.get("items")
+    total = raw.get("total_count")
+    if not isinstance(items, list) or type(total) is not int or total < 0 or total != len(items):
+        raise ValueError("closing PR search has malformed or unexamined matches")
+    if any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("title"), str)
+        or (item.get("body") is not None and not isinstance(item["body"], str))
+        for item in items
+    ):
+        raise ValueError("closing PR search returned malformed matches")
+    return closing_pr_for(items, issue_number)
 
 
 def _open_pulls_page(
