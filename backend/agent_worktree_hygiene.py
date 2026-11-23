@@ -25,8 +25,18 @@ from typing import Any, cast
 
 from agent_active_workdirs import active_staff_workdirs
 from staff.repo_roots import repos_roots
+from worktree_ignored_policy import IGNORED_FILES_REASON, ignored_files_removal_blocker
 
 log = logging.getLogger("dashboard.agent_worktree_hygiene")
+
+
+def _ignored_files_problem(worktree: Path) -> str:
+    """``ignored_files`` when non-regenerable ignored paths exist; ``dirty`` when git fails."""
+    res = _git(worktree, "status", "--porcelain", "--ignored")
+    if res.returncode != 0:
+        return "dirty"
+    return ignored_files_removal_blocker(res.stdout)
+
 
 DEFAULT_PROTECTED_WORKTREES: tuple[str, ...] = ("pr-10507", "pr-10633")
 DEFAULT_PROTECTED_REPOS: tuple[str, ...] = ("work_private", "Tools_Private", "glass")
@@ -137,6 +147,9 @@ def _submodule_problem(worktree: Path) -> str:
             return "submodule_unreadable"
         if status.stdout.strip():
             return "submodule_dirty"
+        ign = _ignored_files_problem(sub)
+        if ign == IGNORED_FILES_REASON:
+            return ign
         unpushed = _git(sub, "rev-list", "--count", "HEAD", "--all", "--not", "--remotes")
         if unpushed.returncode != 0:
             return "submodule_unreadable"
@@ -154,6 +167,9 @@ def _forced_removal_problem(worktree: Path) -> str:
     ``_worktree_clean`` tolerates untracked agent notes because a plain ``git worktree remove``
     refuses a tree that still has them. A forced removal deletes them, so here any entry blocks.
     """
+    ign = _ignored_files_problem(worktree)
+    if ign:
+        return ign
     status = _git(worktree, "status", "--porcelain")
     if status.returncode != 0:
         return "dirty"
@@ -244,6 +260,9 @@ def worktree_entry_is_eligible(
     session_reason = _active_session_reason(wt.path, workdirs)
     if session_reason:
         return False, session_reason
+    ignored = _ignored_files_problem(wt.path)
+    if ignored:
+        return False, ignored
     if not _worktree_clean(wt.path):
         return False, "dirty"
     problem = _submodule_problem(wt.path)

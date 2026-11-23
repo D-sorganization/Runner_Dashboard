@@ -454,7 +454,7 @@ def register_standard_actions(registry: ActionRegistry) -> None:
                 "the seats also get every open board:proposal item and answer per proposal."
             ),
             params_schema={"question": "string?", "title": "string?", "include_queue": "boolean?"},
-            required_scope="staff.chat",
+            required_scope="board.convene",
             risk_class=ActionRiskClass.MEDIUM,
             executor=execute_board_convene,
         ),

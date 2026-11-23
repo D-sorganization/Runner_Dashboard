@@ -38,7 +38,7 @@ class TestBusyViaLockfile:
         (tmp_path / "runner-1.lock").write_text(f"pid={_os.getpid()}\n")
         assert busy._runner_busy_via_lockfile(UNIT) is True
 
-    def test_stale_lockfile_returns_false(
+    def test_old_legacy_lockfile_remains_busy(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,  # type: ignore[name-defined]
@@ -51,7 +51,7 @@ class TestBusyViaLockfile:
         lock.write_text("pid=1\n")
         old = time.time() - 3600
         _os.utime(lock, (old, old))
-        assert busy._runner_busy_via_lockfile(UNIT) is False
+        assert busy._runner_busy_via_lockfile(UNIT) is True
 
     # worker_pid staleness cases live in tests/test_runner_busy_lock.py (#1987).
 

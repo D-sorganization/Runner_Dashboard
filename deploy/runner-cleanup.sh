@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Brick is an explicit fleet hold; exit before creating logs, locks, or metrics.
+node_name="$(hostname -s 2>/dev/null || hostname)"
+if [[ "${node_name,,}" == "brick" ]]; then
+    printf '%s\n' "runner cleanup is disabled on Brick" >&2
+    exit 2
+fi
+
 RUNNER_ROOT="${RUNNER_ROOT:-$HOME/actions-runners}"
 # RUNNER_ROOTS lets a single host serve runners from multiple parent
 # directories (e.g. one set under HDD storage, another set under NVMe).
@@ -324,22 +331,20 @@ lock_worker_pid_stale() {
     [[ -d "$PROC_ROOT" ]] || return 1
     [[ -d "$PROC_ROOT/$wpid" ]] || return 0
     cmdline=$(tr '\0' ' ' 2>/dev/null < "$PROC_ROOT/$wpid/cmdline" || true)
-    [[ "$cmdline" == *Runner.Worker* ]] && return 1
-    return 0
+    [[ "$cmdline" == *Runner.Worker* ]] || return 0
+    local expected_boot actual_boot expected_start actual_start
+    expected_boot=$(awk -F= '$1=="boot_id"{print $2; exit}' "$lock")
+    actual_boot=$(cat "$PROC_ROOT/sys/kernel/random/boot_id" 2>/dev/null || true)
+    [[ -n "$expected_boot" && -n "$actual_boot" && "$expected_boot" != "$actual_boot" ]] && return 0
+    expected_start=$(awk -F= '$1=="worker_starttime"{print $2; exit}' "$lock")
+    actual_start=$(sed 's/^.*) //' "$PROC_ROOT/$wpid/stat" 2>/dev/null | awk '{print $20}' || true)
+    [[ "$expected_start" =~ ^[0-9]+$ && "$actual_start" =~ ^[0-9]+$ && "$expected_start" != "$actual_start" ]] && return 0
+    return 1
 }
 
 runner_busy_via_lockfile() {
-    # Issue #651 defense-in-depth signal mirroring backend/runner_autoscaler.py's
-    # _runner_busy_via_lockfile. The runner's JOB_STARTED hook writes
-    # ${RUNNER_BUSY_LOCK_DIR}/<runner-name>.lock; we treat a fresh lockfile
-    # as "busy". Stale ones (older than RUNNER_BUSY_LOCK_MAX_AGE_SECONDS)
-    # are ignored AND garbage-collected here so a Worker killed mid-job
-    # doesn't permanently lock its runner out of cleanup.
-    #
-    # NOTE (#640): the argument is the *registered runner name* (e.g.
-    # d-sorg-local-ControlTower-nvme-4), not the workdir basename (runner-4).
-    # The hook writes ${RUNNER_NAME}.lock, so keying on the workdir basename
-    # never matched and this signal was silently dead.
+    # A lock remains protective regardless of age. Only proven worker death or
+    # identity mismatch permits removal; age is an investigation signal.
     local runner_name="$1"
     local lock now mtime age
     lock="${RUNNER_BUSY_LOCK_DIR}/${runner_name}.lock"
@@ -348,15 +353,13 @@ runner_busy_via_lockfile() {
     mtime=$(stat -c %Y "$lock" 2>/dev/null || echo 0)
     age=$(( now - mtime ))
     if (( age > RUNNER_BUSY_LOCK_MAX_AGE_SECONDS )); then
-        log "stale runner-busy lockfile (age=${age}s) — removing $lock"
-        run rm -f "$lock"
-        return 1
+        log "old runner-busy lockfile (age=${age}s) requires investigation: $lock"
     fi
 
     # Issue #1987: a lock is stale-by-pid ONLY when the hook recorded the
     # Runner.Worker pid (worker_pid=) and that pid is dead or reused. The
     # legacy pid= is the short-lived hook shell -- dead for the entire job --
-    # so locks without worker_pid fall back to the age rule above only.
+    # so locks without worker_pid remain protective.
     if lock_worker_pid_stale "$lock"; then
         log "stale runner-busy lockfile (worker_pid dead or not a Runner.Worker) — removing $lock"
         run rm -f "$lock"
@@ -422,6 +425,8 @@ cleanup_runner_workdir() {
         ! -name '_tool' \
         ! -name '_tmp' \
         ! -name '_pip-cache' \
+        ! -name '_uv-cache' \
+        ! -name '_conda-pkgs' \
         -mtime +"$RUNNER_WORK_DAYS" \
         -print0 | while IFS= read -r -d '' path; do
             delete_path "$path"
@@ -938,18 +943,21 @@ main() {
     used="$(root_used_percent)"
     log "runner cleanup starting root_used=${used}% root_size=$(bytes_human "$before") dry_run=$DRY_RUN"
     if [[ "$AGGRESSIVE_ON_PRESSURE" == "1" && "$used" -ge "$DISK_PRESSURE_PERCENT" ]]; then
-        log "disk pressure detected (${used}% >= ${DISK_PRESSURE_PERCENT}%); pruning docker aggressively and lowering retention windows"
+        log "disk pressure detected (${used}% >= ${DISK_PRESSURE_PERCENT}%); lowering retention windows"
         RUNNER_WORK_DAYS=0
         RUNNER_TEMP_DAYS=0
         TOOL_CACHE_DAYS=7
-        DOCKER_AGGRESSIVE=1
+        if [[ "$DISK_GUARD" != "1" ]]; then
+            DOCKER_AGGRESSIVE=1
+        fi
     fi
     cleanup_stale_busy_locks
     if [[ "$DISK_GUARD" == "1" ]]; then
         # Runner-safe fast pass: reclaim docker + journal + trim only. Never
         # touches runner units, so it can run on a frequent timer without
-        # bouncing idle runners every pass. Goes aggressive on docker when the
-        # pressure block above fired.
+        # bouncing idle runners every pass. Never inherit aggressive Docker
+        # pruning in this unattended guard, even under disk pressure.
+        DOCKER_AGGRESSIVE=0
         log "disk-guard mode: docker + tmp + gitconfig + journal + fstrim only (no runner bounce)"
         cleanup_docker
         cleanup_tmp

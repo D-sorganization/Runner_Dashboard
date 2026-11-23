@@ -97,3 +97,63 @@ def test_busy_runner_not_stopped_on_scale_down(monkeypatch, tmp_path: Path) -> N
     stops = [a for a in actions if a["action"] == "stop"]
     assert len(stops) == 1
     assert stops[0]["runner"] == 2
+
+
+def test_latched_disk_guard_revokes_persisted_override(tmp_path: Path, monkeypatch) -> None:
+    rs = _load_scheduler()
+    override = tmp_path / "target-override.json"
+    monkeypatch.setattr(rs.target_contract, "TARGET_OVERRIDE_PATH", override)
+    monkeypatch.setattr(rs, "DISK_FLOOR_LATCH_PATH", tmp_path / "disk-floor.json")
+    monkeypatch.setattr(rs, "disk_free_gb", lambda _path: 30.0)
+    monkeypatch.setattr(rs, "maintenance_active", lambda: False)
+    now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+    monkeypatch.setenv("RUNNER_SCHEDULER_NOW", now.isoformat())
+    rs.target_contract.write_target_override(
+        runners=4,
+        reason="test",
+        actor="test",
+        before=2,
+        until=(now + timedelta(hours=2)).isoformat(),
+        path=override,
+        created_at=now,
+    )
+    config = {
+        "enabled": True,
+        "default_count": 2,
+        "max_count": 6,
+        "schedules": [],
+        "resource_floor": {"min_disk_free_gb": 40, "readmit_disk_free_gb": 45, "runners": 1},
+    }
+    assert rs.effective_capacity(config, None)[0] == 1
+    assert not override.exists()
+    monkeypatch.setattr(rs, "disk_free_gb", lambda _path: 50.0)
+    assert rs.effective_capacity(config, None)[0] == 2
+
+
+def test_preview_keeps_target_override_when_guard_latches(tmp_path: Path, monkeypatch) -> None:
+    rs = _load_scheduler()
+    override = tmp_path / "target-override.json"
+    monkeypatch.setattr(rs.target_contract, "TARGET_OVERRIDE_PATH", override)
+    monkeypatch.setattr(rs, "DISK_FLOOR_LATCH_PATH", tmp_path / "disk-floor.json")
+    monkeypatch.setattr(rs, "disk_free_gb", lambda _path: 30.0)
+    monkeypatch.setattr(rs, "maintenance_active", lambda: False)
+    now = datetime(2026, 11, 10, 12, 0, tzinfo=UTC)
+    monkeypatch.setenv("RUNNER_SCHEDULER_NOW", now.isoformat())
+    rs.target_contract.write_target_override(
+        runners=4,
+        reason="test",
+        actor="test",
+        before=2,
+        until=(now + timedelta(hours=2)).isoformat(),
+        path=override,
+        created_at=now,
+    )
+    config = {
+        "enabled": True,
+        "default_count": 2,
+        "max_count": 6,
+        "schedules": [],
+        "resource_floor": {"min_disk_free_gb": 40, "readmit_disk_free_gb": 45, "runners": 1},
+    }
+    assert rs.effective_capacity(config, None, revoke_override=False)[0] == 1
+    assert override.exists()

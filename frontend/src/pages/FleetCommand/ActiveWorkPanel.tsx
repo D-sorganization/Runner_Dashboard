@@ -87,9 +87,9 @@ export function ActiveWorkPanel({ onMessage }: ActiveWorkPanelProps) {
             {conflictCount} in conflict
           </Badge>
         ) : null}
-        {res.data?.complete === false ? (
+        {res.data?.complete === false || res.data?.staff_complete === false ? (
           <Badge tone="warning" size="sm">
-            partial board read
+            {res.data?.complete === false ? "partial board read" : "partial staff read"}
           </Badge>
         ) : null}
       </div>

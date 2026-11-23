@@ -78,9 +78,8 @@ def _runner_busy_via_lockfile(unit: str) -> bool:
     Issue #651 defense-in-depth signal. The Runner.Worker child of MainPID is
     the primary busy signal but races with job pickup; see
     ``deploy/runner-hooks/job-started.sh`` for the contract. A lockfile older
-    than ``RUNNER_BUSY_LOCK_MAX_AGE_SECONDS`` is treated as stale (Worker died
-    mid-job without firing the completion hook) and the runner is NOT
-    considered busy on its account — the cleanup pass will GC it.
+    than ``RUNNER_BUSY_LOCK_MAX_AGE_SECONDS`` raises an alert; age alone
+    cannot prove the runner is idle.
     """
     runner_name = _runner_name_for_unit(unit)
     lock_dir = Path(_public_attr("RUNNER_BUSY_LOCK_DIR", RUNNER_BUSY_LOCK_DIR, _DEFAULT_RUNNER_BUSY_LOCK_DIR))
@@ -102,12 +101,11 @@ def _runner_busy_via_lockfile(unit: str) -> bool:
     )
     if age > lock_max_age:
         log.info(
-            "stale lockfile (age=%.0fs > max=%ds) — not treating as busy unit=%s",
+            "old lockfile (age=%.0fs > max=%ds) requires investigation unit=%s",
             age,
             lock_max_age,
             unit,
         )
-        return False
 
     # Issue #1987: the lock stops counting only when the hook-recorded
     # Runner.Worker pid (worker_pid=) is dead or reused. The legacy pid= is

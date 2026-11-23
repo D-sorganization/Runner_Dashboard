@@ -40,6 +40,12 @@ fi
 if [ -n "${PIP_CACHE_DIR:-}" ]; then
     mkdir -m 0755 -p "$PIP_CACHE_DIR" 2>/dev/null || mkdir -p "$PIP_CACHE_DIR" 2>/dev/null || true
 fi
+if [ -n "${UV_CACHE_DIR:-}" ]; then
+    mkdir -m 0755 -p "$UV_CACHE_DIR" 2>/dev/null || mkdir -p "$UV_CACHE_DIR" 2>/dev/null || true
+fi
+if [ -n "${CONDA_PKGS_DIRS:-}" ]; then
+    mkdir -m 0755 -p "$CONDA_PKGS_DIRS" 2>/dev/null || mkdir -p "$CONDA_PKGS_DIRS" 2>/dev/null || true
+fi
 
 # -- Stale-git-lock cleanup (Runner_Dashboard#640) ---------------------------
 # Before this job's actions/checkout runs, scrub leftover lock files from a
@@ -605,6 +611,10 @@ WORKER_PID="$(_find_worker_pid "${PPID:-0}" || true)"
     printf 'pid=%s\n' "$$"
     if [ -n "$WORKER_PID" ]; then
         printf 'worker_pid=%s\n' "$WORKER_PID"
+        boot_id=$(cat "${PROC_ROOT:-/proc}/sys/kernel/random/boot_id" 2>/dev/null || true)
+        worker_starttime=$(sed 's/^.*) //' "${PROC_ROOT:-/proc}/$WORKER_PID/stat" 2>/dev/null | awk '{print $20}' || true)
+        [[ -n "$boot_id" ]] && printf 'boot_id=%s\n' "$boot_id"
+        [[ "$worker_starttime" =~ ^[0-9]+$ ]] && printf 'worker_starttime=%s\n' "$worker_starttime"
     fi
     printf 'runner=%s\n' "$RUNNER_NAME"
     printf 'job=%s\n' "${GITHUB_JOB:-unknown}"

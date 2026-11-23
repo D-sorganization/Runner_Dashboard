@@ -205,6 +205,9 @@ def _paginate_pages(
             st["replay_w"].extend(w for w in _last_predecessor_warnings if w not in st["replay_w"])
         for c in batch:
             if isinstance(c, dict):
+                if re.fullmatch(r"\s*<!--\s*agent-message\s+v1\s*-->\s*", str(c.get("body") or "")):
+                    st["replay_w"].append(f"Skipped marker-only coordination comment {c.get('id', 'unknown')}")
+                    continue
                 env, author, err = _parse_comment_envelope(c)
                 if err:
                     st["read_w"].append(err)

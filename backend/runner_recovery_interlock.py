@@ -16,7 +16,7 @@ def should_defer_runner_stop(lock_text: str, *, proc_root: Path | None = None) -
     """Return True when a stop must be deferred because a job is in flight.
 
     A lock without ``worker_pid`` is treated as busy (legacy hooks): defer until
-    age-based cleanup clears it. A lock with a live ``worker_pid`` defers; only
+    an operator resolves it. A lock with a live ``worker_pid`` defers; only
     stale locks allow stop.
     """
     if not lock_text.strip():
