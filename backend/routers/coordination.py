@@ -39,6 +39,7 @@ from coordination import jobs as jobs_mod
 from coordination import lane_prompts as lane_prompts_mod
 from coordination import postman_runner, service
 from coordination import provider_down_markers as provider_markers_mod
+from coordination import provider_marker_restore as provider_marker_restore_mod
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
@@ -66,6 +67,7 @@ from fastapi.concurrency import run_in_threadpool
 from identity import require_fleet_peer
 from pydantic import BaseModel, Field
 from routers.repo_query import bare_repo_query as _repo
+from staff.barb_runtime import local_node_name
 
 log = logging.getLogger("dashboard.coordination")
 router = APIRouter(prefix="/api/coordination", tags=["coordination"])
@@ -389,3 +391,22 @@ async def delete_provider_marker(
         raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
     log.info("coordination: provider marker cleared by %s for %r (%s)", caller.label, provider, kind)
     return {"removed": removed}
+
+
+@router.post("/provider-markers/restore")
+async def post_provider_marker_restore(caller: Caller = WRITER) -> dict[str, Any]:
+    """Run one maintenance tick (expired + recovered clears) and emit audit metadata."""
+    node = local_node_name()
+
+    def _run() -> dict[str, Any]:
+        return provider_marker_restore_mod.run_provider_marker_restore_tick(
+            audit=lambda body: provider_marker_restore_mod.emit_restore_audit(body, node=node),
+        )
+
+    payload = await run_in_threadpool(_run)
+    log.info(
+        "coordination: provider marker restore by %s cleared=%s",
+        caller.label,
+        payload.get("cleared_total"),
+    )
+    return payload

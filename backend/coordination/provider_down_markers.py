@@ -8,6 +8,7 @@ import math
 import os
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -194,6 +195,31 @@ def clear_marker(provider: str, kind: str | None = None) -> int:
     if len(kept) != before:
         _persist(kept)
     return before - len(kept)
+
+
+def restore_prune_markers(
+    *,
+    now: float,
+    provider_recovered: Callable[[str], bool],
+) -> tuple[bool, list[dict[str, Any]], list[dict[str, Any]], int]:
+    """Drop expired markers and those whose provider has recovered (maintenance tick)."""
+    markers, store_ok = _load_raw()
+    if not store_ok:
+        return False, [], [], 0
+    cleared_expired: list[dict[str, Any]] = []
+    cleared_recovered: list[dict[str, Any]] = []
+    kept: list[ProviderMarker] = []
+    for marker in markers:
+        if marker.until <= now:
+            cleared_expired.append({**marker.to_dict(), "reason": "expired"})
+            continue
+        if provider_recovered(marker.provider):
+            cleared_recovered.append({**marker.to_dict(), "reason": "recovered"})
+            continue
+        kept.append(marker)
+    if cleared_expired or cleared_recovered:
+        _persist(kept)
+    return store_ok, cleared_expired, cleared_recovered, len(kept)
 
 
 def resolve_lane_provider_with_failover(want_provider: str | None, *, now: float | None = None) -> str | None:

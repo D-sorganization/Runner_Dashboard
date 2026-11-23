@@ -14679,6 +14679,33 @@
         "tags": ["coordination"]
       }
     },
+    "/api/coordination/provider-markers/restore": {
+      "post": {
+        "description": "Run one maintenance tick (expired + recovered clears) and emit audit metadata.",
+        "operationId": "post_provider_marker_restore_api_coordination_provider_markers_restore_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Provider Marker Restore Api Coordination Provider Markers Restore Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Provider Marker Restore",
+        "tags": ["coordination"]
+      }
+    },
     "/api/coordination/provider-markers/{provider}": {
       "delete": {
         "operationId": "delete_provider_marker_api_coordination_provider_markers__provider__delete",
