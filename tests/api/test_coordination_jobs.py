@@ -419,6 +419,32 @@ def test_jobs_heartbeat_extends_ttl(rm: FakeRM, client: TestClient, monkeypatch:
 
 
 @pytest.mark.unit
+@pytest.mark.unit
+def test_jobs_excludes_issue_when_closing_pr_is_beyond_first_open_page(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#4627: a full open-pull page triggers search so older closing PRs still exclude the issue."""
+
+    def fetch(path: str) -> Any:
+        if f"/repos/{TOOLS}/issues?state=open" in path:
+            return [_issue(42)]
+        if path == jobs_mod.bounded_open_pulls_path(TOOLS):
+            return [{"number": i, "title": "x", "body": "", "state": "open"} for i in range(1, 101)]
+        if path.startswith("/search/issues?"):
+            return {
+                "items": [{"number": 500, "title": "land", "body": "Closes #42", "state": "open"}],
+                "total_count": 1,
+            }
+        return []
+
+    patch_gh_list_fetch(monkeypatch, fetch)
+    rm.respond("check_agent_claim", claim_status(False))
+    body = client.get("/api/coordination/jobs?repo=Tools&include_excluded=true").json()
+    assert body["jobs"] == []
+    assert any(e["issue"] == 42 and e["reason"] == "open PR #500 already closes it" for e in body["excluded"])
+    assert any("capped at 100" in w for w in body["warnings"])
+
+
 def test_closing_pr_fetches_open_pulls_once_per_repo(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
     pulls = [_pr(50, closes=12)]
