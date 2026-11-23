@@ -192,3 +192,91 @@ def test_maybe_finalize_posts_independent_pass_when_failed_after_staff_result() 
     assert publish.call_args.kwargs["head_sha"] == HEAD
     assert status == "failed"
     assert failure_class == "environment_error"
+
+
+# --- Negative cases (RD #4644): only a STAFF_RESULT contract line may survive a failed run.
+
+ORDINARY_FAILURE = "API Error: 529 overloaded; reviewer aborted before completing the review"
+
+
+@pytest.mark.parametrize(
+    "events",
+    [
+        # Crashed mid-review: partial prose, no contract line, non-hook error.
+        [
+            {"kind": "assistant", "text": "Reading diff… foo.py looks fine so far, leaning approve."},
+            {"kind": "error", "text": ORDINARY_FAILURE},
+        ],
+        # Verdict-looking prose without the STAFF_RESULT: prefix is not a contract line.
+        [{"kind": "result", "text": f"review approve #{_PR} @{HEAD[:7]}\nLGTM"}],
+        # No events at all (killed before any output).
+        [],
+    ],
+)
+def test_extract_outcome_ordinary_failure_yields_no_verdict(events: list[dict[str, Any]]) -> None:
+    out = extract_outcome("failed", "", events)
+    assert out.kind == "failed_no_verdict"
+    assert out.verdict == ""
+    assert out.recovered is False
+
+
+@pytest.mark.parametrize("status", ["cancelled", "timed_out", "interrupted"])
+def test_extract_outcome_partial_non_failed_status_never_recovers(status: str) -> None:
+    """Event-text recovery is reserved for ``failed``; other terminal states need the outcome field."""
+    out = extract_outcome(status, "", [{"kind": "result", "text": _review_body()}])
+    assert out.kind == "no_verdict"
+    assert out.verdict == ""
+
+
+@pytest.mark.parametrize(
+    "out",
+    [
+        extract_outcome("failed", "", [{"kind": "error", "text": ORDINARY_FAILURE}]),
+        extract_outcome("cancelled", "", [{"kind": "result", "text": _review_body()}]),
+    ],
+    ids=["failed_no_staff_result", "cancelled_partial"],
+)
+def test_processor_ordinary_failed_or_partial_run_cannot_arm(ledger: Ledger, out: RunOutcome) -> None:
+    ledger.record_dispatch(REPO, _PR, HEAD, run_id="run-ordinary", round_no=1, provider="claude")
+    port = FakePort(outcomes={"run-ordinary": out})
+    proc = VerdictProcessor(ledger, port, dry_run=False)
+    result = proc.process(proc.pending()[0])
+    assert result is not None
+    assert result.decision.action == "requeue"
+    assert result.verdict == ""
+    assert port.armed == []
+    assert port.posted == []
+    assert ledger.pending_dispatches() == []
+
+
+def test_maybe_finalize_ordinary_failure_without_staff_result_publishes_nothing() -> None:
+    class Store:
+        def append_event(self, *_a: Any) -> None:
+            raise AssertionError("no verdict event may be recorded without STAFF_RESULT")
+
+    with (
+        patch("staff.independent_exact_head_verdict.fetch_pull_head_sha", return_value=HEAD) as head,
+        patch("staff.staff_github_pr_review.ensure_runner_dashboard_formal_approve") as approve,
+        patch("staff.independent_exact_head_verdict.publish_independent_exact_head_verdict") as publish,
+    ):
+        status, failure_class, *_ = maybe_finalize_code_reviewer_run(
+            role="code-reviewer",
+            rc=1,
+            store=Store(),
+            run_id="run-ordinary",
+            status="failed",
+            failure_class="provider_error",
+            retryable=True,
+            error=ORDINARY_FAILURE,
+            remediation="retry",
+            result_line="",
+            same_provider=False,
+            repo=REPO,
+            reviewer_model="gpt-test",
+            expected_pr_number=_PR,
+        )
+    approve.assert_not_called()
+    publish.assert_not_called()
+    head.assert_not_called()
+    assert status == "failed"
+    assert failure_class == "provider_error"
