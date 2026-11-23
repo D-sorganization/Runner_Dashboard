@@ -26,6 +26,7 @@ from staff.worktree_links import (
 )
 
 from staff import cli_projects
+from worktree_ignored_policy import ignored_files_removal_blocker
 
 log = logging.getLogger("dashboard.staff.worktree_hygiene")
 
@@ -153,6 +154,14 @@ def _safe_force_untracked_allow_prefixes(worktree: Path) -> frozenset[str]:
     allow = {".staff", ".gemini", ".venv"}
     allow.update(_gitmodules_submodule_paths(worktree))
     return frozenset(allow)
+
+
+def _ignored_files_block_reason(worktree: Path) -> str:
+    """Non-empty when non-regenerable ignored files would be destroyed by removal (#4540)."""
+    res = _git_in_worktree(worktree, "status", "--porcelain", "--ignored")
+    if res.returncode != 0:
+        return "ignored_unreadable"
+    return ignored_files_removal_blocker(res.stdout)
 
 
 def _untracked_paths_for_safe_force_scan(worktree: Path) -> list[str]:
@@ -643,6 +652,10 @@ def _cleanup_finished_worktree(store: Any, rec_id: str, workdir: Path, repo: str
             return False
         if workspace.worktree_has_unpushed_commits(workdir):
             store.append_event(rec_id, "worktree", f"unpushed worktree preserved at {workdir}")
+            return False
+        ignored_reason = _ignored_files_block_reason(workdir)
+        if ignored_reason:
+            store.append_event(rec_id, "worktree", f"{ignored_reason} preserved at {workdir}")
             return False
         if _has_links(workdir / ".staff"):
             return False
