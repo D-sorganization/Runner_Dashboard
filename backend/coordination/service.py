@@ -42,7 +42,7 @@ from staff.rm_sync import stale_source_warning
 
 __all__ = ["ImpersonationError", "MissingAgentError", "NotRegisteredError", "UnknownAgentError"]
 
-SESSION_RESPONSE_DEADLINE_SECONDS = 5.0
+SESSION_RESPONSE_DEADLINE_SECONDS = 15.0
 _SESSION_READ_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="coord-sessions")
 _SESSION_READ_LOCK = threading.Lock()
 _SESSION_READS: dict[str, concurrent.futures.Future[Any]] = {}
