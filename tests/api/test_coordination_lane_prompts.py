@@ -201,6 +201,42 @@ def test_heartbeat_stale_fence_fails_and_expiry_allows_reclaim(tmp_path: Path) -
     assert rel["status"] == "released"
 
 
+def test_checkout_role_mismatch_returns_role_unavailable(
+    lane_rm: FakeRM, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from coordination import lane_prompts
+    from server import app  # noqa: PLC0415
+
+    store = lane_prompts.LanePromptStore(db_path=tmp_path / "role-4630.sqlite3")
+    monkeypatch.setattr(lane_prompts, "_default_store", store)
+    store.register_assignment(
+        lane_id="codex-oglaptop-2",
+        role="backlog-completion",
+        repos=["Runner_Dashboard"],
+        release_sha="release-1",
+        package_hash="hash-1",
+        subagent_model="gpt-6-luna",
+        max_children=1,
+    )
+    client = TestClient(app, raise_server_exceptions=False, client=("100.64.0.9", 51000))
+    response = client.post(
+        "/api/coordination/lane-prompts/checkout",
+        json={
+            "session_id": "codex-cli-oglaptop-20261122-170757",
+            "idempotency_key": "idem-role-4630",
+            "lane_id": "codex-oglaptop-2",
+            "role": "acceptance-review",
+            "host": "oglaptop",
+        },
+        headers=_CODEX,
+    )
+    assert response.status_code == 409, response.text
+    detail = response.json()["detail"]
+    assert detail["role_unavailable"] is True
+    assert detail["requested_role"] == "acceptance-review"
+    assert detail["assigned_role"] == "backlog-completion"
+
+
 def test_checkout_rejects_a_session_outside_the_bot_namespace(
     lane_api: tuple[TestClient, Any],
 ) -> None:
