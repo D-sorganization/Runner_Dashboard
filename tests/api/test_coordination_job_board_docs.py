@@ -12,7 +12,7 @@ from routers import coordination as coordination_router
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _COORD_DOC = _REPO_ROOT / "docs" / "coordination-api.md"
-_DOC_ROUTE = re.compile(r"^### `(GET|POST) (/api/coordination/[^`]+)`", re.MULTILINE)
+_DOC_ROUTE = re.compile(r"^### `(GET|POST|DELETE) (/api/coordination/[^`]+)`", re.MULTILINE)
 
 
 def _coordination_router_paths() -> set[str]:
