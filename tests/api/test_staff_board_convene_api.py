@@ -50,6 +50,7 @@ def clean_conversations(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
 
     app.dependency_overrides[require_principal] = lambda: TEST_OPERATOR
     app.dependency_overrides[require_scope("staff.chat")] = lambda: TEST_OPERATOR
+    app.dependency_overrides[require_scope("board.convene")] = lambda: TEST_OPERATOR
     app.dependency_overrides[require_scope("staff.read")] = lambda: TEST_OPERATOR
     app.dependency_overrides[require_scope("staff.dispatch")] = lambda: TEST_OPERATOR
     app.dependency_overrides[require_scope("staff.approve")] = lambda: TEST_OPERATOR

@@ -17,6 +17,7 @@ from collections.abc import Iterable
 from typing import Any, Final
 
 from identity import SCOPE_PRESETS, Principal, identity_manager
+from staff.run_token_scopes import extra_run_scopes_for_role
 
 log = logging.getLogger("dashboard.staff.tokens")
 
@@ -90,7 +91,11 @@ def mint_run_token(
     if ttl_seconds <= 0:
         raise ValueError("ttl_seconds must be positive")
 
-    scope_set = set(resolve_run_scopes(fleet_actions)) | {"staff.github_credential", "staff.relay.write"}
+    scope_set = (
+        set(resolve_run_scopes(fleet_actions))
+        | set(extra_run_scopes_for_role(role))
+        | {"staff.github_credential", "staff.relay.write"}
+    )
     if library_read is True:
         scope_set.add("library.read")
     scopes = sorted(scope_set)
