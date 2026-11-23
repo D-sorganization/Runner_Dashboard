@@ -62,7 +62,7 @@ def test_checkout_skips_multiple_down_providers(tmp_path: Path, monkeypatch: pyt
     pdm.set_marker("claude", "provider_down", until=now + 120, now=now)
     store = _store(tmp_path)
     store.register_assignment(
-            lane_id="claude-worker-1",
+        lane_id="claude-worker-1",
         role="worker",
         repos=["Runner_Dashboard"],
         release_sha="sha",

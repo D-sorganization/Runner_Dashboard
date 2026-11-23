@@ -19,6 +19,7 @@ if str(BACKEND_DIR) not in sys.path:
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 _CODEX = {"Authorization": "Bearer codex-token", **_XHR}
 
+
 @pytest.fixture
 def marker_rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeRM:
     principals = {

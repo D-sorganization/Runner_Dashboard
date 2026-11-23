@@ -650,9 +650,7 @@ class LanePromptStore:
                     want_host,
                 )
                 filtered = [
-                    cand
-                    for cand in candidates
-                    if _is_lane_compatible(cand, effective_want_provider, want_host)
+                    cand for cand in candidates if _is_lane_compatible(cand, effective_want_provider, want_host)
                 ]
                 if provider_down:
                     filtered = [
