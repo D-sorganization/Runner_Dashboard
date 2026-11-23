@@ -1,12 +1,13 @@
-"""Claim lifecycle characterization for #4270 (Wave 1.9 PR 1).
+"""Claim lifecycle characterization for #4270 slice 1 (B-24 + finding pins).
 
-Pins today's claim/lease/fence behavior across coordination and staff dispatch,
-including known defects called out in the adversarial review (B-05, B-06, B-08, B-09, B-24).
-Product fixes belong in later #4270 slices (ClaimState CAS, persisted fences, reaper dead-letter).
+Pins observed claim/lease/fence behavior across coordination and staff dispatch.
+Fix regressions live in dedicated ``test_*_4270`` modules; this file stays the
+inventory and cross-path wiring characterization (no product edits).
 """
 
 from __future__ import annotations
 
+import importlib
 import sys
 import threading
 from collections.abc import Iterator
@@ -16,6 +17,7 @@ from typing import Any
 import activity_producers
 import pytest
 from activity import ActivityStore
+from coordination import claim_state as claim_state_mod
 from coordination import claims as claims_mod
 from coordination import job_board_lease
 from coordination import jobs as jobs_mod
@@ -30,6 +32,28 @@ REPO = "Tools"
 ISSUE = 4270
 AGENT = "codex"
 RUN_ID = "run-4270-char"
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# B-24: independent persistence / side-effect surfaces in today's lifecycle (characterization only).
+PINNED_LIFECYCLE_STORE_MODULES: tuple[str, ...] = (
+    "coordination.board",
+    "coordination.claims",
+    "coordination.claim_state",
+    "coordination.job_board_lease",
+    "coordination.job_board_rows",
+    "activity_producers",
+    "staff.claim_guard",
+    "staff.lease",
+)
+
+FINDING_REGRESSION_MODULES: dict[str, str] = {
+    "B-08_job_board": "tests/unit/test_job_board_lease_rollback_4270.py",
+    "B-08_staff": "tests/unit/test_staff_lease_rollback_4270.py",
+    "B-09": "tests/unit/test_job_board_durable_state_4270.py",
+    "B-10": "tests/unit/test_agent_bus_reaper_dead_letter_4270.py",
+    "B-11": "tests/unit/test_job_board_sweeper_dead_letter_4270.py",
+}
 
 
 def _claim_fetch(number: int) -> Any:
@@ -122,13 +146,15 @@ def test_claim_lifecycle_job_board_touches_six_store_classes(
     after = len(activity_store.read(session_id=f"{AGENT}-{ISSUE}").items)
 
     rm_names = [name for name, _ in rm.calls()]
+    fence = int(result["fence"])
     touched = {
         "rm_check": rm_check_calls["n"] >= 1 and "check_agent_claim" in rm_names,
         "rm_post": "post_agent_lease" in rm_names,
         "gh_evidence": issue_fetch in evidence_paths,
-        "in_memory_fence": jobs_mod._current_fence(REPO, ISSUE) == result["fence"] > 0,
-        "in_memory_ttl": len(ttl_bookkeeping) == 1
+        "durable_fence_row": jobs_mod._current_fence(REPO, ISSUE) == fence > 0,
+        "durable_ttl_hook": len(ttl_bookkeeping) == 1
         and ttl_bookkeeping[0]["kwargs"].get("session") == f"{AGENT}-{ISSUE}",
+        "claim_state_cas": claim_state_mod.get_store().read(REPO, ISSUE) is not None,
         "activity_log": after > before,
     }
 
@@ -136,7 +162,30 @@ def test_claim_lifecycle_job_board_touches_six_store_classes(
     assert all(touched.values()), touched
 
 
-# ── B-05: double-win — in-process lock only; durable latest-writer-wins ─────
+@pytest.mark.unit
+def test_b24_pinned_lifecycle_store_modules_are_importable() -> None:
+    """#4270 B-24: lifecycle fans out across the pinned module surfaces (no second store)."""
+    for module_name in PINNED_LIFECYCLE_STORE_MODULES:
+        importlib.import_module(module_name)
+
+
+@pytest.mark.unit
+def test_b24_finding_regression_modules_exist_on_disk() -> None:
+    """Fixed defects keep dedicated regression modules outside this characterization file."""
+    missing = [rel for rel in FINDING_REGRESSION_MODULES.values() if not (_REPO_ROOT / rel).is_file()]
+    assert missing == [], missing
+
+
+@pytest.mark.unit
+def test_b07_agents_doc_points_at_post_agent_lease_cli() -> None:
+    """#4270 B-07 / H-01: operators invoke ``python -m scripts.post_agent_lease`` (parseable v1 lease)."""
+    text = (_REPO_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    assert "python -m scripts.post_agent_lease" in text
+    mod = importlib.import_module("scripts.post_agent_lease")
+    assert callable(getattr(mod, "main", None))
+
+
+# ── B-05: compare-and-set reservation + in-process API lock ─────────────────
 
 
 @pytest.mark.unit
@@ -190,10 +239,8 @@ def test_current_behavior_in_process_lock_serializes_claim_api_posts(
 
 
 @pytest.mark.unit
-def test_two_unserialized_acquires_both_succeed_without_process_lock(
-    rm: FakeRM, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Simulates two workers that share RM but not this process's ``_issue_lock`` serialization."""
+def test_concurrent_claim_reservations_yield_one_winner_under_cas(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    """#4270 B-05 (fixed): durable CAS yields one ``ok`` and one ``ClaimHeldError`` without API lock."""
     rm.respond("check_agent_claim", claim_status(False))
     rm.respond("post_agent_lease", lease_result(agent=AGENT))
     monkeypatch.setattr(claims_mod, "evidence_fetch", lambda _path: [])
@@ -323,9 +370,7 @@ def test_failed_lease_post_rolls_back_orphan_claim_label(rm: FakeRM, monkeypatch
     assert "release_agent_lease" in [name for name, _ in rm.calls()]
 
 
-# ── B-09: fence/TTL bookkeeping is durable ──────────────────────────────────
-# The earlier characterization (fence 0 and a stale-fence release after a restart) was
-# replaced by tests/unit/test_job_board_durable_state_4270.py when B-09 was fixed.
+# ── B-09: durable fence/TTL survives process reset (regression in dedicated module) ──
 
 
 @pytest.mark.unit

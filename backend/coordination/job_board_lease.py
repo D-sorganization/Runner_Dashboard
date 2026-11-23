@@ -57,6 +57,18 @@ def validate_ttl(ttl_hours: float) -> None:
         raise ValueError(f"ttl_hours must be between {MIN_TTL_HOURS} and {MAX_TTL_HOURS}")
 
 
+def _require_live_lease(repo: str, issue: int, *, agent: str, session: str, fence: int) -> None:
+    """Require the current durable epoch and owner before renewal; expiry is terminal for a heartbeat."""
+    from coordination import jobs as jobs_mod
+
+    jobs_mod._require_fence(repo, issue, fence)
+    row = claim_state_mod.get_store().get_job_lease(repo, issue)
+    if row is None or (row.agent, row.session, row.fence) != (agent, session, fence):
+        raise jobs_mod.StaleFenceError(f"session {session!r} has no matching durable lease for {repo}#{issue}")
+    if row.expires_at <= datetime.now(UTC).timestamp():
+        raise jobs_mod.StaleFenceError(f"lease for {repo}#{issue} expired; acquire a new fence before heartbeating")
+
+
 def heartbeat_job(
     repo: str,
     issue: int,
@@ -67,17 +79,19 @@ def heartbeat_job(
     holder_principal: str | None = None,
     ttl_hours: float = DEFAULT_TTL_HOURS,
 ) -> dict[str, Any]:
-    """Renew a job-board lease TTL (#2785)."""
+    """Renew a live job-board lease TTL; delayed heartbeats cannot revive an expired epoch (#4598)."""
     from coordination import jobs as jobs_mod
 
     validate_ttl(ttl_hours)
-    jobs_mod._require_fence(repo, issue, fence)
     with claims_mod.hold_issue(repo, issue):
+        _require_live_lease(repo, issue, agent=agent, session=session, fence=fence)
         status = claims_mod.check(repo, issue)
         if not status["available"]:
             raise RMScriptError(f"check_agent_claim unavailable: {status['reason']}")
         if not status.get("held") or (status.get("agent"), status.get("session")) != (agent, session):
             raise jobs_mod.StaleFenceError(f"session {session!r} does not hold {repo}#{issue}")
+        # The remote check can outlive the TTL or observe an owner from before a takeover.
+        _require_live_lease(repo, issue, agent=agent, session=session, fence=fence)
         posted = claims_mod.post_lease(repo, issue, agent, session, "heartbeat", ttl_hours=ttl_hours)
         lease = posted["result"]
         expires_at = str(lease.get("expires_at") or status.get("expires_at") or "")
