@@ -19,6 +19,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from coordination.board_degraded_reads import tolerated_malformed_read_warnings
 from coordination.board_pagination import (
     _is_replay_warning,
     _merge_paginated,
@@ -208,39 +209,6 @@ def _has_limit_warning(warnings: list[Any]) -> bool:
     return any("page limit" in w or "comment limit" in w or "comment-limit" in w for w in lowered)
 
 
-_FATAL_DEGRADED_READ_MARKERS = (
-    "board read failed",
-    "unclassified",
-    "pagination failed",
-    "page limit",
-    "comment limit",
-    "comment-limit",
-)
-_TOLERATED_MALFORMED_READ_MARKERS = (
-    "malformed",
-    "invalid coordination envelope",
-    "rejected comment without verified",
-)
-
-
-def _tolerated_malformed_read_warnings(read_warnings: list[Any]) -> bool:
-    """True only when every ``read_warnings`` entry is a known benign malformed-envelope skip (#4569).
-
-    Pre: ``read_warnings`` is the structured list from a board list/inbox parse. Post: returns
-    ``False`` when empty, when any entry matches a fatal/partial-outage marker, or when any entry
-    is not classified as malformed-comment noise; ``True`` only when all entries are tolerable.
-    """
-    if not read_warnings:
-        return False
-    for raw in read_warnings:
-        lowered = str(raw).casefold()
-        if any(marker in lowered for marker in _FATAL_DEGRADED_READ_MARKERS):
-            return False
-        if not any(marker in lowered for marker in _TOLERATED_MALFORMED_READ_MARKERS):
-            return False
-    return True
-
-
 def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, Any]:
     data = res.json()
     if data is None or data.get("error") or "sessions" not in data:
@@ -375,7 +343,7 @@ def has_live_session(session: str, repo: str) -> bool:
         if (
             not truncated
             and not data.get("active_conflicts")
-            and _tolerated_malformed_read_warnings(data.get("read_warnings") or [])
+            and tolerated_malformed_read_warnings(data.get("read_warnings") or [])
         ):
             _LOG.warning("board history degraded, proceeding without presence confirmation of %s: %s", session, detail)
             return True
