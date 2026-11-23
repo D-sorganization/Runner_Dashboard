@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "description": "Canonical schedule home hosts after offloading Brick (node-c) for overloaded roles (#4582). hub-a is fallback only.",
+  "desk_fallback_host": "hub-a",
+  "brick_host": "node-c",
+  "brick_offload_roles": ["night-watch", "pr-remediator", "fleet-critic"],
+  "worker_schedule_hosts": ["node-a", "node-b", "node-c"],
+  "placements": {
+    "night-watch": "node-a",
+    "pr-remediator": "node-b",
+    "fleet-critic": "node-b",
+    "pm-sidekick": "node-b"
+  }
+}
