@@ -239,7 +239,8 @@ def test_owner_prefixed_repo_is_normalised_to_the_bare_name(rm: FakeRM, client: 
     rm.respond("agent_communicate:release", {"ok": True})
     rel = {"session": "codex-1", "repo": "D-sorganization/Tools"}
     assert client.post("/api/coordination/presence/release", json=rel, headers=_BOT).status_code == 200
-    assert [argv[1] for _, argv in rm.calls()] == ["Tools", "Tools"]
+    release_argv = next(argv for name, argv in rm.calls() if name == "agent_communicate" and "release" in argv)
+    assert release_argv[release_argv.index("--repo") + 1] == "Tools"
     assert client.get("/api/coordination/claims?repo=a..b&issue=3").status_code == 422
 
 

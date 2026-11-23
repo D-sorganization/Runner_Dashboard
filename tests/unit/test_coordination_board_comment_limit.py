@@ -340,6 +340,18 @@ def test_paginate_board_comments_enforces_first_owner_binding_and_separates_hist
     assert "Rejected identity change for live-s" in res_contested["replay_warnings"]
     assert [s["session"] for s in res_contested["sessions"]] == ["live-s"]
 
+    # 3. Same-repo release frees the session to register in another repo (#4624)
+    comments_switch = [
+        _presence_comment(20, session="switch-s", repo="Runner_Dashboard", expires="2099-01-01T00:00:00+00:00"),
+        _release_comment(21, session="switch-s", repo="Runner_Dashboard"),
+        _presence_comment(22, session="switch-s", repo="Tools", expires="2099-01-01T00:00:00+00:00"),
+    ]
+    res_switch = paginate_board_comments(lambda page, per_page: comments_switch)
+    assert res_switch["complete"] is True
+    assert res_switch["active_conflicts"] == []
+    assert [s["session"] for s in res_switch["sessions"]] == ["switch-s"]
+    assert res_switch["sessions"][0]["repo"] == "Tools"
+
 
 @pytest.mark.unit
 def test_pagination_wiring_conflicts_and_validation(monkeypatch: pytest.MonkeyPatch) -> None:
