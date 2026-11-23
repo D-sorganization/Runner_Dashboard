@@ -22,7 +22,10 @@ from coordination.merge_shepherd_pass import (  # noqa: E402
     OPEN_PRS_QUERY,
     PassConfig,
     armed_pull_requests_has_next_page,
+    collect_review_passes_from_store,
+    graphql_nodes,
     holds_gate_failed_payload,
+    plan_repo_disarms,
     resolve_hub_holds_policy,
     resolve_live_arming,
     resolve_merge_shepherd_review_store,
@@ -153,6 +156,47 @@ def _resolve_hub_holds() -> tuple[list[dict[str, Any]], str | None]:
     )
 
 
+def _revalidate_disarm(*, repo: str, pr: int, head_sha: str, repo_root: Path) -> bool:
+    owner, name = repo.split("/", 1)
+    nodes, _, _ = graphql_nodes(_graphql(owner, name))
+    passes = collect_review_passes_from_store(store=resolve_merge_shepherd_review_store(repo_root=repo_root), repo=name)
+    actions = plan_repo_disarms(repo, nodes, skip_list=frozenset(), holds=(), live=True, review_passes=passes)
+    return any(
+        action.pr_number == pr and action.head_sha == head_sha and action.detail == "rejected_at_head"
+        for action in actions
+    )
+
+
+def _disarm_via_guard(repo: str, pr: int, *, repo_root: Path, head_sha: str, detail: str = "") -> dict[str, Any]:
+    _SCRIPT_DIR = str(Path(__file__).resolve().parent)
+    if _SCRIPT_DIR not in sys.path:
+        sys.path.insert(0, _SCRIPT_DIR)
+    import automerge_guard  # noqa: PLC0415
+
+    try:
+        before, after, verdict = automerge_guard.disarm_for_shepherd(
+            repo,
+            pr,
+            detail=detail,
+            head_sha=head_sha,
+            revalidate=lambda: _revalidate_disarm(repo=repo, pr=pr, head_sha=head_sha, repo_root=repo_root),
+        )
+    except (RuntimeError, OSError, ValueError) as exc:
+        return {"exit_code": 1, "disarmed": False, "error": str(exc)}
+    needed_clearing = not automerge_guard.disposition_cleared(before)
+    disarmed = automerge_guard.disposition_cleared(after) if needed_clearing else True
+    exit_code = 0 if disarmed else 1
+    return {
+        "exit_code": exit_code,
+        "disarmed": disarmed,
+        "hold_held": verdict.held,
+        "before_auto_merge": before.auto_merge_on,
+        "before_in_merge_queue": before.in_merge_queue,
+        "after_auto_merge": after.auto_merge_on,
+        "after_in_merge_queue": after.in_merge_queue,
+    }
+
+
 def _arm_via_guard(repo: str, pr: int, *, strategy: str, head_sha: str, repo_root: Path) -> dict[str, Any]:
     _SCRIPT_DIR = str(Path(__file__).resolve().parent)
     if _SCRIPT_DIR not in sys.path:
@@ -237,7 +281,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         holds=holds,
     )
     executed: list[dict[str, Any]] = []
+    executed_disarms: list[dict[str, Any]] = []
     if live:
+        for row in summary.disarmed:
+            if row.get("dry_run"):
+                continue
+            result = _disarm_via_guard(
+                str(row["repo"]),
+                int(row["pr"]),
+                repo_root=config.repo_root,
+                head_sha=str(row.get("head_sha") or ""),
+                detail=str(row.get("detail") or ""),
+            )
+            executed_disarms.append({"repo": row["repo"], "pr": row["pr"], **result})
         for row in summary.armed:
             if row.get("dry_run"):
                 continue
@@ -249,6 +305,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 repo_root=config.repo_root,
             )
             executed.append({"repo": row["repo"], "pr": row["pr"], **result})
+    for ex in executed_disarms:
+        log.info(
+            "merge shepherd disarm repo=%s pr=%s disarmed=%s exit_code=%s",
+            ex.get("repo"),
+            ex.get("pr"),
+            ex.get("disarmed"),
+            ex.get("exit_code"),
+        )
     for ex in executed:
         log.info(
             "merge shepherd arm repo=%s pr=%s armed=%s exit_code=%s",
@@ -260,11 +324,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     payload = summary_to_json(summary)
     payload["live"] = live
     payload["executed"] = executed
+    payload["executed_disarms"] = executed_disarms
     _write_step_summary(payload)
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     arm_failed = any(not ex.get("armed") for ex in executed)
-    return 1 if summary.errors or arm_failed else 0
+    disarm_failed = any(not ex.get("disarmed") for ex in executed_disarms)
+    return 1 if summary.errors or arm_failed or disarm_failed else 0
 
 
 if __name__ == "__main__":
