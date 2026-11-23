@@ -30,9 +30,7 @@ def _argv(rm: FakeRM) -> list[list[str]]:
 
 
 @pytest.mark.unit
-def test_presence_switch_releases_bound_repo_before_cross_repo_register(
-    rm: FakeRM, client: TestClient
-) -> None:
+def test_presence_switch_releases_bound_repo_before_cross_repo_register(rm: FakeRM, client: TestClient) -> None:
     rm.respond("agent_communicate:list", board(session("codex-1", "Tools", agent="codex")))
     rm.respond("agent_communicate:release", {"ok": True})
     rm.respond("agent_communicate:register", {"ok": True, "receipt": "c-1", "event": {"id": "e1"}})
