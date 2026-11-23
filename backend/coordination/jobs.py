@@ -91,10 +91,7 @@ def bounded_open_pulls_path(repo_full: str) -> str:
     """
     if repo_full.count("/") != 1:
         raise ValueError("repo_full must be owner/name")
-    return (
-        f"/repos/{repo_full}/pulls?state=open&sort=updated&direction=desc"
-        f"&per_page={CLOSING_PR_PULLS_PER_PAGE}"
-    )
+    return f"/repos/{repo_full}/pulls?state=open&sort=updated&direction=desc&per_page={CLOSING_PR_PULLS_PER_PAGE}"
 
 
 def _closing_pr(repo_full: str, issue_number: int, pulls_by_repo: dict[str, list[Any]]) -> dict[str, Any] | None:

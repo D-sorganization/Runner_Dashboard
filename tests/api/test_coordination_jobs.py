@@ -339,9 +339,11 @@ def _ttl_fetch(number: int) -> Any:
             return [payload]
         if path.endswith(f"/issues/{number}"):
             return payload
-        if path.endswith("/pulls?state=open&sort=updated&direction=desc&per_page=100") or path.endswith(
-            "/pulls?state=open"
-        ) or path.endswith("/pulls?state=open&per_page=100"):
+        if (
+            path.endswith("/pulls?state=open&sort=updated&direction=desc&per_page=100")
+            or path.endswith("/pulls?state=open")
+            or path.endswith("/pulls?state=open&per_page=100")
+        ):
             return []
         return []
 
