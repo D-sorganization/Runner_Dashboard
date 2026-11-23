@@ -30,6 +30,7 @@ with HTTP 200; failed RM writes return 502 with the script's ``error`` and
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -37,6 +38,7 @@ from coordination import job_releases as job_releases_mod
 from coordination import jobs as jobs_mod
 from coordination import lane_prompts as lane_prompts_mod
 from coordination import postman_runner, service
+from coordination import provider_down_markers as provider_markers_mod
 from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
@@ -333,3 +335,57 @@ async def post_lane_prompt_release(body: LaneReleaseBody, caller: Caller = WRITE
         )
     except lane_prompts_mod.StaleLaneFenceError as exc:
         raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
+
+
+class ProviderMarkerSetBody(BaseModel):
+    provider: str = Field(min_length=1, max_length=64)
+    kind: str = Field(min_length=1, max_length=32)
+    until: float | None = None
+    ttl_sec: float | None = Field(default=None, ge=1, le=604800)
+    reason: str | None = Field(default=None, max_length=512)
+
+
+@router.get("/provider-markers")
+async def get_provider_markers(
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    markers = await run_in_threadpool(provider_markers_mod.list_active_markers)
+    return {"markers": markers}
+
+
+@router.post("/provider-markers")
+async def post_provider_marker(body: ProviderMarkerSetBody, caller: Caller = WRITER) -> dict[str, Any]:
+    now = time.time()
+    if body.until is not None:
+        until = float(body.until)
+    elif body.ttl_sec is not None:
+        until = now + float(body.ttl_sec)
+    else:
+        raise HTTPException(status_code=422, detail={"error": "until or ttl_sec required"})
+    try:
+        marker = await run_in_threadpool(
+            provider_markers_mod.set_marker,
+            body.provider,
+            body.kind,
+            until=until,
+            now=now,
+            reason=body.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    log.info("coordination: provider marker set by %s for %s (%s)", caller.label, body.provider, body.kind)
+    return {"marker": marker}
+
+
+@router.delete("/provider-markers/{provider}")
+async def delete_provider_marker(
+    provider: str,
+    kind: str | None = Query(default=None, max_length=32),
+    caller: Caller = WRITER,
+) -> dict[str, Any]:
+    try:
+        removed = await run_in_threadpool(provider_markers_mod.clear_marker, provider, kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    log.info("coordination: provider marker cleared by %s for %r (%s)", caller.label, provider, kind)
+    return {"removed": removed}

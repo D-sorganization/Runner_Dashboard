@@ -322,6 +322,21 @@ and `session_id` match (`409` on stale fence).
 Body `{checkout_id, fence_token, session_id, reason?}` → releases an active lane-prompt checkout (`409` on
 stale fence).
 
+### `GET /api/coordination/provider-markers`
+
+Read-only. Returns active shared `provider_down` and `rate_limited` markers persisted in hub RD state (`until` UNIX
+timestamp). Expired markers are pruned on read.
+
+### `POST /api/coordination/provider-markers`
+
+Body `{provider, kind, until?|ttl_sec?, reason?}` → sets or replaces a marker (`kind` is `provider_down` or
+`rate_limited`). Requires `until` or `ttl_sec`.
+
+### `DELETE /api/coordination/provider-markers/{provider}?kind=`
+
+Clears marker(s) for a provider; optional `kind` limits the clear to one class. Lane-prompt checkout skips marked
+providers and walks the default provider chain; an unreadable marker store fails open (no skips).
+
 ## Configuration
 
 | Variable                  | Meaning                                                                       |
