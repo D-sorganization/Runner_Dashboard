@@ -515,6 +515,41 @@ def test_has_live_session_tolerates_non_fatal_history_degradation(rm: FakeRM) ->
 
 
 @pytest.mark.unit
+def test_has_live_session_fails_closed_on_partial_board_outage_or_mixed_warnings(rm: FakeRM) -> None:
+    """Partially unavailable or mixed-fatal board reads must not invent live presence (#4569 review)."""
+    for read_warnings in (
+        ["board read failed: GitHub unavailable"],
+        ["malformed JSON in comment 12", "unclassified replay failure"],
+    ):
+        board_mod.reset_cache()
+        rm.respond(
+            "agent_communicate:list",
+            {
+                "ok": True,
+                "complete": False,
+                "read_warnings": read_warnings,
+                "replay_warnings": [],
+                "active_conflicts": [],
+                "sessions": [],
+                "messages": [],
+                "conflicts": [],
+                "warnings": read_warnings,
+            },
+        )
+        with pytest.raises(board_mod.RMScriptError):
+            board_mod.has_live_session("missing-s", "Tools")
+
+
+@pytest.mark.unit
+def test_presence_register_does_not_gate_on_has_live_session(rm: FakeRM, client: TestClient) -> None:
+    """POST /presence calls RM register directly; send/ack-only ``has_live_session`` is out of scope (#4569)."""
+    rm.respond("agent_communicate:register", {"ok": True, "receipt": "c-1", "event": {"id": "e1"}})
+    body = {"session": "codex-1", "repo": "Tools", "issue": 12, "branch": "feat/x"}
+    assert client.post("/api/coordination/presence", json=body, headers=_BOT).status_code == 200
+    assert not any(name == "agent_communicate" and "list" in argv for name, argv in rm.calls())
+
+
+@pytest.mark.unit
 def test_has_live_session_fails_closed_on_truncated_board_when_absent(
     rm: FakeRM, monkeypatch: pytest.MonkeyPatch
 ) -> None:
