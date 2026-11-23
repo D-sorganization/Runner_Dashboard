@@ -628,7 +628,7 @@ def _post_bound_independent_exact_head_verdict(
     indep = parse_independent_exact_head_staff_result(result_line)
     if indep is None:
         return None
-    if status != "succeeded":
+    if status == "cancelled":
         return CodeReviewerRunOutcome(status, failure_class, retryable, error, remediation)
     if expected_pr_number is None:
         return CodeReviewerRunOutcome(
@@ -797,7 +797,12 @@ def maybe_finalize_code_reviewer_run(
     reviewer_model: str,
     expected_pr_number: int | None,
 ) -> tuple[str, str, bool, str, str]:
-    if role != "code-reviewer" or rc != 0:
+    if role != "code-reviewer":
+        return status, failure_class, retryable, error, remediation
+    # A Stop hook may fail after STAFF_RESULT (e.g. whole-tree ruff on untouched main debt).
+    # Bind the verdict to the PR head anyway; keep the run's failed status for operators.
+    has_staff_result = "STAFF_RESULT:" in (result_line or "")
+    if rc != 0 and not has_staff_result:
         return status, failure_class, retryable, error, remediation
     out = finalize_code_reviewer_run(
         status=status,
