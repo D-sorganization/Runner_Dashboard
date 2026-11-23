@@ -24,7 +24,7 @@ from staff.worktree_links import (
     refuse_worktree_links,
     unlink_worktree_links,
 )
-from worktree_ignored_policy import ignored_files_removal_blocker
+from worktree_ignored_policy import IGNORED_FILES_REASON, blocking_ignored_paths_from_porcelain
 
 from staff import cli_projects
 
@@ -161,7 +161,14 @@ def _ignored_files_block_reason(worktree: Path) -> str:
     res = _git_in_worktree(worktree, "status", "--porcelain", "--ignored")
     if res.returncode != 0:
         return ""
-    return ignored_files_removal_blocker(res.stdout)
+    prefixes = _safe_force_untracked_allow_prefixes(worktree)
+    for rel in blocking_ignored_paths_from_porcelain(res.stdout):
+        if any(_path_under_prefix(rel, p) for p in prefixes):
+            continue
+        if _rel_touches_disposable_in_tree_link(worktree, rel):
+            continue
+        return IGNORED_FILES_REASON
+    return ""
 
 
 def _untracked_paths_for_safe_force_scan(worktree: Path) -> list[str]:

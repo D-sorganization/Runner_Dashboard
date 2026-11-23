@@ -20,6 +20,7 @@ REGENERABLE_IGNORED_PATH_PREFIXES: tuple[str, ...] = (
     "target/",
     ".staff/",
     ".gemini/",
+    ".gaai/",
     ".tox/",
     ".eggs/",
     ".egg-info/",
