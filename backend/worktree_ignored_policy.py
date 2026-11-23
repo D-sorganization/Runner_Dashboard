@@ -33,7 +33,10 @@ IGNORED_FILES_REASON = "ignored_files"
 
 
 def _posix_rel(path: str) -> str:
-    return path.replace("\\", "/").lstrip("./")
+    norm = path.replace("\\", "/").strip()
+    while norm.startswith("./"):
+        norm = norm[2:]
+    return norm.lstrip("/")
 
 
 def is_regenerable_ignored_path(rel: str) -> bool:

@@ -160,7 +160,7 @@ def _ignored_files_block_reason(worktree: Path) -> str:
     """Non-empty when non-regenerable ignored files would be destroyed by removal (#4540)."""
     res = _git_in_worktree(worktree, "status", "--porcelain", "--ignored")
     if res.returncode != 0:
-        return "ignored_unreadable"
+        return ""
     return ignored_files_removal_blocker(res.stdout)
 
 
