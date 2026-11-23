@@ -357,7 +357,8 @@ def _post_claim(client: TestClient, rm: FakeRM, monkeypatch: pytest.MonkeyPatch,
     are free to drive later reads (sweep, re-list) through ``rm.respond("check_agent_claim", ...)`` as before.
     """
     patch_gh_list_fetch(monkeypatch, _ttl_fetch(number))
-    rm.respond("post_agent_lease", lease_result())
+    live_lease = {**lease_result(), "expires_at": (datetime.now(UTC) + timedelta(minutes=6)).isoformat()}
+    rm.respond("post_agent_lease", live_lease)
     posted = {"n": 0}
     real_post_lease = claims_mod.post_lease
 
@@ -413,6 +414,8 @@ def test_jobs_heartbeat_extends_ttl(rm: FakeRM, client: TestClient, monkeypatch:
     claimed = _post_claim(client, rm, monkeypatch, 71)
     held = {**claim_status(True, "codex", "active lease"), "session": claimed["session"]}
     rm.respond("check_agent_claim", held)
+    renewed_lease = {**lease_result(), "expires_at": (datetime.now(UTC) + timedelta(hours=2)).isoformat()}
+    rm.respond("post_agent_lease", renewed_lease)
     hb = {"session": claimed["session"], "repo": "Tools", "issue": 71, "fence": claimed["fence"], "ttl_hours": 2}
     assert client.post("/api/coordination/jobs/heartbeat", json=hb, headers=_BOT).status_code == 200
     assert jobs_mod.sweep_expired_job_claims(now=datetime.now(UTC) + timedelta(minutes=30))["released"] == 0

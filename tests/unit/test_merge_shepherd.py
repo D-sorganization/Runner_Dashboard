@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import sys
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest import mock
 
 _backend = Path(__file__).resolve().parents[2] / "backend"
 if str(_backend) not in sys.path:
     sys.path.insert(0, str(_backend))
 
 import pytest  # noqa: E402
+from coordination import merge_shepherd_exact_head  # noqa: E402
 from coordination.merge_shepherd import (  # noqa: E402
     IneligibleReason,
     PRCandidate,
@@ -21,6 +24,16 @@ from coordination.merge_shepherd import (  # noqa: E402
     rank_candidates_for_shepherding,
 )
 from coordination.merge_shepherd_exact_head import HeadReviewPass  # noqa: E402
+
+# Fixture review passes are recorded at 2026-11-20T10:00Z; the test clock sits 24h later so
+# they stay well inside the real 72h review expiry regardless of when the suite runs.
+_PINNED_NOW = datetime(2026, 11, 21, 10, 0, tzinfo=UTC)
+
+
+class _FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):  # type: ignore[no-untyped-def]
+        return _PINNED_NOW if tz is None else _PINNED_NOW.astimezone(tz)
 
 
 def _armable_candidate(repo: str, pr_number: int, **kwargs: object) -> PRCandidate:
@@ -48,6 +61,27 @@ def _armable_candidate(repo: str, pr_number: int, **kwargs: object) -> PRCandida
 
 @pytest.mark.unit
 class TestMergeShepherdEvaluator(unittest.TestCase):
+    def setUp(self) -> None:
+        # Pin only the clock; the 72h DEFAULT_REVIEW_PASS_TTL_HOURS stays untouched.
+        patcher = mock.patch.object(merge_shepherd_exact_head, "datetime", _FrozenDatetime)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_review_pass_older_than_72h_is_stale(self) -> None:
+        """Guard: pinning the clock must not relax the real 72h review expiry."""
+        self.assertEqual(merge_shepherd_exact_head.DEFAULT_REVIEW_PASS_TTL_HOURS, 72)
+        head = "abcd1234" * 5
+        stale = HeadReviewPass(pr=1, head_sha=head, verdict="approve", recorded_at="2026-11-18T09:59:00+00:00")
+        fresh = HeadReviewPass(pr=1, head_sha=head, verdict="approve", recorded_at="2026-11-18T10:01:00+00:00")
+        self.assertEqual(
+            merge_shepherd_exact_head.pass_at_head((stale,), pr=1, head_sha=head),
+            (False, "stale_unverified"),
+        )
+        self.assertEqual(
+            merge_shepherd_exact_head.pass_at_head((fresh,), pr=1, head_sha=head),
+            (True, "exact_head_pass"),
+        )
+
     def test_get_auto_merge_flag(self) -> None:
         cases = [
             ("Runner_Dashboard", "--auto"),
