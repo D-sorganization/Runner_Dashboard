@@ -617,7 +617,7 @@ class LanePromptStore:
                             (lane_id,),
                         ).fetchone()
                         assert rec is not None
-                        return enrich_lane_receipt(json.loads(rec["receipt_json"]))
+                        return enrich_lane_receipt(_check_receipt_compatible(conn, rec["receipt_json"]))
                     raise LaneConflictError(f"Lane {lane_id!r} already held by {held['session_id']}")
                 target = row
             else:

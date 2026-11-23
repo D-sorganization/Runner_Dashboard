@@ -237,6 +237,34 @@ def test_checkout_role_mismatch_returns_role_unavailable(
     assert detail["assigned_role"] == "backlog-completion"
 
 
+def test_active_checkout_role_change_returns_role_unavailable(lane_api: tuple[TestClient, Any]) -> None:
+    client, store = lane_api
+    payload = {"session_id": "codex-resume", "idempotency_key": "original-key", "lane_id": "lane-a"}
+    original = client.post("/api/coordination/lane-prompts/checkout", json=payload, headers=_CODEX)
+    assert original.status_code == 200, original.text
+    store.register_assignment(
+        lane_id="lane-a",
+        role="acceptance-review",
+        repos=["Runner_Dashboard"],
+        release_sha="release-2",
+        package_hash="hash-2",
+        subagent_model="gpt-6-luna",
+        max_children=1,
+    )
+    response = client.post(
+        "/api/coordination/lane-prompts/checkout",
+        json={**payload, "idempotency_key": "resume-key", "role": "acceptance-review"},
+        headers=_CODEX,
+    )
+    assert response.status_code == 409, response.text
+    detail = response.json()["detail"]
+    assert detail["role_unavailable"] is True
+    assert detail["requested_role"] == "acceptance-review"
+    assert detail["assigned_role"] == "worker"
+    assert detail["reason"]
+    assert store.list_catalog()[0]["active_checkout_id"] == original.json()["checkout_id"]
+
+
 def test_checkout_rejects_a_session_outside_the_bot_namespace(
     lane_api: tuple[TestClient, Any],
 ) -> None:
