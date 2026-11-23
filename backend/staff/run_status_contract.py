@@ -38,5 +38,11 @@ def validate_run_status_contract() -> None:
         if not LEGAL_TRANSITIONS[status]:
             raise RunStatusContractError(f"non-terminal {status!r} must allow at least one transition")
 
+    inbound_terminals = {dst for targets in LEGAL_TRANSITIONS.values() for dst in targets if dst in TERMINAL_STATUSES}
+    if inbound_terminals != set(TERMINAL_STATUSES):
+        missing = set(TERMINAL_STATUSES) - inbound_terminals
+        extra = inbound_terminals - set(TERMINAL_STATUSES)
+        raise RunStatusContractError(f"terminal inbound mismatch: missing={missing!r} extra={extra!r}")
+
 
 validate_run_status_contract()
