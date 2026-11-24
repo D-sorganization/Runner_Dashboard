@@ -53,7 +53,8 @@ def test_staff_routes_have_response_models() -> None:
 def test_assistant_routes_have_response_models() -> None:
     """Every assistant route must have a response_model configured."""
     assistant_routes = [r for r in _get_all_routes(app) if r.path.startswith("/api/assistant")]
-    assert len(assistant_routes) >= 5, f"Expected at least 5 assistant routes, found {len(assistant_routes)}"
+    # POST /api/assistant/chat was removed after the 2026-11-23 sunset (SC-D11).
+    assert len(assistant_routes) >= 4, f"Expected at least 4 assistant routes, found {len(assistant_routes)}"
 
     missing_response_model = [f"{r.methods} {r.path} ({r.name})" for r in assistant_routes if r.response_model is None]
     assert not missing_response_model, f"Routes missing response_model: {missing_response_model}"

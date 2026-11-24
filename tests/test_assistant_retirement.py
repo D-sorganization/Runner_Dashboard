@@ -5,32 +5,9 @@ folding of codebase Q&A and Maxwell chat surfaces into the Staff Console.
 from __future__ import annotations
 
 import pytest
-
-from retired_route_sunset import RETIRED_ROUTE_HTTP_SUNSET
 from staff.adapters import ADAPTERS, get_adapter
 from staff.router import route_deterministic
 from staff.router_models import ROLE_KEYWORD_RULES
-
-
-def test_assistant_chat_returns_410_gone(make_authed_client, operator_principal) -> None:
-    """POST /api/assistant/chat must return HTTP 410 Gone with Link header pointing to /api/v1/staff/threads."""
-    client = make_authed_client(operator_principal)
-    resp = client.post(
-        "/api/assistant/chat",
-        headers={"X-Requested-With": "XMLHttpRequest"},
-        json={"prompt": "What is the runner fleet status?", "context": {"current_tab": "fleet"}},
-    )
-    assert resp.status_code == 410
-
-    link_header = resp.headers.get("Link")
-    assert link_header is not None
-    assert "</api/v1/staff/threads>" in link_header
-    assert 'rel="successor-version"' in link_header
-    assert resp.headers.get("Sunset") == RETIRED_ROUTE_HTTP_SUNSET
-
-    body = resp.json()
-    assert "retired" in body.get("error", "").lower() or "retired" in body.get("detail", "").lower()
-    assert body.get("redirect_url") == "/api/v1/staff/threads" or "/api/v1/staff/threads" in body.get("detail", "")
 
 
 def test_cartographer_codebase_routing_keywords() -> None:
