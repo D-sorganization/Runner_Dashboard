@@ -501,17 +501,98 @@ def test_has_live_session_tolerates_non_fatal_history_degradation(rm: FakeRM) ->
             "ok": True,
             "complete": False,
             "degraded_history": True,
-            "read_warnings": ["malformed JSON in comment 12", "comment limit reached"],
+            "read_warnings": ["malformed JSON in comment 12"],
             "replay_warnings": [],
             "active_conflicts": [],
             "sessions": [session("other-s", "Tools")],
             "messages": [],
             "conflicts": [],
-            "warnings": ["malformed JSON in comment 12", "comment limit reached"],
+            "warnings": ["malformed JSON in comment 12"],
         },
     )
     assert board_mod.has_live_session("missing-s", "Tools") is True
     board_mod.reset_cache()
+    assert board_mod.has_live_session("other-s", "Tools") is True
+
+
+@pytest.mark.unit
+def test_has_live_session_fails_closed_on_partial_board_outage_or_mixed_warnings(rm: FakeRM) -> None:
+    """Partially unavailable or mixed-fatal board reads must not invent live presence (#4569 review)."""
+    for read_warnings in (
+        ["board read failed: GitHub unavailable"],
+        ["malformed JSON in comment 12", "unclassified replay failure"],
+    ):
+        board_mod.reset_cache()
+        rm.respond(
+            "agent_communicate:list",
+            {
+                "ok": True,
+                "complete": False,
+                "read_warnings": read_warnings,
+                "replay_warnings": [],
+                "active_conflicts": [],
+                "sessions": [],
+                "messages": [],
+                "conflicts": [],
+                "warnings": read_warnings,
+            },
+        )
+        with pytest.raises(board_mod.RMScriptError):
+            board_mod.has_live_session("missing-s", "Tools")
+
+
+@pytest.mark.unit
+def test_has_live_session_fails_closed_when_unclassified_warning_only_in_warnings(rm: FakeRM) -> None:
+    """A tolerable read_warnings list must not mask an unclassified entry in ``warnings`` (#4569 review)."""
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": False,
+            "read_warnings": ["malformed JSON in comment 12"],
+            "replay_warnings": [],
+            "active_conflicts": [],
+            "sessions": [],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["malformed JSON in comment 12", "unclassified replay failure"],
+        },
+    )
+    with pytest.raises(board_mod.RMScriptError):
+        board_mod.has_live_session("missing-s", "Tools")
+
+
+@pytest.mark.unit
+def test_presence_register_does_not_gate_on_has_live_session(rm: FakeRM, client: TestClient) -> None:
+    """POST /presence calls RM register directly; send/ack-only ``has_live_session`` is out of scope (#4569)."""
+    rm.respond("agent_communicate:register", {"ok": True, "receipt": "c-1", "event": {"id": "e1"}})
+    body = {"session": "codex-1", "repo": "Tools", "issue": 12, "branch": "feat/x"}
+    assert client.post("/api/coordination/presence", json=body, headers=_BOT).status_code == 200
+    assert not any(name == "agent_communicate" and "list" in argv for name, argv in rm.calls())
+
+
+@pytest.mark.unit
+def test_has_live_session_fails_closed_on_truncated_board_when_absent(
+    rm: FakeRM, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Comment-limit truncation can hide the registration: absent session must fail closed."""
+    monkeypatch.setattr(board_mod, "board_page_fetcher", None)
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": False,
+            "read_warnings": ["comment limit reached"],
+            "replay_warnings": [],
+            "active_conflicts": [],
+            "sessions": [session("other-s", "Tools")],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["comment limit reached"],
+        },
+    )
+    with pytest.raises(board_mod.RMScriptError):
+        board_mod.has_live_session("missing-s", "Tools")
     assert board_mod.has_live_session("other-s", "Tools") is True
 
 
@@ -522,13 +603,13 @@ def test_send_message_survives_degraded_board_read(rm: FakeRM, client: TestClien
         {
             "ok": True,
             "complete": False,
-            "read_warnings": ["comment limit reached"],
+            "read_warnings": ["malformed JSON in comment 12"],
             "replay_warnings": [],
             "active_conflicts": [],
             "sessions": [],
             "messages": [],
             "conflicts": [],
-            "warnings": ["comment limit reached"],
+            "warnings": ["malformed JSON in comment 12"],
         },
     )
     rm.respond("agent_communicate:send", {"ok": True})
