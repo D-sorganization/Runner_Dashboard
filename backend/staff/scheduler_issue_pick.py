@@ -15,6 +15,7 @@ from staff.roles import RoleSpec
 log = logging.getLogger("dashboard.staff.scheduler")
 
 ISSUE_REMEDIATOR_ROLE = "issue-remediator"
+MAX_CLAIM_CHECKS = 15
 ISSUE_REMEDIATOR_SKIP_LABELS = frozenset(
     {
         "blocked",
@@ -96,8 +97,17 @@ def pick_issue_target(
     *,
     fetch_open: Callable[[str], tuple[list[dict[str, Any]], str | None]] | None = None,
     fetch_claim: Callable[[str, int], dict[str, Any]] | None = None,
+    max_claim_checks: int = MAX_CLAIM_CHECKS,
 ) -> tuple[str, int] | tuple[None, None]:
-    """Choose the highest-priority unclaimed issue across the role's repos."""
+    """Choose the highest-priority unclaimed issue across the role's repos.
+
+    Candidates are filtered and sorted by priority *before* invoking the
+    subprocess-backed ``fetch_claim`` check, and selection short-circuits on
+    the first unclaimed candidate (capped at ``max_claim_checks``) so a large
+    backlog cannot stall the scheduler (#4650).
+    """
+    if max_claim_checks <= 0:
+        raise ValueError(f"max_claim_checks must be positive, got {max_claim_checks}")
     open_issues = fetch_open or fetch_open_issues
     claim_status = fetch_claim or fetch_issue_claim_status
     repos = tuple(role.repos)
@@ -105,9 +115,9 @@ def pick_issue_target(
         return None, None
     start = now.toordinal() % len(repos)
     rotated = list(repos[start:]) + list(repos[:start])
-    candidates: list[tuple[tuple[int, int, int], str, int]] = []
+    pre_candidates: list[tuple[tuple[int, int, int], int, str, int]] = []
     reasons: list[str] = []
-    for repo in rotated:
+    for repo_idx, repo in enumerate(rotated):
         issues, fetch_error = open_issues(repo)
         if fetch_error:
             reasons.append(f"{repo}: issue lookup failed ({fetch_error})")
@@ -116,6 +126,7 @@ def pick_issue_target(
             reasons.append(f"{repo}: no open issues")
             continue
         repo_reason = "no eligible issues"
+        found_local = False
         for issue in issues:
             issue_number = int(issue.get("number") or 0)
             if issue_number <= 0:
@@ -125,22 +136,23 @@ def pick_issue_target(
             if skip_reason:
                 repo_reason = skip_reason
                 continue
-            claim = claim_status(repo, issue_number)
-            if not claim.get("available", False):
-                repo_reason = f"claim check unavailable ({claim.get('reason') or 'unknown'})"
-                continue
-            if claim.get("held"):
-                repo_reason = f"held ({claim.get('reason') or 'claimed elsewhere'})"
-                continue
             guard_reason = claim_guard.scheduler_blocker(repo, issue_number, None, role.name)
             if guard_reason:
                 repo_reason = guard_reason
                 continue
-            candidates.append((_priority_key(issue, labels), repo, issue_number))
-        if repo_reason:
+            found_local = True
+            pre_candidates.append((_priority_key(issue, labels), repo_idx, repo, issue_number))
+        if not found_local and repo_reason:
             reasons.append(f"{repo}: {repo_reason}")
-    if candidates:
-        _, repo, issue_number = min(candidates, key=lambda row: row[0])
+    pre_candidates.sort(key=lambda row: (row[0], row[1]))
+    for _prio, _repo_idx, repo, issue_number in pre_candidates[:max_claim_checks]:
+        claim = claim_status(repo, issue_number)
+        if not claim.get("available", False):
+            reasons.append(f"{repo}#{issue_number}: claim check unavailable ({claim.get('reason') or 'unknown'})")
+            continue
+        if claim.get("held"):
+            reasons.append(f"{repo}#{issue_number}: held ({claim.get('reason') or 'claimed elsewhere'})")
+            continue
         return repo, issue_number
     joined = "; ".join(reasons[:4]) if reasons else "no candidate repositories"
     log.info("staff scheduler: issue-remediator target selection found no eligible issues (%s)", joined)
