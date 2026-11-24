@@ -264,3 +264,6 @@ def persist_run_updates(store: RunStore, rec: RunRecord, updates: dict[str, Any]
         RunStatus(new_status),
         **status_fields,
     )
+
+
+from staff import run_status_contract as _run_status_contract  # noqa: E402, F401 — DbC at import

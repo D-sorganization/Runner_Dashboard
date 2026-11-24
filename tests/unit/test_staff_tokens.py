@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 from identity import identity_manager, principal_has_scope
+from staff.action_executors import BOARD_PROPOSAL_ROLE
 from staff.tokens import (
     mint_run_token,
     resolve_run_scopes,
@@ -185,6 +186,19 @@ def test_mint_run_token_never_logs_raw_bearer(caplog: pytest.LogCaptureFixture) 
     caplog.set_level(logging.DEBUG, logger="dashboard.staff.tokens")
     raw_token = mint_run_token(role="maintenance", run_id="run-log-hygiene", fleet_actions=[], ttl_seconds=60.0)
     assert raw_token not in caplog.text
+
+
+@pytest.mark.unit
+def test_board_secretary_run_token_mints_board_convene_without_staff_chat() -> None:
+    """#4605: chair runs propose board.convene without granting full chat."""
+    run_id = "run-board-secretary-scopes"
+    raw_token = mint_run_token(role=BOARD_PROPOSAL_ROLE, run_id=run_id, fleet_actions=[], ttl_seconds=60.0)
+    prin = identity_manager.verify_token(raw_token)
+    assert prin is not None
+    assert principal_has_scope(prin, "board.convene")
+    assert principal_has_scope(prin, "staff.read")
+    assert not principal_has_scope(prin, "staff.chat")
+    revoke_run_token(run_id)
 
 
 @pytest.mark.unit

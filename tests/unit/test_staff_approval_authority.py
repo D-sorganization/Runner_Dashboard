@@ -22,7 +22,12 @@ from staff.actions import (
     execute_proposal,
     stored_params_hash,
 )
-from staff.approval_authority import ApprovalAuthority, evaluate_approval_authority, params_hash
+from staff.approval_authority import (
+    ApprovalAuthority,
+    evaluate_approval_authority,
+    params_hash,
+    principal_may_invoke_action_scope,
+)
 from staff.audit import reset_audit_store
 from staff.conversation_models import ActionProposalRecord
 from staff.conversations import get_conversation_store, reset_conversation_store
@@ -213,3 +218,20 @@ def test_barb_principal_cannot_approve_owner_gated_risk(risk: str) -> None:
     prop = _proposal(action="staff.hold", risk=risk)
     verdict = evaluate_approval_authority(None, prop, BARB, include_state=False)
     assert not verdict.allowed and verdict.code == "owner_required"
+
+
+def test_staff_chat_satisfies_board_convene_action_scope_for_approval_4605() -> None:
+    """Loopback/chat approvers keep board.convene after the run-token scope split (#4605)."""
+    action = ACTION_REGISTRY.get("board.convene")
+    assert action is not None
+    approver = Principal(
+        id="__loopback__",
+        type="human",
+        name="Owner at Desk",
+        roles=["loopback"],
+        scopes=["staff.read", "staff.chat", "staff.approve"],
+    )
+    assert principal_may_invoke_action_scope(approver, action.required_scope)
+    prop = _proposal(action="board.convene", question="q?", risk="medium")
+    verdict = evaluate_approval_authority(action, prop, approver, include_state=False)
+    assert verdict.allowed

@@ -32,6 +32,10 @@ _ALLOWED_PATHS: frozenset[str] = frozenset(
         # publish_guard's own content-pattern rules on purpose, same as the
         # publish_guard canary above; no real address/host is shipped.
         "tests/test_migrate_issues.py",
+        # #4607: the one sanctioned module naming the CT host so lane checkout
+        # routes it without a local host_aliases.json. Tests import the
+        # constant rather than spelling the hostname.
+        "backend/coordination/default_host_aliases.py",
     }
 )
 
