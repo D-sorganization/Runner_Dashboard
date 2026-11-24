@@ -37,7 +37,12 @@ from staff.role_capsule import RoleCapsuleStore
 from staff.runner import RunRequest, StaffRunner
 from staff.schedule import DEFAULT_TZ, in_window, next_fire, parse_cron
 from staff.scheduler_cartographer import reconcile_pending as reconcile_cartographer_pending
-from staff.scheduler_issue_pick import fetch_issue_claim_status, fetch_open_issues, scheduled_repo  # noqa: F401
+from staff.scheduler_issue_pick import (  # noqa: F401
+    fetch_issue_claim_status,
+    fetch_open_issues,
+    pick_issue_target,
+    scheduled_repo,
+)
 from staff.scheduler_leader_lease import (
     acquire_leader_lease as _lease_acquire_leader_lease,
 )
@@ -53,7 +58,7 @@ from staff.scheduler_leader_lease import (
     leader_status as _lease_leader_status,
 )
 from staff.scheduler_missed_runs import reconcile_scheduled_runs, record_scheduled_fire, record_scheduled_skip
-from staff.scheduler_named_jobs import named_jobs, queue_due_slot
+from staff.scheduler_named_jobs import named_jobs, queue_due_slot, resolve_issue_pick_unlocked
 from staff.scheduler_persona_guards import persona_fire_guard
 from staff.scheduler_startup import mark_scheduler_started
 from staff.store import _config_dir
@@ -394,6 +399,15 @@ class StaffScheduler:
         report_handled_slots(self.acquire_leader_lease, self.runner.machine, now, self._lease_ttl_seconds(), keys)
         for pending in pending_fires:
             try:
+                if pending.pop("needs_issue_pick", False):
+                    if not resolve_issue_pick_unlocked(
+                        now,
+                        pending,
+                        decisions,
+                        holds_blocking=self.holds.blocking,
+                        record_skip=self._record_unlocked_skip,
+                    ):
+                        continue
                 decisions.append(self._fire_pending_slot(now, **pending))
             except Exception:  # noqa: BLE001
                 log.exception("staff scheduler: slot fire failed for %s", pending.get("name"))
@@ -409,6 +423,11 @@ class StaffScheduler:
             with self._lock:
                 self._save_state()
         return decisions
+
+    def _record_unlocked_skip(self, name: str, due: str, reason: str) -> None:
+        with self._lock:
+            entry = self._load_state().setdefault(name, {})
+            record_scheduled_skip(entry, role=name, job=None, slot=due, machine=self.runner.machine, reason=reason)
 
     def _queue_due_slot(
         self,
