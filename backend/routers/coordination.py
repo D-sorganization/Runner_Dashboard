@@ -300,6 +300,15 @@ async def post_lane_prompt_checkout(body: LaneCheckoutBody, caller: Caller = WRI
             host=body.host,
             ttl_sec=body.ttl_sec,
         )
+    except lane_prompts_mod.LaneRoleUnavailableError as exc:
+        detail: dict[str, Any] = {
+            "role_unavailable": True,
+            "reason": exc.reason,
+            "requested_role": exc.requested_role,
+        }
+        if exc.assigned_role is not None:
+            detail["assigned_role"] = exc.assigned_role
+        raise HTTPException(status_code=409, detail=detail) from exc
     except lane_prompts_mod.LaneConflictError as exc:
         raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
 

@@ -16,6 +16,7 @@ from coordination import board as board_mod
 from coordination.models import normalize_scope_path
 from coordination_fake_rm import FakeRM, board, bot, claim_status, install, session
 from fastapi.testclient import TestClient
+
 from staff import runner as runner_mod
 from staff import store as store_mod
 
@@ -489,3 +490,18 @@ def test_sessions_fail_closed_on_active_conflicts_or_unclassified_warnings(rm: F
     assert body_b["complete"] is False
     assert "unclassified warning" in body_b["read_warnings"]
     assert "unclassified warning" in body_b["warnings"]
+
+
+@pytest.mark.unit
+def test_sessions_skip_marker_only_board_comment(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rm.respond("agent_communicate:list", {**board(complete=False), "comment_limit_exceeded": True})
+    comment = {"id": 7086854547, "user": {"login": "agent"}, "body": "<!-- agent-message v1 -->"}
+    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda page, per_page: [comment] if page == 1 else [])
+    response = client.get("/api/coordination/sessions")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["complete"] is True
+    assert body["sessions"] == []
+    assert any("marker-only" in warning for warning in body["warnings"])

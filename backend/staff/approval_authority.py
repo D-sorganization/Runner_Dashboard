@@ -83,6 +83,14 @@ def is_proposal_expired(prop: ActionProposalRecord, ttl_seconds: int = PROPOSAL_
         return False
 
 
+def principal_may_invoke_action_scope(principal: Principal, required_scope: str) -> bool:
+    """True when ``principal`` holds ``required_scope``, with narrow chat carryover for board.convene (#4605)."""
+    if principal_has_scope(principal, required_scope):
+        return True
+    # Chat operators proposed/approved board.convene under staff.chat before the split scope.
+    return required_scope == "board.convene" and principal_has_scope(principal, "staff.chat")
+
+
 def is_owner(principal: Principal | None) -> bool:
     """Return True if principal has owner/admin privileges.
 
@@ -135,7 +143,7 @@ def evaluate_approval_authority(
     # granting "staff.approve" stay fail-closed.
     if not owner and not principal_has_scope(approver, "staff.approve"):
         return _deny(CODE_SCOPE_MISSING, f"Principal '{approver.id}' lacks 'staff.approve' scope")
-    if action and not owner and not principal_has_scope(approver, action.required_scope):
+    if action and not owner and not principal_may_invoke_action_scope(approver, action.required_scope):
         return _deny(
             CODE_ACTION_SCOPE_MISSING,
             f"Principal '{approver.id}' lacks '{action.required_scope}' required by '{action.name}'",
