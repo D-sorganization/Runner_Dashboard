@@ -2987,15 +2987,15 @@ env var.
 
 ### Agent Remediation
 
-| Method | Path                                    | Description                                                                 |
-| ------ | --------------------------------------- | --------------------------------------------------------------------------- |
-| GET    | `/api/agent-remediation/config`         | Current remediation configuration                                           |
-| PUT    | `/api/agent-remediation/config`         | Update remediation configuration                                            |
-| GET    | `/api/agent-remediation/workflows`      | Health of this repo's `agent-*.yml` workflows                               |
-| POST   | `/api/agent-remediation/plan`           | Generate a remediation plan                                                 |
-| POST   | `/api/agent-remediation/dispatch`       | Dispatch a remediation plan (Claude/Codex)                                  |
-| POST   | `/api/agent-remediation/dispatch-jules` | Retired (HTTP 410 Gone); successor `/api/v1/staff/requests` (SC-G5-6 #1503) |
-| GET    | `/api/agent-remediation/history`        | Remediation dispatch history                                                |
+| Method | Path                                    | Description                                                             |
+| ------ | --------------------------------------- | ----------------------------------------------------------------------- |
+| GET    | `/api/agent-remediation/config`         | Current remediation configuration                                       |
+| PUT    | `/api/agent-remediation/config`         | Update remediation configuration                                        |
+| GET    | `/api/agent-remediation/workflows`      | Health of this repo's `agent-*.yml` workflows                           |
+| POST   | `/api/agent-remediation/plan`           | Generate a remediation plan                                             |
+| POST   | `/api/agent-remediation/dispatch`       | Dispatch a remediation plan (Claude/Codex)                              |
+| POST   | `/api/agent-remediation/dispatch-jules` | Removed after 2026-11-23 sunset; use `/api/v1/staff/requests` (SC-G5-6) |
+| GET    | `/api/agent-remediation/history`        | Remediation dispatch history                                            |
 
 ### Quick Dispatch
 
@@ -3003,7 +3003,7 @@ env var.
 | ------ | ---------------------------- | ------------------------------------------------------------------------------------- |
 | GET    | `/api/providers/registry`    | Shared source-of-truth provider registry (dashboard + Conductor contract, issue #810) |
 | GET    | `/api/agents/providers`      | Available agent providers and their availability status (legacy/back-compat)          |
-| POST   | `/api/agents/quick-dispatch` | Retired (HTTP 410 Gone); successor `/api/v1/staff/requests` (SC-G5-6 #1503)           |
+| POST   | `/api/agents/quick-dispatch` | Removed after 2026-11-23 sunset; use `/api/v1/staff/requests` (SC-G5-6)               |
 
 #### `GET /api/providers/registry` (issue #810)
 
@@ -3175,9 +3175,9 @@ inline style objects.
 
 #### Context-Aware Chat (Issue #88)
 
-| Method | Path                  | Description                                                                                                         |
-| ------ | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/api/assistant/chat` | Retired (HTTP 410 Gone). Replaced by Staff Console conversation threads at `/api/v1/staff/threads` (SC-D11, #1330). |
+| Method | Path                  | Description                                                                                                |
+| ------ | --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/assistant/chat` | Removed after the 2026-11-23 sunset. Use Staff Console threads at `/api/v1/staff/threads` (SC-D11, #1330). |
 
 **Request body:**
 
