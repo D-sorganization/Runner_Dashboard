@@ -27,7 +27,7 @@ def _issue_remediator_role(repos: tuple[str, ...] = ("Tools", "UpstreamDrift")) 
         dispatchable=True,
         scope={},
         window=None,
-        host="DeskComputer",
+        host="TestNode",
         retired=False,
         model=None,
         provider=None,
@@ -102,7 +102,7 @@ def test_scheduler_tick_does_not_hold_lock_during_pick_issue_target(
             return []
 
     class _FakeRunner:
-        machine = "DeskComputer"
+        machine = "TestNode"
         store = _FakeStore()
 
         def roles(self):
