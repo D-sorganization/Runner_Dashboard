@@ -190,7 +190,7 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
         "package_hash": _DEFAULT_PACKAGE_HASH,
         "subagent_model": "claude-sonnet-4-6",
         "max_children": 2,
-        "task_focus": "DeskComputer Claude CLI lane 2 (UpstreamDrift Epic #15660 & backlog).",
+        "task_focus": "hub-a host Claude CLI lane 2 (UpstreamDrift Epic #15660 & backlog).",
         "enabled": True,
     },
     {
@@ -201,7 +201,7 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
         "package_hash": _DEFAULT_PACKAGE_HASH,
         "subagent_model": "claude-sonnet-4-6",
         "max_children": 2,
-        "task_focus": "DeskComputer Claude CLI lane 3 (UpstreamDrift Epic #15660 & backlog).",
+        "task_focus": "hub-a host Claude CLI lane 3 (UpstreamDrift Epic #15660 & backlog).",
         "enabled": True,
     },
     {
@@ -212,7 +212,7 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
         "package_hash": _DEFAULT_PACKAGE_HASH,
         "subagent_model": "claude-sonnet-4-6",
         "max_children": 2,
-        "task_focus": "DeskComputer Claude CLI lane 4 (UpstreamDrift Epic #15660 & backlog).",
+        "task_focus": "hub-a host Claude CLI lane 4 (UpstreamDrift Epic #15660 & backlog).",
         "enabled": True,
     },
     {
@@ -223,7 +223,7 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
         "package_hash": _DEFAULT_PACKAGE_HASH,
         "subagent_model": "claude-sonnet-4-6",
         "max_children": 2,
-        "task_focus": "OGLaptop Claude CLI lane 2 (UpstreamDrift & Tools).",
+        "task_focus": "node-b host Claude CLI lane 2 (UpstreamDrift & Tools).",
         "enabled": True,
     },
 )
