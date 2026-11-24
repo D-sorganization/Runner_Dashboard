@@ -394,3 +394,44 @@ def test_leaderboard_recommend_agent_and_barb_leases_route(tmp_path: Path, monke
     assert get_res.status_code == 200
     assert get_res.json()["count"] == 1
     assert get_res.json()["leases"][0]["scope"] == "barb:front-door"
+
+
+def test_build_report_cards_effective_tokens_per_merge_null_when_no_merges() -> None:
+    # 3 succeeded runs that opened PRs, but PR facts have no merges (open/closed or absent)
+    runs = [
+        _make_run(
+            f"r_open_{i}",
+            provider="claude",
+            model="claude-opus-4-6",
+            status="succeeded",
+            pr_number=3000 + i,
+            input_tokens=10_000,
+            output_tokens=1_000,
+        )
+        for i in range(1, 4)
+    ]
+    # One PR is unmerged (open), one closed unmerged, one absent from facts
+    facts = {
+        (full_repo("Runner_Dashboard"), 3001): PrFact(state="open", ci_first_pass=True, followup_fix=False),
+        (full_repo("Runner_Dashboard"), 3002): PrFact(state="closed", ci_first_pass=False, followup_fix=False),
+    }
+
+    report = build_report_cards(runs, facts, available_providers=["claude"])
+    board = {f"{c['provider']}/{c['model']}": c for c in report["leaderboard"]}
+    card = board["claude/claude-opus-4-6"]
+
+    assert card["prs_opened"] == 3
+    assert card["prs_merged"] == 0
+    assert card["effective_tokens_per_pr"] is not None
+    # Regression check: effective_tokens_per_merge MUST be None when prs_merged == 0, not fall back to eff_tok_pr
+    assert card["effective_tokens_per_merge"] is None
+
+    # Now verify that when a PR is genuinely merged, effective_tokens_per_merge is computed
+    facts_merged = {
+        (full_repo("Runner_Dashboard"), 3001): PrFact(state="merged", ci_first_pass=True, followup_fix=False),
+    }
+    report_merged = build_report_cards(runs, facts_merged, available_providers=["claude"])
+    card_merged = {f"{c['provider']}/{c['model']}": c for c in report_merged["leaderboard"]}["claude/claude-opus-4-6"]
+    assert card_merged["prs_merged"] == 1
+    assert card_merged["effective_tokens_per_merge"] == round(33_000 / 1, 1)
+

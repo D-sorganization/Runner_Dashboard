@@ -216,7 +216,7 @@ def _build_card(
     eff_tok_succ = round(tot_tok / succeeded, 1) if succeeded > 0 else None
     eff_tok_fp = round(tot_tok / first_pass, 1) if first_pass > 0 else None
     eff_tok_pr = round(tot_tok / prs_opened, 1) if prs_opened > 0 else None
-    eff_tok_merge = round(tot_tok / prs_merged_count, 1) if prs_merged_count > 0 else eff_tok_pr
+    eff_tok_merge = round(tot_tok / prs_merged_count, 1) if prs_merged_count > 0 else None
     io_ratio = round(in_tok / max(out_tok, 1), 2) if tot_tok > 0 else 0.0
 
     flags: list[str] = []
