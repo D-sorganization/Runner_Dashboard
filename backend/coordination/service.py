@@ -36,13 +36,14 @@ from coordination.models import (
     ReleaseBody,
 )
 from coordination.pr_age_rule import lease_agent_id
+from coordination.presence_binding import resolve_release_repo
 from coordination.staff_runs_cache import record_staff_runs_snapshot, snapshot_staff_runs
 from coordination.staff_view import staff_run_as_session, staff_runs
 from staff.rm_sync import stale_source_warning
 
 __all__ = ["ImpersonationError", "MissingAgentError", "NotRegisteredError", "UnknownAgentError"]
 
-SESSION_RESPONSE_DEADLINE_SECONDS = 5.0
+SESSION_RESPONSE_DEADLINE_SECONDS = 15.0
 _SESSION_READ_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=2, thread_name_prefix="coord-sessions")
 _SESSION_READ_LOCK = threading.Lock()
 _SESSION_READS: dict[str, concurrent.futures.Future[Any]] = {}
@@ -299,9 +300,12 @@ def register_presence(body: PresenceBody, caller: Caller) -> dict[str, Any]:
 
 def release_presence(body: ReleaseBody, caller: Caller) -> dict[str, Any]:
     _bind(caller, body.session)
-    result = _stamp(board.publish(body.repo, body.session, "release"))
-    claims_check_cache.invalidate_repo(body.repo)
-    emit_activity(source="coordination", session_id=body.session, node="hub", kind="presence_release", repo=body.repo)
+    repo = resolve_release_repo(body.session, body.repo)
+    result = _stamp(board.publish(repo, body.session, "release"))
+    claims_check_cache.invalidate_repo(repo)
+    if repo.casefold() != body.repo.casefold():
+        claims_check_cache.invalidate_repo(body.repo)
+    emit_activity(source="coordination", session_id=body.session, node="hub", kind="presence_release", repo=repo)
     return result
 
 
