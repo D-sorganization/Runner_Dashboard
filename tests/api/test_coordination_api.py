@@ -541,6 +541,27 @@ def test_has_live_session_fails_closed_on_partial_board_outage_or_mixed_warnings
 
 
 @pytest.mark.unit
+def test_has_live_session_fails_closed_when_unclassified_warning_only_in_warnings(rm: FakeRM) -> None:
+    """A tolerable read_warnings list must not mask an unclassified entry in ``warnings`` (#4569 review)."""
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": False,
+            "read_warnings": ["malformed JSON in comment 12"],
+            "replay_warnings": [],
+            "active_conflicts": [],
+            "sessions": [],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["malformed JSON in comment 12", "unclassified replay failure"],
+        },
+    )
+    with pytest.raises(board_mod.RMScriptError):
+        board_mod.has_live_session("missing-s", "Tools")
+
+
+@pytest.mark.unit
 def test_presence_register_does_not_gate_on_has_live_session(rm: FakeRM, client: TestClient) -> None:
     """POST /presence calls RM register directly; send/ack-only ``has_live_session`` is out of scope (#4569)."""
     rm.respond("agent_communicate:register", {"ok": True, "receipt": "c-1", "event": {"id": "e1"}})

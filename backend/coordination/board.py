@@ -335,16 +335,12 @@ def has_live_session(session: str, repo: str) -> bool:
         return True
     if not data.get("complete", True):
         detail = "; ".join(data.get("warnings") or ["incomplete board read"])
-        truncated = bool(data.get("comment_limit_exceeded")) or _has_limit_warning(
-            [*(data.get("read_warnings") or []), *(data.get("warnings") or [])]
-        )
+        all_warnings = [*(data.get("read_warnings") or []), *(data.get("warnings") or [])]
+        truncated = bool(data.get("comment_limit_exceeded")) or _has_limit_warning(all_warnings)
         # Truncated history may hide the registration: fail closed. Tolerate only explicitly
-        # classified malformed-comment skips, not partial board outages or mixed warnings (#4569).
-        if (
-            not truncated
-            and not data.get("active_conflicts")
-            and tolerated_malformed_read_warnings(data.get("read_warnings") or [])
-        ):
+        # classified malformed-comment skips across read_warnings AND warnings, so an
+        # unclassified entry in either list cannot be masked (#4569 review).
+        if not truncated and not data.get("active_conflicts") and tolerated_malformed_read_warnings(all_warnings):
             _LOG.warning("board history degraded, proceeding without presence confirmation of %s: %s", session, detail)
             return True
         raise RMScriptError(f"board read incomplete, cannot confirm presence of {session}: {detail}")
