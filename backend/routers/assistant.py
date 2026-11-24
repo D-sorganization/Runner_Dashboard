@@ -1,7 +1,6 @@
 """Assistant chat and action-execution routes.
 
 Covers:
-  - POST /api/assistant/chat           – AI chat with optional tool-use
   - POST /api/assistant/tool/execute   – execute a tool from the allowlist
   - GET  /api/assistant/audit-history  – tool-execution audit log
   - POST /api/assistant/propose-action – propose an action for approval
@@ -25,7 +24,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from gh_utils import gh_api
 from identity import Principal, require_scope
-from retired_route_sunset import RETIRED_ROUTE_HTTP_SUNSET
 from security import validate_owner_repo_format, validate_repo_slug
 from staff.actions import (
     ActionError,
@@ -69,46 +67,6 @@ def _normalize_repository_input(value: str) -> tuple[str, str]:
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
-
-
-@router.post(
-    "/api/assistant/chat",
-    tags=["assistant"],
-    response_model=assistant_contract.AssistantChatResponse,
-    status_code=410,
-    include_in_schema=False,
-)
-async def assistant_chat(
-    request: Request,
-    *,
-    principal: Principal = Depends(require_scope("assistant.chat")),  # noqa: B008
-) -> JSONResponse:
-    """Retired endpoint (SC-D11, issue #1330).
-
-    Returns HTTP 410 Gone with Link and Sunset headers pointing to the Staff Console
-    conversation API at /api/v1/staff/threads.
-
-    Sunset: removed after ``RETIRED_ROUTE_REMOVAL_AFTER`` in ``retired_route_sunset``
-    (see ``tests/test_retired_route_sunset.py``).
-    """
-    detail = (
-        "The legacy assistant chat endpoint has been retired (SC-D11, issue #1330). "
-        "Use the Staff Console conversation API at /api/v1/staff/threads."
-    )
-    headers = {
-        "Link": '</api/v1/staff/threads>; rel="successor-version"',
-        "Sunset": RETIRED_ROUTE_HTTP_SUNSET,
-    }
-    return JSONResponse(
-        status_code=410,
-        headers=headers,
-        content={
-            "error": detail,
-            "detail": detail,
-            "redirect_url": "/api/v1/staff/threads",
-            "retired_in": "4.10.0",
-        },
-    )
 
 
 @router.post(

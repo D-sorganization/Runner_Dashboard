@@ -1,0 +1,1 @@
+Remove legacy HTTP 410 stubs for quick-dispatch, Jules dispatch, and assistant chat after the 2026-11-23 sunset window.
