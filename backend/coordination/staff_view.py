@@ -21,7 +21,7 @@ from staff import fleet as staff_fleet
 
 log = logging.getLogger("dashboard.coordination")
 
-# Must stay below coordination.service.SESSION_RESPONSE_DEADLINE_SECONDS (5.0).
+# Must stay below coordination.service.SESSION_RESPONSE_DEADLINE_SECONDS (15.0).
 STAFF_RUNS_PEER_BUDGET_SECONDS = 3.0
 _STAFF_SESSION_TTL = timedelta(hours=8)
 _ISSUE_TARGET = re.compile(r"^#(\d+)$")

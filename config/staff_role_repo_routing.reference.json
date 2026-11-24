@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "description": "Canonical staff role repository scope for RD-generated personas and board polling (#4582). Does not change provider failover chains.",
+  "roles": {
+    "pm-sidekick": {
+      "repos": ["Tools"]
+    }
+  }
+}

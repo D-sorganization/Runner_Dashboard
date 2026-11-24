@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -188,7 +189,8 @@ def test_heartbeat_failed_post_reports_and_keeps_the_existing_lease(
     issue = 4304
     session = f"{AGENT}-{issue}"
     patch_gh_list_fetch(monkeypatch, _open_issue_fetch(issue))
-    rm.respond("post_agent_lease", lease_result())
+    live_lease = {**lease_result(), "expires_at": (datetime.now(UTC) + timedelta(hours=2)).isoformat()}
+    rm.respond("post_agent_lease", live_lease)
     posted = {"n": 0}
     real_post_lease = claims_mod.post_lease
 
