@@ -5,7 +5,6 @@ folding of codebase Q&A and Maxwell chat surfaces into the Staff Console.
 from __future__ import annotations
 
 import pytest
-
 from staff.adapters import ADAPTERS, get_adapter
 from staff.router import route_deterministic
 from staff.router_models import ROLE_KEYWORD_RULES

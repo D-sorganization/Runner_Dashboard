@@ -21,7 +21,6 @@ import assistant_contract
 import assistant_tools
 from dashboard_config import ORG, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
 from gh_utils import gh_api
 from identity import Principal, require_scope
 from security import validate_owner_repo_format, validate_repo_slug
