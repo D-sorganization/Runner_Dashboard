@@ -25,6 +25,7 @@ _CLAIM = {"repo": "Tools", "issue": 12, "agent": "codex", "session": "codex-12",
 def rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRM]:
     principals = {
         "bot-token": bot("agent-codex"),
+        "cursor-token": bot("agent-cursor"),
         "viewer-token": identity.Principal(id="watcher", type="human", name="Watcher", roles=["viewer"]),
     }
     yield from install(tmp_path, monkeypatch, principals, repos="Tools")
@@ -76,6 +77,30 @@ def test_free_claim_posts_lease(rm: FakeRM, client: TestClient) -> None:
         *("--repo", "Tools", "--issue", "12"),
         *("--agent", "codex", "--session", "codex-12", "--intent", "implement"),
     ]
+
+
+@pytest.mark.unit
+def test_cursor_principal_posts_roster_id(rm: FakeRM, client: TestClient) -> None:
+    """agent-cursor is not a roster id; RM accepts cursor-agent (#4270)."""
+    from coordination.roster import reset_cache  # noqa: PLC0415
+
+    rm.set_roster(("codex", "cursor-agent", "gemini"))
+    reset_cache()
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", lease_result())
+    headers = {"Authorization": "Bearer cursor-token", **_XHR}
+    claim = {"repo": "Tools", "issue": 12, "session": "cursor-cli-1", "intent": "implement"}
+    resp = client.post("/api/coordination/claims", json=claim, headers=headers)
+    assert resp.status_code == 200, resp.text
+    post = [argv for name, argv in rm.calls() if name == "post_agent_lease"][0]
+    assert post[post.index("--agent") + 1] == "cursor-agent"
+
+    rm.respond("agent_communicate:register", {"ok": True, "receipt": "c-1", "event": {"id": "e1"}})
+    presence = {"session": "cursor-cli-1", "repo": "Tools", "issue": 12, "branch": "fix/cursor-roster"}
+    resp = client.post("/api/coordination/presence", json=presence, headers=headers)
+    assert resp.status_code == 200, resp.text
+    registered = [argv for name, argv in rm.calls() if name == "agent_communicate" and "register" in argv]
+    assert registered[0][registered[0].index("--agent") + 1] == "cursor-agent"
 
 
 @pytest.mark.unit

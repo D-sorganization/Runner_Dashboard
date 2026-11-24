@@ -100,6 +100,11 @@ def patch_gh_list_fetch(monkeypatch: pytest.MonkeyPatch, fetch: Any) -> None:
 
     monkeypatch.setattr(gh_cli, "gh_api_json_all", list_pages)
 
+    def single_json(path: str) -> Any:
+        return fetch(path)
+
+    monkeypatch.setattr(gh_cli, "gh_api_json", single_json)
+
 
 def install(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, principals: dict[str, identity.Principal], repos: str
@@ -109,6 +114,7 @@ def install(
     from coordination import claims as claims_mod  # noqa: PLC0415
     from coordination import gh_cli  # noqa: PLC0415
     from coordination import roster as roster_mod  # noqa: PLC0415
+
     from staff import fleet as staff_fleet  # noqa: PLC0415
     from staff import runner as runner_mod  # noqa: PLC0415
     from staff import scheduler as scheduler_mod  # noqa: PLC0415
@@ -118,6 +124,7 @@ def install(
     _no_gh = lambda _path: []  # noqa: E731 — no live gh in a unit test (#3274)
     monkeypatch.setattr(claims_mod, "evidence_fetch", _no_gh)
     monkeypatch.setattr(gh_cli, "gh_api_json_all", _no_gh)
+    monkeypatch.setattr(gh_cli, "gh_api_json", _no_gh)
     monkeypatch.setenv("STAFF_RM_ROOT", str(fake.root))
     monkeypatch.setenv("STAFF_RM_PYTHON", sys.executable)
     monkeypatch.setenv("STAFF_RUNS_DB", str(tmp_path / "runs.sqlite3"))
@@ -129,9 +136,12 @@ def install(
     monkeypatch.delenv("HUB_FLEET_TOKEN", raising=False)
     monkeypatch.setattr(staff_fleet, "peer_nodes", lambda: {})
     monkeypatch.setattr(identity.identity_manager, "verify_token", lambda raw: principals.get(raw))
+    from coordination import claims_check_cache as claims_cache_mod  # noqa: PLC0415
+
     resets = (
         store_mod.reset_store, runner_mod.reset_runner, scheduler_mod.reset_scheduler,
         board_mod.reset_cache, roster_mod.reset_cache, claims_mod.reset_locks,
+        claims_cache_mod.reset,
     )  # fmt: skip
     from coordination import jobs as jobs_mod  # noqa: PLC0415
 

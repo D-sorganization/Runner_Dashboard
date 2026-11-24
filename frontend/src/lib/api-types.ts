@@ -1506,6 +1506,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/fleet-efficiency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fleet Efficiency
+         * @description Read-only fleet efficiency knobs: wake coalescing, brief cap, planned reset (#4562).
+         */
+        get: operations["get_fleet_efficiency_api_coordination_fleet_efficiency_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/inbox": {
         parameters: {
             query?: never;
@@ -16695,6 +16715,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fleet_efficiency_api_coordination_fleet_efficiency_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

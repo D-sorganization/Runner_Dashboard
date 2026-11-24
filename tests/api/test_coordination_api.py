@@ -16,6 +16,7 @@ from coordination import board as board_mod
 from coordination.models import normalize_scope_path
 from coordination_fake_rm import FakeRM, board, bot, claim_status, install, session
 from fastapi.testclient import TestClient
+
 from staff import runner as runner_mod
 from staff import store as store_mod
 
@@ -239,7 +240,8 @@ def test_owner_prefixed_repo_is_normalised_to_the_bare_name(rm: FakeRM, client: 
     rm.respond("agent_communicate:release", {"ok": True})
     rel = {"session": "codex-1", "repo": "D-sorganization/Tools"}
     assert client.post("/api/coordination/presence/release", json=rel, headers=_BOT).status_code == 200
-    assert [argv[1] for _, argv in rm.calls()] == ["Tools", "Tools"]
+    release_argv = next(argv for name, argv in rm.calls() if name == "agent_communicate" and "release" in argv)
+    assert release_argv[release_argv.index("--repo") + 1] == "Tools"
     assert client.get("/api/coordination/claims?repo=a..b&issue=3").status_code == 422
 
 
@@ -539,3 +541,18 @@ def test_has_live_session_still_fails_closed_when_board_unavailable(rm: FakeRM) 
     rm.respond("agent_communicate:list", {"error": "github down"})
     with pytest.raises(board_mod.RMScriptError):
         board_mod.has_live_session("s", "Tools")
+
+
+@pytest.mark.unit
+def test_sessions_skip_marker_only_board_comment(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rm.respond("agent_communicate:list", {**board(complete=False), "comment_limit_exceeded": True})
+    comment = {"id": 7086854547, "user": {"login": "agent"}, "body": "<!-- agent-message v1 -->"}
+    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda page, per_page: [comment] if page == 1 else [])
+    response = client.get("/api/coordination/sessions")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["complete"] is True
+    assert body["sessions"] == []
+    assert any("marker-only" in warning for warning in body["warnings"])

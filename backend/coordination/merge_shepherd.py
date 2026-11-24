@@ -4,10 +4,22 @@ from __future__ import annotations
 
 import enum
 import logging
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
+
+from coordination.merge_shepherd_exact_head import (
+    DEFAULT_REVIEW_PASS_TTL_HOURS,
+    HeadReviewPass,
+    pass_at_head,
+    shepherd_arm_eligibility,
+)
+from coordination.merge_shepherd_holds import (
+    MERGE_SHEPHERD_HOLD_LABELS,
+    label_is_merge_shepherd_hold,
+    pr_title_indicates_hold,
+)
+from coordination.merge_shepherd_low_risk import DEFAULT_LOW_RISK_LINE_CAP
 
 
 class _StrEnum(str, enum.Enum):  # noqa: UP042
@@ -19,8 +31,7 @@ class _StrEnum(str, enum.Enum):  # noqa: UP042
 logger = logging.getLogger(__name__)
 
 MERGE_QUEUE_REPOS = frozenset({"runner_dashboard", "repository_management", "gasification_model", "rd", "rm", "gm"})
-HOLD_LABELS = frozenset({"hold", "drain-hold", "do-not-merge", "dnm", "blocked", "needs-decision", "wip"})
-_HOLD_TITLE = re.compile(r"\[hold\]|\(held\)|\(hold\)|^\s*hold\b", re.IGNORECASE)
+HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 #: Merge-queue ejections of one head after which the shepherd stops arming it (#3932).
 BOUNCE_LIMIT = 2
 #: Ejection reasons that say nothing about the PR itself.
@@ -29,6 +40,7 @@ NOT_A_BOUNCE = frozenset({"merged", "already_merged", "queue_cleared", "roll_bac
 
 class ShepherdAction(_StrEnum):
     AUTO_ARM = "auto_arm"
+    DISARM = "disarm"
     UPDATE_BRANCH = "update_branch"
     SKIP = "skip"
 
@@ -44,6 +56,7 @@ class IneligibleReason(_StrEnum):
     ALREADY_ARMED = "already_armed"
     CHECKS_FAILED = "checks_failed"
     CHECKS_PENDING = "checks_pending"
+    NO_EXACT_HEAD_PASS = "no_exact_head_pass"
 
 
 @dataclass(frozen=True)
@@ -63,6 +76,15 @@ class PRCandidate:
     is_drained: bool = False
     is_exempt: bool = False
     has_priority: bool = False
+    head_sha: str = ""
+    review_passes: tuple[HeadReviewPass, ...] = ()
+    review_decision: str = ""
+    file_paths: tuple[str, ...] = ()
+    additions: int = 0
+    deletions: int = 0
+    line_cap: int = 0
+    files_complete: bool = True
+    review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS
 
 
 @dataclass(frozen=True)
@@ -113,9 +135,7 @@ def count_queue_bounces(node: Mapping[str, Any]) -> int:
 
 def is_pr_held(labels: Sequence[str] = (), title: str = "") -> bool:
     """Check if PR is marked with a hold via label or title indicator."""
-    return any(str(lbl).strip().casefold() in HOLD_LABELS for lbl in labels) or bool(
-        title and _HOLD_TITLE.search(title)
-    )
+    return any(label_is_merge_shepherd_hold(lbl) for lbl in labels) or pr_title_indicates_hold(title)
 
 
 def is_priority_candidate(candidate: PRCandidate) -> bool:
@@ -129,6 +149,11 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
 
     if candidate.state.upper() != "OPEN":
         return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.NOT_OPEN, priority=priority)
+    # Pure decision only: live disarm execution remains deferred under #2657/#2880.
+    if candidate.auto_merge_enabled or candidate.is_queued:
+        _, verdict_detail = pass_at_head(candidate.review_passes, pr=pr_num, head_sha=candidate.head_sha)
+        if verdict_detail == "rejected_at_head":
+            return ShepherdDecision(ShepherdAction.DISARM, pr_num, repo, detail=verdict_detail, priority=priority)
     if candidate.is_draft:
         return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.DRAFT, priority=priority)
     if candidate.mergeable.upper() == "CONFLICTING":
@@ -160,9 +185,47 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
             ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.ALREADY_ARMED, priority=priority
         )
 
+    head_sha = str(candidate.head_sha or "").strip()
+    if not head_sha:
+        return ShepherdDecision(
+            ShepherdAction.SKIP,
+            pr_num,
+            repo,
+            reason=IneligibleReason.NO_EXACT_HEAD_PASS,
+            detail="missing_pass_at_head",
+            priority=priority,
+        )
+
+    line_cap = candidate.line_cap or DEFAULT_LOW_RISK_LINE_CAP
+    eligibility, pass_detail = shepherd_arm_eligibility(
+        review_decision=candidate.review_decision or None,
+        file_paths=candidate.file_paths,
+        additions=candidate.additions,
+        deletions=candidate.deletions,
+        line_cap=line_cap,
+        labels=candidate.labels,
+        checks_state=candidate.checks_status,
+        files_complete=candidate.files_complete,
+        pr_number=pr_num,
+        head_sha=head_sha,
+        review_passes=candidate.review_passes,
+        review_pass_ttl_hours=candidate.review_pass_ttl_hours,
+    )
+    if eligibility != "reviewed":
+        return ShepherdDecision(
+            ShepherdAction.SKIP,
+            pr_num,
+            repo,
+            reason=IneligibleReason.NO_EXACT_HEAD_PASS,
+            detail=pass_detail,
+            priority=priority,
+        )
+    exact_head_detail = pass_detail
+
     flag = get_auto_merge_flag(repo)
+    arm_detail = exact_head_detail or f"Arm with {flag}"
     return ShepherdDecision(
-        ShepherdAction.AUTO_ARM, pr_num, repo, merge_flag=flag, detail=f"Arm with {flag}", priority=priority
+        ShepherdAction.AUTO_ARM, pr_num, repo, merge_flag=flag, detail=arm_detail, priority=priority
     )
 
 

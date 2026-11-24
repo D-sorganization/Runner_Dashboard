@@ -261,8 +261,10 @@ def test_unconditional_update_run_rejects_reopening_cancelled(tmp_path: Path) ->
 
     store = RunStore(tmp_path / "runs.sqlite3")
     try:
+        from staff.run_status import RunStatus, transition  # noqa: PLC0415
+
         store.create_run(RunRecord("reopen", "ad-hoc", "claude", None, "m", "repo", "prompt", "", "p", status="queued"))
-        store.update_run("reopen", status="cancelled", ended_at="2026-11-11T00:00:00Z")
+        transition(store, "reopen", RunStatus.QUEUED, RunStatus.CANCELLED, ended_at="2026-11-11T00:00:00Z")
         with pytest.raises(IllegalRunStatusTransitionError):
             store.update_run("reopen", status="running")
         got = store.get_run("reopen")

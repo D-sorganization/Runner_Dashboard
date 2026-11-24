@@ -51,7 +51,14 @@ def test_clean_tree_is_left_alone(repo: Path, tmp_path: Path) -> None:
     assert not (tmp_path / "q").exists()
 
 
-@pytest.mark.parametrize("name", ["notes draft.md", "café.txt", 'say "hi".txt'])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "notes draft.md",
+        "café.txt",
+        pytest.param('say "hi".txt', marks=pytest.mark.requires_posix),
+    ],
+)
 def test_untracked_paths_git_quotes_are_saved_and_cleaned(repo: Path, tmp_path: Path, name: str) -> None:
     (repo / name).write_text("owner note\n", encoding="utf-8")
     summary = _quarantine(repo, tmp_path)

@@ -1,7 +1,10 @@
 """Staff runs in flight, shaped for the coordination views (issue #1229).
 
-Reuses the Staff Hub fan-out (``staff.fleet.aggregate_board``) so the
-coordination API sees the same fleet-wide in-flight list as ``/api/staff/summary``.
+Reads the local run store plus a deadline-bounded peer fan-out
+(``staff.fleet.fetch_peer_boards_bounded``) instead of the full
+``aggregate_board`` (watchdog, spend and liveness merging), so the coordination
+API stays inside its response deadline (#4619). Unreachable peers are reported
+as warnings, never silently dropped.
 """
 
 from __future__ import annotations
@@ -18,6 +21,8 @@ from staff import fleet as staff_fleet
 
 log = logging.getLogger("dashboard.coordination")
 
+# Must stay below coordination.service.SESSION_RESPONSE_DEADLINE_SECONDS (15.0).
+STAFF_RUNS_PEER_BUDGET_SECONDS = 3.0
 _STAFF_SESSION_TTL = timedelta(hours=8)
 _ISSUE_TARGET = re.compile(r"^#(\d+)$")
 
@@ -88,17 +93,20 @@ async def staff_runs(repo: str | None = None) -> tuple[list[dict[str, Any]], lis
     try:
         runner = get_runner()
         active = await asyncio.to_thread(runner.store.active_runs)
-        local = {
-            "machine": runner.machine,
-            "running": [r.to_dict() for r in active if r.status == "running"],
-            "queued": [r.to_dict() for r in active if r.status != "running"],
-        }
-        board = await staff_fleet.aggregate_board(local)
+        running = [r.to_dict() for r in active if r.status == "running"]
+        queued = [r.to_dict() for r in active if r.status != "running"]
+        boards, peer_warnings = await staff_fleet.fetch_peer_boards_bounded(
+            {name: url for name, url in staff_fleet.peer_nodes().items() if name != runner.machine},
+            STAFF_RUNS_PEER_BUDGET_SECONDS,
+        )
+        for board in boards.values():
+            running.extend(board.get("running", []))
+            queued.extend(board.get("queued", []))
     except Exception as exc:  # noqa: BLE001 — orthogonality: staff failure must not break coordination reads
         log.warning("coordination: staff runs unavailable: %s", exc)
         return [], [f"staff runs unavailable: {exc}"]
-    rows = [_row(r) for r in [*board["running"], *board["queued"]]]
+    rows = [_row(r) for r in [*running, *queued]]
     if repo:
         wanted = repo.casefold()
         rows = [r for r in rows if str(r["repo"] or "").casefold() == wanted]
-    return rows, []
+    return rows, peer_warnings

@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from coordination.merge_shepherd import HOLD_LABELS, PRCandidate, ShepherdAction, evaluate_pr_shepherd_eligibility
+from coordination.merge_shepherd_exact_head import HeadReviewPass
 from staff.review import PROVIDER_FAMILY
 
+# Fleet arm intake holds (review-arm only); merge-shepherd tokens live in merge_shepherd_holds.py.
 HOLD_LABELS = HOLD_LABELS | frozenset(
     {
         "c3",
@@ -17,7 +20,6 @@ HOLD_LABELS = HOLD_LABELS | frozenset(
         "sidekick-packaging",
         "assessment board",
         "assessment-board",
-        "do-not-automate",
     }
 )
 HELD_PRS = frozenset(
@@ -97,6 +99,34 @@ class Decision:
     provider: str = ""
 
 
+def _shepherd_base_candidate(c: Candidate) -> PRCandidate:
+    """Map review-arm verified state into merge-shepherd inputs (#4573)."""
+    review_passes: tuple[HeadReviewPass, ...] = ()
+    if c.checks_green and c.checks_head == c.head_sha:
+        review_passes = (
+            HeadReviewPass(
+                pr=c.pr,
+                head_sha=c.head_sha,
+                verdict="approve",
+                recorded_at=datetime.now(UTC).isoformat(),
+            ),
+        )
+    return PRCandidate(
+        c.repo,
+        c.pr,
+        title=c.title,
+        state=c.state,
+        is_draft=c.draft,
+        mergeable=c.mergeable,
+        checks_status="SUCCESS",
+        labels=c.labels,
+        head_sha=c.head_sha,
+        review_passes=review_passes,
+        review_decision="APPROVED" if c.approved else "",
+        file_paths=(".",),
+    )
+
+
 def decide(c: Candidate, held_prs: frozenset[tuple[str, int]] = HELD_PRS) -> Decision:
     """Arm iff exact-head approval, confirmed checks, no hold and open/non-draft.
 
@@ -124,18 +154,7 @@ def decide(c: Candidate, held_prs: frozenset[tuple[str, int]] = HELD_PRS) -> Dec
         reason = "merge_state"
     if reason:
         return Decision("skip", reason)
-    base = evaluate_pr_shepherd_eligibility(
-        PRCandidate(
-            c.repo,
-            c.pr,
-            title=c.title,
-            state=c.state,
-            is_draft=c.draft,
-            mergeable=c.mergeable,
-            checks_status="SUCCESS",
-            labels=c.labels,
-        )
-    )
+    base = evaluate_pr_shepherd_eligibility(_shepherd_base_candidate(c))
     if base.action != ShepherdAction.AUTO_ARM:
         return Decision("skip", str(base.reason))
     if c.approved:

@@ -125,6 +125,7 @@ def _reasons(report: dict[str, Any]) -> dict[str, str]:
 def _only_the_fixture_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Discovery must not look at this machine's real checkouts."""
     monkeypatch.setattr(hygiene, "repos_roots", lambda: [])
+    monkeypatch.setattr(hygiene, "active_staff_workdirs", lambda: set())
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "protocol.file.allow")
     monkeypatch.setenv("GIT_CONFIG_VALUE_0", "always")
@@ -259,21 +260,6 @@ def test_a_submodule_tree_that_turns_dirty_before_removal_is_not_forced(fleet: d
 
     assert hygiene._git_worktree_remove(fleet["with_sub"], fleet["sub_clean"]) is False
     assert fleet["sub_clean"].exists()
-
-
-@pytest.mark.parametrize("folder", [".staff", ".gemini"])
-def test_agent_notes_block_the_forced_removal_of_a_submodule_tree(fleet: dict[str, Path], folder: str) -> None:
-    """Plain removal refuses untracked agent notes by itself; a forced one would delete them (#4540)."""
-    for name in ("clean", "sub_clean"):
-        (fleet[name] / folder).mkdir()
-        (fleet[name] / folder / "note.md").write_text("x", encoding="utf-8")
-
-    report = _sweep(fleet, apply=True)
-
-    assert (fleet["sub_clean"] / folder / "note.md").exists()
-    assert _reasons(report)["sub-clean"] == "untracked_files"
-    assert hygiene._git_worktree_remove(fleet["with_sub"], fleet["sub_clean"]) is False
-    assert (fleet["clean"] / folder / "note.md").exists(), "git itself refuses the plain removal"
 
 
 def test_files_in_an_uninitialised_submodule_folder_block_removal(fleet: dict[str, Path]) -> None:

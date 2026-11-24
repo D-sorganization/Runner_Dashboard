@@ -19,6 +19,8 @@ FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "delivery_metrics"
 REPO = "D-sorganization/Runner_Dashboard"
 SINCE = datetime(2026, 10, 1, tzinfo=UTC)
 UNTIL = datetime(2026, 10, 31, tzinfo=UTC)
+PINNED_NOW = datetime(2026, 10, 25, 0, 0, 0, tzinfo=UTC)
+FUTURE_NOW = datetime(2035, 1, 1, 0, 0, 0, tzinfo=UTC)
 
 
 class _FixtureCollector:
@@ -38,14 +40,35 @@ class _FixtureCollector:
         return self._runs
 
 
+@pytest.fixture(params=[PINNED_NOW, FUTURE_NOW], ids=["pinned_date", "future_wall_clock"])
+def wall_clock(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> datetime:
+    simulated: datetime = request.param
+
+    class _MockDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is not None:
+                return simulated.astimezone(tz)
+            return simulated
+
+    import delivery_metrics.report as report_mod
+    import delivery_metrics.sync as sync_mod
+    import delivery_metrics.weekly_summary as ws_mod
+
+    monkeypatch.setattr(sync_mod, "datetime", _MockDatetime)
+    monkeypatch.setattr(report_mod, "datetime", _MockDatetime)
+    monkeypatch.setattr(ws_mod, "datetime", _MockDatetime)
+    return simulated
+
+
 @pytest.fixture
-def metrics_conn(tmp_path: Path):
+def metrics_conn(tmp_path: Path, wall_clock: datetime):
     db_path = init_db(tmp_path / "metrics.db")
     pr = json.loads((FIXTURES / "pr_2111.json").read_text(encoding="utf-8"))
     checks = json.loads((FIXTURES / "check_runs_pr_2111.json").read_text(encoding="utf-8"))
     import asyncio
 
-    asyncio.run(collect_delivery_metrics_once(_FixtureCollector(pr, checks), [REPO], db_path=db_path))
+    asyncio.run(collect_delivery_metrics_once(_FixtureCollector(pr, checks), [REPO], db_path=db_path, now=PINNED_NOW))
     import sqlite3
 
     conn = sqlite3.connect(str(db_path))
@@ -117,6 +140,7 @@ def test_build_weekly_summary_composes_delivery_staff_and_cost(metrics_conn) -> 
         runs=[_run()],
         proposals=[],
         session_metrics=session_metrics,
+        now=PINNED_NOW,
     )
     assert body["delivery"]["summary"]["prs"] >= 1
     assert body["staff"]["runs"] == 1

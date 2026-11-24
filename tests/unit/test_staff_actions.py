@@ -335,6 +335,7 @@ def test_board_secretary_may_propose_board_convene() -> None:
     """The role that chairs the Board may propose convening it (#1773); other roles may not."""
     convene_act = ACTION_REGISTRY.get("board.convene")
     assert convene_act is not None
+    assert convene_act.required_scope == "board.convene"
     assert check_role_permission(convene_act, BOARD_PROPOSAL_ROLE)
     assert not check_role_permission(convene_act, "board_secretary")
 

@@ -21,6 +21,7 @@ from staff.adapters import (
     claude_unattended_tools,
     gemini_policy_toml,
 )
+from staff.adapter_policies import unattended_argv_bypass_flags
 
 UNATTENDED = [pid for pid, adapter in ADAPTERS.items() if adapter.unattended]
 
@@ -29,7 +30,7 @@ UNATTENDED = [pid for pid, adapter in ADAPTERS.items() if adapter.unattended]
 @pytest.mark.parametrize("provider", UNATTENDED)
 def test_no_unattended_argv_carries_a_bypass_flag(provider: str) -> None:
     argv = ADAPTERS[provider].build_command("do it", "/tmp/wt", model="m", gitdir="/repo/.git")
-    assert not PERMISSION_BYPASS_FLAGS & set(argv), argv
+    assert not unattended_argv_bypass_flags(provider, argv), argv
 
 
 @pytest.mark.unit
@@ -114,7 +115,10 @@ def test_codex_command_items_are_not_mistaken_for_answers() -> None:
 
 
 @pytest.mark.unit
-def test_cursor_agent_runs_sandboxed_without_force() -> None:
+def test_cursor_agent_runs_sandboxed_without_force(monkeypatch: pytest.MonkeyPatch) -> None:
+    import sys
+
+    monkeypatch.setattr(sys, "platform", "linux")
     argv = ADAPTERS["cursor-agent"].build_command("fix it", "/tmp/wt", model=None)
     assert argv[argv.index("--sandbox") + 1] == "enabled"
     assert "--trust" in argv  # workspace trust for its own worktree, not a permission bypass

@@ -183,3 +183,62 @@ def test_finalize_approve_fails_loud_on_formal_post_error() -> None:
     assert out.status == "failed"
     assert out.failure_class == "provider_error"
     assert "403" in out.remediation
+
+
+def test_fix_needed_publishes_blocking_review_at_exact_head() -> None:
+    from staff.independent_exact_head_verdict import publish_independent_exact_head_verdict
+
+    fake = MagicMock(token=_FAKE_GHS)
+    with (
+        patch("staff.independent_exact_head_verdict.mint_runner_dashboard_verdict_token", return_value=fake),
+        patch("staff.staff_github_pr_review.mint_runner_dashboard_verdict_token", return_value=fake),
+    ):
+        with patch("staff.staff_github_pr_review.submit_pull_request_review") as submit:
+            review = {"state": "CHANGES_REQUESTED", "commit_id": _HEAD, "user": {"login": RUNNER_DASHBOARD_BOT_LOGIN}}
+            with patch("staff.staff_github_pr_review.fetch_pull_reviews", return_value=[review]):
+                with patch("staff.independent_exact_head_verdict.post_pr_comment", return_value=1):
+                    with patch("staff.independent_exact_head_verdict.confirm_verdict_comment_published"):
+                        publish_independent_exact_head_verdict(
+                            repo="Runner_Dashboard",
+                            pr_number=9,
+                            verdict="FIX-NEEDED",
+                            head_sha=_HEAD,
+                            reviewer_model="codex",
+                        )
+    assert submit.call_args.kwargs["event"] == "REQUEST_CHANGES"
+    assert submit.call_args.kwargs["commit_id"] == _HEAD
+
+
+def test_fix_needed_review_readback_failure_does_not_publish_comment() -> None:
+    from staff.independent_exact_head_verdict import publish_independent_exact_head_verdict
+
+    fake = MagicMock(token=_FAKE_GHS)
+    with (
+        patch("staff.independent_exact_head_verdict.mint_runner_dashboard_verdict_token", return_value=fake),
+        patch("staff.staff_github_pr_review.mint_runner_dashboard_verdict_token", return_value=fake),
+        patch("staff.staff_github_pr_review.submit_pull_request_review"),
+        patch("staff.staff_github_pr_review.fetch_pull_reviews", return_value=[]),
+        patch("staff.staff_github_pr_review.READ_BACK_ATTEMPTS", 1),
+        patch("staff.independent_exact_head_verdict.post_pr_comment") as comment,
+    ):
+        with pytest.raises(VerdictPostError):
+            publish_independent_exact_head_verdict(
+                repo="Runner_Dashboard", pr_number=9, verdict="FIX-NEEDED", head_sha=_HEAD, reviewer_model="codex"
+            )
+    comment.assert_not_called()
+
+
+def test_approval_before_changes_requested_does_not_suppress_new_approval() -> None:
+    fake = MagicMock(token=_FAKE_GHS)
+    reviews = [
+        {"id": 1, "state": "APPROVED", "commit_id": _HEAD, "user": {"login": RUNNER_DASHBOARD_BOT_LOGIN}},
+        {"id": 2, "state": "CHANGES_REQUESTED", "commit_id": _HEAD, "user": {"login": RUNNER_DASHBOARD_BOT_LOGIN}},
+    ]
+    approved = {"id": 3, "state": "APPROVED", "commit_id": _HEAD, "user": {"login": RUNNER_DASHBOARD_BOT_LOGIN}}
+    with (
+        patch("staff.staff_github_pr_review.mint_runner_dashboard_verdict_token", return_value=fake),
+        patch("staff.staff_github_pr_review.fetch_pull_reviews", side_effect=[reviews, [*reviews, approved]]),
+        patch("staff.staff_github_pr_review.submit_pull_request_review") as submit,
+    ):
+        ensure_runner_dashboard_formal_approve(repo="Runner_Dashboard", pr_number=42, head_sha=_HEAD, body="PASS")
+    assert submit.call_args.kwargs["event"] == "APPROVE"

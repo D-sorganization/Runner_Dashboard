@@ -16,13 +16,27 @@ import logging
 import os
 import subprocess
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+from agent_active_workdirs import active_staff_workdirs
 from staff.repo_roots import repos_roots
+from worktree_ignored_policy import IGNORED_FILES_REASON, ignored_files_removal_blocker
 
 log = logging.getLogger("dashboard.agent_worktree_hygiene")
+
+
+def _ignored_files_problem(worktree: Path) -> str:
+    """``ignored_files`` when non-regenerable ignored paths exist; ``dirty`` when git fails."""
+    res = _git(worktree, "status", "--porcelain", "--ignored")
+    if res.returncode != 0:
+        return "dirty"
+    return ignored_files_removal_blocker(res.stdout)
+
 
 DEFAULT_PROTECTED_WORKTREES: tuple[str, ...] = ("pr-10507", "pr-10633")
 DEFAULT_PROTECTED_REPOS: tuple[str, ...] = ("work_private", "Tools_Private", "glass")
@@ -37,12 +51,30 @@ class WorktreeEntry:
     locked: bool = False
 
 
+_ISOLATE_GIT_CONFIG: ContextVar[bool] = ContextVar("isolate_git_config", default=False)
+
+
+@contextmanager
+def isolated_git_config() -> Iterator[None]:
+    """Run ``_git`` without system/global config, for repos in shared scratch roots (#4440)."""
+    token = _ISOLATE_GIT_CONFIG.set(True)
+    try:
+        yield
+    finally:
+        _ISOLATE_GIT_CONFIG.reset(token)
+
+
 def _git(cwd: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX"):
         env.pop(key, None)
+    if _ISOLATE_GIT_CONFIG.get():
+        env["GIT_CONFIG_NOSYSTEM"] = "1"
+        env["GIT_CONFIG_GLOBAL"] = os.devnull
+    # Repo-local config must never run code (fsmonitor, hooks) for any caller of this read-only helper.
+    hardening = ["-c", "core.fsmonitor=false", "-c", f"core.hooksPath={os.devnull}"]
     return subprocess.run(  # noqa: S603
-        ["git", "-C", str(cwd), *args],
+        ["git", *hardening, "-C", str(cwd), *args],
         check=False,
         capture_output=True,
         text=True,
@@ -115,6 +147,9 @@ def _submodule_problem(worktree: Path) -> str:
             return "submodule_unreadable"
         if status.stdout.strip():
             return "submodule_dirty"
+        ign = _ignored_files_problem(sub)
+        if ign == IGNORED_FILES_REASON:
+            return ign
         unpushed = _git(sub, "rev-list", "--count", "HEAD", "--all", "--not", "--remotes")
         if unpushed.returncode != 0:
             return "submodule_unreadable"
@@ -132,6 +167,9 @@ def _forced_removal_problem(worktree: Path) -> str:
     ``_worktree_clean`` tolerates untracked agent notes because a plain ``git worktree remove``
     refuses a tree that still has them. A forced removal deletes them, so here any entry blocks.
     """
+    ign = _ignored_files_problem(worktree)
+    if ign:
+        return ign
     status = _git(worktree, "status", "--porcelain")
     if status.returncode != 0:
         return "dirty"
@@ -175,6 +213,23 @@ def _branch_merged_or_closed(checkout: Path, branch: str) -> bool:
     return False
 
 
+def _active_session_reason(path: Path, active_workdirs: set[Path] | None) -> str:
+    """Why an active staff session blocks removal, or ``""`` (fail-closed when unknown)."""
+    if active_workdirs is None:
+        return "active_session_unknown"
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return "active_session_unknown"
+    for workdir in active_workdirs:
+        try:
+            if resolved == workdir or workdir in resolved.parents or resolved in workdir.parents:
+                return "active_session"
+        except OSError:
+            return "active_session_unknown"
+    return ""
+
+
 def worktree_entry_is_eligible(
     checkout: Path,
     entry: dict[str, Any] | WorktreeEntry,
@@ -182,6 +237,7 @@ def worktree_entry_is_eligible(
     min_age_hours: float = DEFAULT_MIN_AGE_HOURS,
     protected: tuple[str, ...] = DEFAULT_PROTECTED_WORKTREES,
     now: float | None = None,
+    active_workdirs: set[Path] | None | object = ...,
 ) -> tuple[bool, str]:
     """Return (eligible, reason) for one linked worktree (not the primary checkout)."""
     wt = entry if isinstance(entry, WorktreeEntry) else WorktreeEntry(path=entry["path"], branch=entry["branch"])
@@ -200,6 +256,13 @@ def worktree_entry_is_eligible(
         return False, "stat_failed"
     if age_h < min_age_hours:
         return False, "too_young"
+    workdirs = active_staff_workdirs() if active_workdirs is ... else cast("set[Path] | None", active_workdirs)
+    session_reason = _active_session_reason(wt.path, workdirs)
+    if session_reason:
+        return False, session_reason
+    ignored = _ignored_files_problem(wt.path)
+    if ignored:
+        return False, ignored
     if not _worktree_clean(wt.path):
         return False, "dirty"
     problem = _submodule_problem(wt.path)
@@ -253,7 +316,10 @@ def _refresh_origin(checkout: Path, origin_url: str) -> None:
 def _git_subcommand(exc: subprocess.TimeoutExpired) -> str:
     """The git subcommand of a timed-out ``_git`` call (``git -C <cwd> <subcommand> ...``)."""
     cmd = exc.cmd if isinstance(exc.cmd, (list, tuple)) else []
-    return str(cmd[3]) if len(cmd) > 3 else "unknown"
+    if "-C" in cmd:
+        idx = list(cmd).index("-C") + 2
+        return str(cmd[idx]) if idx < len(cmd) else "unknown"
+    return "unknown"
 
 
 def _worktree_timeout_reason(worktree: Path, exc: subprocess.TimeoutExpired) -> str:
@@ -304,6 +370,7 @@ def plan_agent_worktree_prune(
     skipped_checkouts: list[dict[str, str]] = []
     removed = 0
     seen: set[str] = set()
+    active_workdirs = active_staff_workdirs()
     for checkout in repo_checkouts:
         if not _is_primary_checkout(checkout) or _path_key(checkout) in seen:
             continue
@@ -333,6 +400,7 @@ def plan_agent_worktree_prune(
                     entry,
                     min_age_hours=min_age_hours,
                     protected=protected,
+                    active_workdirs=active_workdirs,
                 )
             except subprocess.TimeoutExpired as exc:
                 ok, reason = False, _worktree_timeout_reason(entry.path, exc)
@@ -363,6 +431,50 @@ def plan_agent_worktree_prune(
     }
 
 
+def default_agent_worktree_roots(home: Path | None = None) -> list[Path]:
+    """Roots whose linked worktrees register their owning checkout for hygiene scans."""
+    base = home or Path.home()
+    return [base / "staff-worktrees", base / ".codex" / "worktrees"]
+
+
+def _main_checkout_for_linked(path: Path) -> Path | None:
+    res = _git(path, "rev-parse", "--git-common-dir")
+    if res.returncode != 0:
+        return None
+    common = Path(res.stdout.strip())
+    if not common.is_absolute():
+        common = (path / common).resolve()
+    return common.parent if common.name == ".git" else None
+
+
+def enrich_checkouts_from_agent_roots(checkouts: list[Path]) -> list[Path]:
+    """Ensure owning checkouts of ``~/staff-worktrees`` and ``~/.codex/worktrees`` entries are scanned."""
+    seen = {_path_key(c) for c in checkouts}
+    out = list(checkouts)
+    for root in default_agent_worktree_roots():
+        if not root.is_dir():
+            continue
+        for child in sorted(root.iterdir()):
+            if not child.is_dir() or child.name.startswith("."):
+                continue
+            if not (child / ".git").exists():
+                continue
+            if _is_primary_checkout(child):
+                key = _path_key(child)
+                if key not in seen:
+                    seen.add(key)
+                    out.append(child)
+                continue
+            owner = _main_checkout_for_linked(child)
+            if owner is None:
+                continue
+            key = _path_key(owner)
+            if key not in seen:
+                seen.add(key)
+                out.append(owner)
+    return out
+
+
 def discover_repo_checkouts(extra_roots: list[Path] | None = None) -> list[Path]:
     seen: set[str] = set()
     out: list[Path] = []
@@ -380,4 +492,4 @@ def discover_repo_checkouts(extra_roots: list[Path] | None = None) -> list[Path]
                 continue
             seen.add(key)
             out.append(child)
-    return out
+    return enrich_checkouts_from_agent_roots(out)

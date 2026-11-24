@@ -169,7 +169,7 @@ def test_settings_host_is_the_enable_flag_with_kill_switch() -> None:
         {"RD_REVIEW_ARM_MAX_DISPATCH": "3", "RD_REVIEW_ARM_STALL_MINUTES": "45", "RD_REVIEW_ARM_LEDGER": "/tmp/x.db"},
         machine="hub-a",
     )
-    assert (s.max_dispatch, s.stall_minutes, str(s.ledger_path), s.dry_run) == (3, 45, "/tmp/x.db", True)
+    assert (s.max_dispatch, s.stall_minutes, s.ledger_path, s.dry_run) == (3, 45, Path("/tmp/x.db"), True)
 
 
 def test_settings_reject_out_of_range_knobs() -> None:

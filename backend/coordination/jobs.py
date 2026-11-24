@@ -11,6 +11,7 @@ import importlib
 import logging
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
@@ -19,6 +20,7 @@ from coordination import claims as claims_mod
 from coordination import gh_cli, job_board_lease
 from coordination.board import RMScriptError
 from coordination.job_filters import gate_reason, repo_schedule_holds
+from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from staff.claim_guard import closing_pr_for, full_repo
 from staff.launch_guard import check_launch_allowed
@@ -27,7 +29,9 @@ log = logging.getLogger("dashboard.coordination.jobs")
 
 MIN_LIMIT = 1
 MAX_LIMIT = 200
-HOLD_LABELS = frozenset({"blocked", "do-not-automate", "do-not-merge"})
+CLOSING_PR_PULLS_PER_PAGE = 100
+# Job-board claiming uses the full merge-shepherd hold set (not LOW_RISK_SHEPHERD_BLOCKED_LABELS).
+HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 PRIORITY_TIERS = ("critical", "high", "medium", "low")
 _UNRANKED = len(PRIORITY_TIERS)
 
@@ -80,15 +84,84 @@ def _excluded(repo: str, issue: dict[str, Any], reason: str) -> dict[str, Any]:
     }
 
 
-def _closing_pr(repo_full: str, issue_number: int, pulls_by_repo: dict[str, list[Any]]) -> dict[str, Any] | None:
-    """An open/merged PR closing ``issue_number``; one pulls fetch per repo."""
-    pulls = pulls_by_repo.get(repo_full)
-    if pulls is None:
-        raw = gh_cli.gh_api_json_all(f"/repos/{repo_full}/pulls?state=all")
-        candidates = raw if isinstance(raw, list) else []
-        pulls = [pr for pr in candidates if pr.get("state") != "closed" or pr.get("merged_at")]
-        pulls_by_repo[repo_full] = pulls
-    return closing_pr_for(pulls, issue_number)
+def bounded_open_pulls_path(repo_full: str) -> str:
+    """GitHub path for one recency-sorted page of open PRs (closing-evidence lookup).
+
+    Pre: ``repo_full`` is ``owner/name``.
+    Post: path requests at most ``CLOSING_PR_PULLS_PER_PAGE`` open PRs, newest-updated first.
+    """
+    if repo_full.count("/") != 1:
+        raise ValueError("repo_full must be owner/name")
+    return f"/repos/{repo_full}/pulls?state=open&sort=updated&direction=desc&per_page={CLOSING_PR_PULLS_PER_PAGE}"
+
+
+def closing_pr_search_path(repo_full: str, issue_number: int) -> str:
+    """One GitHub search request for open PRs whose title/body references ``#{issue_number}``.
+
+    Pre: ``repo_full`` is ``owner/name``; ``issue_number`` is positive.
+    Post: returns a ``/search/issues`` path with ``per_page`` capped at 10.
+    """
+    if repo_full.count("/") != 1 or int(issue_number) <= 0:
+        raise ValueError("closing_pr_search_path needs owner/name and a positive issue number")
+    query = quote(f'repo:{repo_full} is:pr is:open "#{issue_number}" in:title,body', safe="")
+    return f"/search/issues?q={query}&per_page=10"
+
+
+def _search_open_closing_pr(repo_full: str, issue_number: int) -> dict[str, Any] | None:
+    """Return closing evidence; only a complete, fully examined search proves absence.
+
+    Inconclusive evidence raises so ``list_jobs`` excludes the issue and marks
+    completeness false. Never paginate searches to resolve uncertainty.
+    """
+    raw = gh_cli.gh_api_json(closing_pr_search_path(repo_full, issue_number))
+    if not isinstance(raw, dict) or raw.get("incomplete_results") is not False:
+        raise ValueError("closing PR search is incomplete or malformed")
+    items = raw.get("items")
+    total = raw.get("total_count")
+    if not isinstance(items, list) or type(total) is not int or total < 0 or total != len(items):
+        raise ValueError("closing PR search has malformed or unexamined matches")
+    if any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("title"), str)
+        or (item.get("body") is not None and not isinstance(item["body"], str))
+        for item in items
+    ):
+        raise ValueError("closing PR search returned malformed matches")
+    return closing_pr_for(items, issue_number)
+
+
+def _open_pulls_page(
+    repo_full: str,
+    pulls_by_repo: dict[str, list[Any]],
+    truncated_by_repo: dict[str, bool],
+) -> list[Any]:
+    """Load (or return cached) one page of open pulls; record truncation when the page is full."""
+    cached = pulls_by_repo.get(repo_full)
+    if cached is not None:
+        return cached
+    raw = gh_cli.gh_api_json(bounded_open_pulls_path(repo_full))
+    pulls = raw if isinstance(raw, list) else []
+    pulls_by_repo[repo_full] = pulls
+    truncated_by_repo[repo_full] = len(pulls) >= CLOSING_PR_PULLS_PER_PAGE
+    return pulls
+
+
+def _closing_pr(
+    repo_full: str,
+    issue_number: int,
+    pulls_by_repo: dict[str, list[Any]],
+    *,
+    truncated_by_repo: dict[str, bool] | None = None,
+) -> dict[str, Any] | None:
+    """An open PR closing ``issue_number``; bounded page plus search when truncated (#4622, #4627)."""
+    trunc = truncated_by_repo if truncated_by_repo is not None else {}
+    pulls = _open_pulls_page(repo_full, pulls_by_repo, trunc)
+    hit = closing_pr_for(pulls, issue_number)
+    if hit is not None:
+        return hit
+    if trunc.get(repo_full):
+        return _search_open_closing_pr(repo_full, issue_number)
+    return None
 
 
 def _candidates(repo: str, warnings: list[str]) -> tuple[list[dict[str, Any]], bool]:
@@ -114,6 +187,9 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
     jobs: list[dict[str, Any]] = []
     excluded: list[dict[str, Any]] = []
     pulls_by_repo: dict[str, list[Any]] = {}
+    pulls_truncated_by_repo: dict[str, bool] = {}
+    pull_errors: dict[str, str] = {}
+    truncation_warnings: set[str] = set()
     complete = True
     holds_available = True
     priorities, priority_warnings = _safe_top_priorities(50)
@@ -147,9 +223,20 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
             if gate_or_hold_reason:
                 excluded.append(_excluded(one_repo, issue, gate_or_hold_reason))
                 continue
+            if repo_full in pull_errors:
+                excluded.append(_excluded(one_repo, issue, f"PR lookup unavailable: {pull_errors[repo_full]}"))
+                continue
             try:
-                hit = _closing_pr(repo_full, number, pulls_by_repo)
+                hit = _closing_pr(repo_full, number, pulls_by_repo, truncated_by_repo=pulls_truncated_by_repo)
+                if pulls_truncated_by_repo.get(repo_full) and repo_full not in truncation_warnings:
+                    truncation_warnings.add(repo_full)
+                    warnings.append(
+                        f"{one_repo}: open PR list capped at {CLOSING_PR_PULLS_PER_PAGE}; "
+                        "targeted search used for closing evidence beyond the first page"
+                    )
             except Exception as exc:  # noqa: BLE001
+                pull_errors[repo_full] = str(exc)
+                complete = False
                 excluded.append(_excluded(one_repo, issue, f"PR lookup unavailable: {exc}"))
                 warnings.append(f"{one_repo}#{number}: PR lookup unavailable ({exc})")
                 continue

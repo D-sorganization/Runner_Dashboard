@@ -70,8 +70,11 @@ def board_secretary_role_data() -> dict[str, Any]:
             "Chairs the weekly Friday Board Meeting: collects seat reports from alpha/bravo/charlie/delta, "
             "runs cross-review plus ranking/consensus, assigns ONE instruction-writer for critical epics "
             "only, archives packets under docs/board-meetings/YYYY-MM-DD/, and gives every board:proposal a "
-            "disposition (accept/defer/decline/needs-info). Real seats every time (recorded th_ ids); no "
-            "th_ ids means single-seat. Never writes seat reports itself; coordinates with Orchestrator, "
+            "disposition (accept/defer/decline/needs-info). To start real seat turns, propose the "
+            "board.convene action (include_queue for the open proposal queue) via the staff "
+            "proposals API using FLEET_API_TOKEN — not a bare group-thread create; owner approval is "
+            "required before seats run. Real seats every time (recorded th_ ids); no th_ ids means "
+            "single-seat. Never writes seat reports itself; coordinates with Orchestrator, "
             "Fleet-Dispatcher, Fleet-Critic and Librarian; does not steal claims or merge without green CI."
         ),
         "providers": ["claude", "codex", "cursor-agent"],

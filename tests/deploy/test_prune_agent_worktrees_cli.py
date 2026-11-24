@@ -107,12 +107,14 @@ def test_cli_import_closure_stays_small() -> None:
     closure = {p.relative_to(_REPO_ROOT).as_posix() for p in _first_party_closure(_SCRIPT)}
     assert closure == {
         "deploy/prune_agent_worktrees.py",
+        "backend/agent_active_workdirs.py",
         "backend/agent_worktree_hygiene.py",
         "backend/scratch_clone_hygiene.py",
         "backend/staff/__init__.py",
         "backend/staff/repo_roots.py",
         "backend/platform_utils/__init__.py",
         "backend/platform_utils/wsl_paths.py",
+        "backend/worktree_ignored_policy.py",
     }
 
 

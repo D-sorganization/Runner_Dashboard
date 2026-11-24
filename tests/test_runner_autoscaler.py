@@ -798,7 +798,7 @@ class TestRunnerBusyViaLockfile:
         (tmp_path / (self.RUNNER_NAME + ".lock")).write_text("pid=1\n")
         assert ra._runner_busy_via_lockfile(self.UNIT) is True
 
-    def test_stale_lockfile_returns_false_and_is_not_deleted(
+    def test_old_lockfile_remains_busy_and_is_not_deleted(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Autoscaler never mutates the filesystem; deletion is cleanup's job."""
@@ -810,7 +810,7 @@ class TestRunnerBusyViaLockfile:
         lock.write_text("pid=1\n")
         old = time.time() - 2 * 60 * 60
         _os.utime(lock, (old, old))
-        assert ra._runner_busy_via_lockfile(self.UNIT) is False
+        assert ra._runner_busy_via_lockfile(self.UNIT) is True
         assert lock.exists()
 
     def test_is_busy_uses_lockfile_when_pickup_dir_misses(

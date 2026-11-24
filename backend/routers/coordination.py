@@ -41,6 +41,8 @@ from coordination.auth import Caller, require_coordination_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
 from coordination.claims import AgingPrBlockedError, ClaimHeldError
+from coordination.claims_check_cache import ClaimCheckUnavailable
+from coordination.fleet_efficiency import BriefValidationError, fleet_efficiency_metadata
 from coordination.jobs import JobIneligibleError, StaleFenceError
 from coordination.models import (
     AGENT_PATTERN,
@@ -79,6 +81,8 @@ async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str
     except service.ImpersonationError as exc:
         log.warning("coordination: %s refused for %s: %s", what, caller.label, exc)
         raise HTTPException(status_code=403, detail={"error": str(exc)}) from exc
+    except BriefValidationError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
     except RMScriptError as exc:
         log.warning("coordination: %s by %s failed: %s", what, caller.label, exc.error)
         raise HTTPException(status_code=502, detail=exc.to_detail()) from exc
@@ -137,7 +141,15 @@ async def get_claim(
     issue: int = Query(gt=0),
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
-    return await run_in_threadpool(service.check_claim, _repo(repo) or "", issue)
+    try:
+        return await run_in_threadpool(service.check_claim, _repo(repo) or "", issue)
+    except ClaimCheckUnavailable as exc:
+        retry = max(1, int(exc.retry_after))
+        raise HTTPException(
+            status_code=503,
+            detail=exc.to_detail(),
+            headers={"Retry-After": str(retry)},
+        ) from exc
 
 
 @router.post("/claims")
@@ -186,6 +198,16 @@ async def get_job_releases(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail={"error": f"since is not ISO-8601: {exc}"}) from exc
     return await run_in_threadpool(job_releases_mod.list_job_releases, since=since, limit=limit)
+
+
+@router.get("/fleet-efficiency")
+async def get_fleet_efficiency(
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    """Read-only fleet efficiency knobs: wake coalescing, brief cap, planned reset (#4562)."""
+    from coordination.service import now_iso
+
+    return {**fleet_efficiency_metadata(), "generated_at": now_iso()}
 
 
 @router.get("/briefing")
@@ -278,6 +300,15 @@ async def post_lane_prompt_checkout(body: LaneCheckoutBody, caller: Caller = WRI
             host=body.host,
             ttl_sec=body.ttl_sec,
         )
+    except lane_prompts_mod.LaneRoleUnavailableError as exc:
+        detail: dict[str, Any] = {
+            "role_unavailable": True,
+            "reason": exc.reason,
+            "requested_role": exc.requested_role,
+        }
+        if exc.assigned_role is not None:
+            detail["assigned_role"] = exc.assigned_role
+        raise HTTPException(status_code=409, detail=detail) from exc
     except lane_prompts_mod.LaneConflictError as exc:
         raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
 

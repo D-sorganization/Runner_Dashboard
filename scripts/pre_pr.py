@@ -20,7 +20,7 @@ import argparse
 from collections.abc import Sequence
 from pathlib import Path
 
-from scripts import check_conflict_markers, verify_merge_gates
+from scripts import check_conflict_markers, check_pr_closing_board, verify_merge_gates
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -39,8 +39,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         gates_argv += ["--python", args.python]
     gates_status = verify_merge_gates.main(gates_argv)
     markers_status = check_conflict_markers.main(root_argv)
+    board_status = check_pr_closing_board.main([])
 
-    if gates_status or markers_status:
+    if gates_status or markers_status or board_status:
         return 1
     print("pre_pr: all local gates passed")
     return 0

@@ -12,6 +12,14 @@ from coordination.gh_cli import gh_api_json
 from staff.workspace import rm_root
 
 BOARD_COMMENT_LIMIT, BOARD_PAGE_SIZE, BOARD_MAX_PAGES = 1000, 100, 100
+# Predecessors only need the presence/claim TTL window (RM uses MAX_PAGES=10 per issue).
+BOARD_PREDECESSOR_MAX_PAGES = 10
+PRESENCE_TTL_HOURS = 8
+_PREDECESSOR_TRUNCATION = (
+    "predecessor read capped at {max_pages} pages inside the {ttl_h}h presence TTL; "
+    "older binding history may be missing"
+)
+_last_predecessor_warnings: list[str] = []
 SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "paths", "goals", "expires", "at")
 MAX_EVENT_BYTES = 24000
 BoardPageFetcher = Callable[[int, int], list[dict[str, Any]]]
@@ -87,11 +95,35 @@ def _parse_comment_envelope(comment: dict[str, Any]) -> tuple[dict[str, Any] | N
     return (None, str(user), f"Invalid coordination envelope: {err}") if err else (env, str(user), None)
 
 
+def _may_bind(
+    owners: dict[str, tuple[str, str]],
+    released: set[str],
+    env: dict[str, Any],
+    owner: tuple[str, str],
+) -> bool:
+    """Whether ``env`` is consistent with the session's existing binding (RM #3063 / #4624).
+
+    Pre: ``owners`` and ``released`` are the replay maps for bound authors and sessions freed
+    by an earlier ``release``. Post: returns ``True`` when the event may advance replay state —
+    exact owner match, or a new ``presence`` from the same author after ``release``.
+    """
+    current = owners[str(env["session"])]
+    if current == owner:
+        return True
+    return str(env["kind"]) == "presence" and str(env["session"]) in released and current[1] == owner[1]
+
+
 def _apply_event(env: dict[str, Any], author: str, ref_now: datetime, st: dict[str, Any]) -> None:
     sess, repo, kind, owner = str(env["session"]), str(env["repo"]), str(env["kind"]), (str(env["repo"]), author)
-    owners, active, messages, acks = st["owners"], st["active"], st["messages"], st["acks"]
+    owners, active, messages, acks, released = (
+        st["owners"],
+        st["active"],
+        st["messages"],
+        st["acks"],
+        st["released"],
+    )
     unexp = kind == "presence" and datetime.fromisoformat(str(env["expires"]).replace("Z", "+00:00")) > ref_now
-    if sess in owners and owners[sess] != owner:
+    if sess in owners and not _may_bind(owners, released, env, owner):
         st["replay_w"].append(w := f"Rejected identity change for {sess}")
         st["rejected"].setdefault(sess, []).append(w)
         if kind == "presence" and unexp:
@@ -99,6 +131,7 @@ def _apply_event(env: dict[str, Any], author: str, ref_now: datetime, st: dict[s
         return
     if kind == "presence":
         owners[sess] = owner
+        released.discard(sess)
         if unexp:
             active[sess] = _session(env)
         else:
@@ -107,6 +140,7 @@ def _apply_event(env: dict[str, Any], author: str, ref_now: datetime, st: dict[s
         st["replay_w"].append(w := f"Rejected unregistered sender {sess}")
         st["rejected"].setdefault(sess, []).append(w)
     elif kind == "release":
+        released.add(sess)
         active.pop(sess, None)
     elif kind == "message":
         messages.append(env)
@@ -115,6 +149,27 @@ def _apply_event(env: dict[str, Any], author: str, ref_now: datetime, st: dict[s
         for m in messages:
             if m.get("id") == mid and str(m.get("repo", "")).casefold() == r_cf and m.get("recipient") in {sess, "*"}:
                 acks.add((sess, mid))
+
+
+def _read_predecessor_comments(
+    repo: str, issue: int, since_p: str, per_page: int, max_pages: int
+) -> list[dict[str, Any]]:
+    """Bounded TTL-window read for a retired board; truncation is advisory only."""
+    global _last_predecessor_warnings
+    res: list[dict[str, Any]] = []
+    for pp in range(1, max_pages + 1):
+        b = gh_api_json(f"/repos/{repo}/issues/{issue}/comments?per_page={per_page}&page={pp}&since={since_p}")
+        if not isinstance(b, list):
+            raise RuntimeError(f"Predecessor issue {issue} returned non-list comments payload")
+        res.extend(b)
+        if len(b) < per_page:
+            break
+        if pp == max_pages and len(b) >= per_page:
+            _last_predecessor_warnings.append(
+                f"Board #{issue}: {_PREDECESSOR_TRUNCATION.format(max_pages=max_pages, ttl_h=PRESENCE_TTL_HOURS)}"
+            )
+            break
+    return res
 
 
 def board_config() -> tuple[str, int, int, list[int]]:
@@ -136,17 +191,12 @@ def board_config() -> tuple[str, int, int, list[int]]:
 def default_board_page_fetcher(page: int, per_page: int) -> list[dict[str, Any]]:
     repo, issue, days, preds = board_config()
     if page == 0:
-        since_p, res = (datetime.now(UTC) - timedelta(hours=8)).strftime("%Y-%m-%dT%H:%M:%SZ"), []
+        global _last_predecessor_warnings
+        _last_predecessor_warnings = []
+        since_p = (datetime.now(UTC) - timedelta(hours=PRESENCE_TTL_HOURS)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        res: list[dict[str, Any]] = []
         for p in preds[-3:]:
-            for pp in range(1, BOARD_MAX_PAGES + 1):
-                b = gh_api_json(f"/repos/{repo}/issues/{p}/comments?per_page={per_page}&page={pp}&since={since_p}")
-                if not isinstance(b, list):
-                    raise RuntimeError(f"Predecessor issue {p} returned non-list comments payload")
-                res.extend(b)
-                if len(b) < per_page:
-                    break
-                if pp == BOARD_MAX_PAGES and len(b) >= per_page:
-                    raise RuntimeError(f"Predecessor issue {p} exceeded max pages ({BOARD_MAX_PAGES})")
+            res.extend(_read_predecessor_comments(repo, p, since_p, per_page, BOARD_PREDECESSOR_MAX_PAGES))
         return res
     since = (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
     data = gh_api_json(f"/repos/{repo}/issues/{issue}/comments?per_page={per_page}&page={page}&since={since}")
@@ -177,8 +227,13 @@ def _paginate_pages(
             st["read_w"].append(f"Board comment page {page} returned invalid payload")
             return False, total
         total += len(batch) if page > 0 else 0
+        if page == 0:
+            st["replay_w"].extend(w for w in _last_predecessor_warnings if w not in st["replay_w"])
         for c in batch:
             if isinstance(c, dict):
+                if re.fullmatch(r"\s*<!--\s*agent-message\s+v1\s*-->\s*", str(c.get("body") or "")):
+                    st["replay_w"].append(f"Skipped marker-only coordination comment {c.get('id', 'unknown')}")
+                    continue
                 env, author, err = _parse_comment_envelope(c)
                 if err:
                     st["read_w"].append(err)
@@ -224,7 +279,7 @@ def paginate_board_comments(
 ) -> dict[str, Any]:  # fmt: skip
     """Paginate RM#2376 comments across all pages (>1,000 comments) and replay coordination."""
     st: dict[str, Any] = {
-        "active": {}, "owners": {}, "messages": [], "acks": set(),
+        "active": {}, "owners": {}, "released": set(), "messages": [], "acks": set(),
         "replay_w": [], "live_c": [], "read_w": [], "rejected": {},
     }  # fmt: skip
     done, total = _paginate_pages(fetch_page, per_page, max_pages, now or datetime.now(UTC), st)

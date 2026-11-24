@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 from collections.abc import Mapping
+from pathlib import Path
 
 QWEN_TOKEN_PLAN_BASE_URL = "https://token-plan.maas.qwencloudapi.com/compatible-mode/v1"
 QWEN_DEFAULT_MODEL = "qwen3.8-flash"
@@ -49,5 +50,22 @@ def qwen_environment(env: Mapping[str, str] | None = None) -> dict[str, str]:
     }
 
 
+def _service_path_candidates() -> str:
+    """PATH plus dirs commonly set on fleet staff systemd units."""
+    home = Path.home()
+    extras = (
+        home / ".local" / "bin",
+        home / ".npm-global" / "bin",
+        home / "node_modules" / ".bin",
+        Path("/usr/local/bin"),
+    )
+    parts = [os.environ.get("PATH", "").strip()]
+    parts.extend(str(p) for p in extras if p.is_dir())
+    return os.pathsep.join(p for p in parts if p)
+
+
 def qwen_available() -> bool:
-    return shutil.which("qwen") is not None and bool(token_plan_api_key())
+    if not bool(token_plan_api_key()):
+        return False
+    path = _service_path_candidates()
+    return shutil.which("qwen", path=path) is not None

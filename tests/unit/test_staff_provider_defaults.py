@@ -14,6 +14,10 @@ def test_antigravity_default_model_from_repo_config() -> None:
     assert default_model_for_provider("antigravity") == "gemini-3.8-flash-high"
 
 
+def test_cursor_agent_default_model_from_repo_config() -> None:
+    assert default_model_for_provider("cursor-agent") == "composer-2.5"
+
+
 def test_codex_build_command_passes_default_model_explicitly() -> None:
     codex = adapters_mod.ADAPTERS["codex"]
     argv = codex.build_command("do work", "/tmp/wt", model=None)

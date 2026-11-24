@@ -11,15 +11,228 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from coordination.default_host_aliases import DEFAULT_HOST_ALIASES
+from coordination.fleet_efficiency import enrich_lane_receipt
+
 _DEFAULT_TTL_SEC = 3600
 _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
 
-_PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini")
+_PROVIDER_PREFIXES = (
+    "codex",
+    "claude",
+    "agy",
+    "cursor",
+    "gemini",
+    "deepseek",
+    "qwen",
+    "grok",
+)
+
+# Staff registry and lane catalog use different provider spellings; normalize to lane ids
+# (short prefix form) before comparing checkout callers to seeded assignments.
+_LANE_PROVIDER_ALIASES: dict[str, str] = {
+    "cursor-agent": "cursor",
+    "cursor_agent": "cursor",
+    "deepseek-api": "deepseek",
+    "deepseek_api": "deepseek",
+    "antigravity": "agy",
+    "gemini": "agy",
+    "grok": "cursor",
+    "grok-cli": "cursor",
+    "grok_cli": "cursor",
+    "qwen-code": "qwen",
+    "qwen_cli": "qwen",
+    "qwen-code-cli": "qwen",
+    "codex-cli": "codex",
+    "codex_cli": "codex",
+    "claude-code": "claude",
+    "claude-cli": "claude",
+    "claude_code_cli": "claude",
+}
+
+
+def normalize_lane_provider(provider: str | None) -> str | None:
+    """Map staff or registry provider ids onto lane checkout provider ids."""
+    if provider is None:
+        return None
+    key = provider.strip().lower()
+    if not key:
+        return None
+    return _LANE_PROVIDER_ALIASES.get(key, key)
+
+
+def normalize_requested_role(role: str | None) -> str | None:
+    """Normalize caller-requested fleet role ids (strip provider suffixes like ``:codex``)."""
+    if role is None:
+        return None
+    text = role.strip()
+    if not text:
+        return None
+    base, _, _suffix = text.partition(":")
+    return base.strip() or None
+
+
+# Hub-provisioned Cursor CLI lanes (#4565). ``release_sha`` / ``package_hash`` are
+# placeholders until the hub publishes a fleet prompt package revision.
+_DEFAULT_RELEASE_SHA = "bootstrap"
+_DEFAULT_PACKAGE_HASH = "bootstrap"
+_DEFAULT_CURSOR_MODEL = "composer-2.5"
+_DEFAULT_GROK_CURSOR_MODEL = "grok-4.7-high"
+_DEFAULT_QWEN_MODEL = "qwen3.8-flash"
+_DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
+
+DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "lane_id": "codex-ct-1",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "AffineDrift"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "gpt-6-luna",
+        "max_children": 3,
+        "task_focus": "CT host Codex lane: UpstreamDrift and AffineDrift backlog completion.",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-ct-1",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_CURSOR_MODEL,
+        "max_children": 2,
+        "task_focus": "CT host Cursor CLI lane (Composer 2.5).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-oglaptop-1",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_CURSOR_MODEL,
+        "max_children": 2,
+        "task_focus": "node-b host Cursor CLI lane (Composer 2.5).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-ct-2",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_GROK_CURSOR_MODEL,
+        "max_children": 1,
+        "task_focus": "CT host Cursor CLI lane (Grok 4.7 via cursor-agent).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "cursor-oglaptop-2",
+        "role": "backlog-completion",
+        "repos": ["Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_GROK_CURSOR_MODEL,
+        "max_children": 1,
+        "task_focus": "node-b host Cursor CLI lane (Grok 4.7 via cursor-agent).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "qwen-ct-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_QWEN_MODEL,
+        "max_children": 1,
+        "task_focus": "CT host Qwen Code CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "qwen-oglaptop-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_QWEN_MODEL,
+        "max_children": 1,
+        "task_focus": "node-b host Qwen Code CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "deepseek-ct-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_DEEPSEEK_MODEL,
+        "max_children": 1,
+        "task_focus": "CT host DeepSeek API CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "deepseek-oglaptop-1",
+        "role": "mad-scientist",
+        "repos": ["Runner_Dashboard"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": _DEFAULT_DEEPSEEK_MODEL,
+        "max_children": 1,
+        "task_focus": "node-b host DeepSeek API CLI lane (draft-only qualification).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "claude-desk-2",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "claude-sonnet-4-6",
+        "max_children": 2,
+        "task_focus": "hub-a host Claude CLI lane 2 (UpstreamDrift Epic #15660 & backlog).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "claude-desk-3",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "claude-sonnet-4-6",
+        "max_children": 2,
+        "task_focus": "hub-a host Claude CLI lane 3 (UpstreamDrift Epic #15660 & backlog).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "claude-desk-4",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "claude-sonnet-4-6",
+        "max_children": 2,
+        "task_focus": "hub-a host Claude CLI lane 4 (UpstreamDrift Epic #15660 & backlog).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "claude-oglaptop-2",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "Tools", "Gasification_Model"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "claude-sonnet-4-6",
+        "max_children": 2,
+        "task_focus": "node-b host Claude CLI lane 2 (UpstreamDrift & Tools).",
+        "enabled": True,
+    },
+)
 
 
 def _load_host_aliases() -> dict[str, str]:
-    aliases: dict[str, str] = {}
+    # Built-in defaults live in default_host_aliases (the one allowlisted module);
+    # host_aliases.json and RUNNER_DASHBOARD_HOST_ALIASES override them.
+    aliases: dict[str, str] = dict(DEFAULT_HOST_ALIASES)
     cfg_dir = Path(
         os.environ.get(
             "RUNNER_DASHBOARD_CONFIG_DIR",
@@ -52,17 +265,19 @@ def _load_host_aliases() -> dict[str, str]:
 def _infer_provider(session_id: str, explicit_provider: str | None, principal: str | None = None) -> str | None:
     raw = (explicit_provider or "").strip().lower()
     if raw:
-        return "agy" if raw in ("gemini", "antigravity") else raw
+        return normalize_lane_provider(raw)
     sid = session_id.strip().lower()
     for prefix in _PROVIDER_PREFIXES:
         if sid.startswith(f"{prefix}-") or sid == prefix:
-            return "agy" if prefix == "gemini" else prefix
+            inferred = "agy" if prefix == "gemini" else prefix
+            return normalize_lane_provider(inferred)
     prin = (principal or "").strip().lower()
     if prin.startswith("agent-"):
         tail = prin[len("agent-") :]
         for prefix in _PROVIDER_PREFIXES:
             if tail == prefix or tail.startswith(f"{prefix}-"):
-                return "agy" if prefix == "gemini" else prefix
+                inferred = "agy" if prefix == "gemini" else prefix
+                return normalize_lane_provider(inferred)
     return None
 
 
@@ -99,8 +314,9 @@ def _infer_host(session_id: str, explicit_host: str | None) -> str | None:
 
 
 def _is_lane_compatible(cand: sqlite3.Row, want_provider: str | None, want_host: str | None) -> bool:
-    cand_prov = _lane_provider(cand["lane_id"], cand["subagent_model"])
-    if cand_prov is not None and (want_provider is None or cand_prov != want_provider):
+    cand_prov = normalize_lane_provider(_lane_provider(cand["lane_id"], cand["subagent_model"]))
+    want_norm = normalize_lane_provider(want_provider)
+    if cand_prov is not None and (want_norm is None or cand_prov != want_norm):
         return False
     cand_host = _lane_host(cand["lane_id"])
     if cand_host is not None and (want_host is None or cand_host != want_host):
@@ -112,7 +328,11 @@ def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
     lid = lane_id.strip().lower()
     for prefix in _PROVIDER_PREFIXES:
         if lid.startswith(f"{prefix}-"):
-            return "agy" if prefix == "gemini" else prefix
+            if prefix == "gemini":
+                return "agy"
+            if prefix == "deepseek":
+                return "deepseek"
+            return prefix
     model = (subagent_model or "").strip().lower()
     if model.startswith("claude-"):
         return "claude"
@@ -120,6 +340,10 @@ def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
         return "agy"
     if model.startswith("gpt-"):
         return "codex"
+    if model.startswith("deepseek-"):
+        return "deepseek"
+    if model.startswith("qwen"):
+        return "qwen"
     if model.startswith("composer-") or model.startswith("grok-"):
         return "cursor"
     return None
@@ -142,6 +366,22 @@ def _lane_host(lane_id: str) -> str | None:
 
 class LaneConflictError(RuntimeError):
     """Raised when a lane is already actively checked out or none are eligible."""
+
+
+class LaneRoleUnavailableError(LaneConflictError):
+    """Raised when the caller's requested role cannot be satisfied (#4630)."""
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        requested_role: str,
+        assigned_role: str | None = None,
+    ) -> None:
+        self.reason = reason
+        self.requested_role = requested_role
+        self.assigned_role = assigned_role
+        super().__init__(reason)
 
 
 class StaleLaneFenceError(RuntimeError):
@@ -237,6 +477,11 @@ class LanePromptStore:
                 """)
         finally:
             conn.close()
+
+    def seed_defaults(self) -> None:
+        """Register :data:`DEFAULT_LANE_ASSIGNMENTS` (idempotent upsert per lane_id)."""
+        for row in DEFAULT_LANE_ASSIGNMENTS:
+            self.register_assignment(**row)
 
     def register_assignment(
         self,
@@ -342,6 +587,7 @@ class LanePromptStore:
         ttl = max(60, int(ttl_sec))
         want_provider = _infer_provider(session_id, provider, principal)
         want_host = _infer_host(session_id, host)
+        requested_role = normalize_requested_role(role)
         # Idempotency keys are caller supplied, so scope them to the session and
         # principal to prevent replaying another caller's receipt and fence.
         scoped_idempotency_key = json.dumps(
@@ -349,6 +595,26 @@ class LanePromptStore:
             ensure_ascii=False,
             separators=(",", ":"),
         )
+
+        def _assert_receipt_role(rec: dict[str, Any]) -> None:
+            if requested_role is None:
+                return
+            assigned = str(rec.get("role") or "")
+            if assigned != requested_role:
+                raise LaneRoleUnavailableError(
+                    f"Active checkout role {assigned!r} does not match requested role {requested_role!r}",
+                    requested_role=requested_role,
+                    assigned_role=assigned or None,
+                )
+
+        def _assert_assignment_role(assigned: str, *, lane_id: str) -> None:
+            if requested_role is None or assigned == requested_role:
+                return
+            raise LaneRoleUnavailableError(
+                f"Lane {lane_id!r} is assigned role {assigned!r}, not {requested_role!r}",
+                requested_role=requested_role,
+                assigned_role=assigned,
+            )
 
         def _check_receipt_compatible(conn: sqlite3.Connection, receipt_json: str) -> dict[str, Any]:
             rec = json.loads(receipt_json)
@@ -358,6 +624,7 @@ class LanePromptStore:
             ).fetchone()
             if row is None or not _is_lane_compatible(row, want_provider, want_host):
                 raise LaneConflictError(f"Lane {rec['lane_id']!r} is incompatible with caller provider/host")
+            _assert_receipt_role(rec)
             return rec
 
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -383,7 +650,7 @@ class LanePromptStore:
                 (ts,),
             )
 
-            if lane_id is None and role is None:
+            if lane_id is None and requested_role is None:
                 active_self = conn.execute(
                     """SELECT c.receipt_json, a.lane_id, a.subagent_model
                        FROM lane_checkouts c
@@ -392,7 +659,9 @@ class LanePromptStore:
                     (session_id,),
                 ).fetchone()
                 if active_self is not None and _is_lane_compatible(active_self, want_provider, want_host):
-                    return json.loads(active_self["receipt_json"])
+                    rec = json.loads(active_self["receipt_json"])
+                    _assert_receipt_role(rec)
+                    return enrich_lane_receipt(rec)
 
             if lane_id is not None:
                 row = conn.execute(
@@ -403,6 +672,7 @@ class LanePromptStore:
                     raise LaneConflictError(f"Lane {lane_id!r} not found or disabled")
                 if not _is_lane_compatible(row, want_provider, want_host):
                     raise LaneConflictError(f"Lane {lane_id!r} is incompatible with caller provider/host")
+                _assert_assignment_role(str(row["role"]), lane_id=lane_id)
                 held = conn.execute(
                     "SELECT session_id FROM lane_checkouts WHERE lane_id = ? AND status = 'active'",
                     (lane_id,),
@@ -414,7 +684,7 @@ class LanePromptStore:
                             (lane_id,),
                         ).fetchone()
                         assert rec is not None
-                        return json.loads(rec["receipt_json"])
+                        return enrich_lane_receipt(_check_receipt_compatible(conn, rec["receipt_json"]))
                     raise LaneConflictError(f"Lane {lane_id!r} already held by {held['session_id']}")
                 target = row
             else:
@@ -425,9 +695,9 @@ class LanePromptStore:
                     WHERE a.enabled = 1 AND c.checkout_id IS NULL
                 """
                 params: list[Any] = []
-                if role is not None:
+                if requested_role is not None:
                     query += " AND a.role = ?"
-                    params.append(role)
+                    params.append(requested_role)
                 query += " ORDER BY a.lane_id"
                 candidates = conn.execute(query, params).fetchall()
                 filtered = [cand for cand in candidates if _is_lane_compatible(cand, want_provider, want_host)]
@@ -439,6 +709,11 @@ class LanePromptStore:
                         )
                     )
                 if not filtered:
+                    if requested_role is not None:
+                        raise LaneRoleUnavailableError(
+                            f"No unclaimed lane available for role {requested_role!r}",
+                            requested_role=requested_role,
+                        )
                     raise LaneConflictError("No eligible unclaimed lane available")
                 target = filtered[0]
 
@@ -453,6 +728,7 @@ class LanePromptStore:
                 "checkout_id": checkout_id,
                 "lane_id": target["lane_id"],
                 "role": target["role"],
+                **({"requested_role": requested_role} if requested_role is not None else {}),
                 "repos": json.loads(target["repos_json"]),
                 "principal": principal,
                 "session_id": session_id,
@@ -494,7 +770,7 @@ class LanePromptStore:
                     ts,
                 ),
             )
-            return receipt
+            return enrich_lane_receipt(receipt)
 
         return self._run_tx(_tx)
 
@@ -537,7 +813,7 @@ class LanePromptStore:
                 """,
                 (new_exp, ts, new_prog, json.dumps(receipt), checkout_id),
             )
-            return receipt
+            return enrich_lane_receipt(receipt)
 
         return self._run_tx(_tx)
 
@@ -689,4 +965,5 @@ def get_lane_prompt_store() -> LanePromptStore:
     with _default_store_lock:
         if _default_store is None:
             _default_store = LanePromptStore()
+            _default_store.seed_defaults()
         return _default_store

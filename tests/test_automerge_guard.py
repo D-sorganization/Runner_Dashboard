@@ -1229,3 +1229,28 @@ def test_guard_has_no_builtin_print_calls() -> None:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print"
     ]
     assert calls == []
+
+
+def test_evaluate_hold_rejects_pr_body_closing_coordination_board(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PR bodies referencing Closes #<board> or Fixes #<board> must be rejected (issue #4574)."""
+    monkeypatch.setattr(
+        automerge_guard,
+        "_configured_board_issues",
+        lambda: {3029, 2539, 2851},
+    )
+
+    body_with_close = "Fix bug\n\nCloses #3029"
+    reasons = automerge_guard._closing_board_reasons(body_with_close, {3029, 2539, 2851})
+    assert len(reasons) == 1
+    assert "RM #3029" in reasons[0]
+
+    body_with_fixes_rm = "Some fix\nFixes Repository_Management#2851"
+    reasons_rm = automerge_guard._closing_board_reasons(body_with_fixes_rm, {3029, 2539, 2851})
+    assert len(reasons_rm) == 1
+    assert "RM #2851" in reasons_rm[0]
+
+    body_clean = "Some normal fix\nCloses #4574"
+    reasons_clean = automerge_guard._closing_board_reasons(body_clean, {3029, 2539, 2851})
+    assert reasons_clean == []

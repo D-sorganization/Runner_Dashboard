@@ -263,7 +263,7 @@ def _lock_worker_pid_stale(text: str) -> bool:
     deploy/runner-cleanup.sh::lock_worker_pid_stale (this script is deployed
     standalone, so it cannot import the backend). The legacy pid= is the
     short-lived hook shell and is never consulted; a lock without worker_pid
-    is never stale-by-pid and falls back to the age rule.
+    is never stale-by-pid and remains protective regardless of age.
     """
     value = ""
     for line in text.splitlines():
@@ -284,20 +284,42 @@ def _lock_worker_pid_stale(text: str) -> bool:
         return True
     except OSError:
         return False
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            fields.setdefault(key, value.strip())
+    try:
+        expected_boot = fields.get("boot_id", "")
+        actual_boot = (PROC_ROOT / "sys/kernel/random/boot_id").read_text().strip()
+        if expected_boot and actual_boot and actual_boot != expected_boot:
+            return True
+    except OSError:
+        pass
+    expected_start = fields.get("worker_starttime", "")
+    if expected_start.isdigit():
+        try:
+            actual_start = (pid_dir / "stat").read_text().rsplit(")", 1)[1].split()[19]
+            if actual_start.isdigit() and actual_start != expected_start:
+                return True
+        except (OSError, IndexError):
+            pass
     return "Runner.Worker" not in cmdline
 
 
 def runner_busy_via_lock(workdir: Path, unit: str | None = None, *, cleanup_stale: bool = False) -> bool:
     """Detect a job-start hook marker for the runner.
 
-    A fresh lock counts as busy unless its recorded Runner.Worker pid is dead
+    A lock counts as busy unless its recorded Runner.Worker pid is dead
     or reused (#1987). Stale locks are only unlinked when explicitly requested
     by an applied scheduler operation; previews keep inspection read-only.
     """
     for name in runner_names(workdir, unit):
         lock = RUNNER_BUSY_LOCK_DIR / f"{name}.lock"
-        if not _recent_path_is_busy(lock, RUNNER_BUSY_LOCK_MAX_AGE_SECONDS):
+        if not lock.exists():
             continue
+        if not _recent_path_is_busy(lock, RUNNER_BUSY_LOCK_MAX_AGE_SECONDS):
+            log.warning("old runner-busy lock %s requires investigation", lock)
         try:
             content = lock.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -808,7 +830,7 @@ def active_target_override() -> tuple[int | None, str | None, dict | None]:
     return runners, f"target-override ({actor})", record
 
 
-def effective_capacity(config: dict, target: int | None) -> tuple[int, str]:
+def effective_capacity(config: dict, target: int | None, *, revoke_override: bool = True) -> tuple[int, str]:
     """Desired runner count; an active maintenance hold overrides everything with 0."""
     if maintenance_active():
         return 0, "maintenance-drain"
@@ -827,7 +849,16 @@ def effective_capacity(config: dict, target: int | None) -> tuple[int, str]:
         )
     else:
         desired, reason = desired_capacity(config, None)
-    return apply_resource_floor(config, desired, reason)
+    desired, reason = apply_resource_floor(config, desired, reason)
+    if (
+        persisted is not None
+        and revoke_override
+        and ((DISK_FLOOR_LATCH_PATH.exists() and "disk_free=" in reason) or " + host-pressure (" in reason)
+    ):
+        if not target_contract.clear_target_override():
+            raise OSError("cannot revoke target override while resource guard is latched")
+        log.warning("revoked persisted target override while resource guard is latched")
+    return desired, reason
 
 
 def run_maintenance_drain(units: list[RunnerUnit], timeout: float) -> dict:
@@ -917,6 +948,9 @@ def main() -> int:
         help="freeze/recheck stop for one actions.runner.* unit (#4046)",
     )
     args = parser.parse_args()
+    if platform.node().split(".", 1)[0].lower() == "brick":
+        log.error("runner scheduling is disabled on Brick")
+        return 2
     if args.reboot and not args.drain:
         parser.error("--reboot requires --drain")
     if args.drain and args.resume:
@@ -962,7 +996,7 @@ def main() -> int:
         if args.reboot:
             maintenance_report["reboot"] = reboot_if_drained(maintenance_report)
     else:
-        desired, reason = effective_capacity(config, args.target)
+        desired, reason = effective_capacity(config, args.target, revoke_override=not dry_run)
         actions = apply_capacity(units, desired, dry_run=dry_run)
         stopped = {action["unit"] for action in actions if action["action"] == "stop"}
         remaining = [replace(unit, active=False) if unit.unit in stopped else unit for unit in units]

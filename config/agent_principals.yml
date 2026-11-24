@@ -139,3 +139,19 @@ agents:
     scopes:
       - activity.checkin
       - fleet.read
+  - id: agent-qwen
+    kind: other
+    name: Qwen Code CLI agent
+    roles:
+      - bot
+    scopes:
+      - activity.checkin
+      - fleet.read
+  - id: agent-deepseek
+    kind: other
+    name: DeepSeek API CLI agent
+    roles:
+      - bot
+    scopes:
+      - activity.checkin
+      - fleet.read
