@@ -10,16 +10,21 @@ Synthesized with the 3-Seat Expert Panel (`th_5e95506efbf0`: Astra/`codex`, Argo
 | **Codex CLI / Desktop** (`codex`)                    | `codex exec --json --full-auto`                                                      | Codex Desktop (`~/.codex/skills/barb-operator/SKILL.md`)                        | **Complex & Standard** (`pragmatic-programmer`, `test-hygiene`, `issue-remediator`)              | Strong deterministic verification and low input-to-output token overhead.                                                                            |
 | **Antigravity / Gemini CLI** (`antigravity` / `agy`) | `gemini -p --output-format stream-json --yolo`                                       | Gemini / Antigravity Desktop (`~/.gemini/skills/barb-operator/SKILL.md`)        | **Routine / Read-Only Triage** (`night-watch`, `tooling-scout`, `bean-counter`, `sanitation`)    | Fast context scanning; avoid routing complex multi-file `issue-remediator` tasks to `gemini-3.8-flash-high` where empirical first-pass yield is low. |
 | **Cursor Agent / Desktop** (`cursor-barb`)           | Cursor CLI / Local Exec                                                              | Cursor Desktop + Browser / Canvas (`~/.cursor/skills/barb-operator/SKILL.md`)   | **Interactive GUI / Browser / OAuth / Visual Inspection**                                        | Ideal for `needs_desktop` handoffs requiring browser SSO/OAuth login, visual layout verification, or interactive Canvas authoring.                   |
-| **Grok Bot** (`grok-barb`)                           | Executor + Fleet SSH/WSL Orchestration                                               | Box Browser + Multi-Machine Local Exec                                          | **Fleet-Wide Barb Coordinator & Cross-Node Steward**                                             | Coordinates all 4 nodes (`hub-a`, `node-a`, `node-b`, `node-c`), dispatches panels, and audits turnover compliance.                    |
+| **Grok Bot** (`grok-barb`)                           | Executor + Fleet SSH/WSL Orchestration                                               | Box Browser + Multi-Machine Local Exec                                          | **Fleet-Wide Barb Coordinator & Cross-Node Steward**                                             | Coordinates all 4 nodes (`hub-a`, `node-a`, `node-b`, `node-c`), dispatches panels, and audits turnover compliance.                                  |
 
 ## 2. CLI <-> Desktop App Collaborative Handoff Protocol
 
-Tasks are classified zero-LLM-cost via `POST /api/v1/staff/barb/classify-surface` (or automatically on `POST /api/v1/staff/barb/inventory`):
+Tasks are classified zero-LLM-cost via `POST /api/v1/staff/barb/classify-surface` (or automatically on `POST /api/v1/staff/barb/inventory`).
 
-1. **`request_desktop` (`status = needs_desktop`):** Headless CLI agent hits a step requiring interactive GUI/browser/OAuth/visual inspection and calls `POST /api/v1/staff/barb/handoff` with `action="request_desktop"`, incrementing `fencing_epoch`.
-2. **`claim_desktop` (`status = desktop_claimed`):** Desktop agent (`cursor-barb`, `claude-barb`, `codex-barb`, `agy-barb`, `grok-barb`) claims the task with `expected_epoch`, preventing split-brain execution.
-3. **`complete_desktop` (`status = resume_ready`):** Desktop agent completes the interactive step, attaches `artifact_uri` and `resume_notes`, and transitions the task back to `headless_cli`.
-4. **`resume_cli` (`status = in_progress`):** Headless CLI agent resumes with the desktop artifact and completes the workflow.
+`status`, `handoff_state`, and `surface` are different columns. `surface` is `headless_cli`, `desktop_app`, or `hybrid_handoff`, chosen when the task is upserted. Handoff transitions do not rewrite it. `POST /api/v1/staff/barb/handoff` requires `actor` and `expected_epoch` (the task fencing token). `persona` is optional; the store records `persona` when it is set, otherwise `actor`. A successful transition increments `fencing_epoch`. A stale `expected_epoch` returns 409 and does not change the row.
+
+That write is also a Barb-seat write. Send `X-Barb-Scope` and `X-Barb-Lease-Epoch` (and `X-Barb-Holder` when several seats share a token). Those lease headers are separate from `expected_epoch`.
+
+1. **`request_desktop`:** sets `handoff_state=needs_desktop` and `status=blocked_desktop`. The CLI agent calls this when a step needs interactive GUI, browser, OAuth, or visual inspection.
+2. **`claim_desktop`:** sets `handoff_state=desktop_claimed` and `status=in_desktop`. A desktop agent (`cursor-barb`, `claude-barb`, `codex-barb`, `agy-barb`, `grok-barb`) claims with the current `expected_epoch`.
+3. **`complete_desktop`:** sets `handoff_state=resume_ready` and `status=in_progress`. Attach `artifact_uri` and `resume_notes`. The stored `surface` stays unchanged.
+4. **`resume_cli`:** sets `handoff_state=none` and leaves `status` unchanged (it is already `in_progress` after `complete_desktop`). The CLI agent resumes with the desktop artifact.
+5. **`complete_task`:** sets `handoff_state=completed` and `status=completed`.
 
 ## 3. Specialist Role: `bean-counter` & Zero-LLM-Cost Agent Report Cards
 
@@ -51,4 +56,4 @@ Releasing a lease (`POST /api/v1/staff/barb/leases/release`) enforces a **turnov
 - `POST /api/v1/staff/barb/leases/heartbeat` `{scope, epoch}` extends the caller's own live lease (403 holder mismatch; 409 expired, missing or stale epoch).
 - `POST /api/v1/staff/barb/handoff` requires `expected_epoch`.
 - `bot`, `fleet-peer` and loopback hold `memory.read` (bot also `memory.shared.summarize`); none holds `memory.write` or the librarian review scope.
-- Lease-epoch fencing on dispatch/directive writers is not enforced yet (seam in `post_barb_lease_checkout`).
+- Barb-seat writes, including handoff, dispatch, and directives, send `X-Barb-Scope` and `X-Barb-Lease-Epoch`. `DASHBOARD_BARB_FENCE_MODE` defaults to `enforce`: a Barb seat that omits them gets 409 `stale_barb_lease` with reason `claim_required`. `warn` and `off` are the rollback switches. Non-Barb requests are unaffected. This lease fence is separate from the task `fencing_epoch`.
