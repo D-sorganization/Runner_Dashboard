@@ -29,6 +29,24 @@ _TRANSIENT_MARKERS = (
     "connection reset",
     "infrastructure failure",
 )
+# Affirmative defect text. A bare FAILURE or TIMED_OUT is not enough: unknown
+# queue failures stay transient so a missing runner cause cannot disarm a PR.
+_DETERMINISTIC_MARKERS = (
+    "assertionerror",
+    "assertion failed",
+    "traceback",
+    "determinism",
+    "hash-seed",
+    "stale generated",
+    "type error",
+    "syntaxerror",
+    "pytest",
+    "ruff",
+    "lint error",
+    "snapshot mismatch",
+)
+_OWNER_LOGINS = frozenset({"dieterolson"})
+_BARB_LOGIN_PARTS = frozenset({"barb", "openbotgit"})
 _RETRY_AUTHORIZED = re.compile(r"\b(?:retry|requeue) authorized\b", re.IGNORECASE)
 
 
@@ -77,19 +95,21 @@ def _classify_check(check: Mapping[str, Any]) -> tuple[str, str] | None:
     """Classify one failed merge-group check.
 
     Pre: ``check`` has ``conclusion`` plus ``name`` or ``title``.
-    Post: ``None`` when the check did not fail. Infrastructure text and
-    cancelled or startup conclusions are ``transient``. A ``FAILURE`` whose
-    text is not infrastructure is ``deterministic``.
+    Post: ``None`` when the check did not fail. Cancelled, startup, stale,
+    timed-out, infrastructure, and unclassified conclusions are ``transient``.
+    ``deterministic`` requires a ``FAILURE`` whose name, title, or summary
+    contains affirmative defect text.
     """
     conclusion = _text(check.get("conclusion")).casefold()
     if conclusion not in _FAILED_CONCLUSIONS:
         return None
     name = _text(check.get("name") or check.get("title")) or "unknown-check"
-    blob = " ".join((name, _text(check.get("title")), _text(check.get("summary")), conclusion)).casefold()
-    transient = conclusion in _TRANSIENT_CONCLUSIONS or any(marker in blob for marker in _TRANSIENT_MARKERS)
+    blob = " ".join((name, _text(check.get("title")), _text(check.get("summary")))).casefold()
+    transient = conclusion in _TRANSIENT_CONCLUSIONS or conclusion == "timed_out"
+    transient = transient or any(marker in blob for marker in _TRANSIENT_MARKERS)
     if transient:
         return ("transient", name)
-    if conclusion in {"failure", "failed", "timed_out"}:
+    if conclusion in {"failure", "failed"} and any(marker in blob for marker in _DETERMINISTIC_MARKERS):
         return ("deterministic", name)
     return ("transient", name)
 
@@ -132,7 +152,9 @@ def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
     Post: ``merge_group_failures`` holds ``(head_sha, classification, signature)``
     for removals after the head commit that carry classified merge-group checks.
     The head is the pull request ``headRefOid``, not the merge-group commit.
-    A removal with no check runs does not become a failure.
+    A removal with no check runs does not become a failure. Comment records
+    keep ``(created_at, author, body)`` so a later retry note can be checked
+    for an owner or Barb author.
     """
     commits = (node.get("commits") or {}).get("nodes") or []
     last = commits[-1] if commits and isinstance(commits[-1], Mapping) else {}
@@ -164,14 +186,14 @@ def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
                 _text(run.get("signature")),
             )
         )
-    comments: list[tuple[str, str]] = []
+    comments: list[tuple[str, str, str]] = []
     for comment in (node.get("comments") or {}).get("nodes") or []:
         if not isinstance(comment, Mapping):
             continue
         created_at = _text(comment.get("createdAt"))
         body = _text(comment.get("body"))
         if created_at and body:
-            comments.append((created_at, body))
+            comments.append((created_at, _comment_author(comment), body))
     return {
         "head_committed_at": head_at,
         "queue_removals": tuple(removals),
@@ -200,12 +222,40 @@ def _deterministic_signatures(
     return any(count >= 2 for count in counts.values())
 
 
+def _comment_author(comment: Mapping[str, Any]) -> str:
+    """GitHub login from a GraphQL ``author`` or REST ``user`` object."""
+    author = comment.get("author") or comment.get("user") or {}
+    if isinstance(author, Mapping):
+        return _text(author.get("login"))
+    return ""
+
+
+def _authorized_retry_author(login: str) -> bool:
+    """True when ``login`` is the owner or a Barb identity.
+
+    Pre: ``login`` may be empty. A ``[bot]`` suffix is ignored.
+    Post: ``dieterolson``, ``openbotgit``, and a login token ``barb`` match.
+    Shared fleet App logins do not, so a lane comment cannot lift a dequeue.
+    """
+    normalized = login.casefold().removesuffix("[bot]").strip()
+    if normalized in _OWNER_LOGINS:
+        return True
+    parts = {part for part in re.split(r"[^a-z0-9]+", normalized) if part}
+    return bool(parts & _BARB_LOGIN_PARTS)
+
+
 def _manual_dequeue_without_authorization(
     *,
     head_committed_at: str,
     removals: Sequence[tuple[str, str]],
-    comments: Sequence[tuple[str, str]],
+    comments: Sequence[tuple[str, str, str]],
 ) -> bool:
+    """True when a manual dequeue has no later owner or Barb retry note.
+
+    Pre: each comment is ``(created_at, author, body)`` and each removal is
+    ``(created_at, reason)``.
+    Post: an unauthorized later ``retry authorized`` comment leaves this True.
+    """
     manual_at = [
         created_at
         for created_at, reason in removals
@@ -214,7 +264,10 @@ def _manual_dequeue_without_authorization(
     if not manual_at:
         return False
     latest = max(manual_at)
-    return not any(created_at > latest and _RETRY_AUTHORIZED.search(body) for created_at, body in comments)
+    return not any(
+        created_at > latest and _authorized_retry_author(author) and _RETRY_AUTHORIZED.search(body)
+        for created_at, author, body in comments
+    )
 
 
 def suppression_detail(
@@ -223,7 +276,7 @@ def suppression_detail(
     head_committed_at: str,
     removals: Sequence[tuple[str, str]],
     failures: Sequence[tuple[str, str, str]],
-    comments: Sequence[tuple[str, str]],
+    comments: Sequence[tuple[str, str, str]],
 ) -> str:
     """Return why automatic requeue must stop, or ``""`` when it may proceed.
 

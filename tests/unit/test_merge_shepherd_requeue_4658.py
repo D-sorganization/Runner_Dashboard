@@ -259,3 +259,69 @@ def test_manual_dequeue_suppresses_until_retry_is_authorized() -> None:
     )
     _, released = _plan([node])
     assert released == []
+
+
+def test_unauthorized_comment_does_not_lift_a_manual_dequeue() -> None:
+    """An unrelated commenter cannot authorize requeue through the production node."""
+    node = _with_head(_open_pr_node(71, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    node["timelineItems"] = {"nodes": [_removal("2026-11-24T23:07:31Z", "MANUAL")]}
+    node["comments"] = {
+        "nodes": [
+            {
+                "createdAt": "2026-11-24T23:20:00Z",
+                "author": {"login": "unrelated-commenter"},
+                "body": "retry authorized for this head",
+            }
+        ]
+    }
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    assert candidate.comment_bodies[-1][1] == "unrelated-commenter"
+    _, disarms = _plan([node])
+    assert [action.detail for action in disarms] == ["manual_dequeue"]
+
+
+def test_barb_direction_lifts_a_manual_dequeue() -> None:
+    node = _with_head(_open_pr_node(73, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    node["timelineItems"] = {"nodes": [_removal("2026-11-24T23:07:31Z", "MANUAL")]}
+    node["comments"] = {
+        "nodes": [
+            {
+                "createdAt": "2026-11-24T23:20:00Z",
+                "author": {"login": "openbot-barb"},
+                "body": "Barb direction: retry authorized for this head",
+            }
+        ]
+    }
+    _, released = _plan([node])
+    assert released == []
+
+
+def test_repeated_timeouts_do_not_disarm() -> None:
+    node = _with_head(_open_pr_node(76, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    checks = [_check("unit tests", "TIMED_OUT")]
+    node["timelineItems"] = {
+        "nodes": [
+            _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", checks, run_id=21),
+            _removal_with_checks("2026-11-24T22:40:00Z", "CI_FAILURE", checks, run_id=22),
+        ]
+    }
+    _, disarms = _plan([node])
+    assert disarms == []
+
+
+def test_unclassified_failures_do_not_disarm() -> None:
+    """A failure whose text never names a reproducible defect is not deterministic."""
+    node = _with_head(_open_pr_node(77, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    checks = [_check("queue entry", "FAILURE", summary="job failed without a classified cause")]
+    node["timelineItems"] = {
+        "nodes": [
+            _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", checks, run_id=31),
+            _removal_with_checks("2026-11-24T22:40:00Z", "CI_FAILURE", checks, run_id=32),
+        ]
+    }
+    _, disarms = _plan([node])
+    assert disarms == []

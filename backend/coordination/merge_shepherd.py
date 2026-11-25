@@ -91,7 +91,7 @@ class PRCandidate:
     head_committed_at: str = ""
     queue_removals: tuple[tuple[str, str], ...] = ()
     merge_group_failures: tuple[tuple[str, str, str], ...] = ()
-    comment_bodies: tuple[tuple[str, str], ...] = ()
+    comment_bodies: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass(frozen=True)
