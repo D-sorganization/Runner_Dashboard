@@ -2,8 +2,9 @@
 
 Claude allow-list prefixes accept any suffix, so ``pytest … -p plugin`` and
 ``python -m scripts.board … && …`` match ``Bash(prefix:*)`` and still run.
-``build_command`` writes a settings file that points Claude at this hook.
-The hook is the boundary that actually refuses those commands.
+``build_command`` names a settings file that points Claude at this hook and
+writes that file only when the run directory already exists. The hook is the
+boundary that actually refuses those commands.
 """
 
 from __future__ import annotations
@@ -18,6 +19,13 @@ from staff.adapter_policies import UNATTENDED_SHELL_ALLOW, board_secretary_archi
 _INTERPRETERS = frozenset({"python", "python3", "pytest"})
 _SHELL_META = ("&&", "||", ";", "|", "`", "$(", "\n", ">", "<")
 _OTHER_PREFIXES = tuple(prefix for prefix in UNATTENDED_SHELL_ALLOW if prefix not in _INTERPRETERS)
+_PLAN_WORKDIR = "<workdir>"
+
+
+def _is_plan_placeholder(workdir: str | Path) -> bool:
+    """True for the plan-time workdir token, which is not a directory."""
+    text = str(workdir)
+    return text == _PLAN_WORKDIR or Path(text).name == _PLAN_WORKDIR
 
 
 def launched_command_allowed(command: str) -> bool:
@@ -41,12 +49,26 @@ def launched_command_allowed(command: str) -> bool:
     return any(text == prefix or text.startswith(prefix + " ") for prefix in _OTHER_PREFIXES)
 
 
+def launch_settings_path(workdir: str | Path) -> Path:
+    """Return the Claude settings path, writing it only for a real directory.
+
+    Pre: ``workdir`` is the plan placeholder ``<workdir>`` or a run directory.
+    Post: the placeholder is never created. An existing directory receives the hook file.
+    """
+    path = Path(workdir)
+    if _is_plan_placeholder(path) or not path.is_dir():
+        return path / ".staff" / "board-secretary-claude.json"
+    return install_launch_settings(path)
+
+
 def install_launch_settings(workdir: str | Path) -> Path:
     """Write the Claude settings file that hooks Bash through this module.
 
-    Pre: ``workdir`` is the staff run directory. Post: the file exists and its
-    hook command names ``staff.board_secretary_bash_hook``.
+    Pre: ``workdir`` is an existing staff run directory, not the plan placeholder.
+    Post: the file exists and its hook command names ``staff.board_secretary_bash_hook``.
     """
+    if _is_plan_placeholder(workdir):
+        raise ValueError("refusing to create the plan placeholder workdir")
     backend = Path(__file__).resolve().parents[1]
     command = f"PYTHONPATH={shlex.quote(str(backend))} {shlex.quote(sys.executable)} -m staff.board_secretary_bash_hook"
     payload = {

@@ -7,12 +7,13 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from staff.adapter_policies import board_secretary_archive_command_allowed, board_secretary_launch_kwargs
 from staff.adapters import ADAPTERS
 from staff.board_secretary_persona import board_secretary_role_data
-from staff.cloud_dispatch import resolve_execute_launch
+from staff.cloud_dispatch import resolve_execute_launch, resolve_plan_execution
 
 _ARCHIVE_COMMANDS = (
     "python -m scripts.board.init_meeting_packet --date 2026-11-24",
@@ -88,6 +89,47 @@ def test_other_roles_keep_the_shared_python_allow_list() -> None:
 def test_launch_kwargs_are_scoped_to_board_secretary() -> None:
     assert board_secretary_launch_kwargs("board-secretary", {}) == {"role": "board-secretary"}
     assert board_secretary_launch_kwargs("night-watch", {"read_only": True}) == {"read_only": True}
+
+
+@pytest.mark.unit
+def test_plan_defers_settings_until_the_real_workdir_exists(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Planning must not mkdir the ``<workdir>`` placeholder (#4656 review)."""
+    monkeypatch.chdir(tmp_path)
+    req = SimpleNamespace(execution_mode="local", issue=None, repo="Runner_Dashboard", pr=None)
+    _mode, planned, _stdin, _lease = resolve_plan_execution(
+        req,
+        "board-secretary",
+        "claude",
+        ADAPTERS["claude"],
+        "archive the meeting",
+        None,
+        True,
+        {},
+    )
+    assert not (tmp_path / "<workdir>").exists()
+    assert "--settings" in planned
+
+    real = tmp_path / "run"
+    real.mkdir()
+
+    class _Plan:
+        execution_mode = "local"
+        model = None
+        role = "board-secretary"
+        provider = "claude"
+        argv = planned
+        cloud_stdin = ""
+
+    launch_argv, _label, stdin_payload = resolve_execute_launch(
+        _Plan(), ADAPTERS["claude"], "archive the meeting", real, {}, {}
+    )
+    assert stdin_payload is None
+    settings = Path(launch_argv[launch_argv.index("--settings") + 1])
+    assert settings.is_file()
+    assert settings.is_relative_to(real)
+    hook = json.loads(settings.read_text(encoding="utf-8"))
+    assert "staff.board_secretary_bash_hook" in hook["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert not (tmp_path / "<workdir>").exists()
 
 
 @pytest.mark.unit

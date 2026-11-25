@@ -212,9 +212,10 @@ class ProviderAdapter:
             if "--disallowedTools" in out:
                 out[out.index("--disallowedTools") + 1] = scoped_denied
             # Prefix rules cannot see ``-p`` or ``&&``. The settings hook is that gate.
-            from staff.board_secretary_bash_hook import install_launch_settings
+            # Plan passes ``<workdir>``; write the file only once that directory exists.
+            from staff.board_secretary_bash_hook import launch_settings_path
 
-            out.extend(["--settings", str(install_launch_settings(workdir))])
+            out.extend(["--settings", str(launch_settings_path(workdir))])
         if self.provider_id == "cursor-agent" and "--sandbox" in out:
             out[out.index("--sandbox") + 1] = _cursor_agent_sandbox_mode()
         if session_id:
