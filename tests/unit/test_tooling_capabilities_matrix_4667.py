@@ -38,11 +38,25 @@ def test_handoff_section_separates_state_status_and_surface() -> None:
 
 
 def test_inventory_module_records_that_handoff_leaves_surface_unchanged() -> None:
-    """Issue #4667 names this module; the docstring must match the UPDATE."""
+    """Issue #4667 names this module; the docstring must match the UPDATE.
+
+    Review at 399161f6: the UPDATE writes owner, fencing, handoff metadata,
+    and updated_at as well as handoff_state and status. Surface is preserved.
+    """
     docstring = STORE.read_text(encoding="utf-8").split('"""', 2)[1]
     assert "transition_handoff" in docstring
-    assert "handoff_state" in docstring
-    assert "status" in docstring
-    assert "surface" in docstring
-    assert "stays as stored" in docstring
+    assert "preserves ``surface``" in docstring
+    assert "handoff_state" in docstring and "status" in docstring
+    assert "and ``status`` only" not in docstring
+    assert "status only" not in docstring.lower()
+    for column in (
+        "owner_persona",
+        "fencing_epoch",
+        "handoff_request",
+        "handoff_resolution",
+        "artifact_ref",
+        "next_action",
+        "updated_at",
+    ):
+        assert column in docstring
     assert "docs/agents/tooling-capabilities-matrix.md" in docstring
