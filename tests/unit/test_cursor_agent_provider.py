@@ -47,5 +47,7 @@ def test_cursor_agent_models_exclude_stale_ids() -> None:
     models = set(_CURSOR_AGENT_MODELS)
     assert "composer-2.5" in models
     assert "auto" in models
+    assert "claude-fable-5-2-high" in models
+    assert "claude-fable-5-2" not in models
     for stale in ("gpt-5", "claude-sonnet-4", "grok-code-fast-1", "grok-4"):
         assert stale not in models

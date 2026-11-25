@@ -14,10 +14,10 @@ from staff.group_seat_runner import run_seat
 from staff.panel_models import PanelSpeaker, TurnOutcome
 
 EXPECTED = {
-    "alpha": ("Fable", "claude", "claude-fable-5-1"),
-    "bravo": ("Astra", "codex", "gpt-6-astra"),
+    "alpha": ("Fable", "claude", "claude-fable-5-2"),
+    "bravo": ("Astra", "codex", "gpt-6.2-astra"),
     "charlie": ("Grok", "cursor-agent", "grok-4.7-xhigh"),
-    "delta": ("Argon", "antigravity", "gemini-4-argon-high"),
+    "delta": ("Neon", "antigravity", "gemini-4-neon"),
 }
 
 
