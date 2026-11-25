@@ -81,15 +81,9 @@
         "issue_number": 104,
         "column": "armed",
         "column_label": "Armed",
-        "matched_columns": [
-          "armed",
-          "review",
-          "pr_open"
-        ],
+        "matched_columns": ["armed", "review", "pr_open"],
         "stale_reviews": [],
-        "reasons": [
-          "auto-merge armed or merge queue"
-        ],
+        "reasons": ["auto-merge armed or merge queue"],
         "sources": [
           {
             "kind": "issue",
@@ -153,14 +147,9 @@
         "issue_number": 200,
         "column": "armed",
         "column_label": "Armed",
-        "matched_columns": [
-          "armed",
-          "pr_open"
-        ],
+        "matched_columns": ["armed", "pr_open"],
         "stale_reviews": [],
-        "reasons": [
-          "auto-merge armed or merge queue"
-        ],
+        "reasons": ["auto-merge armed or merge queue"],
         "sources": [
           {
             "kind": "issue",
@@ -211,13 +200,9 @@
         "issue_number": 101,
         "column": "claimed",
         "column_label": "Claimed",
-        "matched_columns": [
-          "claimed"
-        ],
+        "matched_columns": ["claimed"],
         "stale_reviews": [],
-        "reasons": [
-          "leased to cursor"
-        ],
+        "reasons": ["leased to cursor"],
         "sources": [
           {
             "kind": "issue",
@@ -262,13 +247,9 @@
         "issue_number": 201,
         "column": "pr_open",
         "column_label": "PR open",
-        "matched_columns": [
-          "pr_open"
-        ],
+        "matched_columns": ["pr_open"],
         "stale_reviews": [],
-        "reasons": [
-          "pull request #61 open"
-        ],
+        "reasons": ["pull request #61 open"],
         "sources": [
           {
             "kind": "issue",
@@ -312,13 +293,9 @@
         "issue_number": 100,
         "column": "issue_open",
         "column_label": "Issue open",
-        "matched_columns": [
-          "issue_open"
-        ],
+        "matched_columns": ["issue_open"],
         "stale_reviews": [],
-        "reasons": [
-          "open issue without lease or pull request"
-        ],
+        "reasons": ["open issue without lease or pull request"],
         "sources": [
           {
             "kind": "issue",
@@ -362,13 +339,9 @@
         "issue_number": 105,
         "column": "merged",
         "column_label": "Merged",
-        "matched_columns": [
-          "merged"
-        ],
+        "matched_columns": ["merged"],
         "stale_reviews": [],
-        "reasons": [
-          "pull request #53 merged"
-        ],
+        "reasons": ["pull request #53 merged"],
         "sources": [
           {
             "kind": "issue",
@@ -433,13 +406,9 @@
         "issue_number": 102,
         "column": "pr_open",
         "column_label": "PR open",
-        "matched_columns": [
-          "pr_open"
-        ],
+        "matched_columns": ["pr_open"],
         "stale_reviews": [],
-        "reasons": [
-          "pull request #50 open"
-        ],
+        "reasons": ["pull request #50 open"],
         "sources": [
           {
             "kind": "issue",
@@ -510,14 +479,9 @@
         "issue_number": 103,
         "column": "review",
         "column_label": "Review",
-        "matched_columns": [
-          "review",
-          "pr_open"
-        ],
+        "matched_columns": ["review", "pr_open"],
         "stale_reviews": [],
-        "reasons": [
-          "review requested at head"
-        ],
+        "reasons": ["review requested at head"],
         "sources": [
           {
             "kind": "issue",
@@ -591,10 +555,7 @@
         "issue_number": 108,
         "column": "review",
         "column_label": "Review",
-        "matched_columns": [
-          "review",
-          "pr_open"
-        ],
+        "matched_columns": ["review", "pr_open"],
         "stale_reviews": [
           {
             "commit_id": "old888",
@@ -603,9 +564,7 @@
             "html_url": "https://github.com/D-sorganization/Runner_Dashboard/pull/55#review_old"
           }
         ],
-        "reasons": [
-          "review requested at head"
-        ],
+        "reasons": ["review requested at head"],
         "sources": [
           {
             "kind": "issue",
@@ -711,9 +670,7 @@
         "column_label": "Unknown",
         "matched_columns": [],
         "stale_reviews": [],
-        "reasons": [
-          "pull request head_sha disagrees with review head_sha"
-        ],
+        "reasons": ["pull request head_sha disagrees with review head_sha"],
         "sources": [
           {
             "kind": "issue",
@@ -765,9 +722,7 @@
         "column_label": "Unknown",
         "matched_columns": [],
         "stale_reviews": [],
-        "reasons": [
-          "issue source degraded"
-        ],
+        "reasons": ["issue source degraded"],
         "sources": [
           {
             "kind": "issue",
@@ -817,9 +772,7 @@
         "column_label": "Unknown",
         "matched_columns": [],
         "stale_reviews": [],
-        "reasons": [
-          "pull request source missing or degraded"
-        ],
+        "reasons": ["pull request source missing or degraded"],
         "sources": [
           {
             "kind": "issue",
@@ -880,9 +833,7 @@
         "column_label": "Unknown",
         "matched_columns": [],
         "stale_reviews": [],
-        "reasons": [
-          "pull request source missing or degraded"
-        ],
+        "reasons": ["pull request source missing or degraded"],
         "sources": [
           {
             "kind": "issue",
@@ -980,9 +931,7 @@
           "number": 106,
           "state": "open",
           "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/106",
-          "labels": [
-            "hold:rd-2657"
-          ]
+          "labels": ["hold:rd-2657"]
         },
         "claim": {
           "held": false
@@ -1009,15 +958,9 @@
         "issue_number": 106,
         "column": "waiting_on_dieter",
         "column_label": "Waiting on Dieter",
-        "matched_columns": [
-          "waiting_on_dieter",
-          "armed",
-          "pr_open"
-        ],
+        "matched_columns": ["waiting_on_dieter", "armed", "pr_open"],
         "stale_reviews": [],
-        "reasons": [
-          "issue label 'hold:rd-2657'"
-        ],
+        "reasons": ["issue label 'hold:rd-2657'"],
         "sources": [
           {
             "kind": "issue",
@@ -1067,9 +1010,7 @@
         },
         "owner_wait": {
           "waiting": true,
-          "reasons": [
-            "pending staff.approve"
-          ],
+          "reasons": ["pending staff.approve"],
           "html_url": "https://github.com/D-sorganization/Runner_Dashboard/issues/203#issuecomment-approve"
         }
       },
@@ -1079,14 +1020,9 @@
         "issue_number": 203,
         "column": "waiting_on_dieter",
         "column_label": "Waiting on Dieter",
-        "matched_columns": [
-          "waiting_on_dieter",
-          "issue_open"
-        ],
+        "matched_columns": ["waiting_on_dieter", "issue_open"],
         "stale_reviews": [],
-        "reasons": [
-          "pending staff.approve"
-        ],
+        "reasons": ["pending staff.approve"],
         "sources": [
           {
             "kind": "issue",

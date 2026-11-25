@@ -45,14 +45,14 @@ Keep labels `blocked`, `judgement:design`, and `panel-review` until the ruling; 
 
 ## Files likely touched
 
-| Area | Paths |
-| --- | --- |
-| RD persona | `backend/staff/george_persona.py` (new) |
-| RD tests | `tests/unit/test_george_persona.py` (new) |
+| Area                 | Paths                                                                                                                                                 |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| RD persona           | `backend/staff/george_persona.py` (new)                                                                                                               |
+| RD tests             | `tests/unit/test_george_persona.py` (new)                                                                                                             |
 | Shared persona infra | `backend/staff/role_spec.py`, `backend/staff/role_capsule.py`, `backend/staff/persona_fallback_lease.py`, `backend/staff/role_health.py` (reuse only) |
-| Notify / shadow | `scripts/rd_barb_notify.py` (reuse; honor #3792 fail-closed shadow transport) |
-| RM role file | `Repository_Management/staff/roles/george.yml` (separate RM PR if required) |
-| Docs | `docs/operations/persona-cutover.md` (George subsection) |
+| Notify / shadow      | `scripts/rd_barb_notify.py` (reuse; honor #3792 fail-closed shadow transport)                                                                         |
+| RM role file         | `Repository_Management/staff/roles/george.yml` (separate RM PR if required)                                                                           |
+| Docs                 | `docs/operations/persona-cutover.md` (George subsection)                                                                                              |
 
 ## Acceptance criteria
 
@@ -75,12 +75,12 @@ Keep labels `blocked`, `judgement:design`, and `panel-review` until the ruling; 
 
 ## Suggested PR split (advisory ~500 lines each (not a gate))
 
-| PR | Content | Closes |
-| --- | --- | --- |
-| 1 | `george_persona.py` role_data, schedule constants, capsule schema + contract unit tests | — (stack) |
-| 2 | Shadow runner + notify integration tests (#3792 semantics) | — |
-| 3 | Fallback drill + cutover doc snippet + relay env wiring | `Closes #3700` |
-| RM | `staff/roles/george.yml` only in Repository_Management | RM tracking issue if any |
+| PR  | Content                                                                                 | Closes                   |
+| --- | --------------------------------------------------------------------------------------- | ------------------------ |
+| 1   | `george_persona.py` role_data, schedule constants, capsule schema + contract unit tests | — (stack)                |
+| 2   | Shadow runner + notify integration tests (#3792 semantics)                              | —                        |
+| 3   | Fallback drill + cutover doc snippet + relay env wiring                                 | `Closes #3700`           |
+| RM  | `staff/roles/george.yml` only in Repository_Management                                  | RM tracking issue if any |
 
 ## Recommended labels
 

@@ -17,10 +17,7 @@
     "requires_owner_approval": true,
     "requires_wsl_shutdown": true
   },
-  "excluded_knobs": [
-    "CPUQuota",
-    "MemoryMax"
-  ],
+  "excluded_knobs": ["CPUQuota", "MemoryMax"],
   "measurement": {
     "baseline_days": 7,
     "trial_days": 7,

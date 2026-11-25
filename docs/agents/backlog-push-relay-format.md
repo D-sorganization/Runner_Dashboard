@@ -39,10 +39,10 @@ Include exactly one fenced JSON block tagged `backlog-push-request`:
 
 ## Outcome labels
 
-| Label | Meaning |
-| ----- | ------- |
-| `backlog-push-started` | Accepted; supervisor + lanes launched |
-| `backlog-push-done` | Finished (timeout or processes exited) |
+| Label                  | Meaning                                              |
+| ---------------------- | ---------------------------------------------------- |
+| `backlog-push-started` | Accepted; supervisor + lanes launched                |
+| `backlog-push-done`    | Finished (timeout or processes exited)               |
 | `backlog-push-refused` | Validation, cap, resource gate, or allowlist failure |
 
 ## Operator enable (barb-worker)

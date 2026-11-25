@@ -8,18 +8,18 @@ enablement.
 
 ## Enabling and configuration (host-local env)
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `RD_REVIEW_ARM_HOST` | unset (off) | Enable flag: only the machine with this name runs the loop. |
-| `RD_REVIEW_ARM_ENABLED` | unset | `0`/`false` is a kill switch that wins over the host. |
-| `RD_REVIEW_ARM_DRY_RUN` | true | Only `0`/`false`/`no`/`off` leaves dry-run. |
-| `RD_REVIEW_ARM_INTERVAL_MINUTES` | 10 | Cycle interval (1..1440). |
-| `RD_REVIEW_ARM_MAX_DISPATCH` | 5 | Review dispatches per cycle (0..60); the rest stay queued. |
-| `RD_REVIEW_ARM_STALL_MINUTES` | 60 | Stall alert threshold. |
-| `RD_REVIEW_ARM_REPOS` | fleet repos | Comma-separated repository names. |
-| `RD_REVIEW_ARM_HELD_PRS` | — | Extra holds, `Repo#123`; seed holds always apply. |
-| `RD_REVIEW_ARM_LEDGER` | `~/.config/runner-dashboard/review-arm-ledger.sqlite3` | Durable ledger. |
-| `RD_REVIEW_ARM_BOX_STATE_DIR` | — | Directory with the box's `arm_holds.txt`, `blocked_heads.txt`, `arm_override.txt`; imported once. |
+| Variable                         | Default                                                | Meaning                                                                                           |
+| -------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `RD_REVIEW_ARM_HOST`             | unset (off)                                            | Enable flag: only the machine with this name runs the loop.                                       |
+| `RD_REVIEW_ARM_ENABLED`          | unset                                                  | `0`/`false` is a kill switch that wins over the host.                                             |
+| `RD_REVIEW_ARM_DRY_RUN`          | true                                                   | Only `0`/`false`/`no`/`off` leaves dry-run.                                                       |
+| `RD_REVIEW_ARM_INTERVAL_MINUTES` | 10                                                     | Cycle interval (1..1440).                                                                         |
+| `RD_REVIEW_ARM_MAX_DISPATCH`     | 5                                                      | Review dispatches per cycle (0..60); the rest stay queued.                                        |
+| `RD_REVIEW_ARM_STALL_MINUTES`    | 60                                                     | Stall alert threshold.                                                                            |
+| `RD_REVIEW_ARM_REPOS`            | fleet repos                                            | Comma-separated repository names.                                                                 |
+| `RD_REVIEW_ARM_HELD_PRS`         | —                                                      | Extra holds, `Repo#123`; seed holds always apply.                                                 |
+| `RD_REVIEW_ARM_LEDGER`           | `~/.config/runner-dashboard/review-arm-ledger.sqlite3` | Durable ledger.                                                                                   |
+| `RD_REVIEW_ARM_BOX_STATE_DIR`    | —                                                      | Directory with the box's `arm_holds.txt`, `blocked_heads.txt`, `arm_override.txt`; imported once. |
 
 `start_review_arm` runs from the leader's staff-scheduler bootstrap after the
 startup reconcile. `GET /api/staff/review-arm/status` (staff.read) reports

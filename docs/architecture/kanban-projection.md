@@ -12,15 +12,15 @@ Implementation: `backend/kanban_projection.py`. GitHub ingestion (#4319):
 
 ## Columns
 
-| Column id | Display name | Meaning |
-| --- | --- | --- |
-| `merged` | Merged | Work landed: linked PR is `merged`, or the issue is closed with merge evidence. |
+| Column id           | Display name      | Meaning                                                                                                     |
+| ------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| `merged`            | Merged            | Work landed: linked PR is `merged`, or the issue is closed with merge evidence.                             |
 | `waiting_on_dieter` | Waiting on Dieter | Owner-only gate: schedule holds, `hold:*` labels, or an explicit owner-wait signal. Read-only on the board. |
-| `armed` | Armed | Open, non-draft PR with auto-merge enabled (merge queue counts as armed when `in_merge_queue` is true). |
-| `review` | Review | Open, non-draft PR still needing human review at the **current head**. |
-| `pr_open` | PR open | Open PR that is not armed and not in the review state. Draft PRs map here. |
-| `claimed` | Claimed | Open issue with an active coordination lease and no open PR. |
-| `issue_open` | Issue open | Open, unclaimed issue with no open PR. |
+| `armed`             | Armed             | Open, non-draft PR with auto-merge enabled (merge queue counts as armed when `in_merge_queue` is true).     |
+| `review`            | Review            | Open, non-draft PR still needing human review at the **current head**.                                      |
+| `pr_open`           | PR open           | Open PR that is not armed and not in the review state. Draft PRs map here.                                  |
+| `claimed`           | Claimed           | Open issue with an active coordination lease and no open PR.                                                |
+| `issue_open`        | Issue open        | Open, unclaimed issue with no open PR.                                                                      |
 
 `unknown` is **not** a column. When required evidence is missing or marked
 degraded, the card's `column` is `unknown` and `column_label` is `Unknown`.
@@ -30,16 +30,16 @@ The projector never infers a lifecycle stage without evidence.
 
 Ingestion (#4319–#4321) assembles a `KanbanWorkItemSnapshot` per card:
 
-| Slice | Fields | Source (future) |
-| --- | --- | --- |
-| Issue | `KanbanIssueSnapshot` | GitHub issue |
-| Pull request | `KanbanPullRequestSnapshot` | GitHub PR linked to the issue |
-| Checks | `KanbanChecksSnapshot` | GitHub check runs on PR head |
-| Reviews | `KanbanReviewsSnapshot` | GitHub review events on PR |
-| Auto-merge | `KanbanAutoMergeSnapshot` | GitHub `auto_merge` / merge queue |
-| Claim / lease | `KanbanClaimSnapshot` | `kanban_claims_ingestion.claim_snapshot_from_check` ← `coordination.claims.check` (read-only) |
-| Owner wait | `KanbanOwnerWaitSnapshot` | Holds list, issue labels, staff approvals (`backend/kanban_owner_wait.py`, #4321) |
-| Staff run | `KanbanStaffRunSnapshot` | `kanban_claims_ingestion.staff_run_snapshot_for_issue` ← `staff.store.RunStore` (read-only) |
+| Slice         | Fields                      | Source (future)                                                                               |
+| ------------- | --------------------------- | --------------------------------------------------------------------------------------------- |
+| Issue         | `KanbanIssueSnapshot`       | GitHub issue                                                                                  |
+| Pull request  | `KanbanPullRequestSnapshot` | GitHub PR linked to the issue                                                                 |
+| Checks        | `KanbanChecksSnapshot`      | GitHub check runs on PR head                                                                  |
+| Reviews       | `KanbanReviewsSnapshot`     | GitHub review events on PR                                                                    |
+| Auto-merge    | `KanbanAutoMergeSnapshot`   | GitHub `auto_merge` / merge queue                                                             |
+| Claim / lease | `KanbanClaimSnapshot`       | `kanban_claims_ingestion.claim_snapshot_from_check` ← `coordination.claims.check` (read-only) |
+| Owner wait    | `KanbanOwnerWaitSnapshot`   | Holds list, issue labels, staff approvals (`backend/kanban_owner_wait.py`, #4321)             |
+| Staff run     | `KanbanStaffRunSnapshot`    | `kanban_claims_ingestion.staff_run_snapshot_for_issue` ← `staff.store.RunStore` (read-only)   |
 
 Each sub-record carries `available`, optional `degraded`, and URLs for source
 links. Slice 1 accepts these structures as plain data; it performs no I/O.
@@ -63,31 +63,31 @@ fail-closed rules in the next section, precedence is not applied.
 
 ## Fail-closed (`unknown`)
 
-| Condition | Result |
-| --- | --- |
-| Issue snapshot unavailable or `degraded` | `unknown` |
-| Issue `state` is `closed` and neither merged PR evidence nor explicit merged mapping | `unknown` |
-| Open issue, no open PR, and claim snapshot unavailable or `degraded` | `unknown` (cannot distinguish Issue open vs Claimed) |
-| Linked PR `state=open` but snapshot `available=false` or `degraded` (even when claim snapshot is healthy) | `unknown` — do not fall through to Issue open / Claimed |
-| Open non-draft PR and reviews snapshot unavailable or `degraded` when `review_requested` or `changes_requested_at_head` is true | `unknown` |
-| Open non-draft PR and both PR and review snapshots carry conflicting `head_sha` | `unknown` |
-| Auto-merge snapshot unavailable or `degraded` on an open non-draft PR **unless** `in_merge_queue` is true (queue state is taken from the PR snapshot) | `unknown` |
-| Draft open PR | auto-merge and review evidence **not** required (card maps to `pr_open`) |
+| Condition                                                                                                                                             | Result                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Issue snapshot unavailable or `degraded`                                                                                                              | `unknown`                                                                |
+| Issue `state` is `closed` and neither merged PR evidence nor explicit merged mapping                                                                  | `unknown`                                                                |
+| Open issue, no open PR, and claim snapshot unavailable or `degraded`                                                                                  | `unknown` (cannot distinguish Issue open vs Claimed)                     |
+| Linked PR `state=open` but snapshot `available=false` or `degraded` (even when claim snapshot is healthy)                                             | `unknown` — do not fall through to Issue open / Claimed                  |
+| Open non-draft PR and reviews snapshot unavailable or `degraded` when `review_requested` or `changes_requested_at_head` is true                       | `unknown`                                                                |
+| Open non-draft PR and both PR and review snapshots carry conflicting `head_sha`                                                                       | `unknown`                                                                |
+| Auto-merge snapshot unavailable or `degraded` on an open non-draft PR **unless** `in_merge_queue` is true (queue state is taken from the PR snapshot) | `unknown`                                                                |
+| Draft open PR                                                                                                                                         | auto-merge and review evidence **not** required (card maps to `pr_open`) |
 
 When `unknown`, `reasons` lists every fail-closed trigger. No column guess is
 made.
 
 ## Predicate reference (open issue unless noted)
 
-| Column | Predicate (all required) |
-| --- | --- |
-| `merged` | Linked PR `state=merged`, **or** issue `state=closed` with linked merged PR |
-| `waiting_on_dieter` | `owner_wait.waiting`, or issue label `hold:*` (case-insensitive prefix) |
-| `armed` | Open non-draft PR and (`auto_merge.enabled` or `pull_request.in_merge_queue`) |
-| `review` | Open non-draft PR and (head `CHANGES_REQUESTED`, or `review_requested` without head `APPROVED`, or head `PENDING`, or `changes_requested_at_head` summary flag) |
-| `pr_open` | Open PR (includes drafts) |
-| `claimed` | Open issue, active lease (`claim.held`), no open PR |
-| `issue_open` | Open issue, no lease, no open PR |
+| Column              | Predicate (all required)                                                                                                                                        |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merged`            | Linked PR `state=merged`, **or** issue `state=closed` with linked merged PR                                                                                     |
+| `waiting_on_dieter` | `owner_wait.waiting`, or issue label `hold:*` (case-insensitive prefix)                                                                                         |
+| `armed`             | Open non-draft PR and (`auto_merge.enabled` or `pull_request.in_merge_queue`)                                                                                   |
+| `review`            | Open non-draft PR and (head `CHANGES_REQUESTED`, or `review_requested` without head `APPROVED`, or head `PENDING`, or `changes_requested_at_head` summary flag) |
+| `pr_open`           | Open PR (includes drafts)                                                                                                                                       |
+| `claimed`           | Open issue, active lease (`claim.held`), no open PR                                                                                                             |
+| `issue_open`        | Open issue, no lease, no open PR                                                                                                                                |
 
 Staff runs never select a column in slice 1; they appear only as `staff_run`
 source links for operator drill-down (#4321).
@@ -141,15 +141,15 @@ even when `available` is false so the UI can show broken provenance.
 
 `project_kanban_column(snapshot) -> KanbanCard`:
 
-| Field | Type | Notes |
-| --- | --- | --- |
-| `owner`, `repo`, `issue_number` | string / int | Identity |
-| `column` | column id or `unknown` | |
-| `column_label` | string | Human column name or `Unknown` |
-| `matched_columns` | list | All predicates that matched, ordered by precedence (highest first) |
-| `stale_reviews` | list | Stale review records |
-| `reasons` | list | Fail-closed and informational strings |
-| `sources` | list | Source links |
+| Field                           | Type                   | Notes                                                              |
+| ------------------------------- | ---------------------- | ------------------------------------------------------------------ |
+| `owner`, `repo`, `issue_number` | string / int           | Identity                                                           |
+| `column`                        | column id or `unknown` |                                                                    |
+| `column_label`                  | string                 | Human column name or `Unknown`                                     |
+| `matched_columns`               | list                   | All predicates that matched, ordered by precedence (highest first) |
+| `stale_reviews`                 | list                   | Stale review records                                               |
+| `reasons`                       | list                   | Fail-closed and informational strings                              |
+| `sources`                       | list                   | Source links                                                       |
 
 ## Claims and staff runs (slice 3, #4320)
 

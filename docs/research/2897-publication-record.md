@@ -6,18 +6,18 @@ Repo artifact for the acceptance step that posts classifier output on **#2897**.
 
 ## Top 3 causes (Oct 2025 backlog, replay + live snapshots)
 
-| Rank | Cause | Evidence |
-| --- | --- | --- |
-| 1 | **`label_mismatch`** — jobs require labels no online runner carries | Snapshot 2 on #2897: 203 jobs, **100%** `label_mismatch`; dominant missing label **`d-sorg-fleet-public-heavy`** |
-| 2 | **Missing public-heavy runner lane** | 0 online runners with `d-sorg-fleet-public-heavy` while standard fleet runners idle on other labels |
-| 3 | **Integration visibility (403)** on org runner-group reads | Recorded as `api_findings`; does not prove absence of groups — policy/read scope follow-up |
+| Rank | Cause                                                               | Evidence                                                                                                         |
+| ---- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 1    | **`label_mismatch`** — jobs require labels no online runner carries | Snapshot 2 on #2897: 203 jobs, **100%** `label_mismatch`; dominant missing label **`d-sorg-fleet-public-heavy`** |
+| 2    | **Missing public-heavy runner lane**                                | 0 online runners with `d-sorg-fleet-public-heavy` while standard fleet runners idle on other labels              |
+| 3    | **Integration visibility (403)** on org runner-group reads          | Recorded as `api_findings`; does not prove absence of groups — policy/read scope follow-up                       |
 
 ## Per-class counts (snapshot 2, illustrative)
 
-| Wait reason | Count | Share |
-| --- | ---: | ---: |
-| `label_mismatch` | 203 | 100% |
-| Other classes | 0 | 0% |
+| Wait reason      | Count | Share |
+| ---------------- | ----: | ----: |
+| `label_mismatch` |   203 |  100% |
+| Other classes    |     0 |    0% |
 
 ## Suggested comment for #2897
 

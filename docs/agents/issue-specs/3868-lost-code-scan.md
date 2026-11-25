@@ -25,10 +25,10 @@ Depends on #3867 ledger merged.
 
 ## PR split
 
-| PR | Content |
-| --- | --- |
-| 1 | Tier-1 Python |
-| 2 | Tier-1 TS + tier-2 git/cartographer |
+| PR  | Content                             |
+| --- | ----------------------------------- |
+| 1   | Tier-1 Python                       |
+| 2   | Tier-1 TS + tier-2 git/cartographer |
 
 ## Labels
 

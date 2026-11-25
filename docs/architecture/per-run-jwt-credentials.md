@@ -104,10 +104,10 @@ before trusting a syntactically-valid, unexpired JWT:
 
 1. At mint time, the hub registers `sha256(raw_jwt)` via the existing
    `IdentityManager.add_ephemeral_token(token_hash, principal, expires_at,
-   name=f"run:{run_id}")` — no new storage table. `expires_at` mirrors the
+name=f"run:{run_id}")` — no new storage table. `expires_at` mirrors the
    JWT's own `exp` so the two can never drift.
-2. Verification always calls `resolve_bearer_token` (unchanged) *in addition
-   to* checking the JWT's signature/`aud`/`iss`/`exp`/`nbf`. A syntactically
+2. Verification always calls `resolve_bearer_token` (unchanged) _in addition
+   to_ checking the JWT's signature/`aud`/`iss`/`exp`/`nbf`. A syntactically
    valid JWT whose hash is not (or no longer) in `_ephemeral_tokens` is
    rejected — this is what makes early revocation possible at all, since the
    signature alone would otherwise still verify until `exp`.
@@ -115,7 +115,7 @@ before trusting a syntactically-valid, unexpired JWT:
    the same hash-targeted removal `revoke_ephemeral_principal` already uses
    internally, rather than waiting for `exp`. The implementation PR adds a
    `revoke_ephemeral_token(token_hash)` sibling for this (today
-   `revoke_ephemeral_principal` revokes *all* of a principal's ephemeral
+   `revoke_ephemeral_principal` revokes _all_ of a principal's ephemeral
    tokens, which is too broad when a principal has more than one run live).
 4. A token that is never explicitly revoked still self-expires at `exp`
    (hub) and is also dropped from `_ephemeral_tokens` (in-memory; no
@@ -128,7 +128,7 @@ before trusting a syntactically-valid, unexpired JWT:
   `expires_at` are retained, and only in memory (`_ephemeral_tokens`) — never
   written to `tokens.yml` or any coordination/event-bus payload.
 - **Never** log the signing secret. The signing key is a long-lived
-  credential of the *hub process*, not of any agent; it is supplied the same
+  credential of the _hub process_, not of any agent; it is supplied the same
   way `GITHUB_APP_PRIVATE_KEY[_FILE]` is today (env var or file path env var,
   never committed, never in `config/agent_principals.yml`).
 - Mint and verification failures log `reason` codes only (matching
@@ -153,12 +153,12 @@ before trusting a syntactically-valid, unexpired JWT:
 3. **Verification-wiring PR(s)** — have run-launching call sites request and
    use a per-run JWT instead of a static token, behind a flag/staged
    rollout. Static tokens remain valid for any caller that has not migrated.
-   In-repo slice: ``clients/fleet/fleet_run_jwt.py`` (library) and
-   ``scripts/exchange_run_jwt.py`` (CLI) exchange a bootstrap bearer
-   for ``POST /api/fleet/run-jwt``; ``scripts/barb-worker/with-fleet-env.sh``
-   performs that exchange when ``RUN_JWT_AGENT_SESSION=1`` (default off) and
-   ``FLEET_RUN_JWT_RUN_ID`` + ``FLEET_RUN_JWT_CALLER_NODE`` are set. Hub-local
-   agent sessions still need an owner decision on ``X-Fleet-Node`` / bootstrap
+   In-repo slice: `clients/fleet/fleet_run_jwt.py` (library) and
+   `scripts/exchange_run_jwt.py` (CLI) exchange a bootstrap bearer
+   for `POST /api/fleet/run-jwt`; `scripts/barb-worker/with-fleet-env.sh`
+   performs that exchange when `RUN_JWT_AGENT_SESSION=1` (default off) and
+   `FLEET_RUN_JWT_RUN_ID` + `FLEET_RUN_JWT_CALLER_NODE` are set. Hub-local
+   agent sessions still need an owner decision on `X-Fleet-Node` / bootstrap
    auth before cutover.
 4. **Separate security/infra sign-off issue** — only after 2 and 3 are
    merged and observed in staging does a dedicated issue retire static

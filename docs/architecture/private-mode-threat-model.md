@@ -55,7 +55,7 @@ for the overlay this epic composes with (#3079).
   zero-trust node identity) — those are PM-2 through PM-18, not PM-0.
 - Key management, admission policy, audit, and separation of duties — PM-4
   through PM-13.
-- Certification claims: the controls land in this epic are *SOC 2-style*,
+- Certification claims: the controls land in this epic are _SOC 2-style_,
   never evidence of an actual audit (epic non-goal, repeated here so no
   later slice's docs imply otherwise).
 

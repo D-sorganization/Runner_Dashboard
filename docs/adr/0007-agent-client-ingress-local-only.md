@@ -59,9 +59,9 @@ The original local-only decision continues to apply to cloud-hosted agents.
 
 The two planes have the following boundaries:
 
-| Plane | Identity | Permitted Operations |
-| --- | --- | --- |
-| Private fleet | Existing loopback/tailnet principal and scoped credential policy | Existing authorized fleet operations |
+| Plane                  | Identity                                                                                         | Permitted Operations                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------- |
+| Private fleet          | Existing loopback/tailnet principal and scoped credential policy                                 | Existing authorized fleet operations                                    |
 | External owner browser | Verified Cloudflare Access JWT and GitHub OAuth session bound to the configured numeric owner ID | Explicit UI read allowlist and scoped thread/panel conversation actions |
 
 The external boundary must reject machine bearer credentials before route

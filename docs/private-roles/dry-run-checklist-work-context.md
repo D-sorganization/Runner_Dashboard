@@ -25,6 +25,7 @@ does not add such wiring.
 ## Checklist
 
 1. **Degraded state when store absent.**
+
    - [ ] Point the overlay's `context_store_dir` at a path that does not yet
          exist (or temporarily rename the real store directory) and call
          `private_roles.read_private_context` for the role.
@@ -33,13 +34,15 @@ does not add such wiring.
    - [ ] Restore the real store directory before continuing.
 
 2. **Provider gate.**
-   - [ ] Call `read_private_context` with a `provider_cli` that is *not* in
+
+   - [ ] Call `read_private_context` with a `provider_cli` that is _not_ in
          the role's `providers` map for the host (or with the correct CLI but
          an unapproved host).
    - [ ] Confirm the call returns `PrivateContextUnavailable(reason="provider-not-approved")`.
    - [ ] Confirm the approved provider/host/CLI combination still succeeds.
 
 3. **Redaction gate.**
+
    - [ ] Take real output derived from the role's context and pass it to a
          shared-surface writer (board thread, turnover, task inventory) only
          through an explicit classification span (`staff.private_surface_gate.tag`)

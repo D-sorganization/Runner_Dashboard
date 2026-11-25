@@ -17,14 +17,14 @@ Open http://localhost:8321.
 
 ## Flags
 
-| Flag       | Effect                                                                  |
-| ---------- | ----------------------------------------------------------------------- |
-| `--port N` | Bind to port `N` (default `8321`).                                      |
-| `--host H` | Bind to host/interface `H` (default `127.0.0.1`).                       |
+| Flag       | Effect                                                                                                    |
+| ---------- | --------------------------------------------------------------------------------------------------------- |
+| `--port N` | Bind to port `N` (default `8321`).                                                                        |
+| `--host H` | Bind to host/interface `H` (default `127.0.0.1`).                                                         |
 | `--bg`     | Daemonize, write `./.runner-dashboard.pid`, health-check `/api/health`, log to `./.runner-dashboard.log`. |
-| `--reload` | Hot-reload via `uvicorn --reload --reload-dir backend/`.                |
-| `--mock`   | Sets `DASHBOARD_MOCK_MODE=1` for fixture-backed GH calls (wiring TODO). |
-| `--help`   | Print usage and exit.                                                   |
+| `--reload` | Hot-reload via `uvicorn --reload --reload-dir backend/`.                                                  |
+| `--mock`   | Sets `DASHBOARD_MOCK_MODE=1` for fixture-backed GH calls (wiring TODO).                                   |
+| `--help`   | Print usage and exit.                                                                                     |
 
 ## Virtualenv location
 

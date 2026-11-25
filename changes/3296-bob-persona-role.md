@@ -1,1 +1,6 @@
+---
+issue: 3296
+summary: "Port Bob to an RD persona role (`backend/staff/bob_persona.py`, `scripts/rd_barb_provider.py`, `scripts/rd_barb_notify.py`, and `docs/operations/persona-cutover.md`) with Opus 5.5 primary failover chain, Bob capsule schema validation, shadow-mode thread-only delivery, and dormant Grok Bot fallback slot-skip drill (#3296)."
+---
+
 Port Bob to an RD persona role (`backend/staff/bob_persona.py`, `scripts/rd_barb_provider.py`, `scripts/rd_barb_notify.py`, and `docs/operations/persona-cutover.md`) with Opus 5.5 primary failover chain, Bob capsule schema validation, shadow-mode thread-only delivery, and dormant Grok Bot fallback slot-skip drill (#3296).

@@ -4,11 +4,11 @@ Ubuntu 24.04 worker with `barb-grok`, `barb-dots`, and `barb-duet`. Each userspa
 
 ## Principals
 
-| UNIX user   | Hub principal        | Proxy port |
-| ----------- | -------------------- | ---------- |
-| `barb-grok` | `agent-grok-vm`      | 1046       |
-| `barb-dots` | `agent-codex-hands`  | 1056       |
-| `barb-duet` | `agent-duet`         | 1066       |
+| UNIX user   | Hub principal       | Proxy port |
+| ----------- | ------------------- | ---------- |
+| `barb-grok` | `agent-grok-vm`     | 1046       |
+| `barb-dots` | `agent-codex-hands` | 1056       |
+| `barb-duet` | `agent-duet`        | 1066       |
 
 Bearer tokens live in `~/.config/runner-dashboard/token` (mode **600**). Shell profile and systemd user units export `FLEET_API_TOKEN` from that file without printing it. See [barb-lane-principals.md](barb-lane-principals.md) for minting on the hub.
 

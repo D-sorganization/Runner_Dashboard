@@ -41,12 +41,12 @@ build to confirm the gap was deploy lag, not a main regression.
 
 ## Axe results (current main, same build)
 
-| Route | Violation groups (any impact) |
-| --- | --- |
-| `/` (Staff Console) | 0 |
-| `/fleet` | 0 |
-| `/work/queue` | 0 |
-| `/staff` | 0 |
+| Route               | Violation groups (any impact) |
+| ------------------- | ----------------------------- |
+| `/` (Staff Console) | 0                             |
+| `/fleet`            | 0                             |
+| `/work/queue`       | 0                             |
+| `/staff`            | 0                             |
 
 Zero violations at any impact level, not only the `serious`/`critical` levels
 `tests/e2e/a11y.spec.ts` gates on. This is consistent with #833/#2989/#2991
@@ -58,18 +58,18 @@ deploy actually ships main's current state.
 
 ## Polling results (60 s window, default landing page)
 
-| Endpoint | Requests / 60 s |
-| --- | --- |
-| `/api/auth/refresh` | 22 |
-| `/api/v1/staff/board` | 6 |
-| `/api/auth/me` | 2 |
-| `/api/v1/staff/inbox` | 2 |
-| `/api/v1/staff/schedule` | 2 |
-| `/api/v1/staff/roster` | 2 |
-| `/api/staff/quota` | 1 |
-| `/api/staff/usage/snapshot` | 1 |
-| `/api/v1/staff/providers` | 1 |
-| **Total** | **39** |
+| Endpoint                    | Requests / 60 s |
+| --------------------------- | --------------- |
+| `/api/auth/refresh`         | 22              |
+| `/api/v1/staff/board`       | 6               |
+| `/api/auth/me`              | 2               |
+| `/api/v1/staff/inbox`       | 2               |
+| `/api/v1/staff/schedule`    | 2               |
+| `/api/v1/staff/roster`      | 2               |
+| `/api/staff/quota`          | 1               |
+| `/api/staff/usage/snapshot` | 1               |
+| `/api/v1/staff/providers`   | 1               |
+| **Total**                   | **39**          |
 
 `/api/auth/me` landing at 2/60s (not the ~12/min #3672 measured before its
 fix) confirms that fix's 30 s/visibility-gated interval is working as
@@ -80,7 +80,7 @@ The dominant signal instead is `/api/auth/refresh` at 22/60s, which was not
 on #3672's radar (that issue was found by reading source, not by a dynamic
 trace). Root cause and fix are filed as #3745: every one of the ~9 polling
 observers independently triggers `tryRefreshSession()` on its own 401, and
-the helper only dedupes *concurrent* callers, not repeated calls over time —
+the helper only dedupes _concurrent_ callers, not repeated calls over time —
 so an expired/invalid session produces a steady refresh-storm for as long as
 the tab stays open, regardless of which page is in front. **Disposition:
 tuning child filed (#3745).**

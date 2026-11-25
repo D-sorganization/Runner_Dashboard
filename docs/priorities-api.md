@@ -6,10 +6,10 @@ Grok Bot, a staff run or a human — what the fleet should work on.
 
 ## Sources
 
-| Source         | Where                                                                                      | Owner                 |
-| -------------- | ------------------------------------------------------------------------------------------ | --------------------- |
-| Board meetings | RM `docs/board-meetings/<YYYY-MM-DD>/{packet,consensus,instructions,pathway-log-entry}.md` | Repository_Management |
-| Portfolios     | RM `config/fleet_manifest.yaml` → `portfolios.<name>`                                      | Repository_Management |
+| Source         | Where                                                                                                       | Owner                             |
+| -------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| Board meetings | RM `docs/board-meetings/<YYYY-MM-DD>/{packet,consensus,instructions,pathway-log-entry}.md`                  | Repository_Management             |
+| Portfolios     | RM `config/fleet_manifest.yaml` → `portfolios.<name>`                                                       | Repository_Management             |
 | Directives     | RM `staff/directives.yml` (reconciled into `staff_directives.json`; `STAFF_DIRECTIVES_FILE` overrides path) | Repository_Management + dashboard |
 
 The RM checkout is found exactly like the Staff Hub finds it
