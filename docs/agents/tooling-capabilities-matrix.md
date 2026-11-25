@@ -10,16 +10,27 @@ Synthesized with the 3-Seat Expert Panel (`th_5e95506efbf0`: Astra/`codex`, Argo
 | **Codex CLI / Desktop** (`codex`)                    | `codex exec --json --full-auto`                                                      | Codex Desktop (`~/.codex/skills/barb-operator/SKILL.md`)                        | **Complex & Standard** (`pragmatic-programmer`, `test-hygiene`, `issue-remediator`)              | Strong deterministic verification and low input-to-output token overhead.                                                                            |
 | **Antigravity / Gemini CLI** (`antigravity` / `agy`) | `gemini -p --output-format stream-json --yolo`                                       | Gemini / Antigravity Desktop (`~/.gemini/skills/barb-operator/SKILL.md`)        | **Routine / Read-Only Triage** (`night-watch`, `tooling-scout`, `bean-counter`, `sanitation`)    | Fast context scanning; avoid routing complex multi-file `issue-remediator` tasks to `gemini-3.8-flash-high` where empirical first-pass yield is low. |
 | **Cursor Agent / Desktop** (`cursor-barb`)           | Cursor CLI / Local Exec                                                              | Cursor Desktop + Browser / Canvas (`~/.cursor/skills/barb-operator/SKILL.md`)   | **Interactive GUI / Browser / OAuth / Visual Inspection**                                        | Ideal for `needs_desktop` handoffs requiring browser SSO/OAuth login, visual layout verification, or interactive Canvas authoring.                   |
-| **Grok Bot** (`grok-barb`)                           | Executor + Fleet SSH/WSL Orchestration                                               | Box Browser + Multi-Machine Local Exec                                          | **Fleet-Wide Barb Coordinator & Cross-Node Steward**                                             | Coordinates all 4 nodes (`hub-a`, `node-a`, `node-b`, `node-c`), dispatches panels, and audits turnover compliance.                    |
+| **Grok Bot** (`grok-barb`)                           | Executor + Fleet SSH/WSL Orchestration                                               | Box Browser + Multi-Machine Local Exec                                          | **Fleet-Wide Barb Coordinator & Cross-Node Steward**                                             | Coordinates all 4 nodes (`hub-a`, `node-a`, `node-b`, `node-c`), dispatches panels, and audits turnover compliance.                                  |
 
 ## 2. CLI <-> Desktop App Collaborative Handoff Protocol
 
-Tasks are classified zero-LLM-cost via `POST /api/v1/staff/barb/classify-surface` (or automatically on `POST /api/v1/staff/barb/inventory`):
+`surface` and `handoff_state` are different columns. `classify_task_surface` (`POST /api/v1/staff/barb/classify-surface`, scope `staff.read`) returns `surface` as `headless_cli`, `desktop_app`, or `hybrid_handoff`. `POST /api/v1/staff/barb/inventory` (`staff.dispatch`) stores that value only when the body `surface` is one of those three; otherwise it keeps the stored surface. A handoff transition never writes `surface`, so desktop completion leaves it unchanged.
 
-1. **`request_desktop` (`status = needs_desktop`):** Headless CLI agent hits a step requiring interactive GUI/browser/OAuth/visual inspection and calls `POST /api/v1/staff/barb/handoff` with `action="request_desktop"`, incrementing `fencing_epoch`.
-2. **`claim_desktop` (`status = desktop_claimed`):** Desktop agent (`cursor-barb`, `claude-barb`, `codex-barb`, `agy-barb`, `grok-barb`) claims the task with `expected_epoch`, preventing split-brain execution.
-3. **`complete_desktop` (`status = resume_ready`):** Desktop agent completes the interactive step, attaches `artifact_uri` and `resume_notes`, and transitions the task back to `headless_cli`.
-4. **`resume_cli` (`status = in_progress`):** Headless CLI agent resumes with the desktop artifact and completes the workflow.
+`handoff_state` is `none`, `needs_desktop`, `desktop_claimed`, `resume_ready`, or `completed`. `status` is a separate column. `POST /api/v1/staff/barb/handoff` (`staff.dispatch`) requires `task_id`, `action`, `actor`, and `expected_epoch` (the task inventory fencing token). Optional fields include `persona`, `reason`, `artifact_uri`, and `resume_notes`. The stored owner is `persona` when set, otherwise `actor`. Each accepted transition increments `fencing_epoch` by one. A mismatched `expected_epoch` returns 409 `stale_fencing_epoch`.
+
+| `action`           | `handoff_state`   | `status`                                                                                |
+| ------------------ | ----------------- | --------------------------------------------------------------------------------------- |
+| `request_desktop`  | `needs_desktop`   | `blocked_desktop`                                                                       |
+| `claim_desktop`    | `desktop_claimed` | `in_desktop`                                                                            |
+| `complete_desktop` | `resume_ready`    | `in_progress` (`artifact_uri` and `resume_notes` are stored; `surface` stays unchanged) |
+| `resume_cli`       | `none`            | unchanged (still `in_progress` when the previous action was `complete_desktop`)         |
+| `complete_task`    | `completed`       | `completed`                                                                             |
+
+Barb lease fencing is separate from that task `fencing_epoch`. A Barb-seat write sends `X-Barb-Scope` and `X-Barb-Lease-Epoch`, and may send `X-Barb-Holder` to name one seat under a shared token. In the default enforce mode, a Barb-seat handoff, inventory, or turnover write without those two headers returns 409 `claim_required`. Sending only one of scope or epoch returns 422. A non-Barb caller may omit them.
+
+`GET /api/v1/staff/barb/inventory` (`staff.read`) applies its `surface` query parameter to `handoff_state`, not the `surface` column.
+
+Live read probe 2026-11-25 with the fleet cursor agent token: `GET` report-cards, leaderboard, bean-counter, and barb inventory returned HTTP 200. `GET /api/coordination/claims` for Runner_Dashboard#4667 returned HTTP 503 in that pass. Handoff `POST` was not called.
 
 ## 3. Specialist Role: `bean-counter` & Zero-LLM-Cost Agent Report Cards
 
@@ -51,4 +62,4 @@ Releasing a lease (`POST /api/v1/staff/barb/leases/release`) enforces a **turnov
 - `POST /api/v1/staff/barb/leases/heartbeat` `{scope, epoch}` extends the caller's own live lease (403 holder mismatch; 409 expired, missing or stale epoch).
 - `POST /api/v1/staff/barb/handoff` requires `expected_epoch`.
 - `bot`, `fleet-peer` and loopback hold `memory.read` (bot also `memory.shared.summarize`); none holds `memory.write` or the librarian review scope.
-- Lease-epoch fencing on dispatch/directive writers is not enforced yet (seam in `post_barb_lease_checkout`).
+- Dispatch and directive writers use this same lease fence (`staff.dispatch_service`, `routers/priorities.py`). `DASHBOARD_BARB_FENCE_MODE` defaults to `enforce` (unknown values fall back to it): `warn` logs and allows an unclaimed Barb-seat write, and `off` skips the fence. A refused unclaimed Barb-seat write is 409 `stale_barb_lease` with reason `claim_required`. Checkout mints the epoch, so it does not send one.
