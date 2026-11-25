@@ -1,5 +1,8 @@
 name: Noreply Identity Check
 
+# CI guard for commit identity. Keep the pull request title on a ci:, chore:,
+# or fix: prefix so anti-phantom Rule 2 does not treat it as a product feature.
+
 on:
   pull_request:
   merge_group:
