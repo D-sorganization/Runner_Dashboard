@@ -320,12 +320,22 @@ def cached_board_state() -> dict[str, Any] | None:
         return hit[1] if hit is not None else None
 
 
+def _limit_warnings_only(warnings: list[Any]) -> bool:
+    """True when every warning is a comment/page-limit notice (or there are none)."""
+    return all(_has_limit_warning([warning]) for warning in warnings)
+
+
 def has_live_session(session: str, repo: str) -> bool:
     """Does ``session`` hold live presence in ``repo`` right now? Reads the board fresh (bypasses the cache).
 
-    RM binds a session to the repo it registered in and silently drops messages and acks from any other
-    sender, so this is the precondition for ``send`` / ``ack``. Raises ``RMScriptError`` when the board
-    cannot be read or when the board read is incomplete and ``session`` is absent (fail-closed, #3550).
+    The parsed ``sessions`` list is the only presence source. Replay already drops a released
+    session, so a missing row is not live. Warnings never invent presence: a skipped comment can
+    be a release (#4569).
+
+    A session that is in the list stays live even when other comments are malformed or the read
+    hit the comment limit, so validation is not a 502. An absent session on those same reads
+    returns False instead of raising. Unavailable boards, active identity conflicts, and
+    unclassified or partial-outage warnings still raise ``RMScriptError`` (fail-closed, #3550).
     """
     _invalidate()
     data = read_sessions(repo)
@@ -337,12 +347,17 @@ def has_live_session(session: str, repo: str) -> bool:
         detail = "; ".join(data.get("warnings") or ["incomplete board read"])
         all_warnings = [*(data.get("read_warnings") or []), *(data.get("warnings") or [])]
         truncated = bool(data.get("comment_limit_exceeded")) or _has_limit_warning(all_warnings)
-        # Truncated history may hide the registration: fail closed. Tolerate only explicitly
-        # classified malformed-comment skips across read_warnings AND warnings, so an
-        # unclassified entry in either list cannot be masked (#4569 review).
-        if not truncated and not data.get("active_conflicts") and tolerated_malformed_read_warnings(all_warnings):
-            _LOG.warning("board history degraded, proceeding without presence confirmation of %s: %s", session, detail)
-            return True
+        classified_malformed = tolerated_malformed_read_warnings(all_warnings)
+        graceful = not data.get("active_conflicts") and (
+            classified_malformed or (truncated and _limit_warnings_only(all_warnings))
+        )
+        if graceful:
+            _LOG.warning(
+                "board history degraded; %s is not in the parsed presence list: %s",
+                session,
+                detail,
+            )
+            return False
         raise RMScriptError(f"board read incomplete, cannot confirm presence of {session}: {detail}")
     return False
 

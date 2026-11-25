@@ -5,9 +5,9 @@ Verifies that:
    surfaces presence/claims from comments beyond the old 1,000-comment cap.
 2. When the board or claim check cannot be read completely past 1,000 comments
    (``complete=False`` / page-limit truncation), issue claims fail closed (deny
-   claims) instead of failing open. ``has_live_session`` tolerates non-fatal
-   ``read_warnings`` without live identity conflicts (#4569); unclassified
-   incompleteness and conflicts stay fail-closed.
+   claims) instead of failing open. A classified comment-limit read answers from
+   the parsed session list (#4569). Pagination failures, unclassified
+   incompleteness, and conflicts stay fail-closed.
 """
 
 from __future__ import annotations
@@ -235,7 +235,8 @@ def test_incomplete_board_over_1000_comments_denies_claims_fail_closed(
     monkeypatch.setattr(claims_mod, "run_module", fake_run_module)
     monkeypatch.setattr(board_mod, "board_page_fetcher", truncated_fetch_page)
 
-    # Page-limit truncation can hide the registration: absent session fails closed (#4569 review).
+    # Pagination died on a rate limit, so the read is not a classified comment-limit skip.
+    # Absence is not presence, and this failure stays fail-closed (#3550, #4569).
     with pytest.raises(RMScriptError):
         board_mod.has_live_session("missing-session", "Runner_Dashboard")
 

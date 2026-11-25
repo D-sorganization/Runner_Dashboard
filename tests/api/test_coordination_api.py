@@ -493,8 +493,8 @@ def test_sessions_fail_closed_on_active_conflicts_or_unclassified_warnings(rm: F
 
 
 @pytest.mark.unit
-def test_has_live_session_tolerates_non_fatal_history_degradation(rm: FakeRM) -> None:
-    """Malformed/oversized board comments (read_warnings only) must not lock sessions out (#4569)."""
+def test_has_live_session_malformed_history_does_not_invent_presence(rm: FakeRM) -> None:
+    """Malformed comments are not presence. A parsed session stays live; an absent one does not (#4569)."""
     rm.respond(
         "agent_communicate:list",
         {
@@ -510,7 +510,7 @@ def test_has_live_session_tolerates_non_fatal_history_degradation(rm: FakeRM) ->
             "warnings": ["malformed JSON in comment 12"],
         },
     )
-    assert board_mod.has_live_session("missing-s", "Tools") is True
+    assert board_mod.has_live_session("missing-s", "Tools") is False
     board_mod.reset_cache()
     assert board_mod.has_live_session("other-s", "Tools") is True
 
@@ -572,10 +572,8 @@ def test_presence_register_does_not_gate_on_has_live_session(rm: FakeRM, client:
 
 
 @pytest.mark.unit
-def test_has_live_session_fails_closed_on_truncated_board_when_absent(
-    rm: FakeRM, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Comment-limit truncation can hide the registration: absent session must fail closed."""
+def test_has_live_session_truncated_history_uses_parsed_sessions(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Comment-limit truncation answers from the parsed list: present stays live, absent is not (#4569)."""
     monkeypatch.setattr(board_mod, "board_page_fetcher", None)
     rm.respond(
         "agent_communicate:list",
@@ -591,13 +589,13 @@ def test_has_live_session_fails_closed_on_truncated_board_when_absent(
             "warnings": ["comment limit reached"],
         },
     )
-    with pytest.raises(board_mod.RMScriptError):
-        board_mod.has_live_session("missing-s", "Tools")
+    assert board_mod.has_live_session("missing-s", "Tools") is False
     assert board_mod.has_live_session("other-s", "Tools") is True
 
 
 @pytest.mark.unit
-def test_send_message_survives_degraded_board_read(rm: FakeRM, client: TestClient) -> None:
+def test_send_message_rejects_absent_session_when_history_is_malformed(rm: FakeRM, client: TestClient) -> None:
+    """A malformed comment is not a live session, so send is a normal 409, not a 502 (#4569)."""
     rm.respond(
         "agent_communicate:list",
         {
@@ -612,9 +610,51 @@ def test_send_message_survives_degraded_board_read(rm: FakeRM, client: TestClien
             "warnings": ["malformed JSON in comment 12"],
         },
     )
+    msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "hi"}
+    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 409
+
+
+@pytest.mark.unit
+def test_send_message_allows_parsed_session_when_history_is_malformed(rm: FakeRM, client: TestClient) -> None:
+    """A session still in the parsed list can send while unrelated comments are malformed (#4569)."""
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": False,
+            "read_warnings": ["malformed JSON in comment 12"],
+            "replay_warnings": [],
+            "active_conflicts": [],
+            "sessions": [session("codex-1", "Tools")],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["malformed JSON in comment 12"],
+        },
+    )
     rm.respond("agent_communicate:send", {"ok": True})
     msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "hi"}
     assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 200
+
+
+@pytest.mark.unit
+def test_has_live_session_released_session_is_not_in_the_parsed_list(rm: FakeRM) -> None:
+    """Release removes the session from the authoritative list; a leftover warning does not keep it live."""
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": True,
+            "read_warnings": [],
+            "replay_warnings": [],
+            "active_conflicts": [],
+            "sessions": [session("other-s", "Tools")],
+            "messages": [],
+            "conflicts": [],
+            "warnings": [],
+        },
+    )
+    assert board_mod.has_live_session("released-s", "Tools") is False
+    assert board_mod.has_live_session("other-s", "Tools") is True
 
 
 @pytest.mark.unit
