@@ -130,3 +130,87 @@ def test_explicit_retry_authorization_clears_suppression() -> None:
     )
     assert suppressed is False
     assert reason == ""
+
+
+def test_timeline_dequeue_alone_suppresses_requeue() -> None:
+    suppressed, reason = has_deterministic_failure_or_unauthorized_requeue(
+        [{"createdAt": "2026-11-24T15:07:31Z", "reason": "dequeued"}],
+        [],
+        head_sha="1111111",
+        head_committed_at="2026-11-24T14:00:00Z",
+    )
+    assert suppressed is True
+    assert reason == "manual_dequeue_without_authorization"
+
+
+def test_authorization_before_a_later_dequeue_stays_suppressed() -> None:
+    timeline = [
+        {"createdAt": "2026-11-24T15:07:31Z", "reason": "dequeued"},
+        {"createdAt": "2026-11-24T15:12:00Z", "reason": "failed_checks"},
+    ]
+    comments = [
+        {
+            "author": {"login": "dieterolson"},
+            "createdAt": "2026-11-24T15:09:00Z",
+            "body": "Authorized retry on same head: verified transient failure.",
+        }
+    ]
+    suppressed, reason = has_deterministic_failure_or_unauthorized_requeue(
+        timeline,
+        comments,
+        head_sha="1111111",
+        head_committed_at="2026-11-24T14:00:00Z",
+    )
+    assert suppressed is True
+    assert reason == "manual_dequeue_without_authorization"
+
+
+def test_agent_cannot_authorize_retry() -> None:
+    suppressed, reason = has_deterministic_failure_or_unauthorized_requeue(
+        [{"createdAt": "2026-11-24T15:07:31Z", "reason": "dequeued"}],
+        [
+            {
+                "author": {"login": "d-sorggeminiagent"},
+                "createdAt": "2026-11-24T15:09:00Z",
+                "body": "Authorized retry on same head.",
+            }
+        ],
+        head_sha="1111111",
+        head_committed_at="2026-11-24T14:00:00Z",
+    )
+    assert suppressed is True
+    assert reason == "manual_dequeue_without_authorization"
+
+
+def test_unanchored_deterministic_phrase_does_not_suppress() -> None:
+    suppressed, reason = has_deterministic_failure_or_unauthorized_requeue(
+        [],
+        [
+            {
+                "author": {"login": "d-sorggeminiagent"},
+                "createdAt": "2026-11-24T15:09:00Z",
+                "body": "Noted a deterministic failure on a different pull request.",
+            }
+        ],
+        head_sha="1111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        head_committed_at="2026-11-24T14:00:00Z",
+    )
+    assert suppressed is False
+    assert reason == ""
+
+
+def test_head_anchored_deterministic_phrase_suppresses() -> None:
+    suppressed, reason = has_deterministic_failure_or_unauthorized_requeue(
+        [],
+        [
+            {
+                "author": {"login": "d-sorggeminiagent"},
+                "createdAt": "2026-11-24T15:09:00Z",
+                "body": "deterministic failure on head 1111111 after merge_group twice",
+            }
+        ],
+        head_sha="1111111aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        head_committed_at="2026-11-24T14:00:00Z",
+    )
+    assert suppressed is True
+    assert reason == "deterministic_failure_unchanged_head"

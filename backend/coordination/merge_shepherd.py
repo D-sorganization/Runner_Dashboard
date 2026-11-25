@@ -38,6 +38,26 @@ HOLD_LABELS = MERGE_SHEPHERD_HOLD_LABELS
 BOUNCE_LIMIT = 2
 #: Ejection reasons that say nothing about the PR itself.
 NOT_A_BOUNCE = frozenset({"merged", "already_merged", "queue_cleared", "roll_back"})
+#: Timeline reasons that mean a person pulled the PR out of the queue.
+_MANUAL_DEQUEUE_REASONS = frozenset({"dequeued", "manual", "manual_dequeue", "manually_removed"})
+#: Owner, or Barb writing through the fleet App (RM #2376). Other agents cannot lift a hold.
+_RETRY_AUTHORIZERS = frozenset({"dieterolson", "d-sorggeneralagent[bot]"})
+_RETRY_PHRASES = (
+    "authorized retry",
+    "re-queue authorized",
+    "requeue authorized",
+    "transient failure verified",
+)
+_MANUAL_COMMENT_PHRASES = (
+    "dequeued and disarmed",
+    "dequeued, disarmed",
+    "manual dequeue",
+)
+_UNARMED_PHRASES = (
+    "not armed; not merged",
+    "unarmed per owner direction",
+    "deliberately unarmed",
+)
 
 
 class ShepherdAction(_StrEnum):
@@ -190,6 +210,20 @@ def count_queue_bounces(node: Mapping[str, Any]) -> int:
     return bounces
 
 
+def _on_current_head(created_at: str, head_committed_at: str) -> bool:
+    """True when a stamp is missing or newer than the current head commit."""
+    if head_committed_at and created_at and created_at <= head_committed_at:
+        return False
+    return True
+
+
+def _comment_login(comment: Mapping[str, Any]) -> str:
+    author = comment.get("author") or {}
+    if isinstance(author, Mapping):
+        return str(author.get("login") or "").strip().casefold()
+    return str(author or "").strip().casefold()
+
+
 def has_deterministic_failure_or_unauthorized_requeue(
     timeline_events: Sequence[Mapping[str, Any]],
     comments: Sequence[Mapping[str, Any]],
@@ -197,91 +231,80 @@ def has_deterministic_failure_or_unauthorized_requeue(
     head_sha: str,
     head_committed_at: str = "",
 ) -> tuple[bool, str]:
-    """Detect repeated deterministic failure, manual dequeue, or unarmed owner notes on unchanged head (#4658).
+    """Detect repeated deterministic failure, manual dequeue, or unarmed notes on an unchanged head (#4658).
 
-    Suppresses auto-requeue / re-arming unless a newer head arrived or explicit retry authorization was posted.
+    Suppression stands unless the owner or Barb authorizes a retry after the latest incident.
+    A timeline dequeue is itself a manual dequeue. Comment phrases such as "deterministic failure"
+    count only when they also name this head.
     """
     head_prefix = head_sha[:7].lower() if head_sha else ""
+    manual_dequeue = False
+    unarmed_direction = False
+    deterministic_fail = False
+    incident_at: list[str] = []
+    comment_rows: list[tuple[str, str, str]] = []
 
-    # Check for explicit retry authorization posted after the last manual dequeue or failure
-    last_dequeue_or_fail_at = ""
-
-    # Check timeline events for dequeue / ejections since head
     for event in timeline_events:
         if not isinstance(event, Mapping):
             continue
         created_at = str(event.get("createdAt") or "")
-        if head_committed_at and created_at and created_at <= head_committed_at:
+        if not _on_current_head(created_at, head_committed_at):
             continue
         reason = str(event.get("reason") or "").casefold()
-        if reason == "dequeued" or (reason and reason not in NOT_A_BOUNCE):
-            if not last_dequeue_or_fail_at or created_at > last_dequeue_or_fail_at:
-                last_dequeue_or_fail_at = created_at
-
-    # Check comments for dequeue, unarmed notices, or deterministic failure indicators
-    manual_dequeue = False
-    unarmed_direction = False
-    deterministic_fail = False
-
-    auth_after_incident = False
-
-    for c in comments:
-        if not isinstance(c, Mapping):
+        if not reason or reason in NOT_A_BOUNCE:
             continue
-        body = str(c.get("body") or "")
-        created_at = str(c.get("createdAt") or "")
-        if head_committed_at and created_at and created_at <= head_committed_at:
-            continue
-
-        body_lower = body.lower()
-
-        # Check for owner/supervisor retry authorization
-        if (
-            "authorized retry" in body_lower
-            or "re-queue authorized" in body_lower
-            or "requeue authorized" in body_lower
-            or "transient failure verified" in body_lower
-        ):
-            if not last_dequeue_or_fail_at or created_at >= last_dequeue_or_fail_at:
-                auth_after_incident = True
-
-        # Check for manual dequeue
-        if (
-            "dequeued and disarmed" in body_lower
-            or "dequeued, disarmed" in body_lower
-            or "manual dequeue" in body_lower
-        ):
+        if created_at:
+            incident_at.append(created_at)
+        if reason in _MANUAL_DEQUEUE_REASONS:
             manual_dequeue = True
-            if not last_dequeue_or_fail_at or created_at > last_dequeue_or_fail_at:
-                last_dequeue_or_fail_at = created_at
 
-        # Check for owner-directed unarmed notes
-        if (
-            "not armed; not merged" in body_lower
-            or "unarmed per owner direction" in body_lower
-            or "deliberately unarmed" in body_lower
-        ):
+    for comment in comments:
+        if not isinstance(comment, Mapping):
+            continue
+        created_at = str(comment.get("createdAt") or "")
+        if not _on_current_head(created_at, head_committed_at):
+            continue
+        body_lower = str(comment.get("body") or "").lower()
+        comment_rows.append((created_at, body_lower, _comment_login(comment)))
+        if any(phrase in body_lower for phrase in _MANUAL_COMMENT_PHRASES):
+            manual_dequeue = True
+            if created_at:
+                incident_at.append(created_at)
+        if any(phrase in body_lower for phrase in _UNARMED_PHRASES):
             unarmed_direction = True
-
-        # Check for deterministic failures (e.g. hash-seed, stale generated types, repeated merge_group failures)
-        if (
+            if created_at:
+                incident_at.append(created_at)
+        names_this_head = bool(head_prefix and head_prefix in body_lower)
+        if names_this_head and (
             "deterministic failure" in body_lower
             or "determinism failure" in body_lower
             or "stale generated" in body_lower
-            or ("merge_group twice" in body_lower and head_prefix and head_prefix in body_lower)
+            or "merge_group twice" in body_lower
         ):
             deterministic_fail = True
+            if created_at:
+                incident_at.append(created_at)
+
+    latest = max(incident_at) if incident_at else ""
+    auth_after_incident = False
+    if latest:
+        for created_at, body_lower, login in comment_rows:
+            if login not in _RETRY_AUTHORIZERS:
+                continue
+            if not any(phrase in body_lower for phrase in _RETRY_PHRASES):
+                continue
+            if created_at > latest:
+                auth_after_incident = True
+                break
 
     if auth_after_incident:
         return False, ""
-
     if unarmed_direction:
         return True, "unarmed_owner_direction"
     if deterministic_fail:
         return True, "deterministic_failure_unchanged_head"
     if manual_dequeue:
         return True, "manual_dequeue_without_authorization"
-
     return False, ""
 
 
