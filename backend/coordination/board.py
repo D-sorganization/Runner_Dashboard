@@ -11,7 +11,6 @@ or ``{available: False, reason}``. Writes raise ``RMScriptError``.
 
 from __future__ import annotations
 
-import logging
 import os
 import threading
 import time
@@ -19,7 +18,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from coordination.board_degraded_reads import tolerated_malformed_read_warnings
+from coordination.board_degraded_reads import live_session_verdict
 from coordination.board_pagination import (
     _is_replay_warning,
     _merge_paginated,
@@ -30,8 +29,6 @@ from coordination.board_pagination import (
 from coordination.rm_scripts import ScriptResult, run_module
 
 from staff.roles import load_roles
-
-_LOG = logging.getLogger(__name__)
 
 CACHE_SECONDS = 60.0
 BOARD_REPO = "Repository_Management"
@@ -320,46 +317,14 @@ def cached_board_state() -> dict[str, Any] | None:
         return hit[1] if hit is not None else None
 
 
-def _limit_warnings_only(warnings: list[Any]) -> bool:
-    """True when every warning is a comment/page-limit notice (or there are none)."""
-    return all(_has_limit_warning([warning]) for warning in warnings)
-
-
 def has_live_session(session: str, repo: str) -> bool:
-    """Does ``session`` hold live presence in ``repo`` right now? Reads the board fresh (bypasses the cache).
-
-    The parsed ``sessions`` list is the only presence source. Replay already drops a released
-    session, so a missing row is not live. Warnings never invent presence: a skipped comment can
-    be a release (#4569).
-
-    A session that is in the list stays live even when other comments are malformed or the read
-    hit the comment limit, so validation is not a 502. An absent session on those same reads
-    returns False instead of raising. Unavailable boards, active identity conflicts, and
-    unclassified or partial-outage warnings still raise ``RMScriptError`` (fail-closed, #3550).
-    """
+    """Live presence requires a complete board read that still lists ``session`` (#4569)."""
     _invalidate()
     data = read_sessions(repo)
-    if not data["available"]:
-        raise RMScriptError(f"board unavailable, cannot confirm presence of {session}: {data.get('reason')}")
-    if any(str(s.get("session")) == session for s in data["sessions"]):
-        return True
-    if not data.get("complete", True):
-        detail = "; ".join(data.get("warnings") or ["incomplete board read"])
-        all_warnings = [*(data.get("read_warnings") or []), *(data.get("warnings") or [])]
-        truncated = bool(data.get("comment_limit_exceeded")) or _has_limit_warning(all_warnings)
-        classified_malformed = tolerated_malformed_read_warnings(all_warnings)
-        graceful = not data.get("active_conflicts") and (
-            classified_malformed or (truncated and _limit_warnings_only(all_warnings))
-        )
-        if graceful:
-            _LOG.warning(
-                "board history degraded; %s is not in the parsed presence list: %s",
-                session,
-                detail,
-            )
-            return False
-        raise RMScriptError(f"board read incomplete, cannot confirm presence of {session}: {detail}")
-    return False
+    live, error = live_session_verdict(session, data)
+    if error:
+        raise RMScriptError(error)
+    return live
 
 
 def read_inbox(session: str, repo: str) -> dict[str, Any]:

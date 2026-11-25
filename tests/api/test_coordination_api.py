@@ -6,8 +6,10 @@ a temp RM root whose ``scripts/*.py`` log their argv and print canned JSON.
 
 from __future__ import annotations
 
+import json
 import threading
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -494,7 +496,7 @@ def test_sessions_fail_closed_on_active_conflicts_or_unclassified_warnings(rm: F
 
 @pytest.mark.unit
 def test_has_live_session_malformed_history_does_not_invent_presence(rm: FakeRM) -> None:
-    """Malformed comments are not presence. A parsed session stays live; an absent one does not (#4569)."""
+    """Malformed history is not independently verifiable, so no parsed row is live (#4569)."""
     rm.respond(
         "agent_communicate:list",
         {
@@ -512,7 +514,7 @@ def test_has_live_session_malformed_history_does_not_invent_presence(rm: FakeRM)
     )
     assert board_mod.has_live_session("missing-s", "Tools") is False
     board_mod.reset_cache()
-    assert board_mod.has_live_session("other-s", "Tools") is True
+    assert board_mod.has_live_session("other-s", "Tools") is False
 
 
 @pytest.mark.unit
@@ -572,8 +574,8 @@ def test_presence_register_does_not_gate_on_has_live_session(rm: FakeRM, client:
 
 
 @pytest.mark.unit
-def test_has_live_session_truncated_history_uses_parsed_sessions(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Comment-limit truncation answers from the parsed list: present stays live, absent is not (#4569)."""
+def test_has_live_session_truncated_history_is_not_live(rm: FakeRM, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Comment-limit truncation can hide a release, so a parsed row is not live (#4569)."""
     monkeypatch.setattr(board_mod, "board_page_fetcher", None)
     rm.respond(
         "agent_communicate:list",
@@ -590,7 +592,7 @@ def test_has_live_session_truncated_history_uses_parsed_sessions(rm: FakeRM, mon
         },
     )
     assert board_mod.has_live_session("missing-s", "Tools") is False
-    assert board_mod.has_live_session("other-s", "Tools") is True
+    assert board_mod.has_live_session("other-s", "Tools") is False
 
 
 @pytest.mark.unit
@@ -615,8 +617,8 @@ def test_send_message_rejects_absent_session_when_history_is_malformed(rm: FakeR
 
 
 @pytest.mark.unit
-def test_send_message_allows_parsed_session_when_history_is_malformed(rm: FakeRM, client: TestClient) -> None:
-    """A session still in the parsed list can send while unrelated comments are malformed (#4569)."""
+def test_send_message_rejects_parsed_session_when_history_is_malformed(rm: FakeRM, client: TestClient) -> None:
+    """A parsed row under malformed history is not verifiable, so send is 409 (#4569)."""
     rm.respond(
         "agent_communicate:list",
         {
@@ -633,7 +635,78 @@ def test_send_message_allows_parsed_session_when_history_is_malformed(rm: FakeRM
     )
     rm.respond("agent_communicate:send", {"ok": True})
     msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "hi"}
-    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 200
+    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 409
+    assert not any(name == "agent_communicate" and "send" in argv for name, argv in rm.calls())
+
+
+def _presence_then_malformed_release() -> list[dict[str, Any]]:
+    """A parsed registration followed by a release comment replay cannot apply."""
+    now = datetime.now(UTC)
+    at_s = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    exp_s = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    presence = {
+        "version": 1,
+        "id": "msg-reg",
+        "kind": "presence",
+        "agent": "codex",
+        "session": "codex-1",
+        "repo": "Tools",
+        "issue": 4569,
+        "branch": "fix/4569-presence-degraded-board",
+        "paths": ["backend/coordination/board.py"],
+        "goals": {},
+        "at": at_s,
+        "expires": exp_s,
+    }
+    registered = {
+        "id": 1,
+        "user": {"login": "d-sorgcodexagent[bot]"},
+        "body": "<!-- agent-msg v1 id=msg-reg kind=presence -->\n```json agent-msg\n" + json.dumps(presence) + "\n```",
+    }
+    skipped_release = {
+        "id": 2,
+        "user": {"login": "d-sorgcodexagent[bot]"},
+        "body": "<!-- agent-message v1 -->\n```json\n{not-json}\n```",
+    }
+    return [registered, skipped_release]
+
+
+@pytest.mark.unit
+def test_send_and_ack_deny_when_malformed_release_follows_registration(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replay keeps the session after a skipped release; send and ack still fail closed (#4569)."""
+    comments = _presence_then_malformed_release()
+    replay = board_mod.paginate_board_comments(lambda page, per_page: comments if page == 1 else [])
+    assert [s["session"] for s in replay["sessions"]] == ["codex-1"]
+    assert replay["complete"] is False
+    assert replay["read_warnings"]
+    monkeypatch.setattr(
+        board_mod,
+        "board_page_fetcher",
+        lambda page, per_page: comments if page == 1 else [],
+    )
+    rm.respond(
+        "agent_communicate:list",
+        {
+            "ok": True,
+            "complete": False,
+            "comment_limit_exceeded": True,
+            "read_warnings": [],
+            "replay_warnings": [],
+            "active_conflicts": [],
+            "sessions": [],
+            "messages": [],
+            "conflicts": [],
+            "warnings": ["comment limit reached"],
+        },
+    )
+    rm.respond("agent_communicate:send", {"ok": True})
+    msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "hi"}
+    ack = {"session": "codex-1", "repo": "Tools", "message_id": "m1"}
+    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 409
+    assert client.post("/api/coordination/messages/ack", json=ack, headers=_BOT).status_code == 409
+    assert not any(name == "agent_communicate" and "send" in argv for name, argv in rm.calls())
 
 
 @pytest.mark.unit

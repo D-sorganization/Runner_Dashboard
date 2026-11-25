@@ -5,9 +5,9 @@ Verifies that:
    surfaces presence/claims from comments beyond the old 1,000-comment cap.
 2. When the board or claim check cannot be read completely past 1,000 comments
    (``complete=False`` / page-limit truncation), issue claims fail closed (deny
-   claims) instead of failing open. A classified comment-limit read answers from
-   the parsed session list (#4569). Pagination failures, unclassified
-   incompleteness, and conflicts stay fail-closed.
+   claims) instead of failing open. Incomplete history is not live presence
+   (#4569). Pagination failures, unclassified incompleteness, and conflicts
+   stay fail-closed.
 """
 
 from __future__ import annotations
@@ -390,7 +390,7 @@ def test_pagination_wiring_conflicts_and_validation(monkeypatch: pytest.MonkeyPa
 
     for name in ("board.py", "board_pagination.py"):
         pth = Path(__file__).resolve().parents[2] / "backend" / "coordination" / name
-        assert pth.exists() and len(pth.read_text(encoding="utf-8").splitlines()) < (400 if name == "board.py" else 380)
+        assert pth.exists() and len(pth.read_text(encoding="utf-8").splitlines()) < 380
         assert all((n.end_lineno or n.lineno) - n.lineno + 1 <= 45 for n in ast.walk(ast.parse(pth.read_text(encoding="utf-8"), filename=str(pth))) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))  # noqa: E501  # fmt: skip
 
 
