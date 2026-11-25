@@ -14,7 +14,7 @@ Synthesized with the 3-Seat Expert Panel (`th_5e95506efbf0`: Astra/`codex`, Argo
 
 ## 2. CLI <-> Desktop App Collaborative Handoff Protocol
 
-`surface` and `handoff_state` are different columns. `classify_task_surface` (`POST /api/v1/staff/barb/classify-surface`, scope `staff.read`) returns `surface` as `headless_cli`, `desktop_app`, or `hybrid_handoff`. `POST /api/v1/staff/barb/inventory` (`staff.dispatch`) stores that value only when the body `surface` is one of those three; otherwise it keeps the stored surface. A handoff transition never writes `surface`, so desktop completion leaves it unchanged.
+`surface` and `handoff_state` are different columns. `classify_task_surface` (`POST /api/v1/staff/barb/classify-surface`, scope `staff.read`) returns `surface` as `headless_cli`, `desktop_app`, or `hybrid_handoff`. `POST /api/v1/staff/barb/inventory` (`staff.dispatch`) stores a body `surface` only when it is one of those three. On create, any other value, including an empty one, is replaced by `classify_task_surface`. On update, any other value keeps the stored `surface`. A handoff transition never writes `surface`, so desktop completion leaves it unchanged.
 
 `handoff_state` is `none`, `needs_desktop`, `desktop_claimed`, `resume_ready`, or `completed`. `status` is a separate column. `POST /api/v1/staff/barb/handoff` (`staff.dispatch`) requires `task_id`, `action`, `actor`, and `expected_epoch` (the task inventory fencing token). Optional fields include `persona`, `reason`, `artifact_uri`, and `resume_notes`. The stored owner is `persona` when set, otherwise `actor`. Each accepted transition increments `fencing_epoch` by one. A mismatched `expected_epoch` returns 409 `stale_fencing_epoch`.
 
@@ -26,7 +26,7 @@ Synthesized with the 3-Seat Expert Panel (`th_5e95506efbf0`: Astra/`codex`, Argo
 | `resume_cli`       | `none`            | unchanged (still `in_progress` when the previous action was `complete_desktop`)         |
 | `complete_task`    | `completed`       | `completed`                                                                             |
 
-Barb lease fencing is separate from that task `fencing_epoch`. A Barb-seat write sends `X-Barb-Scope` and `X-Barb-Lease-Epoch`, and may send `X-Barb-Holder` to name one seat under a shared token. In the default enforce mode, a Barb-seat handoff, inventory, or turnover write without those two headers returns 409 `claim_required`. Sending only one of scope or epoch returns 422. A non-Barb caller may omit them.
+Barb lease fencing is separate from that task `fencing_epoch`. A Barb-seat write sends `X-Barb-Scope` and `X-Barb-Lease-Epoch`, and may send `X-Barb-Holder` to name one seat under a shared token. In the default enforce mode, a Barb-seat handoff, inventory, or turnover write without those two headers returns 409 `stale_barb_lease` with reason `claim_required`. Sending only one of scope or epoch returns 422. A non-Barb caller may omit them.
 
 `GET /api/v1/staff/barb/inventory` (`staff.read`) applies its `surface` query parameter to `handoff_state`, not the `surface` column.
 

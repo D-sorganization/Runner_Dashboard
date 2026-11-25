@@ -35,6 +35,15 @@ def test_handoff_section_separates_state_status_and_surface() -> None:
     assert "not enforced yet" not in text
     assert "DASHBOARD_BARB_FENCE_MODE" in text
     assert "claim_required" in text
+    # FIX-NEEDED @b5e95cfd: create and update resolve an invalid surface differently.
+    assert "On create" in section
+    assert "replaced by `classify_task_surface`" in section
+    assert "On update" in section
+    assert "keeps the stored `surface`" in section
+    assert "otherwise it keeps the stored surface" not in section
+    # The error code is stale_barb_lease; claim_required is the reason.
+    assert "409 `stale_barb_lease` with reason `claim_required`" in section
+    assert "returns 409 `claim_required`" not in section
 
 
 def test_inventory_module_records_that_handoff_leaves_surface_unchanged() -> None:
