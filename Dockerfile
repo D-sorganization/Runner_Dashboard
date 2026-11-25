@@ -36,6 +36,7 @@ RUN OPENSSL_DEBIAN_SECURITY_VERSION='3.5.7-1~deb13u3' \
     openssl="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
     openssl-provider-legacy="${OPENSSL_DEBIAN_SECURITY_VERSION}" \
     zlib1g='1:1.3.dfsg+really1.3.1-1+deb13u1' \
+    libzstd1='1.5.7+dfsg-1+deb13u1' \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user and group. appuser needs a writable home: dashboard_config
