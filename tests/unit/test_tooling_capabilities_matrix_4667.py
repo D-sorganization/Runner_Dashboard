@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-DOC = Path(__file__).resolve().parents[2] / "docs" / "agents" / "tooling-capabilities-matrix.md"
+ROOT = Path(__file__).resolve().parents[2]
+DOC = ROOT / "docs" / "agents" / "tooling-capabilities-matrix.md"
+STORE = ROOT / "backend" / "staff" / "barb_task_inventory.py"
 
 
 def _handoff_section() -> str:
@@ -33,3 +35,14 @@ def test_handoff_section_separates_state_status_and_surface() -> None:
     assert "not enforced yet" not in text
     assert "DASHBOARD_BARB_FENCE_MODE" in text
     assert "claim_required" in text
+
+
+def test_inventory_module_records_that_handoff_leaves_surface_unchanged() -> None:
+    """Issue #4667 names this module; the docstring must match the UPDATE."""
+    docstring = STORE.read_text(encoding="utf-8").split('"""', 2)[1]
+    assert "transition_handoff" in docstring
+    assert "handoff_state" in docstring
+    assert "status" in docstring
+    assert "surface" in docstring
+    assert "stays as stored" in docstring
+    assert "docs/agents/tooling-capabilities-matrix.md" in docstring
