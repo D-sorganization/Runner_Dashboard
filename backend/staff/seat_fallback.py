@@ -15,10 +15,12 @@ from staff.panel_models import PanelSpeaker, TurnOutcome
 
 TurnRunner = Callable[[PanelSpeaker, str, str, str | None], Awaitable[TurnOutcome]]
 
-# Fable: Cursor subscription models first, then Claude Opus, then Codex.
+# Fable: Cursor subscription Fable 5.2 first, then Claude Opus, then Codex.
+# cursor-agent --list-models names this seat ``claude-fable-5-2-high``; the bare
+# Claude CLI id ``claude-fable-5-2`` is rejected by the Cursor adapter (#4660).
 # Opus/Sonnet always go through the claude provider; antigravity is Gemini-only (#4494).
 FABLE_FALLBACK: tuple[tuple[str, str | None], ...] = (
-    ("cursor-agent", "claude-fable-5-2"),
+    ("cursor-agent", "claude-fable-5-2-high"),
     ("claude", "claude-opus-5-5"),
     ("codex", "gpt-6.2-sol"),
     ("antigravity", "gemini-4-carbon"),

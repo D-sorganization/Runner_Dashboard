@@ -135,6 +135,8 @@ _CURSOR_AGENT_MODELS = (
     "auto",
     "composer-2.5",
     "composer-2.5-fast",
+    # Verified with ``cursor-agent --list-models`` (Fable 5.2 1M). Not ``claude-fable-5-2``.
+    "claude-fable-5-2-high",
     "grok-4.7-high",
     "grok-4.7-high-fast",
     "grok-4.7-medium",

@@ -14,7 +14,7 @@ async def test_fable_chain_order() -> None:
     steps = steps_for_speaker(speaker)
     assert [(s.provider, s.model) for s in steps][:5] == [
         ("claude", "claude-fable-5-2"),
-        ("cursor-agent", "claude-fable-5-2"),
+        ("cursor-agent", "claude-fable-5-2-high"),
         ("claude", "claude-opus-5-5"),
         ("codex", "gpt-6.2-sol"),
         ("antigravity", "gemini-4-carbon"),
@@ -30,7 +30,7 @@ async def test_run_turn_with_fallback_degrades_on_first_failure(monkeypatch: pyt
         calls.append((sp.provider, sp.model))
         if (sp.provider, sp.model) in {
             ("claude", "claude-fable-5-2"),
-            ("cursor-agent", "claude-fable-5-2"),
+            ("cursor-agent", "claude-fable-5-2-high"),
         }:
             from staff.panel_models import TurnOutcome
 
@@ -51,13 +51,26 @@ async def test_run_turn_with_fallback_degrades_on_first_failure(monkeypatch: pyt
     assert "claude-opus-5-5" in outcome.text
 
 
+def test_fable_fallback_steps_build_real_adapter_commands() -> None:
+    """Each Fable fallback must pass the real adapter allowlist, not a mocked runner (#4660)."""
+    from staff.adapters import get_adapter
+
+    for provider, model in FABLE_FALLBACK:
+        adapter = get_adapter(provider)
+        argv = adapter.build_command("ping", "/tmp/wt", model=model)
+        if model is None or not adapter.models:
+            continue
+        assert model in adapter.models
+        assert argv[argv.index("--model") + 1] == model
+
+
 def test_board_fable_seat_includes_cursor_before_claude_opus() -> None:
     fable = next(s for s in BOARD_SEATS if s.name == "alpha")
     steps = steps_for_board_seat(fable)
     # Alpha/Fable: own Claude Fable seat, then Cursor Fable, then Claude Opus — never agy Opus (#4494).
     assert [(s.provider, s.model) for s in steps] == [
         ("claude", "claude-fable-5-2"),
-        ("cursor-agent", "claude-fable-5-2"),
+        ("cursor-agent", "claude-fable-5-2-high"),
         ("claude", "claude-opus-5-5"),
         ("codex", "gpt-6.2-sol"),
         ("antigravity", "gemini-4-carbon"),
