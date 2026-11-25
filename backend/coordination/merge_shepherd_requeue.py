@@ -18,9 +18,7 @@ from typing import Any
 # has to return the merge-group check runs on ``beforeCommit``.
 MANUAL_REASONS = frozenset({"manual", "manual_dequeue", "manually_removed"})
 _MERGE_GROUP_EVENT = "merge_group"
-_FAILED_CONCLUSIONS = frozenset(
-    {"failure", "failed", "timed_out", "cancelled", "canceled", "startup_failure", "stale"}
-)
+_FAILED_CONCLUSIONS = frozenset({"failure", "failed", "timed_out", "cancelled", "canceled", "startup_failure", "stale"})
 _TRANSIENT_CONCLUSIONS = frozenset({"cancelled", "canceled", "startup_failure", "stale"})
 _TRANSIENT_MARKERS = (
     "runner offline",
