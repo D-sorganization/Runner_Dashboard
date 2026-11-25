@@ -74,14 +74,20 @@ def queue_due_slot(
     repo = scheduler_mod.scheduled_repo(role.repos, now)
     issue_number: int | None = None
     if job is None and role.name == ISSUE_REMEDIATOR_ROLE:
-        selected_repo, selected_issue = pick_issue_target(
-            role, now, fetch_open=scheduler_mod.fetch_open_issues, fetch_claim=scheduler_mod.fetch_issue_claim_status
+        # Defer network/subprocess target picking until StaffScheduler.tick()
+        # releases self._lock so HTTP routes never block on check_agent_claim (#4650).
+        pending_fires.append(
+            {
+                "name": name,
+                "role": role,
+                "due": due,
+                "repo": None,
+                "issue_number": None,
+                "job": job,
+                "needs_issue_pick": True,
+            }
         )
-        if not selected_repo or not selected_issue:
-            _skip(due, "no eligible issues in scheduled repositories")
-            return
-        repo = selected_repo
-        issue_number = selected_issue
+        return
     repo_hold = holds_blocking(name, repo)
     if repo_hold:
         _skip(due, f"hold: {repo_hold.text}")
@@ -95,3 +101,41 @@ def queue_due_slot(
     pending_fires.append(
         {"name": name, "role": role, "due": due, "repo": repo, "issue_number": issue_number, "job": job}
     )
+
+
+def resolve_issue_pick_unlocked(
+    now: datetime,
+    pending: dict[str, Any],
+    decisions: list[dict[str, Any]],
+    *,
+    holds_blocking: Callable[[str, str], Any],
+    record_skip: Callable[[str, str, str], None],
+) -> bool:
+    """Resolve issue-remediator target outside ``StaffScheduler._lock`` (#4650)."""
+    from staff import scheduler as scheduler_mod  # deferred: scheduler imports this module
+
+    name = str(pending["name"])
+    role = pending["role"]
+    due = str(pending["due"])
+    selected_repo, selected_issue = pick_issue_target(
+        role, now, fetch_open=scheduler_mod.fetch_open_issues, fetch_claim=scheduler_mod.fetch_issue_claim_status
+    )
+    skip_reason = ""
+    if not selected_repo or not selected_issue:
+        skip_reason = "no eligible issues in scheduled repositories"
+    else:
+        repo_hold = holds_blocking(name, selected_repo)
+        if repo_hold:
+            skip_reason = f"hold: {repo_hold.text}"
+        else:
+            excluded = ExclusionsList().blocking(selected_repo)
+            if excluded:
+                skip_reason = f"excluded: {excluded.owner}: {excluded.reason}"
+                log.info("staff scheduler: %s slot %s skipped - %s (%s)", name, due, skip_reason, excluded.id)
+    if skip_reason:
+        record_skip(name, due, skip_reason)
+        decisions.append({"role": name, "slot": due, "fired": False, "reason": skip_reason})
+        return False
+    pending["repo"] = selected_repo
+    pending["issue_number"] = selected_issue
+    return True

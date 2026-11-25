@@ -105,7 +105,8 @@ def test_renderer_rejects_bad_week() -> None:
 
 def test_build_weekly_report_splits_current_and_previous_week(tmp_path: Path) -> None:
     store = SessionTelemetryStore(data_file=tmp_path / "t.json", retention_days=30)
-    now = datetime(2026, 10, 4, 12, tzinfo=UTC)
+    # Anchor on wall clock so telemetry prune (retention * 2) keeps fixture rows.
+    now = datetime.now(UTC).replace(hour=12, minute=0, second=0, microsecond=0)
     store.record_session(
         {"session_id": "new", "cost_usd": 2.0, "pr_merged": True, "recorded_at": (now - timedelta(days=1)).isoformat()}
     )
@@ -113,7 +114,7 @@ def test_build_weekly_report_splits_current_and_previous_week(tmp_path: Path) ->
         {"session_id": "old", "cost_usd": 8.0, "pr_merged": True, "recorded_at": (now - timedelta(days=9)).isoformat()}
     )
     week, body = build_weekly_report(store, now=now)
-    assert week == "2026-W40"
+    assert week == iso_week(now)
     assert "| Cost per merged PR (median) | $2.00 | $8.00 | -$6.00 (-75%) |" in body
 
 
