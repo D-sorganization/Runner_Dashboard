@@ -324,6 +324,7 @@ def select_first_available_provider(
 
 class ReadOnlyKwargs(TypedDict, total=False):
     read_only: bool
+    role: str
 
 
 class LaunchPaths(TypedDict, total=False):
@@ -335,8 +336,15 @@ def read_only_kwargs(role: RoleSpec) -> ReadOnlyKwargs:
     """``read_only`` keyword for ``adapter.build_command`` (#1659), passed only when set.
 
     Post: empty for a normal role, so an adapter with the older signature still works.
+    Board-secretary also receives ``role`` so its Claude allow-list can admit
+    ``python -m scripts.board.*`` without ``host_shell`` (#4656).
     """
-    return {"read_only": True} if role.code_read_only else {}
+    kwargs: ReadOnlyKwargs = {}
+    if role.code_read_only:
+        kwargs["read_only"] = True
+    if role.name == "board-secretary":
+        kwargs["role"] = role.name
+    return kwargs
 
 
 def resolve_launch_paths(adapter: ProviderAdapter, workdir: Path) -> LaunchPaths:

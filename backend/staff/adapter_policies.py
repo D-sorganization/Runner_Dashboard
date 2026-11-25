@@ -7,6 +7,7 @@ Contains the shared shell allow/deny lists, permission bypass constants, and pol
 from __future__ import annotations
 
 import json
+import shlex
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -149,6 +150,75 @@ def claude_unattended_tools() -> tuple[str, str]:
     allowed = [*_CLAUDE_UNATTENDED_TOOLS, *(f"Bash({cmd}:*)" for cmd in UNATTENDED_SHELL_ALLOW)]
     denied = [f"Bash({cmd}:*)" for cmd in UNATTENDED_SHELL_DENY]
     return ",".join(allowed), ",".join(denied)
+
+
+# Board-secretary keeps host_shell false. Claude dontAsk therefore only receives
+# these archive-validator prefixes, not Bash(python:*) / Bash(pytest:*) (#4656).
+_BOARD_SECRETARY_BROAD_BASH = frozenset({"Bash(python:*)", "Bash(python3:*)", "Bash(pytest:*)"})
+BOARD_SECRETARY_ARCHIVE_BASH_PREFIXES: tuple[str, ...] = (
+    "python -m scripts.board",
+    "python3 -m scripts.board",
+    "pytest tests/test_board_meeting_init.py",
+    "pytest tests/test_library_inventory.py",
+    "pytest tests/test_board_proposals.py",
+    "pytest tests/test_board_proposal_decisions.py",
+    "pytest scripts/board",
+)
+_BOARD_ARCHIVE_PYTEST_PATHS: tuple[str, ...] = (
+    "tests/test_board_meeting_init.py",
+    "tests/test_library_inventory.py",
+    "tests/test_board_proposals.py",
+    "tests/test_board_proposal_decisions.py",
+    "scripts/board/",
+    "tests/scripts/board/",
+)
+_SHELL_META = ("&&", "||", ";", "|", "`", "$(", "\n", ">", "<")
+
+
+def claude_board_secretary_tools() -> tuple[str, str]:
+    """Claude allow/deny lists for board-secretary: archive Python only, git/gh kept.
+
+    Pre: the shared unattended lists are the baseline. Post: blanket ``python``,
+    ``python3`` and ``pytest`` Bash rules are absent; ``python -m scripts.board``
+    and the archive-validator pytest prefixes are present; bare ``Bash`` is not.
+    """
+    allowed, denied = claude_unattended_tools()
+    kept = [entry for entry in allowed.split(",") if entry not in _BOARD_SECRETARY_BROAD_BASH]
+    kept.extend(f"Bash({prefix}:*)" for prefix in BOARD_SECRETARY_ARCHIVE_BASH_PREFIXES)
+    return ",".join(kept), denied
+
+
+def board_secretary_archive_command_allowed(command: str) -> bool:
+    """True only for ``python -m scripts.board.*`` or pytest on the archive validator.
+
+    Pre: ``command`` is one argv line, not a shell script. Post: compound commands,
+    ``python -c``, and pytest paths outside the board archive return False.
+    """
+    text = command.strip()
+    if not text or any(meta in text for meta in _SHELL_META):
+        return False
+    try:
+        parts = shlex.split(text, posix=True)
+    except ValueError:
+        return False
+    if not parts:
+        return False
+    executable = parts[0]
+    if executable in {"python", "python3"}:
+        return (
+            len(parts) >= 3
+            and parts[1] == "-m"
+            and (parts[2] == "scripts.board" or parts[2].startswith("scripts.board."))
+        )
+    if executable == "pytest":
+        positional = [arg for arg in parts[1:] if not arg.startswith("-")]
+        if not positional:
+            return False
+        return all(
+            any(path == allowed or path.startswith(allowed) for allowed in _BOARD_ARCHIVE_PYTEST_PATHS)
+            for path in positional
+        )
+    return False
 
 
 # ── Code-read-only unattended runs (#1659) ──────────────────────────────────

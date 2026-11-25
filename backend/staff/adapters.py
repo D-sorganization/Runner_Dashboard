@@ -30,6 +30,7 @@ from staff.adapter_policies import (
     _extract_text,
     _extract_usage,
     claude_allowed_tools,
+    claude_board_secretary_tools,
     claude_read_only_run_tools,
     claude_unattended_tools,
     gemini_policy_toml,
@@ -145,6 +146,7 @@ class ProviderAdapter:
         read_only: bool = False,
         session_id: str | None = None,
         output_schema: dict | None = None,
+        role: str | None = None,
     ) -> list[str]:
         """Return argv for one unattended run.
 
@@ -204,6 +206,11 @@ class ProviderAdapter:
                 )
             if self.provider_id == "antigravity" and "--mode" in out:
                 out[out.index("--mode") + 1] = "plan"
+        if role == "board-secretary" and not read_only and "--allowedTools" in out:
+            scoped_allowed, scoped_denied = claude_board_secretary_tools()
+            out[out.index("--allowedTools") + 1] = scoped_allowed
+            if "--disallowedTools" in out:
+                out[out.index("--disallowedTools") + 1] = scoped_denied
         if self.provider_id == "cursor-agent" and "--sandbox" in out:
             out[out.index("--sandbox") + 1] = _cursor_agent_sandbox_mode()
         if session_id:
