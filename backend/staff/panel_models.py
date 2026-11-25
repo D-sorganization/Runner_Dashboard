@@ -203,25 +203,25 @@ def _expert(name: str, perspective: str, provider: str | None = None, model: str
 PANEL_PRESETS: tuple[dict[str, Any], ...] = (
     {
         "id": "fleet-decision",
-        "title": "Fleet decision panel (Argon / Astra / Fable)",
+        "title": "Fleet decision panel (Neon / Astra / Fable)",
         "experts": [
             _expert(
-                "Argon",
+                "Neon",
                 "Systems efficiency, cost and latency, algorithmic rigor.",
                 "antigravity",
-                "gemini-4-argon-high",
+                "gemini-4-neon",
             ),
             _expert(
                 "Astra",
                 "Architecture, contracts, security boundaries and testability.",
                 "codex",
-                "gpt-6-astra",
+                "gpt-6.2-astra",
             ),
             _expert(
                 "Fable",
                 "Skeptic: failure modes, edge cases and long-term maintainability.",
                 "claude",
-                "claude-fable-5-1",
+                "claude-fable-5-2",
             ),
         ],
     },

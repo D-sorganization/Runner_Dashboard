@@ -13,7 +13,7 @@ SPEC = Path(__file__).resolve().parents[2] / "docs/agents/issue-specs/2511-fleet
 def _spec_models() -> dict[str, tuple[str, str]]:
     text = SPEC.read_text(encoding="utf-8")
     rows = re.findall(
-        r"\|\s*(Argon|Astra|Fable)\s*\|\s*(\w+)\s*\|\s*`([^`]+)`\s*\|",
+        r"\|\s*(Neon|Argon|Astra|Fable)\s*\|\s*(\w+)\s*\|\s*`([^`]+)`\s*\|",
         text,
     )
     return {name: (provider, model) for name, provider, model in rows}

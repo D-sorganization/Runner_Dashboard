@@ -18,15 +18,18 @@ TurnRunner = Callable[[PanelSpeaker, str, str, str | None], Awaitable[TurnOutcom
 # Fable: Cursor subscription models first, then Claude Opus, then Codex.
 # Opus/Sonnet always go through the claude provider; antigravity is Gemini-only (#4494).
 FABLE_FALLBACK: tuple[tuple[str, str | None], ...] = (
-    ("cursor-agent", "claude-fable-5-1"),
+    ("cursor-agent", "claude-fable-5-2"),
     ("claude", "claude-opus-5-5"),
-    ("codex", None),
+    ("codex", "gpt-6.2-sol"),
+    ("antigravity", "gemini-4-carbon"),
+    ("antigravity", "gemini-4-hydrogen"),
 )
 
 DEFAULT_SEAT_FALLBACK: tuple[tuple[str, str | None], ...] = (
-    ("claude", None),
-    ("codex", None),
-    ("antigravity", None),
+    ("claude", "claude-opus-5-5"),
+    ("codex", "gpt-6.2-sol"),
+    ("antigravity", "gemini-4-carbon"),
+    ("antigravity", "gemini-4-hydrogen"),
 )
 
 _SEAT_CHAINS: dict[str, tuple[tuple[str, str | None], ...]] = {

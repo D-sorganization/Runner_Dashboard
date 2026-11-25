@@ -27,10 +27,10 @@ def test_no_board_seat_uses_a_deprecated_provider() -> None:
 
 
 @pytest.mark.unit
-def test_delta_runs_on_antigravity_gemini_argon_high() -> None:
+def test_delta_runs_on_antigravity_gemini_neon() -> None:
     delta = next(s for s in BOARD_SEATS if s.name == "delta")
     assert delta.provider == "antigravity"
-    assert delta.model == "gemini-4-argon-high"
+    assert delta.model == "gemini-4-neon"
 
 
 @pytest.mark.unit
