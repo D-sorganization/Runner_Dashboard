@@ -181,7 +181,19 @@ _BOARD_ARCHIVE_PYTEST_PATHS: tuple[str, ...] = (
     "scripts/board/",
     "tests/scripts/board/",
 )
-_SHELL_META = ("&&", "||", ";", "|", "`", "$(", "\n", ">", "<")
+# ``&`` is included on its own. shlex treats a background operator as an ordinary
+# token, so ``python -m scripts.board … & touch …`` would otherwise pass the
+# first-three-token python check (#4656).
+_SHELL_META = ("&&", "||", "&", ";", "|", "`", "$(", "\n", ">", "<")
+
+
+def shell_control_operator_present(command: str) -> bool:
+    """True when ``command`` contains a shell control operator.
+
+    Pre: ``command`` is the raw tool string, not an argv list. Post: a single
+    background ``&`` counts, including when it is glued to the previous token.
+    """
+    return any(meta in command for meta in _SHELL_META)
 
 
 def claude_board_secretary_tools() -> tuple[str, str]:
@@ -214,10 +226,11 @@ def board_secretary_archive_command_allowed(command: str) -> bool:
     """True only for ``python -m scripts.board.*`` or pytest on the archive validator.
 
     Pre: ``command`` is one argv line, not a shell script. Post: compound commands,
-    ``python -c``, and pytest paths outside the board archive return False.
+    background ``&``, ``python -c``, and pytest paths outside the board archive
+    return False.
     """
     text = command.strip()
-    if not text or any(meta in text for meta in _SHELL_META):
+    if not text or shell_control_operator_present(text):
         return False
     try:
         parts = shlex.split(text, posix=True)

@@ -1,7 +1,8 @@
 """Bash PreToolUse hook for board-secretary launches (#4656).
 
-Claude allow-list prefixes accept any suffix, so ``pytest … -p plugin`` and
-``python -m scripts.board … && …`` match ``Bash(prefix:*)`` and still run.
+Claude allow-list prefixes accept any suffix, so ``pytest … -p plugin``,
+``python -m scripts.board … && …``, and ``… & touch …`` match ``Bash(prefix:*)``
+and still run.
 ``build_command`` names a settings file that points Claude at this hook and
 writes that file only when the run directory already exists. The hook is the
 boundary that actually refuses those commands.
@@ -14,10 +15,13 @@ import shlex
 import sys
 from pathlib import Path
 
-from staff.adapter_policies import UNATTENDED_SHELL_ALLOW, board_secretary_archive_command_allowed
+from staff.adapter_policies import (
+    UNATTENDED_SHELL_ALLOW,
+    board_secretary_archive_command_allowed,
+    shell_control_operator_present,
+)
 
 _INTERPRETERS = frozenset({"python", "python3", "pytest"})
-_SHELL_META = ("&&", "||", ";", "|", "`", "$(", "\n", ">", "<")
 _OTHER_PREFIXES = tuple(prefix for prefix in UNATTENDED_SHELL_ALLOW if prefix not in _INTERPRETERS)
 _PLAN_WORKDIR = "<workdir>"
 
@@ -31,12 +35,13 @@ def _is_plan_placeholder(workdir: str | Path) -> bool:
 def launched_command_allowed(command: str) -> bool:
     """Return whether a board-secretary Bash tool call may run.
 
-    Pre: ``command`` is the tool command string. Post: shell syntax is refused;
-    python and pytest run only when :func:`board_secretary_archive_command_allowed`
-    says so; other commands must match a non-interpreter unattended prefix.
+    Pre: ``command`` is the tool command string. Post: shell syntax, including a
+    background ``&``, is refused; python and pytest run only when
+    :func:`board_secretary_archive_command_allowed` says so; other commands must
+    match a non-interpreter unattended prefix.
     """
     text = command.strip()
-    if not text or any(meta in text for meta in _SHELL_META):
+    if not text or shell_control_operator_present(text):
         return False
     try:
         parts = shlex.split(text, posix=True)

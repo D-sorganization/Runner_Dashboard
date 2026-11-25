@@ -36,6 +36,7 @@ _ARBITRARY_SHELL = (
     "rm -rf docs/board-meetings",
     "sudo python -m scripts.board.init_meeting_packet",
     "python -m scripts.board.init_meeting_packet && echo pwned",
+    "python -m scripts.board.init_meeting_packet & touch /tmp/board-secretary-escape",
 )
 
 
@@ -178,6 +179,9 @@ def test_launch_hook_rejects_plugin_injection_and_shell_syntax(tmp_path) -> None
     assert "staff.board_secretary_bash_hook" in command
     assert _hook_code("pytest tests/test_board_meeting_init.py -p evil_plugin") == 2
     assert _hook_code("python -m scripts.board.init_meeting_packet --date 2026-11-24 && echo pwned") == 2
+    assert _hook_code("python -m scripts.board.init_meeting_packet & touch /tmp/board-secretary-escape") == 2
+    assert _hook_code("python -m scripts.board.init_meeting_packet&touch /tmp/board-secretary-escape") == 2
+    assert _hook_code("git status & touch /tmp/board-secretary-escape") == 2
     assert _hook_code("pytest tests/test_board_meeting_init.py -q") == 0
     assert _hook_code("python -m scripts.board.init_meeting_packet --date 2026-11-24") == 0
     assert _hook_code("git status") == 0
