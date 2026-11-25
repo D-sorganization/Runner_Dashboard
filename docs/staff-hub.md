@@ -732,9 +732,9 @@ curl -sS -X POST http://localhost:8321/api/v1/staff/panels -H "Authorization: Be
 
 | Seat  | Perspective                                                      | Provider    | Model                 |
 | ----- | ---------------------------------------------------------------- | ----------- | --------------------- |
-| Argon | Systems efficiency, cost and latency, algorithmic rigor          | antigravity | `gemini-4-argon-high` |
-| Astra | Architecture, contracts, security boundaries and testability     | codex       | `gpt-6-astra`         |
-| Fable | Skeptic: failure modes, edge cases and long-term maintainability | claude      | `claude-fable-5-1`    |
+| Neon  | Systems efficiency, cost and latency, algorithmic rigor          | antigravity | `gemini-4-neon`       |
+| Astra | Architecture, contracts, security boundaries and testability     | codex       | `gpt-6.2-astra`       |
+| Fable | Skeptic: failure modes, edge cases and long-term maintainability | claude      | `claude-fable-5-2`    |
 
 `backend/staff/panel_models.py` (`PANEL_PRESETS`) is the source of truth for the seats; the Staff Console's new-panel form prefills them when the preset is picked. A finished panel appends a Barb turnover note (scope `panel`); a turnover failure is logged and never fails the panel. Add `repos` for read-only grounding (above).
 

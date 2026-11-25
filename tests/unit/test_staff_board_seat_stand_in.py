@@ -125,7 +125,7 @@ async def test_fanout_with_disabled_provider(monkeypatch: pytest.MonkeyPatch) ->
 
 @pytest.mark.unit
 def test_seat_label_names_the_stand_in(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A stood-in seat says so; Delta (Argon) runs on antigravity, so a silent swap would misattribute."""
+    """A stood-in seat says so; Delta (Neon) runs on antigravity, so a silent swap would misattribute."""
     delta_seat = next(s for s in BOARD_SEATS if s.name == "delta")
     monkeypatch.delenv("STAFF_DISABLED_PROVIDERS", raising=False)
     assert seat_label(delta_seat) == delta_seat.title
@@ -139,7 +139,7 @@ def test_board_summary_marks_the_stand_in_seat(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "antigravity")
     replies = [SeatReply(seat_name=s.name, status="ok", text=f"{s.name} says yes") for s in BOARD_SEATS]
     res = collate_consensus(get_group("board"), "Adopt the plan?", replies)
-    marker = "Delta (Docs & UX) - Argon (stand-in: claude — antigravity disabled on this node)"
+    marker = "Delta (Docs & UX) - Neon (stand-in: claude — antigravity disabled on this node)"
     assert f"- **{marker}:**" in res.summary
     assert f"#### {marker}\n" in res.summary
     assert "Alpha (Architecture) - Fable (stand-in" not in res.summary
