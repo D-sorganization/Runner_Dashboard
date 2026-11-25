@@ -36,6 +36,7 @@ from coordination.merge_shepherd_exact_head import (
 )
 from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS, normalize_hold_label
 from coordination.merge_shepherd_low_risk import low_risk_line_cap as default_low_risk_line_cap
+from coordination.merge_shepherd_requeue import evidence_from_node
 from priorities.directives import get_directives
 
 log = logging.getLogger(__name__)
@@ -484,6 +485,7 @@ def node_to_candidate(
     is_queued = (node.get("mergeQueueEntry") or {}).get("position") is not None
     auto_merge = node.get("autoMergeRequest") is not None
     effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
+    evidence = evidence_from_node(node)
     return PRCandidate(
         repo=repo,
         pr_number=number,
@@ -507,6 +509,10 @@ def node_to_candidate(
         line_cap=effective_line_cap,
         files_complete=files_complete,
         review_pass_ttl_hours=review_pass_ttl_hours,
+        head_committed_at=str(evidence["head_committed_at"]),
+        queue_removals=evidence["queue_removals"],
+        merge_group_failures=evidence["merge_group_failures"],
+        comment_bodies=evidence["comment_bodies"],
     )
 
 
