@@ -1,4 +1,4 @@
 ---
 issue: 4656
-summary: "Board-secretary unattended Claude runs may execute python -m scripts.board.* and archive-validator pytest only; host_shell stays false."
+summary: "Board-secretary Claude launches allow only exact archive pytest commands and a Bash hook that rejects plugin flags and shell syntax."
 ---

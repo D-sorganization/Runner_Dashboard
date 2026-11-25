@@ -155,15 +155,24 @@ def claude_unattended_tools() -> tuple[str, str]:
 # Board-secretary keeps host_shell false. Claude dontAsk therefore only receives
 # these archive-validator prefixes, not Bash(python:*) / Bash(pytest:*) (#4656).
 _BOARD_SECRETARY_BROAD_BASH = frozenset({"Bash(python:*)", "Bash(python3:*)", "Bash(pytest:*)"})
-BOARD_SECRETARY_ARCHIVE_BASH_PREFIXES: tuple[str, ...] = (
+_BOARD_SECRETARY_PYTHON_PREFIXES: tuple[str, ...] = (
     "python -m scripts.board",
     "python3 -m scripts.board",
-    "pytest tests/test_board_meeting_init.py",
-    "pytest tests/test_library_inventory.py",
-    "pytest tests/test_board_proposals.py",
-    "pytest tests/test_board_proposal_decisions.py",
-    "pytest scripts/board",
 )
+_BOARD_SECRETARY_PYTEST_EXACT: tuple[str, ...] = tuple(
+    command
+    for path in (
+        "tests/test_board_meeting_init.py",
+        "tests/test_library_inventory.py",
+        "tests/test_board_proposals.py",
+        "tests/test_board_proposal_decisions.py",
+        "scripts/board",
+        "scripts/board/validate_library_inventory.py",
+        "tests/scripts/board",
+    )
+    for command in (f"pytest {path}", f"pytest {path} -q")
+)
+_PYTEST_FLAGS = frozenset({"-q", "-qq", "--tb=short", "--tb=line", "--tb=no"})
 _BOARD_ARCHIVE_PYTEST_PATHS: tuple[str, ...] = (
     "tests/test_board_meeting_init.py",
     "tests/test_library_inventory.py",
@@ -176,15 +185,15 @@ _SHELL_META = ("&&", "||", ";", "|", "`", "$(", "\n", ">", "<")
 
 
 def claude_board_secretary_tools() -> tuple[str, str]:
-    """Claude allow/deny lists for board-secretary: archive Python only, git/gh kept.
+    """Claude allow/deny for board-secretary. Pytest rules are exact; no ``:*`` suffix.
 
-    Pre: the shared unattended lists are the baseline. Post: blanket ``python``,
-    ``python3`` and ``pytest`` Bash rules are absent; ``python -m scripts.board``
-    and the archive-validator pytest prefixes are present; bare ``Bash`` is not.
+    Pre: shared unattended lists are the baseline. Post: blanket python/pytest rules
+    are gone, ``python -m scripts.board`` stays a prefix, and bare ``Bash`` is absent.
     """
     allowed, denied = claude_unattended_tools()
     kept = [entry for entry in allowed.split(",") if entry not in _BOARD_SECRETARY_BROAD_BASH]
-    kept.extend(f"Bash({prefix}:*)" for prefix in BOARD_SECRETARY_ARCHIVE_BASH_PREFIXES)
+    kept.extend(f"Bash({prefix}:*)" for prefix in _BOARD_SECRETARY_PYTHON_PREFIXES)
+    kept.extend(f"Bash({command})" for command in _BOARD_SECRETARY_PYTEST_EXACT)
     return ",".join(kept), denied
 
 
@@ -224,8 +233,9 @@ def board_secretary_archive_command_allowed(command: str) -> bool:
             and (parts[2] == "scripts.board" or parts[2].startswith("scripts.board."))
         )
     if executable == "pytest":
+        flags = [arg for arg in parts[1:] if arg.startswith("-")]
         positional = [arg for arg in parts[1:] if not arg.startswith("-")]
-        if not positional:
+        if not positional or any(flag not in _PYTEST_FLAGS for flag in flags):
             return False
         return all(
             any(path == allowed or path.startswith(allowed) for allowed in _BOARD_ARCHIVE_PYTEST_PATHS)

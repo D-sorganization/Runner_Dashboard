@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
 import pytest
 from staff.adapter_policies import board_secretary_archive_command_allowed, board_secretary_launch_kwargs
 from staff.adapters import ADAPTERS
@@ -23,6 +29,9 @@ _ARBITRARY_SHELL = (
     "python -m scripts.other",
     "pytest",
     "pytest tests/test_staff_roles.py",
+    "pytest tests/test_board_meeting_init.py -p evil_plugin",
+    "pytest tests/test_board_meeting_init.py -p=evil_plugin",
+    "pytest tests/test_board_meeting_init.py --override-ini x=y",
     "rm -rf docs/board-meetings",
     "sudo python -m scripts.board.init_meeting_packet",
     "python -m scripts.board.init_meeting_packet && echo pwned",
@@ -49,8 +58,10 @@ def test_role_keeps_host_shell_false() -> None:
 
 
 @pytest.mark.unit
-def test_claude_unattended_argv_scopes_board_secretary_shell() -> None:
-    argv = ADAPTERS["claude"].build_command("archive the meeting", "/tmp/wt", model=None, role="board-secretary")
+def test_claude_unattended_argv_scopes_board_secretary_shell(tmp_path: Path) -> None:
+    argv = ADAPTERS["claude"].build_command(
+        "archive the meeting", str(tmp_path), model=None, role="board-secretary"
+    )
     allowed = set(argv[argv.index("--allowedTools") + 1].split(","))
     assert "Bash" not in allowed
     assert "Bash(python -m scripts.board:*)" in allowed
@@ -58,8 +69,11 @@ def test_claude_unattended_argv_scopes_board_secretary_shell() -> None:
     assert "Bash(python:*)" not in allowed
     assert "Bash(python3:*)" not in allowed
     assert "Bash(pytest:*)" not in allowed
-    assert "Bash(pytest tests/test_board_meeting_init.py:*)" in allowed
+    assert "Bash(pytest tests/test_board_meeting_init.py:*)" not in allowed
+    assert "Bash(pytest tests/test_board_meeting_init.py)" in allowed
+    assert "Bash(pytest tests/test_board_meeting_init.py -q)" in allowed
     assert "Bash(git:*)" in allowed
+    assert "--settings" in argv
 
 
 @pytest.mark.unit
@@ -93,3 +107,36 @@ def test_execute_launch_uses_the_scoped_claude_allow_list(tmp_path) -> None:
     allowed = set(argv[argv.index("--allowedTools") + 1].split(","))
     assert "Bash(python -m scripts.board:*)" in allowed
     assert "Bash(python:*)" not in allowed
+    assert "--settings" in argv
+
+
+def _hook_code(command: str) -> int:
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
+    backend = Path(__file__).resolve().parents[2] / "backend"
+    proc = subprocess.run(
+        [sys.executable, "-m", "staff.board_secretary_bash_hook"],
+        input=payload,
+        text=True,
+        capture_output=True,
+        check=False,
+        env={**os.environ, "PYTHONPATH": str(backend)},
+    )
+    return proc.returncode
+
+
+@pytest.mark.unit
+def test_launch_hook_rejects_plugin_injection_and_shell_syntax(tmp_path) -> None:
+    """The settings file named on the Claude argv is the execution boundary."""
+    argv = ADAPTERS["claude"].build_command(
+        "archive the meeting", str(tmp_path), model=None, role="board-secretary"
+    )
+    settings = Path(argv[argv.index("--settings") + 1])
+    hook = json.loads(settings.read_text(encoding="utf-8"))
+    command = hook["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
+    assert "staff.board_secretary_bash_hook" in command
+    assert _hook_code("pytest tests/test_board_meeting_init.py -p evil_plugin") == 2
+    assert _hook_code("python -m scripts.board.init_meeting_packet --date 2026-11-24 && echo pwned") == 2
+    assert _hook_code("pytest tests/test_board_meeting_init.py -q") == 0
+    assert _hook_code("python -m scripts.board.init_meeting_packet --date 2026-11-24") == 0
+    assert _hook_code("git status") == 0
+    assert _hook_code("rm -rf docs/board-meetings") == 2
