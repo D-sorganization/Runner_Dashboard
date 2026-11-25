@@ -60,6 +60,7 @@ class IneligibleReason(_StrEnum):
     NO_EXACT_HEAD_PASS = "no_exact_head_pass"
     DETERMINISTIC_REQUEUE = "deterministic_requeue"
     MANUAL_DEQUEUE = "manual_dequeue"
+    INCOMPLETE_QUEUE_HISTORY = "incomplete_queue_history"
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,7 @@ class PRCandidate:
     queue_removals: tuple[tuple[str, str], ...] = ()
     merge_group_failures: tuple[tuple[str, str, str], ...] = ()
     comment_bodies: tuple[tuple[str, str, str], ...] = ()
+    queue_history_truncated: bool = False
 
 
 @dataclass(frozen=True)
@@ -153,6 +155,7 @@ def requeue_suppression(candidate: PRCandidate) -> str:
         removals=candidate.queue_removals,
         failures=candidate.merge_group_failures,
         comments=candidate.comment_bodies,
+        queue_history_truncated=candidate.queue_history_truncated,
     )
 
 
@@ -186,12 +189,17 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
                 detail=suppression,
                 priority=priority,
             )
-        if suppression == "manual_dequeue":
+        if suppression in {"manual_dequeue", "incomplete_queue_history"}:
+            reason = (
+                IneligibleReason.INCOMPLETE_QUEUE_HISTORY
+                if suppression == "incomplete_queue_history"
+                else IneligibleReason.MANUAL_DEQUEUE
+            )
             return ShepherdDecision(
                 ShepherdAction.SKIP,
                 pr_num,
                 repo,
-                reason=IneligibleReason.MANUAL_DEQUEUE,
+                reason=reason,
                 detail=suppression,
                 priority=priority,
             )

@@ -206,6 +206,9 @@ def test_the_open_pr_query_fetches_merge_group_check_runs() -> None:
     assert "checkRuns" in OPEN_PRS_QUERY
     assert "workflowRun" in OPEN_PRS_QUERY
     assert "event" in OPEN_PRS_QUERY
+    assert "timelineItems(last: 100" in OPEN_PRS_QUERY
+    assert "hasPreviousPage" in OPEN_PRS_QUERY
+    assert "hasNextPage" in OPEN_PRS_QUERY
 
 
 def test_repeated_deterministic_failures_block_a_fresh_arm() -> None:
@@ -308,6 +311,72 @@ def test_repeated_timeouts_do_not_disarm() -> None:
             _removal_with_checks("2026-11-24T22:40:00Z", "CI_FAILURE", checks, run_id=22),
         ]
     }
+    _, disarms = _plan([node])
+    assert disarms == []
+
+
+def _manual_retry_node(number: int, login: str) -> dict:
+    """Armed PR manually dequeued, then a later retry note from ``login``."""
+    node = _with_head(_open_pr_node(number, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    node["timelineItems"] = {"nodes": [_removal("2026-11-24T23:07:31Z", "MANUAL")]}
+    node["comments"] = {
+        "nodes": [
+            {
+                "createdAt": "2026-11-24T23:20:00Z",
+                "author": {"login": login},
+                "body": "retry authorized for this head",
+            }
+        ]
+    }
+    return node
+
+
+def test_deceptive_login_does_not_lift_a_manual_dequeue() -> None:
+    """``not-barb`` contains the Barb token and still is not an authorized identity."""
+    for number, login in ((81, "not-barb"), (82, "unrelated-barb")):
+        node = _manual_retry_node(number, login)
+        candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+        assert candidate.comment_bodies[-1][1] == login
+        _, disarms = _plan([node])
+        assert [action.detail for action in disarms] == ["manual_dequeue"]
+
+
+def test_exact_barb_bot_login_lifts_a_manual_dequeue() -> None:
+    _, released = _plan([_manual_retry_node(83, "openbotgit[bot]")])
+    assert released == []
+
+
+def test_truncated_timeline_fails_closed_when_the_manual_dequeue_is_off_the_page() -> None:
+    """Query shape: pageInfo.hasPreviousPage and only removals newer than the missing dequeue."""
+    node = _with_head(_open_pr_node(84, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    node["timelineItems"] = {
+        "pageInfo": {"hasPreviousPage": True, "hasNextPage": False},
+        "nodes": [_removal(f"2026-11-24T23:{minute:02d}:00Z", "CI_FAILURE") for minute in range(40, 60)],
+    }
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    assert candidate.queue_history_truncated is True
+    assert "MANUAL" not in {reason for _, reason in candidate.queue_removals}
+    _, disarms = _plan([node])
+    assert [action.detail for action in disarms] == ["incomplete_queue_history"]
+
+    node["autoMergeRequest"] = None
+    fresh = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(fresh)
+    assert decision.action == ShepherdAction.SKIP
+    assert decision.reason == IneligibleReason.INCOMPLETE_QUEUE_HISTORY
+
+
+def test_timeline_truncated_before_the_head_does_not_hide_this_head() -> None:
+    node = _with_head(_open_pr_node(85, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    node["timelineItems"] = {
+        "pageInfo": {"hasPreviousPage": True, "hasNextPage": False},
+        "nodes": [_removal("2026-11-24T21:00:00Z", "CI_FAILURE")],
+    }
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    assert candidate.queue_history_truncated is False
     _, disarms = _plan([node])
     assert disarms == []
 

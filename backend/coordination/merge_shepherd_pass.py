@@ -105,7 +105,8 @@ query($owner: String!, $name: String!) {
             }
           }
         }
-        timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        timelineItems(last: 100, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+          pageInfo { hasPreviousPage hasNextPage }
           nodes {
             ... on RemovedFromMergeQueueEvent {
               createdAt
@@ -528,6 +529,7 @@ def node_to_candidate(
         queue_removals=evidence["queue_removals"],
         merge_group_failures=evidence["merge_group_failures"],
         comment_bodies=evidence["comment_bodies"],
+        queue_history_truncated=bool(evidence["queue_history_truncated"]),
     )
 
 

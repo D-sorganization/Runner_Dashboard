@@ -45,8 +45,8 @@ _DETERMINISTIC_MARKERS = (
     "lint error",
     "snapshot mismatch",
 )
-_OWNER_LOGINS = frozenset({"dieterolson"})
-_BARB_LOGIN_PARTS = frozenset({"barb", "openbotgit"})
+# Exact GitHub logins. A fragment such as "barb" inside another login is not authority.
+_AUTHORIZED_RETRY_LOGINS = frozenset({"dieterolson", "openbot-barb", "openbotgit"})
 _RETRY_AUTHORIZED = re.compile(r"\b(?:retry|requeue) authorized\b", re.IGNORECASE)
 
 
@@ -154,7 +154,8 @@ def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
     The head is the pull request ``headRefOid``, not the merge-group commit.
     A removal with no check runs does not become a failure. Comment records
     keep ``(created_at, author, body)`` so a later retry note can be checked
-    for an owner or Barb author.
+    for an exact owner or Barb login. ``queue_history_truncated`` is true when
+    another timeline page can hide a removal newer than the head commit.
     """
     commits = (node.get("commits") or {}).get("nodes") or []
     last = commits[-1] if commits and isinstance(commits[-1], Mapping) else {}
@@ -199,6 +200,7 @@ def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
         "queue_removals": tuple(removals),
         "merge_group_failures": tuple(failures),
         "comment_bodies": tuple(comments),
+        "queue_history_truncated": _queue_history_hides_events_after_head(node, head_at),
     }
 
 
@@ -230,18 +232,38 @@ def _comment_author(comment: Mapping[str, Any]) -> str:
     return ""
 
 
-def _authorized_retry_author(login: str) -> bool:
-    """True when ``login`` is the owner or a Barb identity.
+def _queue_history_hides_events_after_head(node: Mapping[str, Any], head_at: str) -> bool:
+    """True when another timeline page may hide a removal of this head.
 
-    Pre: ``login`` may be empty. A ``[bot]`` suffix is ignored.
-    Post: ``dieterolson``, ``openbotgit``, and a login token ``barb`` match.
-    Shared fleet App logins do not, so a lane comment cannot lift a dequeue.
+    Pre: ``node`` may omit ``timelineItems.pageInfo``.
+    Post: a complete page is false. A truncated page is false only when its
+    oldest visible event is at or before the head, so every later removal was returned.
     """
-    normalized = login.casefold().removesuffix("[bot]").strip()
-    if normalized in _OWNER_LOGINS:
+    timeline = node.get("timelineItems")
+    if not isinstance(timeline, Mapping):
+        return False
+    page = timeline.get("pageInfo")
+    if not isinstance(page, Mapping) or not (page.get("hasPreviousPage") or page.get("hasNextPage")):
+        return False
+    stamps = [
+        _text(event.get("createdAt"))
+        for event in (timeline.get("nodes") or [])
+        if isinstance(event, Mapping) and _text(event.get("createdAt"))
+    ]
+    if not stamps or not head_at:
         return True
-    parts = {part for part in re.split(r"[^a-z0-9]+", normalized) if part}
-    return bool(parts & _BARB_LOGIN_PARTS)
+    return min(stamps) > head_at
+
+
+def _authorized_retry_author(login: str) -> bool:
+    """True when ``login`` is exactly the owner or Barb.
+
+    Pre: ``login`` may be empty.
+    Post: only ``dieterolson``, ``openbot-barb``, and ``openbotgit`` match, after a trailing
+    ``[bot]`` suffix. A different login that contains one of those names does not match.
+    """
+    normalized = _text(login).casefold().removesuffix("[bot]").strip()
+    return normalized in _AUTHORIZED_RETRY_LOGINS
 
 
 def _manual_dequeue_without_authorization(
@@ -277,14 +299,19 @@ def suppression_detail(
     removals: Sequence[tuple[str, str]],
     failures: Sequence[tuple[str, str, str]],
     comments: Sequence[tuple[str, str, str]],
+    queue_history_truncated: bool = False,
 ) -> str:
     """Return why automatic requeue must stop, or ``""`` when it may proceed.
 
-    Deterministic evidence wins over a manual dequeue so a later "retry
-    authorized" note cannot revive an unchanged failing head.
+    Pre: ``queue_history_truncated`` comes from :func:`_queue_history_hides_events_after_head`.
+    Post: deterministic evidence wins. A truncated page then fails closed, so a manual
+    dequeue that fell off the page cannot be treated as absent. An exact owner or Barb
+    retry note lifts only a manual dequeue that the page actually contains.
     """
     if _deterministic_signatures(head_sha=head_sha, failures=failures):
         return "deterministic_merge_group"
+    if queue_history_truncated:
+        return "incomplete_queue_history"
     if _manual_dequeue_without_authorization(
         head_committed_at=head_committed_at,
         removals=removals,
