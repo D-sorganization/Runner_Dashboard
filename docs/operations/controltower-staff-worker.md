@@ -121,8 +121,8 @@ Paths starting with `~` refer to `/home/fleet-operator` in the **`node-a-Runner`
 
   ```ini
   [user]
-      name = Fleet Operator
-      email = fleet-operator@users.noreply.github.com
+      name = d-sorggeneralagent[bot]
+      email = 289268526+d-sorggeneralagent[bot]@users.noreply.github.com
   [credential "https://github.com"]
       helper = !gh auth token
   [credential "https://gist.github.com"]

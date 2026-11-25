@@ -1,0 +1,58 @@
+name: Noreply Identity Check
+
+# CI guard for commit identity. Keep the pull request title on a ci:, chore:,
+# or fix: prefix so anti-phantom Rule 2 does not treat it as a product feature.
+
+on:
+  pull_request:
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: noreply-identity-${{ github.event.pull_request.number || github.event.merge_group.head_ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  noreply-identity:
+    # Fork PRs never run on the self-hosted fleet (RM#1989).
+    if: >-
+      (!github.event.pull_request ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    name: Noreply identity guard
+    runs-on: ${{ !github.event.repository.private && vars.CI_RUNNER_MODE != 'local' && 'ubuntu-latest' || github.event_name == 'merge_group' && vars.CI_QUEUE_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || github.event_name == 'pull_request' && vars.CI_PR_RUNNER_MODE == 'hosted' && 'ubuntu-latest' || 'd-sorg-fleet-bulk' }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify PR commit noreply identities
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+            pull_request)
+              base="$PR_BASE_SHA"
+              head="$PR_HEAD_SHA"
+              ;;
+            merge_group)
+              base="$MERGE_GROUP_BASE_SHA"
+              head="$GITHUB_SHA"
+              ;;
+            *)
+              echo "Unsupported event: $EVENT_NAME" >&2
+              exit 2
+              ;;
+          esac
+          if [[ -z "$base" || -z "$head" ]]; then
+            echo "Missing base or head SHA" >&2
+            exit 2
+          fi
+          python3 scripts/check_noreply_identities.py --repo-root . --base "$base" --head "$head"
