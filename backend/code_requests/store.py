@@ -78,7 +78,7 @@ class CodeRequestStore:
         lock_path = self.cache_path.with_suffix(self.cache_path.suffix + ".lock")
         lock_path.parent.mkdir(parents=True, exist_ok=True)
         handle = lock_path.open("a+", encoding="utf-8")
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
         return lock_path, handle
 
     def _read_cache(self) -> list[dict[str, Any]]:
@@ -195,7 +195,7 @@ class CodeRequestStore:
                 self._write_cache(new_items)
                 return updated
             finally:
-                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+                fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
                 lock_handle.close()
 
     async def save(self, request: CodeRequest) -> CodeRequest:
