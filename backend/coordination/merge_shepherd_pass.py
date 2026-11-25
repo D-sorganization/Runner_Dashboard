@@ -24,6 +24,7 @@ from coordination.merge_shepherd import (
     count_queue_bounces,
     evaluate_pr_shepherd_eligibility,
     get_auto_merge_flag,
+    has_deterministic_failure_or_unauthorized_requeue,
     rank_candidates_for_shepherding,
 )
 from coordination.merge_shepherd_exact_head import (
@@ -484,6 +485,17 @@ def node_to_candidate(
     is_queued = (node.get("mergeQueueEntry") or {}).get("position") is not None
     auto_merge = node.get("autoMergeRequest") is not None
     effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
+    commits = (node.get("commits") or {}).get("nodes") or []
+    last = commits[-1] if commits and isinstance(commits[-1], Mapping) else {}
+    head_committed_at = str((last.get("commit") or {}).get("committedDate") or "")
+    timeline_events = (node.get("timelineItems") or {}).get("nodes") or []
+    comments = (node.get("comments") or {}).get("nodes") or []
+    retry_suppressed, retry_detail = has_deterministic_failure_or_unauthorized_requeue(
+        timeline_events,
+        comments,
+        head_sha=head_sha,
+        head_committed_at=head_committed_at,
+    )
     return PRCandidate(
         repo=repo,
         pr_number=number,
@@ -507,6 +519,8 @@ def node_to_candidate(
         line_cap=effective_line_cap,
         files_complete=files_complete,
         review_pass_ttl_hours=review_pass_ttl_hours,
+        retry_suppressed=retry_suppressed,
+        retry_suppressed_detail=retry_detail,
     )
 
 

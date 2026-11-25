@@ -52,6 +52,7 @@ class IneligibleReason(_StrEnum):
     HELD = "held"
     DRAINED = "drained"
     BOUNCE_LIMIT = "bounce_limit"
+    RETRY_SUPPRESSED = "retry_suppressed"
     ALREADY_QUEUED = "already_queued"
     ALREADY_ARMED = "already_armed"
     CHECKS_FAILED = "checks_failed"
@@ -85,6 +86,8 @@ class PRCandidate:
     line_cap: int = 0
     files_complete: bool = True
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS
+    retry_suppressed: bool = False
+    retry_suppressed_detail: str = ""
 
 
 @dataclass(frozen=True)
@@ -133,6 +136,101 @@ def count_queue_bounces(node: Mapping[str, Any]) -> int:
     return bounces
 
 
+def has_deterministic_failure_or_unauthorized_requeue(
+    timeline_events: Sequence[Mapping[str, Any]],
+    comments: Sequence[Mapping[str, Any]],
+    *,
+    head_sha: str,
+    head_committed_at: str = "",
+) -> tuple[bool, str]:
+    """Detect repeated deterministic failure, manual dequeue, or unarmed owner notes on unchanged head (#4658).
+
+    Suppresses auto-requeue / re-arming unless a newer head arrived or explicit retry authorization was posted.
+    """
+    head_prefix = head_sha[:7].lower() if head_sha else ""
+
+    # Check for explicit retry authorization posted after the last manual dequeue or failure
+    last_dequeue_or_fail_at = ""
+
+    # Check timeline events for dequeue / ejections since head
+    for event in timeline_events:
+        if not isinstance(event, Mapping):
+            continue
+        created_at = str(event.get("createdAt") or "")
+        if head_committed_at and created_at and created_at <= head_committed_at:
+            continue
+        reason = str(event.get("reason") or "").casefold()
+        if reason == "dequeued" or (reason and reason not in NOT_A_BOUNCE):
+            if not last_dequeue_or_fail_at or created_at > last_dequeue_or_fail_at:
+                last_dequeue_or_fail_at = created_at
+
+    # Check comments for dequeue, unarmed notices, or deterministic failure indicators
+    manual_dequeue = False
+    unarmed_direction = False
+    deterministic_fail = False
+
+    auth_after_incident = False
+
+    for c in comments:
+        if not isinstance(c, Mapping):
+            continue
+        body = str(c.get("body") or "")
+        created_at = str(c.get("createdAt") or "")
+        if head_committed_at and created_at and created_at <= head_committed_at:
+            continue
+
+        body_lower = body.lower()
+
+        # Check for owner/supervisor retry authorization
+        if (
+            "authorized retry" in body_lower
+            or "re-queue authorized" in body_lower
+            or "requeue authorized" in body_lower
+            or "transient failure verified" in body_lower
+        ):
+            if not last_dequeue_or_fail_at or created_at >= last_dequeue_or_fail_at:
+                auth_after_incident = True
+
+        # Check for manual dequeue
+        if (
+            "dequeued and disarmed" in body_lower
+            or "dequeued, disarmed" in body_lower
+            or "manual dequeue" in body_lower
+        ):
+            manual_dequeue = True
+            if not last_dequeue_or_fail_at or created_at > last_dequeue_or_fail_at:
+                last_dequeue_or_fail_at = created_at
+
+        # Check for owner-directed unarmed notes
+        if (
+            "not armed; not merged" in body_lower
+            or "unarmed per owner direction" in body_lower
+            or "deliberately unarmed" in body_lower
+        ):
+            unarmed_direction = True
+
+        # Check for deterministic failures (e.g. hash-seed, stale generated types, repeated merge_group failures)
+        if (
+            "deterministic failure" in body_lower
+            or "determinism failure" in body_lower
+            or "stale generated" in body_lower
+            or ("merge_group twice" in body_lower and head_prefix and head_prefix in body_lower)
+        ):
+            deterministic_fail = True
+
+    if auth_after_incident:
+        return False, ""
+
+    if unarmed_direction:
+        return True, "unarmed_owner_direction"
+    if deterministic_fail:
+        return True, "deterministic_failure_unchanged_head"
+    if manual_dequeue:
+        return True, "manual_dequeue_without_authorization"
+
+    return False, ""
+
+
 def is_pr_held(labels: Sequence[str] = (), title: str = "") -> bool:
     """Check if PR is marked with a hold via label or title indicator."""
     return any(label_is_merge_shepherd_hold(lbl) for lbl in labels) or pr_title_indicates_hold(title)
@@ -163,6 +261,15 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
     if candidate.bounces >= BOUNCE_LIMIT:
         return ShepherdDecision(
             ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.BOUNCE_LIMIT, priority=priority
+        )
+    if candidate.retry_suppressed:
+        return ShepherdDecision(
+            ShepherdAction.SKIP,
+            pr_num,
+            repo,
+            reason=IneligibleReason.RETRY_SUPPRESSED,
+            detail=candidate.retry_suppressed_detail,
+            priority=priority,
         )
     if candidate.is_drained and not candidate.is_exempt:
         return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.DRAINED, priority=priority)
