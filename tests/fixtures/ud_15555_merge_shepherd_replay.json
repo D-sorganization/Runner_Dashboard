@@ -10,7 +10,7 @@
             "mergeable": "MERGEABLE",
             "mergeStateStatus": "CLEAN",
             "reviewDecision": "APPROVED",
-            "headRefOid": "ad5cefefb45e1ef740217c5aecde851f0ee058cf",
+            "headRefOid": "1111111111111111111111111111111111111111",
             "author": { "login": "d-sorgcodexagent[bot]" },
             "additions": 182,
             "deletions": 0,
@@ -53,12 +53,12 @@
                 {
                   "author": { "login": "d-sorggeminiagent" },
                   "createdAt": "2026-11-23T23:20:51Z",
-                  "body": "FIX-NEEDED @ad5cefef: Ejected from merge_group twice (runs 45277870424 / 45280937315, job 138065150320). tests/api/test_generated_ui_api_types.py::test_generated_types_are_fresh failed because ui/src/api/generated/types.ts is stale (BunkerFlightV1 mismatch). Run python scripts/generate_ui_api_types.py and commit the updated ui/src/api/generated/types.ts before re-queuing."
+                  "body": "FIX-NEEDED @1111111f: Ejected from merge_group twice (runs 45277870424 / 45280937315, job 138065150320). tests/api/test_generated_ui_api_types.py::test_generated_types_are_fresh failed because ui/src/api/generated/types.ts is stale (BunkerFlightV1 mismatch). Run python scripts/generate_ui_api_types.py and commit the updated ui/src/api/generated/types.ts before re-queuing."
                 },
                 {
                   "author": { "login": "d-sorg-runner-dashboard" },
                   "createdAt": "2026-11-24T15:18:58Z",
-                  "body": "Exact-head review relay (run-f4fbb0dabc35) at `ad5cefef`; the reviewer's final output verbatim:\n\nI'm approving PR #15555 at `ad5cefe`. Nothing blocks it... PR remains deliberately unarmed per owner direction.\n\n**Not armed; not merged** (acceptance-review lane)."
+                  "body": "Exact-head review relay (run-f4fbb0dabc35) at `1111111f`; the reviewer's final output verbatim:\n\nI'm approving PR #15555 at `1111111`. Nothing blocks it... PR remains deliberately unarmed per owner direction.\n\n**Not armed; not merged** (acceptance-review lane)."
                 },
                 {
                   "author": { "login": "d-sorggeminiagent" },
@@ -73,8 +73,8 @@
                   "state": "APPROVED",
                   "author": { "login": "d-sorg-runner-dashboard" },
                   "submittedAt": "2026-11-24T15:15:17Z",
-                  "commit": { "oid": "ad5cefefb45e1ef740217c5aecde851f0ee058cf" },
-                  "body": "Staff code-reviewer: **approve** PR #15555 at `ad5cefe` (hub-posted formal review; see thread for findings)."
+                  "commit": { "oid": "1111111111111111111111111111111111111111" },
+                  "body": "Staff code-reviewer: **approve** PR #15555 at `1111111` (hub-posted formal review; see thread for findings)."
                 }
               ]
             }

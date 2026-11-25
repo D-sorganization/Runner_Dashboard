@@ -98,7 +98,7 @@ def test_retry_suppressed_candidate_evaluates_to_skip() -> None:
     candidate = PRCandidate(
         repo="D-sorganization/UpstreamDrift",
         pr_number=15555,
-        head_sha="ad5cefefb45e1ef740217c5aecde851f0ee058cf",
+        head_sha="1111111111111111111111111111111111111111",
         retry_suppressed=True,
         retry_suppressed_detail="manual_dequeue_without_authorization",
     )
@@ -125,7 +125,7 @@ def test_explicit_retry_authorization_clears_suppression() -> None:
     suppressed, reason = has_deterministic_failure_or_unauthorized_requeue(
         timeline,
         comments,
-        head_sha="ad5cefe",
+        head_sha="1111111",
         head_committed_at="2026-11-24T14:00:00Z",
     )
     assert suppressed is False
