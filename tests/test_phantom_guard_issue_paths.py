@@ -29,3 +29,16 @@ def test_backend_paths_are_still_detected() -> None:
         "backend/delivery_metrics/weekly_summary.py",
         "tests/unit/test_x.py",
     ]
+
+
+def test_change_fragment_paths_are_repo_paths() -> None:
+    """Issue #4393 cites changes/*.md fragments. Rule 3 must see those files."""
+    body = (
+        "validate change fragments: "
+        "`changes/4249-merge-shepherd-exact-head-pass-eligibili.md` "
+        "and mypy `backend/routers/activity.py:160`."
+    )
+    assert issue_body_repo_paths(body) == [
+        "backend/routers/activity.py",
+        "changes/4249-merge-shepherd-exact-head-pass-eligibili.md",
+    ]
