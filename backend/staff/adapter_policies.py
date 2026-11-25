@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import shlex
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -186,6 +186,19 @@ def claude_board_secretary_tools() -> tuple[str, str]:
     kept = [entry for entry in allowed.split(",") if entry not in _BOARD_SECRETARY_BROAD_BASH]
     kept.extend(f"Bash({prefix}:*)" for prefix in BOARD_SECRETARY_ARCHIVE_BASH_PREFIXES)
     return ",".join(kept), denied
+
+
+def board_secretary_launch_kwargs(role: Any, kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    """Pass ``role`` into ``build_command`` only for board-secretary.
+
+    Pre: ``kwargs`` is the existing launch mapping. Post: other roles are unchanged
+    so older ``build_command`` signatures keep working (#4656).
+    """
+    merged = dict(kwargs)
+    name = str(getattr(role, "name", role) or "")
+    if name == "board-secretary":
+        merged["role"] = "board-secretary"
+    return merged
 
 
 def board_secretary_archive_command_allowed(command: str) -> bool:

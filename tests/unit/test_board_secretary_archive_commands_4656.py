@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import pytest
-from staff.adapter_policies import board_secretary_archive_command_allowed
+from staff.adapter_policies import board_secretary_archive_command_allowed, board_secretary_launch_kwargs
 from staff.adapters import ADAPTERS
 from staff.board_secretary_persona import board_secretary_role_data
+from staff.cloud_dispatch import resolve_execute_launch
 
 _ARCHIVE_COMMANDS = (
     "python -m scripts.board.init_meeting_packet --date 2026-11-24",
@@ -67,3 +68,28 @@ def test_other_roles_keep_the_shared_python_allow_list() -> None:
     allowed = set(argv[argv.index("--allowedTools") + 1].split(","))
     assert "Bash(python:*)" in allowed
     assert "Bash(pytest:*)" in allowed
+
+
+@pytest.mark.unit
+def test_launch_kwargs_are_scoped_to_board_secretary() -> None:
+    assert board_secretary_launch_kwargs("board-secretary", {}) == {"role": "board-secretary"}
+    assert board_secretary_launch_kwargs("night-watch", {"read_only": True}) == {"read_only": True}
+
+
+@pytest.mark.unit
+def test_execute_launch_uses_the_scoped_claude_allow_list(tmp_path) -> None:
+    class _Plan:
+        execution_mode = "local"
+        model = None
+        role = "board-secretary"
+        provider = "claude"
+        argv: list[str] = []
+        cloud_stdin = ""
+
+    argv, _label, stdin_payload = resolve_execute_launch(
+        _Plan(), ADAPTERS["claude"], "archive the meeting", tmp_path, {}, {}
+    )
+    assert stdin_payload is None
+    allowed = set(argv[argv.index("--allowedTools") + 1].split(","))
+    assert "Bash(python -m scripts.board:*)" in allowed
+    assert "Bash(python:*)" not in allowed
