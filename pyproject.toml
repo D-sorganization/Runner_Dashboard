@@ -107,6 +107,9 @@ select = ["E", "F", "W", "I", "B", "UP", "T20"]
 
 [tool.mypy]
 python_version = "3.11"
+# Production and CI are Linux. Without this, a Windows pre-push mypy sees an
+# empty fcntl stub and rejects unrelated flock call sites.
+platform = "linux"
 ignore_missing_imports = true
 # Global default: all new modules must have full type annotations.
 # Pre-existing large backend files carry per-module overrides below (tracked for
