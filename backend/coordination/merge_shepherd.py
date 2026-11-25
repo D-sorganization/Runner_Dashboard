@@ -20,6 +20,7 @@ from coordination.merge_shepherd_holds import (
     pr_title_indicates_hold,
 )
 from coordination.merge_shepherd_low_risk import DEFAULT_LOW_RISK_LINE_CAP
+from coordination.merge_shepherd_requeue import suppression_detail
 
 
 class _StrEnum(str, enum.Enum):  # noqa: UP042
@@ -57,6 +58,8 @@ class IneligibleReason(_StrEnum):
     CHECKS_FAILED = "checks_failed"
     CHECKS_PENDING = "checks_pending"
     NO_EXACT_HEAD_PASS = "no_exact_head_pass"
+    DETERMINISTIC_REQUEUE = "deterministic_requeue"
+    MANUAL_DEQUEUE = "manual_dequeue"
 
 
 @dataclass(frozen=True)
@@ -85,6 +88,10 @@ class PRCandidate:
     line_cap: int = 0
     files_complete: bool = True
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS
+    head_committed_at: str = ""
+    queue_removals: tuple[tuple[str, str], ...] = ()
+    merge_group_failures: tuple[tuple[str, str, str], ...] = ()
+    comment_bodies: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -138,6 +145,17 @@ def is_pr_held(labels: Sequence[str] = (), title: str = "") -> bool:
     return any(label_is_merge_shepherd_hold(lbl) for lbl in labels) or pr_title_indicates_hold(title)
 
 
+def requeue_suppression(candidate: PRCandidate) -> str:
+    """Why this head must not be requeued, or ``""`` when requeue is still allowed."""
+    return suppression_detail(
+        head_sha=candidate.head_sha,
+        head_committed_at=candidate.head_committed_at,
+        removals=candidate.queue_removals,
+        failures=candidate.merge_group_failures,
+        comments=candidate.comment_bodies,
+    )
+
+
 def is_priority_candidate(candidate: PRCandidate) -> bool:
     """Check whether candidate carries merge:priority label or flag."""
     return candidate.has_priority or any(str(lbl).strip().casefold() == "merge:priority" for lbl in candidate.labels)
@@ -154,6 +172,29 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
         _, verdict_detail = pass_at_head(candidate.review_passes, pr=pr_num, head_sha=candidate.head_sha)
         if verdict_detail == "rejected_at_head":
             return ShepherdDecision(ShepherdAction.DISARM, pr_num, repo, detail=verdict_detail, priority=priority)
+        suppression = requeue_suppression(candidate)
+        if suppression:
+            return ShepherdDecision(ShepherdAction.DISARM, pr_num, repo, detail=suppression, priority=priority)
+    else:
+        suppression = requeue_suppression(candidate)
+        if suppression == "deterministic_merge_group":
+            return ShepherdDecision(
+                ShepherdAction.SKIP,
+                pr_num,
+                repo,
+                reason=IneligibleReason.DETERMINISTIC_REQUEUE,
+                detail=suppression,
+                priority=priority,
+            )
+        if suppression == "manual_dequeue":
+            return ShepherdDecision(
+                ShepherdAction.SKIP,
+                pr_num,
+                repo,
+                reason=IneligibleReason.MANUAL_DEQUEUE,
+                detail=suppression,
+                priority=priority,
+            )
     if candidate.is_draft:
         return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.DRAFT, priority=priority)
     if candidate.mergeable.upper() == "CONFLICTING":
