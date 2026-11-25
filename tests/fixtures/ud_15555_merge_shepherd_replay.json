@@ -19,7 +19,9 @@
               "pageInfo": { "hasNextPage": false },
               "nodes": [
                 { "path": "src/api/routes/bunker_workbench.py" },
-                { "path": "tests/bunkershot3d/test_bunker_workbench_flight_api.py" }
+                {
+                  "path": "tests/bunkershot3d/test_bunker_workbench_flight_api.py"
+                }
               ]
             },
             "autoMergeRequest": null,
@@ -36,11 +38,23 @@
             },
             "timelineItems": {
               "nodes": [
-                { "createdAt": "2026-11-23T23:08:00Z", "reason": "failed_checks" },
-                { "createdAt": "2026-11-24T15:05:00Z", "reason": "failed_checks" },
+                {
+                  "createdAt": "2026-11-23T23:08:00Z",
+                  "reason": "failed_checks"
+                },
+                {
+                  "createdAt": "2026-11-24T15:05:00Z",
+                  "reason": "failed_checks"
+                },
                 { "createdAt": "2026-11-24T15:07:31Z", "reason": "dequeued" },
-                { "createdAt": "2026-11-24T15:30:00Z", "reason": "failed_checks" },
-                { "createdAt": "2026-11-24T23:07:00Z", "reason": "failed_checks" }
+                {
+                  "createdAt": "2026-11-24T15:30:00Z",
+                  "reason": "failed_checks"
+                },
+                {
+                  "createdAt": "2026-11-24T23:07:00Z",
+                  "reason": "failed_checks"
+                }
               ]
             },
             "comments": {
@@ -73,7 +87,9 @@
                   "state": "APPROVED",
                   "author": { "login": "d-sorg-runner-dashboard" },
                   "submittedAt": "2026-11-24T15:15:17Z",
-                  "commit": { "oid": "1111111111111111111111111111111111111111" },
+                  "commit": {
+                    "oid": "1111111111111111111111111111111111111111"
+                  },
                   "body": "Staff code-reviewer: **approve** PR #15555 at `1111111` (hub-posted formal review; see thread for findings)."
                 }
               ]
@@ -93,9 +109,7 @@
             "labels": { "nodes": [] },
             "files": {
               "pageInfo": { "hasNextPage": false },
-              "nodes": [
-                { "path": "docs/clean_fix.md" }
-              ]
+              "nodes": [{ "path": "docs/clean_fix.md" }]
             },
             "autoMergeRequest": null,
             "mergeQueueEntry": null,
@@ -121,7 +135,9 @@
                   "state": "APPROVED",
                   "author": { "login": "d-sorgclaudeagent[bot]" },
                   "submittedAt": "2026-11-24T20:05:00Z",
-                  "commit": { "oid": "b1b2b3b4b5b6b7b8b9b0b1b2b3b4b5b6b7b8b9b0" },
+                  "commit": {
+                    "oid": "b1b2b3b4b5b6b7b8b9b0b1b2b3b4b5b6b7b8b9b0"
+                  },
                   "body": "PASS final @b1b2b3b4b5b6b7b8b9b0b1b2b3b4b5b6b7b8b9b0"
                 }
               ]
