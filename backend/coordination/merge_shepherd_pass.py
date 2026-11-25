@@ -107,7 +107,22 @@ query($owner: String!, $name: String!) {
         }
         timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
           nodes {
-            ... on RemovedFromMergeQueueEvent { createdAt reason }
+            ... on RemovedFromMergeQueueEvent {
+              createdAt
+              reason
+              beforeCommit {
+                oid
+                checkSuites(first: 5) {
+                  nodes {
+                    conclusion
+                    workflowRun { event databaseId }
+                    checkRuns(first: 20) {
+                      nodes { name conclusion title summary }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
         comments(last: 10) {

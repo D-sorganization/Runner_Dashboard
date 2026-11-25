@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from coordination.merge_shepherd_pass import plan_repo_disarms, plan_repo_pass
+from coordination.merge_shepherd import IneligibleReason, ShepherdAction, evaluate_pr_shepherd_eligibility
+from coordination.merge_shepherd_pass import OPEN_PRS_QUERY, node_to_candidate, plan_repo_disarms, plan_repo_pass
 
 from tests.unit.test_merge_shepherd_pass import _open_pr_node, _review_pass
 
@@ -18,6 +19,37 @@ RUN_IDS = (45496778157, 45502515157, 45502515158, 45502515159)
 
 def _removal(at: str, reason: str) -> dict[str, str]:
     return {"createdAt": at, "reason": reason}
+
+
+def _check(name: str, conclusion: str = "FAILURE", *, title: str = "", summary: str = "") -> dict[str, str]:
+    return {"name": name, "conclusion": conclusion, "title": title, "summary": summary}
+
+
+def _removal_with_checks(
+    at: str,
+    reason: str,
+    checks: list[dict[str, str]],
+    *,
+    event: str = "merge_group",
+    run_id: int = 1,
+) -> dict[str, object]:
+    """One queue removal in the shape ``OPEN_PRS_QUERY`` returns."""
+    return {
+        "createdAt": at,
+        "reason": reason,
+        "beforeCommit": {
+            "oid": "m" * 40,
+            "checkSuites": {
+                "nodes": [
+                    {
+                        "conclusion": "FAILURE",
+                        "workflowRun": {"event": event, "databaseId": run_id},
+                        "checkRuns": {"nodes": checks},
+                    }
+                ]
+            },
+        },
+    }
 
 
 def _run(
@@ -42,21 +74,19 @@ def _ud_15555_node() -> dict:
     """Armed PR ejected on one head, then manually dequeued, with an unarmed note."""
     node = _with_head(_open_pr_node(FAILING_PR, paths=["docs/readme.md"]), HEAD, HEAD_AT)
     node["autoMergeRequest"] = {"enabledAt": "2026-11-24T21:40:00Z"}
+    signature_checks = [
+        _check("stale generated typescript"),
+        _check("hash-seed determinism"),
+    ]
     node["timelineItems"] = {
         "nodes": [
-            _removal("2026-11-24T22:05:00Z", "CI_FAILURE"),
-            _removal("2026-11-24T22:28:00Z", "CI_FAILURE"),
-            _removal("2026-11-24T22:51:00Z", "CI_FAILURE"),
-            _removal("2026-11-24T23:03:40Z", "CI_FAILURE"),
+            _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", signature_checks, run_id=RUN_IDS[0]),
+            _removal_with_checks("2026-11-24T22:28:00Z", "CI_FAILURE", signature_checks, run_id=RUN_IDS[1]),
+            _removal_with_checks("2026-11-24T22:51:00Z", "CI_FAILURE", signature_checks, run_id=RUN_IDS[2]),
+            _removal_with_checks("2026-11-24T23:03:40Z", "CI_FAILURE", signature_checks, run_id=RUN_IDS[3]),
             _removal("2026-11-24T23:07:31Z", "MANUAL"),
         ]
     }
-    node["mergeGroupRuns"] = [
-        _run(RUN_IDS[0]),
-        _run(RUN_IDS[1]),
-        _run(RUN_IDS[2]),
-        _run(RUN_IDS[3]),
-    ]
     node["comments"] = {
         "nodes": [
             {
@@ -107,17 +137,75 @@ def test_ud_15555_replay_suppresses_requeue_and_still_arms_the_clean_control() -
     assert disarmed[FAILING_PR] in {"deterministic_merge_group", "manual_dequeue"}
 
 
-def test_repeated_ci_failure_removals_block_a_fresh_arm_without_run_signatures() -> None:
+def test_ci_failures_without_check_evidence_do_not_disarm() -> None:
+    """Two CI_FAILURE removals are not deterministic until the query returns check runs."""
     node = _with_head(_open_pr_node(72, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
     node["timelineItems"] = {
         "nodes": [
             _removal("2026-11-24T22:05:00Z", "CI_FAILURE"),
             _removal("2026-11-24T22:40:00Z", "CI_FAILURE"),
         ]
     }
-    arms, disarms = _plan([node])
-    assert arms == []
+    _, disarms = _plan([node])
     assert disarms == []
+
+
+def test_production_query_shape_suppresses_repeated_deterministic_checks() -> None:
+    node = _with_head(_open_pr_node(FAILING_PR, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    signature_checks = [
+        _check("stale generated typescript"),
+        _check("hash-seed determinism"),
+    ]
+    node["timelineItems"] = {
+        "nodes": [
+            _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", signature_checks, run_id=RUN_IDS[0]),
+            _removal_with_checks("2026-11-24T22:40:00Z", "CI_FAILURE", signature_checks, run_id=RUN_IDS[1]),
+        ]
+    }
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.action == ShepherdAction.SKIP
+    assert decision.reason == IneligibleReason.DETERMINISTIC_REQUEUE
+    assert decision.detail == "deterministic_merge_group"
+    assert ("deterministic", "hash-seed determinism+stale generated typescript") in {
+        (kind, signature) for _, kind, signature in candidate.merge_group_failures
+    }
+
+
+def test_pull_request_checks_on_the_queue_commit_are_not_merge_group_evidence() -> None:
+    node = _with_head(_open_pr_node(74, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    checks = [_check("unit tests")]
+    node["timelineItems"] = {
+        "nodes": [
+            _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", checks, event="pull_request", run_id=1),
+            _removal_with_checks("2026-11-24T22:40:00Z", "CI_FAILURE", checks, event="pull_request", run_id=2),
+        ]
+    }
+    _, disarms = _plan([node])
+    assert disarms == []
+
+
+def test_transient_merge_group_checks_do_not_disarm_an_armed_pr() -> None:
+    node = _with_head(_open_pr_node(75, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    checks = [_check("queue entry", "CANCELLED", summary="runner offline; lost communication with the server")]
+    node["timelineItems"] = {
+        "nodes": [
+            _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", checks, run_id=11),
+            _removal_with_checks("2026-11-24T22:40:00Z", "CI_FAILURE", checks, run_id=12),
+        ]
+    }
+    _, disarms = _plan([node])
+    assert disarms == []
+
+
+def test_the_open_pr_query_fetches_merge_group_check_runs() -> None:
+    assert "beforeCommit" in OPEN_PRS_QUERY
+    assert "checkRuns" in OPEN_PRS_QUERY
+    assert "workflowRun" in OPEN_PRS_QUERY
+    assert "event" in OPEN_PRS_QUERY
 
 
 def test_repeated_deterministic_failures_block_a_fresh_arm() -> None:
