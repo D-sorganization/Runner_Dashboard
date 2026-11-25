@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -74,3 +75,87 @@ def test_invalid_kind_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("RUNNER_DASHBOARD_STATE_DIR", str(tmp_path))
     with pytest.raises(ValueError, match="kind"):
         pdm.set_marker("claude", "quota_exhausted", until=1.0, now=0.0)
+
+
+def _pause_first_load(monkeypatch: pytest.MonkeyPatch) -> tuple[threading.Event, threading.Event]:
+    """Block inside the first ``_load_raw`` so a second writer can try to interleave."""
+    entered = threading.Event()
+    release = threading.Event()
+    original = pdm._load_raw
+    paused = {"done": False}
+
+    def slow_load() -> tuple[list[pdm.ProviderMarker], bool]:
+        result = original()
+        if not paused["done"]:
+            paused["done"] = True
+            entered.set()
+            assert release.wait(3), "store lock was not released for the interleaved writer"
+        return result
+
+    monkeypatch.setattr(pdm, "_load_raw", slow_load)
+    return entered, release
+
+
+def test_interleaved_set_marker_keeps_both_providers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Lost updates drop a marker when read-modify-write is not one critical section."""
+    monkeypatch.setenv("RUNNER_DASHBOARD_STATE_DIR", str(tmp_path))
+    now = 4_000_000.0
+    entered, release = _pause_first_load(monkeypatch)
+    errors: list[BaseException] = []
+
+    def write(provider: str) -> None:
+        try:
+            pdm.set_marker(provider, "provider_down", until=now + 120, now=now)
+        except BaseException as exc:  # noqa: BLE001 - surface worker failures in the assertion
+            errors.append(exc)
+
+    first = threading.Thread(target=write, args=("cursor",))
+    second = threading.Thread(target=write, args=("codex",))
+    first.start()
+    try:
+        assert entered.wait(2)
+        second.start()
+        second.join(0.5)
+        assert second.is_alive(), "second set_marker ran during the first writer's read-modify-write"
+    finally:
+        release.set()
+        first.join(3)
+        second.join(3)
+    assert errors == []
+    assert {m["provider"] for m in pdm.list_active_markers(now=now)} == {"cursor", "codex"}
+
+
+def test_prune_during_set_marker_keeps_the_new_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Expiry pruning must not persist a snapshot that omits a marker written concurrently."""
+    monkeypatch.setenv("RUNNER_DASHBOARD_STATE_DIR", str(tmp_path))
+    now = 5_000_000.0
+    pdm.set_marker("claude", "provider_down", until=now - 1, now=now - 30)
+    entered, release = _pause_first_load(monkeypatch)
+    errors: list[BaseException] = []
+
+    def prune() -> None:
+        try:
+            pdm.list_active_markers(now=now)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    def write() -> None:
+        try:
+            pdm.set_marker("cursor", "provider_down", until=now + 120, now=now)
+        except BaseException as exc:  # noqa: BLE001
+            errors.append(exc)
+
+    first = threading.Thread(target=prune)
+    second = threading.Thread(target=write)
+    first.start()
+    try:
+        assert entered.wait(2)
+        second.start()
+        second.join(0.5)
+        assert second.is_alive(), "set_marker ran during expiry pruning"
+    finally:
+        release.set()
+        first.join(3)
+        second.join(3)
+    assert errors == []
+    assert {m["provider"] for m in pdm.list_active_markers(now=now)} == {"cursor"}
