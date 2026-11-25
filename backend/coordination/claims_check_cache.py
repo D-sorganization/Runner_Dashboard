@@ -171,12 +171,6 @@ def _shared_load(repo: str, issue: int) -> Future[_CacheEntry]:
         inflight = _inflight.get(key)
         if inflight is not None:
             return inflight
-        hit = _cache.get(key)
-        now = _clock()
-        if hit is not None and hit.generation == _generation and now - hit.completed_mono < _ttl_seconds():
-            resolved: Future[_CacheEntry] = Future()
-            resolved.set_result(hit)
-            return resolved
         generation = _generation
         future = _pool.submit(_compute_and_store, repo, issue, generation, key)
         _inflight[key] = future
