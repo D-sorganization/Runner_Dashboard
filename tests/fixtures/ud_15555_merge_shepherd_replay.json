@@ -1,0 +1,134 @@
+{
+  "ud_15555_replay": {
+    "repository": {
+      "pullRequests": {
+        "nodes": [
+          {
+            "number": 15555,
+            "title": "feat(bunker): expose flight and rollout traces in workbench API",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": "APPROVED",
+            "headRefOid": "ad5cefefb45e1ef740217c5aecde851f0ee058cf",
+            "author": { "login": "d-sorgcodexagent[bot]" },
+            "additions": 182,
+            "deletions": 0,
+            "labels": { "nodes": [{ "name": "do-not-merge" }] },
+            "files": {
+              "pageInfo": { "hasNextPage": false },
+              "nodes": [
+                { "path": "src/api/routes/bunker_workbench.py" },
+                { "path": "tests/bunkershot3d/test_bunker_workbench_flight_api.py" }
+              ]
+            },
+            "autoMergeRequest": null,
+            "mergeQueueEntry": null,
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "committedDate": "2026-11-23T05:50:00Z",
+                    "statusCheckRollup": { "state": "SUCCESS" }
+                  }
+                }
+              ]
+            },
+            "timelineItems": {
+              "nodes": [
+                { "createdAt": "2026-11-23T23:08:00Z", "reason": "failed_checks" },
+                { "createdAt": "2026-11-24T15:05:00Z", "reason": "failed_checks" },
+                { "createdAt": "2026-11-24T15:07:31Z", "reason": "dequeued" },
+                { "createdAt": "2026-11-24T15:30:00Z", "reason": "failed_checks" },
+                { "createdAt": "2026-11-24T23:07:00Z", "reason": "failed_checks" }
+              ]
+            },
+            "comments": {
+              "nodes": [
+                {
+                  "author": { "login": "d-sorggeminiagent" },
+                  "createdAt": "2026-11-23T23:08:10Z",
+                  "body": "Dequeued and disarmed #15555 from the `main` merge queue after two `merge_group` failures ([45277870424](https://github.com/D-sorganization/UpstreamDrift/actions/runs/45277870424/job/138054513331), [45280937315](https://github.com/D-sorganization/UpstreamDrift/actions/runs/45280937315/job/138065150320)):\n"
+                },
+                {
+                  "author": { "login": "d-sorggeminiagent" },
+                  "createdAt": "2026-11-23T23:20:51Z",
+                  "body": "FIX-NEEDED @ad5cefef: Ejected from merge_group twice (runs 45277870424 / 45280937315, job 138065150320). tests/api/test_generated_ui_api_types.py::test_generated_types_are_fresh failed because ui/src/api/generated/types.ts is stale (BunkerFlightV1 mismatch). Run python scripts/generate_ui_api_types.py and commit the updated ui/src/api/generated/types.ts before re-queuing."
+                },
+                {
+                  "author": { "login": "d-sorg-runner-dashboard" },
+                  "createdAt": "2026-11-24T15:18:58Z",
+                  "body": "Exact-head review relay (run-f4fbb0dabc35) at `ad5cefef`; the reviewer's final output verbatim:\n\nI'm approving PR #15555 at `ad5cefe`. Nothing blocks it... PR remains deliberately unarmed per owner direction.\n\n**Not armed; not merged** (acceptance-review lane)."
+                },
+                {
+                  "author": { "login": "d-sorggeminiagent" },
+                  "createdAt": "2026-11-24T23:07:37Z",
+                  "body": "Dequeued, disarmed, and parked (`do-not-merge`) per Bob's 3 PM PT check-in & Stop Rule:\n\n- GitHub ejected PR #15555 from the merge queue 5 times on the same head commit, with 4 `merge_group` runs independently failing on **stale generated TypeScript types** and a **hash-seed determinism failure** (see runs 45502515157 / 45496778157).\n- **Owner:** Implementation lane assigned to PR #15555."
+                }
+              ]
+            },
+            "reviews": {
+              "nodes": [
+                {
+                  "state": "APPROVED",
+                  "author": { "login": "d-sorg-runner-dashboard" },
+                  "submittedAt": "2026-11-24T15:15:17Z",
+                  "commit": { "oid": "ad5cefefb45e1ef740217c5aecde851f0ee058cf" },
+                  "body": "Staff code-reviewer: **approve** PR #15555 at `ad5cefe` (hub-posted formal review; see thread for findings)."
+                }
+              ]
+            }
+          },
+          {
+            "number": 15556,
+            "title": "fix(core): clean control PR ready for auto-arm",
+            "isDraft": false,
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": "APPROVED",
+            "headRefOid": "b1b2b3b4b5b6b7b8b9b0b1b2b3b4b5b6b7b8b9b0",
+            "author": { "login": "d-sorgcodexagent[bot]" },
+            "additions": 15,
+            "deletions": 2,
+            "labels": { "nodes": [] },
+            "files": {
+              "pageInfo": { "hasNextPage": false },
+              "nodes": [
+                { "path": "docs/clean_fix.md" }
+              ]
+            },
+            "autoMergeRequest": null,
+            "mergeQueueEntry": null,
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "committedDate": "2026-11-24T20:00:00Z",
+                    "statusCheckRollup": { "state": "SUCCESS" }
+                  }
+                }
+              ]
+            },
+            "timelineItems": {
+              "nodes": []
+            },
+            "comments": {
+              "nodes": []
+            },
+            "reviews": {
+              "nodes": [
+                {
+                  "state": "APPROVED",
+                  "author": { "login": "d-sorgclaudeagent[bot]" },
+                  "submittedAt": "2026-11-24T20:05:00Z",
+                  "commit": { "oid": "b1b2b3b4b5b6b7b8b9b0b1b2b3b4b5b6b7b8b9b0" },
+                  "body": "PASS final @b1b2b3b4b5b6b7b8b9b0b1b2b3b4b5b6b7b8b9b0"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  }
+}

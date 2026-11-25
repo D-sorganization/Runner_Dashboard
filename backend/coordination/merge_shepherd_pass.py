@@ -24,6 +24,7 @@ from coordination.merge_shepherd import (
     count_queue_bounces,
     evaluate_pr_shepherd_eligibility,
     get_auto_merge_flag,
+    has_deterministic_failure_or_unauthorized_requeue,
     rank_candidates_for_shepherding,
 )
 from coordination.merge_shepherd_carry_forward import (
@@ -686,6 +687,17 @@ def node_to_candidate(
     auto_merge = node.get("autoMergeRequest") is not None
     effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
     evidence = evidence_from_node(node)
+    commits = (node.get("commits") or {}).get("nodes") or []
+    last = commits[-1] if commits and isinstance(commits[-1], Mapping) else {}
+    head_committed_at = str((last.get("commit") or {}).get("committedDate") or "")
+    timeline_events = (node.get("timelineItems") or {}).get("nodes") or []
+    comments = (node.get("comments") or {}).get("nodes") or []
+    retry_suppressed, retry_detail = has_deterministic_failure_or_unauthorized_requeue(
+        timeline_events,
+        comments,
+        head_sha=head_sha,
+        head_committed_at=head_committed_at,
+    )
     return PRCandidate(
         repo=repo,
         pr_number=number,
@@ -721,6 +733,8 @@ def node_to_candidate(
             ci_failures_from_commits(node, pr=number),
             pr=number,
         ),
+        retry_suppressed=retry_suppressed,
+        retry_suppressed_detail=retry_detail,
     )
 
 
