@@ -13,7 +13,13 @@
     "code-reviewer": ["codex", "claude", "cursor-agent"],
     "issue-remediator": ["claude", "codex", "cursor-agent"],
     "ad-hoc": ["claude", "codex", "cursor-agent"],
-    "mad-scientist": ["claude", "codex", "cursor-agent", "qwen", "deepseek-api"],
+    "mad-scientist": [
+      "claude",
+      "codex",
+      "cursor-agent",
+      "qwen",
+      "deepseek-api"
+    ],
     "pr-remediator": ["codex", "cursor-agent", "claude"],
     "test-hygiene": ["codex", "cursor-agent", "claude"],
     "chief-architect": ["claude", "codex", "cursor-agent"],
@@ -41,7 +47,13 @@
     "oss-scout": ["codex", "claude", "antigravity"],
     "tooling-scout": ["codex", "claude", "antigravity"]
   },
-  "unchanged_roles": ["barb", "bob", "fleet-dispatcher", "expert-panel", "rd-barb"],
+  "unchanged_roles": [
+    "barb",
+    "bob",
+    "fleet-dispatcher",
+    "expert-panel",
+    "rd-barb"
+  ],
   "antigravity_restricted_repo_bases": [
     "Gasification_Model",
     "Repository_Management",
