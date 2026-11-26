@@ -28,10 +28,10 @@ def code_requests_storage_lock(cache_path: Path) -> Iterator[None]:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     handle = lock_path.open("a+", encoding="utf-8")
     try:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)  # type: ignore[attr-defined]
         yield
     finally:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)  # type: ignore[attr-defined]
         handle.close()
 
 
