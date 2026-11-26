@@ -5,10 +5,11 @@ of the PR diff against ``main``. A PASS carries forward only when the fingerprin
 reviewed head equals the current head's, so real code changes (including mode changes) still
 need a fresh exact-head review.
 
-Only ``fix_pass_decision`` is operative. ``diff_fingerprint`` and ``pass_with_carry_forward``
-are ADVISORY and deliberately NOT wired into arming: ADR 0010 requires fresh independent
-acceptance whenever the integration tree changes, so any arming use needs an explicit ADR
-amendment first (panel th_2f46d79d092d, Option C).
+``fix_pass_decision`` and ``failed_fix_passes_from_reviews`` are operative.
+``diff_fingerprint`` and ``pass_with_carry_forward`` are ADVISORY and deliberately NOT
+wired into arming: ADR 0010 requires fresh independent acceptance whenever the
+integration tree changes, so any arming use needs an explicit ADR amendment first
+(panel th_2f46d79d092d, Option C).
 """
 
 from __future__ import annotations
@@ -21,6 +22,8 @@ from typing import Literal
 from coordination.merge_shepherd_exact_head import (
     DEFAULT_REVIEW_PASS_TTL_HOURS,
     HeadReviewPass,
+    _parse_recorded_at,
+    head_sha_matches,
     pass_at_head,
 )
 
@@ -62,6 +65,53 @@ def pass_with_carry_forward(
         if fresh:
             return True, "carried_forward_pass"
     return ok, detail
+
+
+def failed_fix_passes_from_reviews(passes: Sequence[HeadReviewPass], *, pr: int) -> int:
+    """Return failed fix attempts in the current open review cycle for ``pr``.
+
+    The first non-approve head is the original failure. Each later non-approve head
+    in that cycle is one failed fix pass. An approve closes the cycle. A later
+    verdict on the same head replaces the earlier one. Rows with an unparseable
+    timestamp are ignored, because they are not evidence of a failed fix.
+    """
+    known = tuple(row.head_sha for row in passes if row.pr == pr)
+    dated: list[tuple[datetime, HeadReviewPass]] = []
+    for row in passes:
+        if row.pr != pr:
+            continue
+        stamp = _parse_recorded_at(row.recorded_at)
+        if stamp is None:
+            continue
+        dated.append((stamp, row))
+    dated.sort(key=lambda item: item[0])
+
+    latest: dict[str, tuple[datetime, HeadReviewPass]] = {}
+    for stamp, row in dated:
+        key = ""
+        for existing in latest:
+            if head_sha_matches(existing, row.head_sha, known_shas=known):
+                key = existing
+                break
+        if not key:
+            key = row.head_sha.strip().lower()
+        if not key:
+            continue
+        previous = latest.get(key)
+        if previous is None or stamp >= previous[0]:
+            latest[key] = (stamp, row)
+
+    failed = 0
+    awaiting_fix = False
+    for _, row in sorted(latest.values(), key=lambda item: item[0]):
+        if row.verdict.strip().lower() == "approve":
+            failed = 0
+            awaiting_fix = False
+            continue
+        if awaiting_fix:
+            failed += 1
+        awaiting_fix = True
+    return failed
 
 
 def fix_pass_decision(*, failed_fix_passes: int) -> Literal["fix", "escalate"]:

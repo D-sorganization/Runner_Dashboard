@@ -8,6 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from coordination.merge_shepherd_carry_forward import fix_pass_decision
 from coordination.merge_shepherd_exact_head import (
     DEFAULT_REVIEW_PASS_TTL_HOURS,
     HeadReviewPass,
@@ -57,6 +58,7 @@ class IneligibleReason(_StrEnum):
     CHECKS_FAILED = "checks_failed"
     CHECKS_PENDING = "checks_pending"
     NO_EXACT_HEAD_PASS = "no_exact_head_pass"
+    FIX_PASS_CAP = "fix_pass_cap"
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,7 @@ class PRCandidate:
     line_cap: int = 0
     files_complete: bool = True
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS
+    failed_fix_passes: int = 0
 
 
 @dataclass(frozen=True)
@@ -96,6 +99,13 @@ class ShepherdDecision:
     reason: IneligibleReason | None = None
     detail: str = ""
     priority: bool = False
+
+
+def _fix_pass_capped(failed_fix_passes: int) -> bool:
+    """True when the open cycle has used its one fix pass and still has no fresh PASS."""
+    if failed_fix_passes < 0:
+        return True
+    return fix_pass_decision(failed_fix_passes=failed_fix_passes) == "escalate"
 
 
 def _normalize_repo_name(repo: str) -> str:
@@ -212,6 +222,15 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
         review_pass_ttl_hours=candidate.review_pass_ttl_hours,
     )
     if eligibility != "reviewed":
+        if _fix_pass_capped(candidate.failed_fix_passes):
+            return ShepherdDecision(
+                ShepherdAction.SKIP,
+                pr_num,
+                repo,
+                reason=IneligibleReason.FIX_PASS_CAP,
+                detail=f"escalate_after_{candidate.failed_fix_passes}_failed_fix_passes",
+                priority=priority,
+            )
         return ShepherdDecision(
             ShepherdAction.SKIP,
             pr_num,
