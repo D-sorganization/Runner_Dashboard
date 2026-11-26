@@ -2,6 +2,12 @@
 
 Split out of ``barb_continuity`` to keep that module under the line cap. The store
 class there mixes in :class:`BarbTaskInventoryMixin`; names are re-exported.
+
+``transition_handoff`` preserves ``surface``. It updates the state columns
+``handoff_state`` and ``status``, plus ``owner_persona``, ``fencing_epoch``,
+handoff metadata (``handoff_request``, ``handoff_resolution``, ``artifact_ref``,
+``next_action``), and ``updated_at``. The operator-facing map is
+``docs/agents/tooling-capabilities-matrix.md``.
 """
 
 from __future__ import annotations

@@ -338,10 +338,10 @@ def _presets_by_id(client: TestClient) -> dict[str, Any]:
 def test_fleet_decision_preset_pins_a_provider_and_model_per_seat(client: TestClient) -> None:
     presets = _presets_by_id(client)
     seats = {e["name"]: e for e in presets["fleet-decision"]["experts"]}
-    assert presets["fleet-decision"]["title"] == "Fleet decision panel (Argon / Astra / Fable)"
-    assert (seats["Argon"]["provider"], seats["Argon"]["model"]) == ("antigravity", "gemini-4-argon-high")
-    assert (seats["Astra"]["provider"], seats["Astra"]["model"]) == ("codex", "gpt-6-astra")
-    assert (seats["Fable"]["provider"], seats["Fable"]["model"]) == ("claude", "claude-fable-5-1")
+    assert presets["fleet-decision"]["title"] == "Fleet decision panel (Neon / Astra / Fable)"
+    assert (seats["Neon"]["provider"], seats["Neon"]["model"]) == ("antigravity", "gemini-4-neon")
+    assert (seats["Astra"]["provider"], seats["Astra"]["model"]) == ("codex", "gpt-6.2-astra")
+    assert (seats["Fable"]["provider"], seats["Fable"]["model"]) == ("claude", "claude-fable-5-2")
     assert all(e["available"] for e in seats.values())
     # Older presets stay valid: provider defaults to claude, model is null.
     assert presets["science"]["experts"][0]["provider"] == "claude"
@@ -354,8 +354,8 @@ def test_a_disabled_provider_marks_its_seat_unavailable_without_swapping_it(
 ) -> None:
     monkeypatch.setenv("STAFF_DISABLED_PROVIDERS", "antigravity")
     seats = {e["name"]: e for e in _presets_by_id(client)["fleet-decision"]["experts"]}
-    assert seats["Argon"]["available"] is False
-    assert seats["Argon"]["provider"] == "antigravity"  # visible, not silently replaced
+    assert seats["Neon"]["available"] is False
+    assert seats["Neon"]["provider"] == "antigravity"  # visible, not silently replaced
     assert seats["Astra"]["available"] is True and seats["Fable"]["available"] is True
 
 

@@ -15,6 +15,8 @@ from coordination.default_host_aliases import DEFAULT_HOST_ALIASES
 from coordination.fleet_efficiency import enrich_lane_receipt
 
 _DEFAULT_TTL_SEC = 3600
+# A checkout with no heartbeat for this long is expired even if ttl_sec has not elapsed (#4677).
+_STALE_HEARTBEAT_SEC = 900
 _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
 
@@ -388,6 +390,23 @@ class StaleLaneFenceError(RuntimeError):
     """Raised when a heartbeat/release presents a stale fence or wrong session."""
 
 
+class LaneNotActiveError(LookupError):
+    """Raised when a force-release finds no active checkout."""
+
+
+def _expire_inactive(conn: sqlite3.Connection, ts: float) -> None:
+    """Drop active checkouts whose TTL elapsed or whose heartbeat is at least 15 minutes old."""
+    conn.execute(
+        """
+        UPDATE lane_checkouts
+        SET status = 'expired'
+        WHERE status = 'active'
+          AND (expires_at <= ? OR (? - heartbeat_at) >= ?)
+        """,
+        (ts, ts, _STALE_HEARTBEAT_SEC),
+    )
+
+
 def _default_db_path() -> Path:
     base = Path(
         os.environ.get(
@@ -538,10 +557,7 @@ class LanePromptStore:
         ts = time.time() if now is None else float(now)
 
         def _tx(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-            conn.execute(
-                "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
-                (ts,),
-            )
+            _expire_inactive(conn, ts)
             rows = conn.execute("""
                 SELECT a.lane_id, a.role, a.repos_json, a.release_sha, a.package_hash,
                        a.subagent_model, a.max_children, a.task_focus, a.enabled,
@@ -628,9 +644,11 @@ class LanePromptStore:
             return rec
 
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
+            _expire_inactive(conn, ts)
             existing_idem = conn.execute(
                 """SELECT receipt_json FROM lane_checkouts
-                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?""",
+                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?
+                     AND status = 'active'""",
                 (scoped_idempotency_key, principal, session_id),
             ).fetchone()
             if existing_idem is not None:
@@ -639,16 +657,12 @@ class LanePromptStore:
             # Honor pre-scope database records only for the original owner.
             legacy_idem = conn.execute(
                 """SELECT receipt_json FROM lane_checkouts
-                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?""",
+                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?
+                     AND status = 'active'""",
                 (idempotency_key, principal, session_id),
             ).fetchone()
             if legacy_idem is not None:
                 return _check_receipt_compatible(conn, legacy_idem["receipt_json"])
-
-            conn.execute(
-                "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
-                (ts,),
-            )
 
             if lane_id is None and requested_role is None:
                 active_self = conn.execute(
@@ -852,6 +866,51 @@ class LanePromptStore:
 
         return self._run_tx(_tx)
 
+    def force_release(
+        self,
+        *,
+        actor: str,
+        reason: str = "operator force-release",
+        lane_id: str | None = None,
+        checkout_id: str | None = None,
+        now: float | None = None,
+    ) -> dict[str, Any]:
+        """Release an active checkout without the holder's fence token or session id.
+
+        The route admits only operator/admin principals. This frees a lane whose
+        process died inside the 15-minute heartbeat window (#4677).
+        """
+        if not lane_id and not checkout_id:
+            raise ValueError("lane_id or checkout_id is required")
+        ts = time.time() if now is None else float(now)
+
+        def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
+            if checkout_id:
+                row = conn.execute(
+                    "SELECT * FROM lane_checkouts WHERE checkout_id = ?",
+                    (checkout_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM lane_checkouts WHERE lane_id = ? AND status = 'active'",
+                    (lane_id,),
+                ).fetchone()
+            if row is None or row["status"] != "active":
+                raise LaneNotActiveError("No active lane checkout to force-release")
+            receipt = json.loads(row["receipt_json"])
+            receipt["status"] = "released"
+            receipt["released_at"] = ts
+            receipt["release_reason"] = reason
+            receipt["released_by"] = actor
+            receipt["force_released"] = True
+            conn.execute(
+                "UPDATE lane_checkouts SET status = 'released', receipt_json = ? WHERE checkout_id = ?",
+                (json.dumps(receipt), row["checkout_id"]),
+            )
+            return receipt
+
+        return self._run_tx(_tx)
+
     def health_summary(
         self,
         *,
@@ -867,10 +926,7 @@ class LanePromptStore:
         exp_window = max(60, int(expired_window_sec))
 
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
-            conn.execute(
-                "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
-                (ts,),
-            )
+            _expire_inactive(conn, ts)
             assignments = conn.execute(
                 "SELECT lane_id, role, task_focus, enabled FROM lane_assignments ORDER BY lane_id"
             ).fetchall()

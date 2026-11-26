@@ -3598,6 +3598,44 @@
         "title": "LaneCheckoutBody",
         "type": "object"
       },
+      "LaneForceReleaseBody": {
+        "description": "Operator release. Exactly one of ``lane_id`` or ``checkout_id`` is required.",
+        "properties": {
+          "checkout_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkout Id"
+          },
+          "lane_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lane Id"
+          },
+          "reason": {
+            "default": "operator force-release",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "title": "LaneForceReleaseBody",
+        "type": "object"
+      },
       "LaneHeartbeatBody": {
         "properties": {
           "checkout_id": {
@@ -14147,6 +14185,53 @@
           }
         ],
         "summary": "Post Lane Prompt Checkout",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/lane-prompts/force-release": {
+      "post": {
+        "description": "Release a dead checkout without the holder's session id or fence token.",
+        "operationId": "post_lane_prompt_force_release_api_coordination_lane_prompts_force_release_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LaneForceReleaseBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Lane Prompt Force Release Api Coordination Lane Prompts Force Release Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Lane Prompt Force Release",
         "tags": ["coordination"]
       }
     },
