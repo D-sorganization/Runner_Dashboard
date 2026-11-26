@@ -35,7 +35,7 @@ jobs:
           STATE_BRANCH=bot/recurring-scan-state
           CURSOR_FILE=.recurring-scan-cursor.json
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if git fetch origin "$STATE_BRANCH" 2>/dev/null && git cat-file -e "origin/$STATE_BRANCH:cursor.json" 2>/dev/null; then
             git show "origin/$STATE_BRANCH:cursor.json" > "$CURSOR_FILE"
           fi

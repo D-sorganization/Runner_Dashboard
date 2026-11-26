@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 from agent_remediation.provider_registry import cloud_mutation_allowed as _cloud_mutation_allowed
 from dashboard_config import ORG
+from staff.adapter_policies import board_secretary_launch_kwargs
 from staff.launch_guard import check_launch_allowed
 
 ExecutionMode = Literal["local", "cloud"]
@@ -205,7 +206,12 @@ def resolve_plan_execution(
         verdict = check_launch_allowed(req.repo, req.issue)
         if not verdict.allowed:
             raise ValueError(f"launch guard refused {req.repo}#{req.issue}: {verdict.reason}")
-    argv = adapter.build_command(prompt, "<workdir>", effective_model, **read_only_kwargs)
+    argv = adapter.build_command(
+        prompt,
+        "<workdir>",
+        effective_model,
+        **board_secretary_launch_kwargs(role, read_only_kwargs),
+    )
     return execution_mode, argv, "", lease
 
 
@@ -221,7 +227,13 @@ def resolve_execute_launch(
     argv = (
         list(plan.argv)
         if plan.execution_mode == "cloud"
-        else adapter.build_command(prompt, str(workdir), plan.model, **read_only_kwargs, **launch_paths)
+        else adapter.build_command(
+            prompt,
+            str(workdir),
+            plan.model,
+            **board_secretary_launch_kwargs(getattr(plan, "role", ""), read_only_kwargs),
+            **launch_paths,
+        )
     )
     stdin_payload = plan.cloud_stdin if plan.execution_mode == "cloud" and plan.cloud_stdin else None
     if plan.execution_mode == "cloud" and argv and argv[0] == "gh":

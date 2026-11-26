@@ -34,7 +34,9 @@ _CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "staff_model_tie
 # only -- ``ProviderAdapter.build_command`` gates on ``adapter.models`` directly, which stays
 # empty for claude so these aliases keep resolving through the CLI's own model names.
 _CLAUDE_CLI_ALIASES = frozenset({"haiku", "sonnet", "opus", "claude-opus-5-5", "claude-fable-5-2", "claude-fable-5-1"})
-_CODEX_CLI_MODELS = frozenset({"gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra"})
+_CODEX_CLI_MODELS = frozenset(
+    {"gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra"}
+)
 
 
 def allowed_models_for_provider(provider_id: str, adapter: ProviderAdapter | None = None) -> frozenset[str]:

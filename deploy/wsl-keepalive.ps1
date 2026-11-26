@@ -250,8 +250,12 @@ function Test-WslTeardownAllowed {
         [bool]$EmergencyOverride = $false,
         [string]$Initiator = 'wsl-keepalive-watchdog'
     )
-    $allowed = ($ActiveWorkers -le 0) -or $EmergencyOverride
-    $decisionReason = if ($ActiveWorkers -gt 0 -and -not $EmergencyOverride) {
+    $allowed = ($ActiveWorkers -eq 0) -or $EmergencyOverride
+    $decisionReason = if ($ActiveWorkers -lt 0 -and -not $EmergencyOverride) {
+        "worker_state_unknown"
+    } elseif ($ActiveWorkers -lt 0 -and $EmergencyOverride) {
+        "emergency_override_used (worker state unknown)"
+    } elseif ($ActiveWorkers -gt 0 -and -not $EmergencyOverride) {
         "active_runner_workers_running ($ActiveWorkers active)"
     } elseif ($ActiveWorkers -gt 0 -and $EmergencyOverride) {
         "emergency_override_used ($ActiveWorkers active workers bypassed)"
@@ -312,7 +316,8 @@ function Get-ActiveRunnerWorkers {
         }
     } catch { }
 
-    return 0
+    # A Windows process scan cannot prove a Linux distro has no workers.
+    return -1
 }
 
 function Write-TeardownAuditLog {

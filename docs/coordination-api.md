@@ -310,6 +310,10 @@ are excluded from recent-expiration alerts.
 
 Body `{session_id, idempotency_key, lane_id?, role?, ttl_sec?}` → atomically resumes an active session
 checkout or claims an eligible lane slot with a monotonically increasing `fence_token` (`409` on conflict).
+When `role` is set, the hub never substitutes another assignment role: a successful receipt's `role` equals
+the requested role (provider suffixes like `acceptance-review:codex` are normalized), and a mismatch or missing
+slot returns `409` with `{role_unavailable: true, reason, requested_role, assigned_role?}` instead of a silent
+fallback.
 
 ### `POST /api/coordination/lane-prompts/heartbeat`
 

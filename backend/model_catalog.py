@@ -60,7 +60,7 @@ _IGNORED_TOKENS = frozenset(
 )
 
 DEFAULT_SEED_CATALOG: dict[str, tuple[str, ...]] = {
-    "codex": ("gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra"),
+    "codex": ("gpt-6.2-astra", "gpt-6.2-sol", "gpt-6-luna", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-astra"),
     "claude": ("claude-opus-5-5", "claude-fable-5-2", "claude-fable-5-1", "opus", "sonnet", "haiku"),
     "cursor-agent": _CURSOR_AGENT_MODELS,
     "antigravity": _ANTIGRAVITY_MODELS,

@@ -111,7 +111,7 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           if [ -n "$(git status --porcelain docs/fleet-in-flight.md)" ]; then
             git add docs/fleet-in-flight.md
             git commit -m "chore(dashboard): refresh fleet-in-flight.md"

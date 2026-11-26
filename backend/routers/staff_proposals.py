@@ -8,7 +8,7 @@ from typing import Any
 
 import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from identity import Principal, format_caller, require_scope
+from identity import Principal, format_caller, principal_has_scope, require_principal, require_scope
 from pydantic import BaseModel, Field
 from routers.staff_threads import _get_store_or_503
 from staff.actions import (
@@ -86,6 +86,20 @@ async def _execute_off_loop(proposal_id: str, caller: Principal, store: Any, rev
             execute_proposal, proposal_id=proposal_id, approver=caller, store=store, params_hash=reviewed_hash or ""
         )
     )
+
+
+def _assert_caller_may_create_proposal(caller: Principal, action_name: str) -> None:
+    """Creating a proposal needs ``staff.chat`` or the registered action's ``required_scope`` (#4605)."""
+    if principal_has_scope(caller, "staff.chat"):
+        return
+    act = ACTION_REGISTRY.get(action_name)
+    required = act.required_scope if act else ""
+    if required and principal_has_scope(caller, required):
+        return
+    detail = f"Principal '{caller.id}' needs 'staff.chat'" + (
+        f" or '{required}' to propose '{action_name}'" if required else " to create action proposals"
+    )
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
 
 
 def _require_reviewed_hash(prop: Any, reviewed_hash: str | None) -> None:
@@ -199,7 +213,7 @@ async def list_proposals(
 )
 async def create_proposal(
     body: CreateActionProposalRequest,
-    caller: Principal = Depends(require_scope("staff.chat")),  # noqa: B008
+    caller: Principal = Depends(require_principal),  # noqa: B008
 ) -> dict[str, Any]:
     """Create a new action proposal within a conversation thread.
 
@@ -208,6 +222,7 @@ async def create_proposal(
     """
     if ACTION_REGISTRY.get(body.action) is None:
         raise HTTPException(status_code=422, detail=f"Action '{body.action}' is not registered")
+    _assert_caller_may_create_proposal(caller, body.action)
     store = _get_store_or_503()
     try:
         if store.get_thread(body.thread_id) is None:

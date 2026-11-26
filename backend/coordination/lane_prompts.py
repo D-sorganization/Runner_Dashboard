@@ -11,13 +11,23 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from coordination.default_host_aliases import DEFAULT_HOST_ALIASES
 from coordination.fleet_efficiency import enrich_lane_receipt
 
 _DEFAULT_TTL_SEC = 3600
 _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
 
-_PROVIDER_PREFIXES = ("codex", "claude", "agy", "cursor", "gemini", "deepseek", "qwen", "grok")
+_PROVIDER_PREFIXES = (
+    "codex",
+    "claude",
+    "agy",
+    "cursor",
+    "gemini",
+    "deepseek",
+    "qwen",
+    "grok",
+)
 
 # Staff registry and lane catalog use different provider spellings; normalize to lane ids
 # (short prefix form) before comparing checkout callers to seeded assignments.
@@ -52,6 +62,17 @@ def normalize_lane_provider(provider: str | None) -> str | None:
     return _LANE_PROVIDER_ALIASES.get(key, key)
 
 
+def normalize_requested_role(role: str | None) -> str | None:
+    """Normalize caller-requested fleet role ids (strip provider suffixes like ``:codex``)."""
+    if role is None:
+        return None
+    text = role.strip()
+    if not text:
+        return None
+    base, _, _suffix = text.partition(":")
+    return base.strip() or None
+
+
 # Hub-provisioned Cursor CLI lanes (#4565). ``release_sha`` / ``package_hash`` are
 # placeholders until the hub publishes a fleet prompt package revision.
 _DEFAULT_RELEASE_SHA = "bootstrap"
@@ -62,6 +83,17 @@ _DEFAULT_QWEN_MODEL = "qwen3.8-flash"
 _DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-pro"
 
 DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
+    {
+        "lane_id": "codex-ct-1",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "AffineDrift"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "gpt-6-luna",
+        "max_children": 3,
+        "task_focus": "CT host Codex lane: UpstreamDrift and AffineDrift backlog completion.",
+        "enabled": True,
+    },
     {
         "lane_id": "cursor-ct-1",
         "role": "backlog-completion",
@@ -150,11 +182,57 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
         "task_focus": "node-b host DeepSeek API CLI lane (draft-only qualification).",
         "enabled": True,
     },
+    {
+        "lane_id": "claude-desk-2",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "claude-sonnet-4-6",
+        "max_children": 2,
+        "task_focus": "hub-a host Claude CLI lane 2 (UpstreamDrift Epic #15660 & backlog).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "claude-desk-3",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "claude-sonnet-4-6",
+        "max_children": 2,
+        "task_focus": "hub-a host Claude CLI lane 3 (UpstreamDrift Epic #15660 & backlog).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "claude-desk-4",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "Runner_Dashboard", "Repository_Management"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "claude-sonnet-4-6",
+        "max_children": 2,
+        "task_focus": "hub-a host Claude CLI lane 4 (UpstreamDrift Epic #15660 & backlog).",
+        "enabled": True,
+    },
+    {
+        "lane_id": "claude-oglaptop-2",
+        "role": "backlog-completion",
+        "repos": ["UpstreamDrift", "Tools", "Gasification_Model"],
+        "release_sha": _DEFAULT_RELEASE_SHA,
+        "package_hash": _DEFAULT_PACKAGE_HASH,
+        "subagent_model": "claude-sonnet-4-6",
+        "max_children": 2,
+        "task_focus": "node-b host Claude CLI lane 2 (UpstreamDrift & Tools).",
+        "enabled": True,
+    },
 )
 
 
 def _load_host_aliases() -> dict[str, str]:
-    aliases: dict[str, str] = {}
+    # Built-in defaults live in default_host_aliases (the one allowlisted module);
+    # host_aliases.json and RUNNER_DASHBOARD_HOST_ALIASES override them.
+    aliases: dict[str, str] = dict(DEFAULT_HOST_ALIASES)
     cfg_dir = Path(
         os.environ.get(
             "RUNNER_DASHBOARD_CONFIG_DIR",
@@ -288,6 +366,22 @@ def _lane_host(lane_id: str) -> str | None:
 
 class LaneConflictError(RuntimeError):
     """Raised when a lane is already actively checked out or none are eligible."""
+
+
+class LaneRoleUnavailableError(LaneConflictError):
+    """Raised when the caller's requested role cannot be satisfied (#4630)."""
+
+    def __init__(
+        self,
+        reason: str,
+        *,
+        requested_role: str,
+        assigned_role: str | None = None,
+    ) -> None:
+        self.reason = reason
+        self.requested_role = requested_role
+        self.assigned_role = assigned_role
+        super().__init__(reason)
 
 
 class StaleLaneFenceError(RuntimeError):
@@ -493,6 +587,7 @@ class LanePromptStore:
         ttl = max(60, int(ttl_sec))
         want_provider = _infer_provider(session_id, provider, principal)
         want_host = _infer_host(session_id, host)
+        requested_role = normalize_requested_role(role)
         # Idempotency keys are caller supplied, so scope them to the session and
         # principal to prevent replaying another caller's receipt and fence.
         scoped_idempotency_key = json.dumps(
@@ -500,6 +595,26 @@ class LanePromptStore:
             ensure_ascii=False,
             separators=(",", ":"),
         )
+
+        def _assert_receipt_role(rec: dict[str, Any]) -> None:
+            if requested_role is None:
+                return
+            assigned = str(rec.get("role") or "")
+            if assigned != requested_role:
+                raise LaneRoleUnavailableError(
+                    f"Active checkout role {assigned!r} does not match requested role {requested_role!r}",
+                    requested_role=requested_role,
+                    assigned_role=assigned or None,
+                )
+
+        def _assert_assignment_role(assigned: str, *, lane_id: str) -> None:
+            if requested_role is None or assigned == requested_role:
+                return
+            raise LaneRoleUnavailableError(
+                f"Lane {lane_id!r} is assigned role {assigned!r}, not {requested_role!r}",
+                requested_role=requested_role,
+                assigned_role=assigned,
+            )
 
         def _check_receipt_compatible(conn: sqlite3.Connection, receipt_json: str) -> dict[str, Any]:
             rec = json.loads(receipt_json)
@@ -509,6 +624,7 @@ class LanePromptStore:
             ).fetchone()
             if row is None or not _is_lane_compatible(row, want_provider, want_host):
                 raise LaneConflictError(f"Lane {rec['lane_id']!r} is incompatible with caller provider/host")
+            _assert_receipt_role(rec)
             return rec
 
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
@@ -534,7 +650,7 @@ class LanePromptStore:
                 (ts,),
             )
 
-            if lane_id is None and role is None:
+            if lane_id is None and requested_role is None:
                 active_self = conn.execute(
                     """SELECT c.receipt_json, a.lane_id, a.subagent_model
                        FROM lane_checkouts c
@@ -543,7 +659,9 @@ class LanePromptStore:
                     (session_id,),
                 ).fetchone()
                 if active_self is not None and _is_lane_compatible(active_self, want_provider, want_host):
-                    return enrich_lane_receipt(json.loads(active_self["receipt_json"]))
+                    rec = json.loads(active_self["receipt_json"])
+                    _assert_receipt_role(rec)
+                    return enrich_lane_receipt(rec)
 
             if lane_id is not None:
                 row = conn.execute(
@@ -554,6 +672,7 @@ class LanePromptStore:
                     raise LaneConflictError(f"Lane {lane_id!r} not found or disabled")
                 if not _is_lane_compatible(row, want_provider, want_host):
                     raise LaneConflictError(f"Lane {lane_id!r} is incompatible with caller provider/host")
+                _assert_assignment_role(str(row["role"]), lane_id=lane_id)
                 held = conn.execute(
                     "SELECT session_id FROM lane_checkouts WHERE lane_id = ? AND status = 'active'",
                     (lane_id,),
@@ -565,7 +684,7 @@ class LanePromptStore:
                             (lane_id,),
                         ).fetchone()
                         assert rec is not None
-                        return enrich_lane_receipt(json.loads(rec["receipt_json"]))
+                        return enrich_lane_receipt(_check_receipt_compatible(conn, rec["receipt_json"]))
                     raise LaneConflictError(f"Lane {lane_id!r} already held by {held['session_id']}")
                 target = row
             else:
@@ -576,9 +695,9 @@ class LanePromptStore:
                     WHERE a.enabled = 1 AND c.checkout_id IS NULL
                 """
                 params: list[Any] = []
-                if role is not None:
+                if requested_role is not None:
                     query += " AND a.role = ?"
-                    params.append(role)
+                    params.append(requested_role)
                 query += " ORDER BY a.lane_id"
                 candidates = conn.execute(query, params).fetchall()
                 filtered = [cand for cand in candidates if _is_lane_compatible(cand, want_provider, want_host)]
@@ -590,6 +709,11 @@ class LanePromptStore:
                         )
                     )
                 if not filtered:
+                    if requested_role is not None:
+                        raise LaneRoleUnavailableError(
+                            f"No unclaimed lane available for role {requested_role!r}",
+                            requested_role=requested_role,
+                        )
                     raise LaneConflictError("No eligible unclaimed lane available")
                 target = filtered[0]
 
@@ -604,6 +728,7 @@ class LanePromptStore:
                 "checkout_id": checkout_id,
                 "lane_id": target["lane_id"],
                 "role": target["role"],
+                **({"requested_role": requested_role} if requested_role is not None else {}),
                 "repos": json.loads(target["repos_json"]),
                 "principal": principal,
                 "session_id": session_id,

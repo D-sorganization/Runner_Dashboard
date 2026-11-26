@@ -76,6 +76,61 @@ def test_wilson_ci_95_bounds() -> None:
     assert 0.25 < high0 < 0.45
 
 
+def test_effective_tokens_per_merge_null_without_verified_merges() -> None:
+    """#4653: do not fall back to per-PR token cost when prs_merged is zero."""
+    open_only = [
+        _make_run(
+            "r_open_pr",
+            provider="codex",
+            model="gpt-5.4",
+            status="succeeded",
+            pr_number=2401,
+            input_tokens=40_000,
+            output_tokens=4_000,
+        ),
+        _make_run(
+            "r_no_pr_facts",
+            provider="codex",
+            model="gpt-5.4",
+            status="succeeded",
+            pr_number=2402,
+            input_tokens=20_000,
+            output_tokens=2_000,
+        ),
+    ]
+    open_card = next(
+        c
+        for c in build_report_cards(
+            open_only,
+            {(full_repo("Runner_Dashboard"), 2401): PrFact(state="open", ci_first_pass=False, followup_fix=False)},
+        )["leaderboard"]
+        if c["provider"] == "codex"
+    )
+    assert open_card["prs_merged"] == 0
+    assert open_card["effective_tokens_per_pr"] is not None
+    assert open_card["effective_tokens_per_merge"] is None
+
+    merged_run = _make_run(
+        "r_merged",
+        provider="codex",
+        model="gpt-5.4",
+        status="succeeded",
+        pr_number=2403,
+        input_tokens=30_000,
+        output_tokens=3_000,
+    )
+    merged_card = next(
+        c
+        for c in build_report_cards(
+            [merged_run],
+            {(full_repo("Runner_Dashboard"), 2403): PrFact(state="merged", ci_first_pass=True, followup_fix=False)},
+        )["leaderboard"]
+        if c["provider"] == "codex"
+    )
+    assert merged_card["prs_merged"] == 1
+    assert merged_card["effective_tokens_per_merge"] == 33_000.0
+
+
 def test_build_report_cards_flags_zero_yield_sink_and_recommends_higher_tier() -> None:
     runs = [
         # 6 clean first-pass claude runs opening PRs
@@ -267,6 +322,7 @@ def test_barb_continuity_parallel_leases_turnover_compliance_and_fenced_handoff(
     assert h3["transitioned"] is True
     assert h3["task"]["handoff_state"] == "resume_ready"
     assert h3["task"]["status"] == "in_progress"
+    assert h3["task"]["surface"] == task["surface"]
 
     h4 = store.transition_handoff(task_id=tid, target_state="completed", actor_persona="codex-barb", expected_epoch=4)
     assert h4["transitioned"] is True

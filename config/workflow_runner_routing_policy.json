@@ -50,6 +50,7 @@
         "publish-guard.yml",
         "rd-barb-hold-integrity.yml",
         "merge-shepherd.yml",
+        "noreply-identity-check.yml",
         "recurring-scan.yml",
         "reusable-pr-cap.yml",
         "reusable-pr-freshness-guard.yml",

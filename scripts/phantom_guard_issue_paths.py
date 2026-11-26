@@ -2,7 +2,9 @@
 """Extract repository file paths from an issue body for anti-phantom Rule 3.
 
 HTTP route literals such as ``/api/v1/metrics/weekly-summary`` must not be treated
-as repo paths (they are not ``api/v1/...`` files on disk).
+as repo paths (they are not ``api/v1/...`` files on disk). Change fragments under
+``changes/`` are repo files and must count, or a PR that fixes those fragments
+fails Rule 3 (#4393).
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ import re
 import sys
 
 _REPO_PATH = re.compile(
-    r"(?:backend|frontend/src|src|tests|rust_core)/[A-Za-z0-9_./-]+",
+    r"(?:backend|frontend/src|src|tests|rust_core|changes)/[A-Za-z0-9_./-]+",
 )
 
 

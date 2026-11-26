@@ -177,11 +177,19 @@ def migrate_placements_off_host(
     removed: list[str] = []
     moved: list[tuple[str, str]] = []
 
+    def _migration_target_order(role: RoleSpec) -> tuple[str, ...]:
+        if not _is_heavy_role(role) or len(targets) <= 1:
+            return targets
+        from staff.role_routing_config import desk_fallback_host  # noqa: PLC0415
+
+        if targets[-1] == desk_fallback_host():
+            # Overload policy tuple (workers, then desk): never treat desk as primary.
+            return targets
+        # Legacy tuples put the memory-heavy worker last (e.g. hub-a, node-a).
+        return (targets[-1], *(t for t in targets if t != targets[-1]))
+
     def _pick_target(role: RoleSpec) -> str:
-        preferred = targets[-1] if _is_heavy_role(role) and len(targets) > 1 else targets[0]
-        if role_schedule_allowed_on_machine(role.name, preferred, registry):
-            return preferred
-        for candidate in targets:
+        for candidate in _migration_target_order(role):
             if role_schedule_allowed_on_machine(role.name, candidate, registry):
                 return candidate
         raise ValueError(f"no migration target allows scheduled role '{role.name}' (targets={list(targets)!r})")

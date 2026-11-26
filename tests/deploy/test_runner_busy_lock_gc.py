@@ -4,7 +4,7 @@ The JOB_STARTED hook records ``worker_pid=`` (its ``Runner.Worker`` ancestor)
 next to the legacy ``pid=`` (the short-lived hook shell, dead for the whole
 job). A lock is stale-by-pid ONLY when ``worker_pid`` is present and that pid
 is dead or no longer a ``Runner.Worker`` (pid reuse). A lock without
-``worker_pid`` falls back to the age rule; a dead hook ``pid=`` never deletes
+``worker_pid`` remains protective regardless of age; a dead hook ``pid=`` never deletes
 it.
 
 These drive the real bash functions against a fake proc root
@@ -123,7 +123,7 @@ def test_cleanup_stale_busy_locks_only_removes_stale_by_worker_pid(tmp_path: Pat
     assert sorted(p.stem for p in locks.glob("*.lock")) == ["legacy", "live"]
 
 
-def test_age_rule_still_removes_old_legacy_lock(tmp_path: Path) -> None:
+def test_age_rule_keeps_old_legacy_lock(tmp_path: Path) -> None:
     proc = _fake_proc(tmp_path, {})
     locks = tmp_path / "locks"
     locks.mkdir()
@@ -135,7 +135,7 @@ def test_age_rule_still_removes_old_legacy_lock(tmp_path: Path) -> None:
     result = _run_cleanup_fn(tmp_path, proc, "cleanup_stale_busy_locks")
 
     assert result.returncode == 0, result.stderr
-    assert not lock.exists()
+    assert lock.exists()
 
 
 def test_missing_proc_root_never_deletes(tmp_path: Path) -> None:
@@ -202,3 +202,15 @@ def test_hook_lock_body_keeps_pid_and_adds_worker_pid() -> None:
     assert "printf 'pid=%s\\n' \"$$\"" in text, "legacy pid= must stay for compatibility"
     assert re.search(r'_find_worker_pid "\$\{?PPID', text), "hook must start the ancestor walk at $PPID"
     assert "worker_pid=" in text
+
+
+def test_same_worker_command_with_reused_starttime_is_stale(tmp_path: Path) -> None:
+    proc = _fake_proc(tmp_path, {100: (WORKER_CMDLINE, 1)})
+    (proc / "100" / "stat").write_text("100 (Runner.Worker) S " + "0 " * 18 + "456 0\n")
+    locks = tmp_path / "locks"
+    locks.mkdir()
+    lock = locks / "r.lock"
+    lock.write_text("worker_pid=100\nworker_starttime=123\n")
+    result = _run_cleanup_fn(tmp_path, proc, "cleanup_stale_busy_locks")
+    assert result.returncode == 0, result.stderr
+    assert not lock.exists()

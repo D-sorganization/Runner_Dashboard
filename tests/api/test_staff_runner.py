@@ -19,10 +19,11 @@ from typing import Any
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+
 from staff import adapters as adapters_mod
 from staff import roles as roles_mod
+from staff import run_link, runner_registry
 from staff import runner as runner_mod
-from staff import runner_registry
 from staff import store as store_mod
 
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
@@ -428,7 +429,9 @@ def test_runner_finishes_and_calls_handle_run_status_change_when_opens_pr_raises
     staff: runner_mod.StaffRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     handled: list[tuple[str, str]] = []
-    orig_handle = runner_mod.handle_run_status_change
+    # Terminal status is emitted from runner_ops via run_link, not the
+    # name runner.py bound at import. Spy on the function finish actually calls.
+    orig_handle = run_link.handle_run_status_change
 
     def fake_handle(*args: Any, **kwargs: Any) -> None:
         rec = args[0] if args else kwargs.get("run")
@@ -437,7 +440,7 @@ def test_runner_finishes_and_calls_handle_run_status_change_when_opens_pr_raises
             handled.append((rec.id, st))
         orig_handle(*args, **kwargs)
 
-    monkeypatch.setattr(runner_mod, "handle_run_status_change", fake_handle)
+    monkeypatch.setattr(run_link, "handle_run_status_change", fake_handle)
 
     def exploding_opens_pr(role: str) -> bool:
         raise RuntimeError("broken opens_pr resolver")

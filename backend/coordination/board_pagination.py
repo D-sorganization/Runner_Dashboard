@@ -95,11 +95,35 @@ def _parse_comment_envelope(comment: dict[str, Any]) -> tuple[dict[str, Any] | N
     return (None, str(user), f"Invalid coordination envelope: {err}") if err else (env, str(user), None)
 
 
+def _may_bind(
+    owners: dict[str, tuple[str, str]],
+    released: set[str],
+    env: dict[str, Any],
+    owner: tuple[str, str],
+) -> bool:
+    """Whether ``env`` is consistent with the session's existing binding (RM #3063 / #4624).
+
+    Pre: ``owners`` and ``released`` are the replay maps for bound authors and sessions freed
+    by an earlier ``release``. Post: returns ``True`` when the event may advance replay state —
+    exact owner match, or a new ``presence`` from the same author after ``release``.
+    """
+    current = owners[str(env["session"])]
+    if current == owner:
+        return True
+    return str(env["kind"]) == "presence" and str(env["session"]) in released and current[1] == owner[1]
+
+
 def _apply_event(env: dict[str, Any], author: str, ref_now: datetime, st: dict[str, Any]) -> None:
     sess, repo, kind, owner = str(env["session"]), str(env["repo"]), str(env["kind"]), (str(env["repo"]), author)
-    owners, active, messages, acks = st["owners"], st["active"], st["messages"], st["acks"]
+    owners, active, messages, acks, released = (
+        st["owners"],
+        st["active"],
+        st["messages"],
+        st["acks"],
+        st["released"],
+    )
     unexp = kind == "presence" and datetime.fromisoformat(str(env["expires"]).replace("Z", "+00:00")) > ref_now
-    if sess in owners and owners[sess] != owner:
+    if sess in owners and not _may_bind(owners, released, env, owner):
         st["replay_w"].append(w := f"Rejected identity change for {sess}")
         st["rejected"].setdefault(sess, []).append(w)
         if kind == "presence" and unexp:
@@ -107,6 +131,7 @@ def _apply_event(env: dict[str, Any], author: str, ref_now: datetime, st: dict[s
         return
     if kind == "presence":
         owners[sess] = owner
+        released.discard(sess)
         if unexp:
             active[sess] = _session(env)
         else:
@@ -115,6 +140,7 @@ def _apply_event(env: dict[str, Any], author: str, ref_now: datetime, st: dict[s
         st["replay_w"].append(w := f"Rejected unregistered sender {sess}")
         st["rejected"].setdefault(sess, []).append(w)
     elif kind == "release":
+        released.add(sess)
         active.pop(sess, None)
     elif kind == "message":
         messages.append(env)
@@ -205,6 +231,9 @@ def _paginate_pages(
             st["replay_w"].extend(w for w in _last_predecessor_warnings if w not in st["replay_w"])
         for c in batch:
             if isinstance(c, dict):
+                if re.fullmatch(r"\s*<!--\s*agent-message\s+v1\s*-->\s*", str(c.get("body") or "")):
+                    st["replay_w"].append(f"Skipped marker-only coordination comment {c.get('id', 'unknown')}")
+                    continue
                 env, author, err = _parse_comment_envelope(c)
                 if err:
                     st["read_w"].append(err)
@@ -250,7 +279,7 @@ def paginate_board_comments(
 ) -> dict[str, Any]:  # fmt: skip
     """Paginate RM#2376 comments across all pages (>1,000 comments) and replay coordination."""
     st: dict[str, Any] = {
-        "active": {}, "owners": {}, "messages": [], "acks": set(),
+        "active": {}, "owners": {}, "released": set(), "messages": [], "acks": set(),
         "replay_w": [], "live_c": [], "read_w": [], "rejected": {},
     }  # fmt: skip
     done, total = _paginate_pages(fetch_page, per_page, max_pages, now or datetime.now(UTC), st)

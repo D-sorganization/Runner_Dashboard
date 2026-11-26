@@ -22,10 +22,6 @@ from identity import Principal, require_scope
 from security import check_dispatch_rate, validate_owner_repo_format, validate_repo_slug
 from system_utils import run_cmd
 
-from .remediation_retired import (
-    router as retired_router,
-)
-
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
 UTC = getattr(_dt_mod, "UTC", _dt_mod.timezone.utc)  # noqa: UP017
 
@@ -78,7 +74,6 @@ from .remediation_ci_fix import (  # noqa: E402
 log = logging.getLogger("dashboard.remediation")
 router = APIRouter(tags=["remediation", "agents"])
 router.include_router(bulk_router)
-router.include_router(retired_router)
 router.include_router(ci_fix_router)
 
 

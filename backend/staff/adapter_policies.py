@@ -7,7 +7,8 @@ Contains the shared shell allow/deny lists, permission bypass constants, and pol
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+import shlex
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -149,6 +150,111 @@ def claude_unattended_tools() -> tuple[str, str]:
     allowed = [*_CLAUDE_UNATTENDED_TOOLS, *(f"Bash({cmd}:*)" for cmd in UNATTENDED_SHELL_ALLOW)]
     denied = [f"Bash({cmd}:*)" for cmd in UNATTENDED_SHELL_DENY]
     return ",".join(allowed), ",".join(denied)
+
+
+# Board-secretary keeps host_shell false. Claude dontAsk therefore only receives
+# these archive-validator prefixes, not Bash(python:*) / Bash(pytest:*) (#4656).
+_BOARD_SECRETARY_BROAD_BASH = frozenset({"Bash(python:*)", "Bash(python3:*)", "Bash(pytest:*)"})
+_BOARD_SECRETARY_PYTHON_PREFIXES: tuple[str, ...] = (
+    "python -m scripts.board",
+    "python3 -m scripts.board",
+)
+_BOARD_SECRETARY_PYTEST_EXACT: tuple[str, ...] = tuple(
+    command
+    for path in (
+        "tests/test_board_meeting_init.py",
+        "tests/test_library_inventory.py",
+        "tests/test_board_proposals.py",
+        "tests/test_board_proposal_decisions.py",
+        "scripts/board",
+        "scripts/board/validate_library_inventory.py",
+        "tests/scripts/board",
+    )
+    for command in (f"pytest {path}", f"pytest {path} -q")
+)
+_PYTEST_FLAGS = frozenset({"-q", "-qq", "--tb=short", "--tb=line", "--tb=no"})
+_BOARD_ARCHIVE_PYTEST_PATHS: tuple[str, ...] = (
+    "tests/test_board_meeting_init.py",
+    "tests/test_library_inventory.py",
+    "tests/test_board_proposals.py",
+    "tests/test_board_proposal_decisions.py",
+    "scripts/board/",
+    "tests/scripts/board/",
+)
+# ``&`` is included on its own. shlex treats a background operator as an ordinary
+# token, so ``python -m scripts.board … & touch …`` would otherwise pass the
+# first-three-token python check (#4656).
+_SHELL_META = ("&&", "||", "&", ";", "|", "`", "$(", "\n", ">", "<")
+
+
+def shell_control_operator_present(command: str) -> bool:
+    """True when ``command`` contains a shell control operator.
+
+    Pre: ``command`` is the raw tool string, not an argv list. Post: a single
+    background ``&`` counts, including when it is glued to the previous token.
+    """
+    return any(meta in command for meta in _SHELL_META)
+
+
+def claude_board_secretary_tools() -> tuple[str, str]:
+    """Claude allow/deny for board-secretary. Pytest rules are exact; no ``:*`` suffix.
+
+    Pre: shared unattended lists are the baseline. Post: blanket python/pytest rules
+    are gone, ``python -m scripts.board`` stays a prefix, and bare ``Bash`` is absent.
+    """
+    allowed, denied = claude_unattended_tools()
+    kept = [entry for entry in allowed.split(",") if entry not in _BOARD_SECRETARY_BROAD_BASH]
+    kept.extend(f"Bash({prefix}:*)" for prefix in _BOARD_SECRETARY_PYTHON_PREFIXES)
+    kept.extend(f"Bash({command})" for command in _BOARD_SECRETARY_PYTEST_EXACT)
+    return ",".join(kept), denied
+
+
+def board_secretary_launch_kwargs(role: Any, kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    """Pass ``role`` into ``build_command`` only for board-secretary.
+
+    Pre: ``kwargs`` is the existing launch mapping. Post: other roles are unchanged
+    so older ``build_command`` signatures keep working (#4656).
+    """
+    merged = dict(kwargs)
+    name = str(getattr(role, "name", role) or "")
+    if name == "board-secretary":
+        merged["role"] = "board-secretary"
+    return merged
+
+
+def board_secretary_archive_command_allowed(command: str) -> bool:
+    """True only for ``python -m scripts.board.*`` or pytest on the archive validator.
+
+    Pre: ``command`` is one argv line, not a shell script. Post: compound commands,
+    background ``&``, ``python -c``, and pytest paths outside the board archive
+    return False.
+    """
+    text = command.strip()
+    if not text or shell_control_operator_present(text):
+        return False
+    try:
+        parts = shlex.split(text, posix=True)
+    except ValueError:
+        return False
+    if not parts:
+        return False
+    executable = parts[0]
+    if executable in {"python", "python3"}:
+        return (
+            len(parts) >= 3
+            and parts[1] == "-m"
+            and (parts[2] == "scripts.board" or parts[2].startswith("scripts.board."))
+        )
+    if executable == "pytest":
+        flags = [arg for arg in parts[1:] if arg.startswith("-")]
+        positional = [arg for arg in parts[1:] if not arg.startswith("-")]
+        if not positional or any(flag not in _PYTEST_FLAGS for flag in flags):
+            return False
+        return all(
+            any(path == allowed or path.startswith(allowed) for allowed in _BOARD_ARCHIVE_PYTEST_PATHS)
+            for path in positional
+        )
+    return False
 
 
 # ── Code-read-only unattended runs (#1659) ──────────────────────────────────

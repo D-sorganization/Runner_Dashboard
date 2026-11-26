@@ -82,6 +82,9 @@ PRICE_TABLE: dict[str, dict[str, Price]] = {
     },
     "antigravity": {
         "gemini-4-argon": Price(1.25, 10.0, estimate=True),
+        "gemini-4-neon": Price(1.25, 10.0, estimate=True),
+        "gemini-4-carbon": Price(1.25, 10.0, estimate=True),
+        "gemini-4-hydrogen": Price(0.15, 0.60, estimate=True),
         "gemini-3.8-flash": Price(0.15, 0.60, estimate=True),
         "gemini-2.5-pro": Price(1.25, 10.0, estimate=True),
         "gemini-2.5-flash": Price(0.15, 0.60, estimate=True),

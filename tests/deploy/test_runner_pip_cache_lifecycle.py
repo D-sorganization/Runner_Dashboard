@@ -132,3 +132,14 @@ class TestConfigureRunnerPipCache:
         advice = "sudo systemctl restart 'actions.runner.*.service'"
         assert "systemctl restart" not in text.replace(advice, "")
         assert "systemctl stop" not in text
+
+    def test_runner_caches_are_private_and_idempotent(self, tmp_path: Path) -> None:
+        runners = [self._fake_runner(tmp_path, f"runner-{n}") for n in (1, 2)]
+        for runner in runners:
+            result = self._run("--runner-dir", as_bash_path(runner))
+            assert result.returncode == 0, result.stderr
+            lines = (runner / ".env").read_text(encoding="utf-8").splitlines()
+            for variable, directory in (("UV_CACHE_DIR", "_uv-cache"), ("CONDA_PKGS_DIRS", "_conda-pkgs")):
+                assert f"{variable}={as_bash_path(runner)}/_work/{directory}" in lines
+                assert (runner / "_work" / directory).is_dir()
+            assert "unchanged" in self._run("--runner-dir", as_bash_path(runner)).stdout
