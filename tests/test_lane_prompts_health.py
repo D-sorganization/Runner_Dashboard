@@ -217,7 +217,7 @@ def test_missing_heartbeat_expires_before_ttl_and_allows_reclaim(tmp_path: Path)
         principal="agent-cursor",
         idempotency_key="dead-key",
         lane_id="cursor-ct-2",
-        host="controltower",
+        host="ct",
         ttl_sec=3600,
         now=now,
     )
@@ -227,7 +227,7 @@ def test_missing_heartbeat_expires_before_ttl_and_allows_reclaim(tmp_path: Path)
             principal="agent-cursor",
             idempotency_key="relaunch-early",
             lane_id="cursor-ct-2",
-            host="controltower",
+            host="ct",
             ttl_sec=3600,
             now=now + 899,
         )
@@ -236,7 +236,7 @@ def test_missing_heartbeat_expires_before_ttl_and_allows_reclaim(tmp_path: Path)
         principal="agent-cursor",
         idempotency_key="relaunch-key",
         lane_id="cursor-ct-2",
-        host="controltower",
+        host="ct",
         ttl_sec=3600,
         now=now + 900,
     )
@@ -265,7 +265,7 @@ def test_force_release_frees_a_fresh_checkout_without_fence(tmp_path: Path) -> N
         principal="agent-cursor",
         idempotency_key="dead-key",
         lane_id="cursor-ct-2",
-        host="controltower",
+        host="ct",
         ttl_sec=3600,
         now=now,
     )
@@ -285,7 +285,7 @@ def test_force_release_frees_a_fresh_checkout_without_fence(tmp_path: Path) -> N
         principal="agent-cursor",
         idempotency_key="relaunch-key",
         lane_id="cursor-ct-2",
-        host="controltower",
+        host="ct",
         ttl_sec=3600,
         now=now + 40,
     )

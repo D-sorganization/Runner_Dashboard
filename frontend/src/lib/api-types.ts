@@ -1662,6 +1662,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/lane-prompts/force-release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Lane Prompt Force Release
+         * @description Release a dead checkout without the holder's session id or fence token.
+         */
+        post: operations["post_lane_prompt_force_release_api_coordination_lane_prompts_force_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/lane-prompts/health": {
         parameters: {
             query?: never;
@@ -11168,6 +11188,21 @@ export interface components {
              */
             ttl_sec: number;
         };
+        /**
+         * LaneForceReleaseBody
+         * @description Operator release. Exactly one of ``lane_id`` or ``checkout_id`` is required.
+         */
+        LaneForceReleaseBody: {
+            /** Checkout Id */
+            checkout_id?: string | null;
+            /** Lane Id */
+            lane_id?: string | null;
+            /**
+             * Reason
+             * @default operator force-release
+             */
+            reason: string;
+        };
         /** LaneHeartbeatBody */
         LaneHeartbeatBody: {
             /** Checkout Id */
@@ -16981,6 +17016,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["LaneCheckoutBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_lane_prompt_force_release_api_coordination_lane_prompts_force_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LaneForceReleaseBody"];
             };
         };
         responses: {
