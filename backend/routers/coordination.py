@@ -18,10 +18,12 @@ Routes (all under ``/api/coordination``):
   GET  /jobs/releases       Recent job-board claim releases (activity projection; slice toward #2785).
   GET  /briefing            Priorities, holds, sessions, staff runs, claim protocol and fleet rules.
   GET  /postman/reports     Newest postman dry-run reports (what it would deliver; nothing is sent).
+  POST /lane-prompts/force-release  Operator/admin release of a live checkout without its fence (#4677).
 
 Auth: reads ``require_fleet_peer``; writes ``require_coordination_writer``
 (scope ``coordination.write`` or the loopback orchestrator peer) plus the
-CSRF header. A bot principal ``agent-<name>`` may only act as ``<name>`` on
+CSRF header. Force-release uses ``require_priorities_writer`` (operator/admin).
+A bot principal ``agent-<name>`` may only act as ``<name>`` on
 sessions ``<name>-*`` (403 otherwise). Reads degrade to ``available: false``
 with HTTP 200; failed RM writes return 502 with the script's ``error`` and
 ``guidance``; 409 when the issue is held or the sender has no live presence.
@@ -37,7 +39,7 @@ from coordination import job_releases as job_releases_mod
 from coordination import jobs as jobs_mod
 from coordination import lane_prompts as lane_prompts_mod
 from coordination import postman_runner, service
-from coordination.auth import Caller, require_coordination_writer
+from coordination.auth import Caller, require_coordination_writer, require_priorities_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
 from coordination.claims import AgingPrBlockedError, ClaimHeldError
@@ -68,6 +70,7 @@ from routers.repo_query import bare_repo_query as _repo
 log = logging.getLogger("dashboard.coordination")
 router = APIRouter(prefix="/api/coordination", tags=["coordination"])
 WRITER = Depends(require_coordination_writer)  # one write-auth dependency for every POST
+OPERATOR = Depends(require_priorities_writer)  # force-release: operator/admin only (#4677)
 
 
 async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str) -> dict[str, Any]:
@@ -254,6 +257,14 @@ class LaneReleaseBody(BaseModel):
     reason: str = Field(default="completed", max_length=128)
 
 
+class LaneForceReleaseBody(BaseModel):
+    """Operator release. Exactly one of ``lane_id`` or ``checkout_id`` is required."""
+
+    lane_id: str | None = Field(default=None, max_length=64)
+    checkout_id: str | None = Field(default=None, max_length=64)
+    reason: str = Field(default="operator force-release", min_length=1, max_length=128)
+
+
 def _check_lane_session(caller: Caller, session_id: str) -> None:
     """Keep lane checkout writes within the caller's authenticated session namespace."""
     try:
@@ -342,3 +353,23 @@ async def post_lane_prompt_release(body: LaneReleaseBody, caller: Caller = WRITE
         )
     except lane_prompts_mod.StaleLaneFenceError as exc:
         raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
+
+
+@router.post("/lane-prompts/force-release")
+async def post_lane_prompt_force_release(
+    body: LaneForceReleaseBody,
+    caller: Caller = OPERATOR,
+) -> dict[str, Any]:
+    """Release a dead checkout without the holder's session id or fence token."""
+    if not body.lane_id and not body.checkout_id:
+        raise HTTPException(status_code=422, detail={"error": "lane_id or checkout_id is required"})
+    try:
+        return await run_in_threadpool(
+            lane_prompts_mod.get_lane_prompt_store().force_release,
+            actor=caller.label,
+            reason=body.reason,
+            lane_id=body.lane_id,
+            checkout_id=body.checkout_id,
+        )
+    except lane_prompts_mod.LaneNotActiveError as exc:
+        raise HTTPException(status_code=404, detail={"error": str(exc)}) from exc

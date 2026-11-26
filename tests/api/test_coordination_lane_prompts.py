@@ -10,9 +10,7 @@ from typing import Any
 
 import pytest
 
-pytest.importorskip(
-    "fcntl", reason="coordination_fake_rm transitively requires fcntl on POSIX"
-)
+pytest.importorskip("fcntl", reason="coordination_fake_rm transitively requires fcntl on POSIX")
 from coordination_fake_rm import FakeRM, bot, install
 from fastapi.testclient import TestClient
 
@@ -40,17 +38,18 @@ def _make_store(tmp_path: Path):
 
 @pytest.fixture
 def lane_rm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[FakeRM]:
+    import identity
+
     principals = {
         "codex-token": bot("agent-codex"),
         "claude-token": bot("agent-claude"),
+        "op-token": identity.Principal(id="op-1", type="human", name="Operator", roles=["operator"]),
     }
     yield from install(tmp_path, monkeypatch, principals, repos="Runner_Dashboard")
 
 
 @pytest.fixture
-def lane_api(
-    lane_rm: FakeRM, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[TestClient, Any]:
+def lane_api(lane_rm: FakeRM, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[TestClient, Any]:
     from coordination import lane_prompts
 
     store = lane_prompts.LanePromptStore(db_path=tmp_path / "lane-api.sqlite3")
@@ -75,6 +74,7 @@ def lane_api(
 _XHR = {"X-Requested-With": "XMLHttpRequest"}
 _CODEX = {"Authorization": "Bearer codex-token", **_XHR}
 _CLAUDE = {"Authorization": "Bearer claude-token", **_XHR}
+_OPERATOR = {"Authorization": "Bearer op-token", **_XHR}
 
 
 def test_concurrent_checkout_single_winner_and_idempotency_survives_restart(
@@ -282,9 +282,7 @@ def test_checkout_rejects_a_session_outside_the_bot_namespace(
 
 
 @pytest.mark.parametrize("path", ["heartbeat", "release"])
-def test_lane_mutations_reject_another_agents_session(
-    lane_api: tuple[TestClient, Any], path: str
-) -> None:
+def test_lane_mutations_reject_another_agents_session(lane_api: tuple[TestClient, Any], path: str) -> None:
     client, store = lane_api
     checkout = store.checkout(
         session_id="codex-owner",
@@ -299,9 +297,7 @@ def test_lane_mutations_reject_another_agents_session(
     }
     if path == "release":
         body["reason"] = "completed"
-    response = client.post(
-        f"/api/coordination/lane-prompts/{path}", json=body, headers=_CLAUDE
-    )
+    response = client.post(f"/api/coordination/lane-prompts/{path}", json=body, headers=_CLAUDE)
     assert response.status_code == 403, response.text
     assert store.list_catalog()[0]["active_checkout_id"] == checkout["checkout_id"]
 
@@ -330,3 +326,40 @@ def test_idempotency_key_is_scoped_to_principal_and_session(tmp_path: Path) -> N
     assert second["checkout_id"] != first["checkout_id"]
     assert second["session_id"] == "codex-owner-2"
     assert second["principal"] == "agent-claude"
+
+
+def test_force_release_route_rejects_bots_and_accepts_operator(lane_api: tuple[TestClient, Any]) -> None:
+    """Bots cannot force-release; an operator can, without the holder's fence (#4677)."""
+    client, store = lane_api
+    checkout = store.checkout(
+        session_id="codex-owner",
+        principal="agent-codex",
+        idempotency_key="owner-key",
+        lane_id="lane-a",
+    )
+    denied = client.post(
+        "/api/coordination/lane-prompts/force-release",
+        json={"lane_id": "lane-a", "reason": "dead pid"},
+        headers=_CLAUDE,
+    )
+    assert denied.status_code == 403, denied.text
+    assert store.list_catalog()[0]["active_checkout_id"] == checkout["checkout_id"]
+
+    missing = client.post(
+        "/api/coordination/lane-prompts/force-release",
+        json={"reason": "dead pid"},
+        headers=_OPERATOR,
+    )
+    assert missing.status_code == 422, missing.text
+
+    released = client.post(
+        "/api/coordination/lane-prompts/force-release",
+        json={"checkout_id": checkout["checkout_id"], "reason": "dead pid"},
+        headers=_OPERATOR,
+    )
+    assert released.status_code == 200, released.text
+    body = released.json()
+    assert body["force_released"] is True
+    assert body["released_by"] == "principal:op-1"
+    assert body["status"] == "released"
+    assert store.list_catalog()[0]["active_checkout_id"] is None
