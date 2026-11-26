@@ -360,6 +360,10 @@ def test_pagination_wiring_conflicts_and_validation(monkeypatch: pytest.MonkeyPa
     board_mod.reset_cache()
     assert board_mod.board_page_fetcher is board_mod.default_board_page_fetcher
     monkeypatch.setattr("coordination.board_pagination.gh_api_json", lambda u: [_presence_comment(1, session="live-a")])
+    monkeypatch.setattr(
+        "coordination.board_pagination.board_config",
+        lambda: ("D-sorganization/Repository_Management", 3089, 3, []),
+    )
     d_lim = {"available": True, "complete": False, "comment_limit_exceeded": True, "sessions": [], "warnings": [_PAGE_LIMIT_WARNING, "Rejected identity change for old-dead"]}  # noqa: E501  # fmt: skip
     p_lim = board_mod._parse_read(ScriptResult(0, json.dumps(d_lim), ""))
     assert p_lim["complete"] is True and p_lim["degraded_history"] is True and p_lim["read_warnings"] == []

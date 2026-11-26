@@ -20,6 +20,14 @@ _PREDECESSOR_TRUNCATION = (
     "older binding history may be missing"
 )
 _last_predecessor_warnings: list[str] = []
+_BOARD_REPO = "D-sorganization/Repository_Management"
+_MISSING_BOARD_CONFIG = "RM config/agent_communication.json is absent"
+
+
+class BoardConfigUnavailable(RuntimeError):
+    """The RM checkout has no board route. Callers must fail closed, not guess an old issue."""
+
+
 SESSION_KEYS = ("session", "agent", "repo", "issue", "branch", "paths", "goals", "expires", "at")
 MAX_EVENT_BYTES = 24000
 BoardPageFetcher = Callable[[int, int], list[dict[str, Any]]]
@@ -173,18 +181,30 @@ def _read_predecessor_comments(
 
 
 def board_config() -> tuple[str, int, int, list[int]]:
-    root, repo, issue, days, preds = rm_root(), "D-sorganization/Repository_Management", 2539, 3, []
-    if root and (cfg := root / "config" / "agent_communication.json").is_file():
-        try:
-            c = json.loads(cfg.read_text(encoding="utf-8"))
-            if not isinstance(c, dict):
-                raise ValueError("root must be a dict")
-            repo = str(c.get("board_repo") or repo)
-            issue = int(c.get("board_issue") or issue)
-            days = int(c.get("board_window_days") or days)
-            preds = [int(p) for p in c.get("board_predecessors") or []]
-        except Exception as exc:
-            raise RuntimeError(f"Invalid agent_communication.json: {exc}") from exc
+    """Return ``(repo, issue, window_days, predecessors)`` from RM config.
+
+    Pre: ``config/agent_communication.json`` exists and names ``board_issue``.
+    Post: raises :class:`BoardConfigUnavailable` when the file or issue is absent.
+    A present file that is not a JSON object still raises ``RuntimeError``.
+    """
+    root = rm_root()
+    cfg = (root / "config" / "agent_communication.json") if root else None
+    if cfg is None or not cfg.is_file():
+        raise BoardConfigUnavailable(_MISSING_BOARD_CONFIG)
+    try:
+        parsed = json.loads(cfg.read_text(encoding="utf-8"))
+        if not isinstance(parsed, dict):
+            raise ValueError("root must be a dict")
+        if parsed.get("board_issue") in (None, ""):
+            raise BoardConfigUnavailable("board_issue is absent")
+        repo = str(parsed.get("board_repo") or _BOARD_REPO)
+        issue = int(parsed["board_issue"])
+        days = int(parsed.get("board_window_days") or 3)
+        preds = [int(p) for p in parsed.get("board_predecessors") or []]
+    except BoardConfigUnavailable:
+        raise
+    except Exception as exc:
+        raise RuntimeError(f"Invalid agent_communication.json: {exc}") from exc
     return repo, issue, days, preds
 
 
@@ -277,7 +297,15 @@ def paginate_board_comments(
     fetch_page: BoardPageFetcher, *, per_page: int = BOARD_PAGE_SIZE, max_pages: int = BOARD_MAX_PAGES,
     now: datetime | None = None, session: str | None = None,
 ) -> dict[str, Any]:  # fmt: skip
-    """Paginate RM#2376 comments across all pages (>1,000 comments) and replay coordination."""
+    """Paginate the configured coordination board and replay its comments.
+
+    Post: a missing RM config returns ``available: False`` and does not fetch comments.
+    """
+    if fetch_page is default_board_page_fetcher:
+        try:
+            board_config()
+        except BoardConfigUnavailable as exc:
+            return _board_unavailable(str(exc))
     st: dict[str, Any] = {
         "active": {}, "owners": {}, "released": set(), "messages": [], "acks": set(),
         "replay_w": [], "live_c": [], "read_w": [], "rejected": {},
@@ -297,7 +325,29 @@ def paginate_board_comments(
     }  # fmt: skip
 
 
+def _board_unavailable(reason: str) -> dict[str, Any]:
+    """One fail-closed board read. Post: no session is treated as live."""
+    return {
+        "available": False,
+        "reason": reason,
+        "complete": False,
+        "pages_complete": False,
+        "degraded_history": False,
+        "read_warnings": [reason],
+        "replay_warnings": [],
+        "active_conflicts": [],
+        "comment_limit_exceeded": False,
+        "comment_count": 0,
+        "sessions": [],
+        "messages": [],
+        "conflicts": [],
+        "warnings": [reason],
+    }
+
+
 def _merge_paginated(data: dict[str, Any], pag: dict[str, Any]) -> dict[str, Any]:
+    if pag.get("available") is False:
+        return _board_unavailable(str(pag.get("reason") or "coordination board unavailable"))
     done, pw = bool(pag.get("pages_complete", pag.get("complete", False))), pag.get
     sess = pw("sessions", []) if done else [_session(s) for s in data.get("sessions") or [] if isinstance(s, dict)]
     live_names = {str(s.get("session")) for s in sess if isinstance(s, dict)}

@@ -29,8 +29,7 @@ from staff.workspace import rm_root
 
 log = logging.getLogger("dashboard.coordination.postman_runner")
 
-DEFAULT_BOARD_ISSUE = 2376  # RM config/agent_communication.json on 2026-10-27; read live when RM is present
-FULL_AT = 2500  # GitHub's comment limit per issue (#1576 hit it)
+FULL_AT = 2500  # GitHub's per-issue comment cap. Routing comes only from RM config.
 REPORT_KEEP = 50
 REPORT_FILE = "postman_reports.jsonl"
 STATE_FILE = "postman_state.json"
@@ -180,9 +179,19 @@ def _engine(
 
 
 def _load_state(directory: Path) -> PostmanState:
-    return PostmanState.load(
-        directory / STATE_FILE, default_board_issue=configured_board_issue() or DEFAULT_BOARD_ISSUE
-    )
+    """Load the cursor, then follow the configured board when it has rotated.
+
+    Pre: RM config names a board issue.
+    Post: raises :class:`BoardUnavailableError` when that config is absent.
+    A saved cursor for an older issue is moved to the configured issue.
+    """
+    configured = configured_board_issue()
+    if configured is None:
+        raise BoardUnavailableError("RM config/agent_communication.json is absent")
+    state = PostmanState.load(directory / STATE_FILE, default_board_issue=configured)
+    if state.board_issue != configured:
+        state.board_issue = configured
+    return state
 
 
 def seed_cursor(
@@ -240,7 +249,19 @@ def run_dry_cycle(
 ) -> dict[str, Any]:
     """Plan one postman pass, record it and return the report. Never sends, registers or saves the cursor."""
     directory = directory or data_dir()
-    state = _load_state(directory)
+    try:
+        state = _load_state(directory)
+    except BoardUnavailableError as exc:
+        entry = {
+            "at": clock().isoformat(),
+            "dry_run": True,
+            "available": False,
+            "board_issue": None,
+            "error": str(exc),
+        }
+        append_report(directory, entry)
+        log.info("postman dry run unavailable: %s", exc)
+        return entry
     engine = _engine(board_port, source, roster_ids, state, clock)
     try:
         entry = report_entry(engine.cycle(dry_run=True), clock())

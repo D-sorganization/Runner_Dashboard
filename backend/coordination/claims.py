@@ -31,7 +31,7 @@ from coordination import board as board_mod
 from coordination import claim_state as claim_state_mod
 from coordination import gh_cli
 from coordination.board import BOARD_COMMENT_LIMIT, RMScriptError
-from coordination.board_pagination import board_config
+from coordination.board_pagination import BoardConfigUnavailable, board_config
 from coordination.gh_cli import gh_api_json
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from coordination.rm_scripts import ScriptResult, run_module
@@ -211,7 +211,11 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
             "reason": str(state.get("reason") or "coordination board unavailable"),
             "held": None,
         }  # noqa: E501
-    b_iss = board_config()[1]
+    try:
+        b_iss = board_config()[1]
+        presence = f"active board presence on RM #{b_iss}"
+    except BoardConfigUnavailable:
+        presence = "active board presence"
     for sess in state.get("sessions") or []:
         if str(sess.get("repo") or "").casefold() == repo.casefold() and sess.get("issue") == issue:
             if _is_non_reserving_session(sess):
@@ -221,7 +225,7 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
                 "held": True,
                 "agent": str(sess.get("agent") or ""),
                 "session": str(sess.get("session") or ""),
-                "reason": f"active board presence on RM #{b_iss}",
+                "reason": presence,
                 "expires_at": sess.get("expires") or None,
             }
     if state.get("comment_limit_exceeded") or (
