@@ -1,15 +1,15 @@
 {
   "identities": [
-    {"id": "289268526", "login": "d-sorggeneralagent[bot]"},
-    {"id": "289268093", "login": "d-sorgclaudeagent[bot]"},
-    {"id": "289268460", "login": "d-sorgcodexagent[bot]"},
-    {"id": "289268162", "login": "d-sorggeminiagent[bot]"},
-    {"id": "277936729", "login": "d-sorg-jules[bot]"},
-    {"id": "335604065", "login": "openbotgit"},
-    {"id": "245172974", "login": "cursor-com"},
-    {"id": "201670782", "login": "cursoragent[bot]"},
-    {"id": "276345145", "login": "codex-scheduled-tasks[bot]"},
-    {"id": "41898282", "login": "github-actions[bot]"},
-    {"id": "198168927", "login": "dieterolson"}
+    { "id": "289268526", "login": "d-sorggeneralagent[bot]" },
+    { "id": "289268093", "login": "d-sorgclaudeagent[bot]" },
+    { "id": "289268460", "login": "d-sorgcodexagent[bot]" },
+    { "id": "289268162", "login": "d-sorggeminiagent[bot]" },
+    { "id": "277936729", "login": "d-sorg-jules[bot]" },
+    { "id": "335604065", "login": "openbotgit" },
+    { "id": "245172974", "login": "cursor-com" },
+    { "id": "201670782", "login": "cursoragent[bot]" },
+    { "id": "276345145", "login": "codex-scheduled-tasks[bot]" },
+    { "id": "41898282", "login": "github-actions[bot]" },
+    { "id": "198168927", "login": "dieterolson" }
   ]
 }
