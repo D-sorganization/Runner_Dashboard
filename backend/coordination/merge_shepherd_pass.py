@@ -26,7 +26,12 @@ from coordination.merge_shepherd import (
     get_auto_merge_flag,
     rank_candidates_for_shepherding,
 )
-from coordination.merge_shepherd_carry_forward import failed_fix_passes_from_reviews
+from coordination.merge_shepherd_carry_forward import (
+    FIX_PASS_ESCALATION_AUDIENCE,
+    FIX_PASS_ESCALATION_MARK,
+    HeadCheckFailure,
+    failed_fix_passes_from_cycle,
+)
 from coordination.merge_shepherd_exact_head import (
     DEFAULT_REVIEW_PASS_TTL_HOURS,
     HeadReviewPass,
@@ -97,9 +102,10 @@ query($owner: String!, $name: String!) {
         }
         autoMergeRequest { enabledAt }
         mergeQueueEntry { position }
-        commits(last: 1) {
+        commits(last: 20) {
           nodes {
             commit {
+              oid
               committedDate
               statusCheckRollup { state }
             }
@@ -206,6 +212,7 @@ class PassSummary:
     backoff: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     inaccessible_repos: list[dict[str, str]] = field(default_factory=list)
+    escalations: list[dict[str, Any]] = field(default_factory=list)
 
 
 def default_skip_path(repo_root: Path) -> Path:
@@ -243,13 +250,56 @@ def _repo_arm_cap(repo: str) -> int:
     return ARM_CAP_RD if repo == RD_REPO else ARM_CAP_DEFAULT
 
 
-def _checks_state(node: Mapping[str, Any]) -> str:
-    commits = (node.get("commits") or {}).get("nodes") or []
+def _commit_nodes(node: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    raw = (node.get("commits") or {}).get("nodes") or []
+    commits: list[Mapping[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        commit = item.get("commit")
+        if isinstance(commit, Mapping):
+            commits.append(commit)
+    return commits
+
+
+def _head_commit(node: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The head commit. Prefer ``headRefOid``; otherwise the last node.
+
+    ``commits(last: N)`` is chronological, so the last node is the newest head
+    when the oid is absent (older fixtures).
+    """
+    commits = _commit_nodes(node)
     if not commits:
-        return "UNKNOWN"
-    commit = commits[0].get("commit") if isinstance(commits[0], Mapping) else {}
-    rollup = (commit or {}).get("statusCheckRollup") if isinstance(commit, Mapping) else {}
+        return {}
+    head = str(node.get("headRefOid") or "").strip().lower()
+    if head:
+        for commit in commits:
+            if str(commit.get("oid") or "").strip().lower() == head:
+                return commit
+    return commits[-1]
+
+
+def _checks_state(node: Mapping[str, Any]) -> str:
+    commit = _head_commit(node)
+    rollup = commit.get("statusCheckRollup") if commit else {}
     return str((rollup or {}).get("state") or "UNKNOWN").upper()
+
+
+def ci_failures_from_commits(node: Mapping[str, Any], *, pr: int) -> tuple[HeadCheckFailure, ...]:
+    """CI-failed heads in ``node``. A commit without an oid or time is not evidence."""
+    if pr <= 0:
+        raise ValueError("pr must be > 0")
+    failures: list[HeadCheckFailure] = []
+    for commit in _commit_nodes(node):
+        state = str((commit.get("statusCheckRollup") or {}).get("state") or "").upper()
+        if state not in {"FAILURE", "ERROR"}:
+            continue
+        sha = str(commit.get("oid") or "").strip()
+        recorded = str(commit.get("committedDate") or "").strip()
+        if not sha or not recorded:
+            continue
+        failures.append(HeadCheckFailure(pr=pr, head_sha=sha, recorded_at=recorded, state=state))
+    return tuple(failures)
 
 
 def _label_names(node: Mapping[str, Any]) -> tuple[str, ...]:
@@ -508,7 +558,11 @@ def node_to_candidate(
         line_cap=effective_line_cap,
         files_complete=files_complete,
         review_pass_ttl_hours=review_pass_ttl_hours,
-        failed_fix_passes=failed_fix_passes_from_reviews(review_passes, pr=number),
+        failed_fix_passes=failed_fix_passes_from_cycle(
+            review_passes,
+            ci_failures_from_commits(node, pr=number),
+            pr=number,
+        ),
     )
 
 
@@ -590,6 +644,24 @@ def plan_repo_disarms(
     return actions
 
 
+def _skip_row_from_gate(repo: str, number: int, gate: ShepherdDecision) -> dict[str, Any]:
+    """Audit row for a non-arm decision. A fix-pass cap carries the Barb escalation."""
+    if gate.reason == IneligibleReason.FIX_PASS_CAP:
+        row: dict[str, Any] = {"repo": repo, "pr": number, "reason": gate.reason.value}
+        if gate.escalation:
+            row["escalation"] = {
+                "audience": FIX_PASS_ESCALATION_AUDIENCE,
+                "mark": FIX_PASS_ESCALATION_MARK,
+                "notice": gate.escalation,
+            }
+        return row
+    if gate.reason == IneligibleReason.NO_EXACT_HEAD_PASS:
+        reason = f"no_approval:{gate.detail}"
+    else:
+        reason = gate.reason.value if gate.reason else gate.detail or "skip"
+    return {"repo": repo, "pr": number, "reason": reason}
+
+
 def plan_repo_pass(
     repo: str,
     nodes: Sequence[Mapping[str, Any]],
@@ -620,7 +692,8 @@ def plan_repo_pass(
         if node.get("isDraft"):
             continue
         pre = pre_filter_skip_reason(node, repo=repo, skip_list=skip_list, holds=holds)
-        if pre:
+        checks_pre = pre if pre in {"checks_failed", "checks_error"} else ""
+        if pre and not checks_pre:
             skip_rows.append({"repo": repo, "pr": int(node["number"]), "reason": pre})
             continue
         paths, additions, deletions, files_complete = _pr_file_metadata(node)
@@ -646,13 +719,12 @@ def plan_repo_pass(
             files_complete=files_complete,
         )
         gate = evaluate_pr_shepherd_eligibility(cand)
+        if checks_pre and gate.reason != IneligibleReason.FIX_PASS_CAP:
+            skip_rows.append({"repo": repo, "pr": number, "reason": checks_pre})
+            continue
         if gate.action != ShepherdAction.AUTO_ARM:
             if gate.action == ShepherdAction.SKIP:
-                if gate.reason == IneligibleReason.NO_EXACT_HEAD_PASS:
-                    skip_reason = f"no_approval:{gate.detail}"
-                else:
-                    skip_reason = gate.reason.value if gate.reason else gate.detail or "skip"
-                skip_rows.append({"repo": repo, "pr": number, "reason": skip_reason})
+                skip_rows.append(_skip_row_from_gate(repo, number, gate))
             continue
         eligibility_by_pr[number] = "reviewed"
         candidates.append(cand)
@@ -777,6 +849,7 @@ def run_merge_shepherd_pass(
         }
         summary.repos.append(repo_row)
         summary.skipped.extend(skips)
+        summary.escalations.extend(row for row in skips if row.get("reason") == IneligibleReason.FIX_PASS_CAP.value)
         for act in disarm_actions:
             summary.disarmed.append(
                 {
@@ -818,4 +891,5 @@ def summary_to_json(summary: PassSummary) -> dict[str, Any]:
         "backoff": summary.backoff,
         "errors": summary.errors,
         "inaccessible_repos": summary.inaccessible_repos,
+        "escalations": summary.escalations,
     }

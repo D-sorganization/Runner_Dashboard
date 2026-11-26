@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from coordination.merge_shepherd_carry_forward import fix_pass_decision
+from coordination.merge_shepherd_carry_forward import fix_pass_decision, fix_pass_escalation_notice
 from coordination.merge_shepherd_exact_head import (
     DEFAULT_REVIEW_PASS_TTL_HOURS,
     HeadReviewPass,
@@ -99,6 +99,7 @@ class ShepherdDecision:
     reason: IneligibleReason | None = None
     detail: str = ""
     priority: bool = False
+    escalation: str = ""
 
 
 def _fix_pass_capped(failed_fix_passes: int) -> bool:
@@ -106,6 +107,26 @@ def _fix_pass_capped(failed_fix_passes: int) -> bool:
     if failed_fix_passes < 0:
         return True
     return fix_pass_decision(failed_fix_passes=failed_fix_passes) == "escalate"
+
+
+def _fix_pass_cap_decision(candidate: PRCandidate, *, priority: bool) -> ShepherdDecision:
+    """Skip auto-arm and carry the Barb escalation notice for a capped cycle."""
+    sha = str(candidate.head_sha or "").strip() or "unknown"
+    notice = fix_pass_escalation_notice(
+        repo=candidate.repo,
+        pr=candidate.pr_number,
+        failed_fix_passes=max(candidate.failed_fix_passes, 1),
+        head_sha=sha,
+    )
+    return ShepherdDecision(
+        ShepherdAction.SKIP,
+        candidate.pr_number,
+        candidate.repo,
+        reason=IneligibleReason.FIX_PASS_CAP,
+        detail=notice,
+        priority=priority,
+        escalation=notice,
+    )
 
 
 def _normalize_repo_name(repo: str) -> str:
@@ -187,6 +208,8 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
             ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.CHECKS_PENDING, priority=priority
         )
     if checks != "SUCCESS":
+        if _fix_pass_capped(candidate.failed_fix_passes):
+            return _fix_pass_cap_decision(candidate, priority=priority)
         return ShepherdDecision(
             ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.CHECKS_FAILED, priority=priority
         )
@@ -223,14 +246,7 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
     )
     if eligibility != "reviewed":
         if _fix_pass_capped(candidate.failed_fix_passes):
-            return ShepherdDecision(
-                ShepherdAction.SKIP,
-                pr_num,
-                repo,
-                reason=IneligibleReason.FIX_PASS_CAP,
-                detail=f"escalate_after_{candidate.failed_fix_passes}_failed_fix_passes",
-                priority=priority,
-            )
+            return _fix_pass_cap_decision(candidate, priority=priority)
         return ShepherdDecision(
             ShepherdAction.SKIP,
             pr_num,

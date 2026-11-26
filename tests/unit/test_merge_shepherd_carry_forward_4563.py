@@ -12,8 +12,11 @@ from coordination.merge_shepherd import (
     evaluate_pr_shepherd_eligibility,
 )
 from coordination.merge_shepherd_carry_forward import (
+    FIX_PASS_ESCALATION_MARK,
     MAX_FIX_PASSES,
+    HeadCheckFailure,
     diff_fingerprint,
+    failed_fix_passes_from_cycle,
     failed_fix_passes_from_reviews,
     fix_pass_decision,
     pass_with_carry_forward,
@@ -245,6 +248,77 @@ def test_node_to_candidate_counts_failed_fix_passes() -> None:
         ],
     )
     assert candidate.failed_fix_passes == 1
+
+
+def _ci(sha: str, *, at: str, pr: int = 7) -> HeadCheckFailure:
+    return HeadCheckFailure(pr=pr, head_sha=sha, recorded_at=at, state="FAILURE")
+
+
+def test_one_ci_failure_is_the_original_failure() -> None:
+    count = failed_fix_passes_from_cycle([], [_ci(OLD, at="2026-11-19T10:00:00+00:00")], pr=7)
+    assert count == 0
+    assert fix_pass_decision(failed_fix_passes=count) == "fix"
+
+
+def test_second_ci_failed_head_is_one_failed_fix() -> None:
+    count = failed_fix_passes_from_cycle(
+        [],
+        [_ci(OLD, at="2026-11-19T10:00:00+00:00"), _ci(NEW, at="2026-11-19T12:00:00+00:00")],
+        pr=7,
+    )
+    assert count == 1
+    assert fix_pass_decision(failed_fix_passes=count) == "escalate"
+
+
+def test_review_rejection_then_ci_failure_on_a_new_head_escalates() -> None:
+    count = failed_fix_passes_from_cycle(
+        [_verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00")],
+        [_ci(NEW, at="2026-11-19T12:00:00+00:00")],
+        pr=7,
+    )
+    assert count == 1
+
+
+def test_ci_and_review_failure_on_the_same_head_count_once() -> None:
+    count = failed_fix_passes_from_cycle(
+        [_verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00")],
+        [_ci(OLD, at="2026-11-19T10:05:00+00:00")],
+        pr=7,
+    )
+    assert count == 0
+
+
+def test_approve_after_ci_failure_closes_the_cycle() -> None:
+    count = failed_fix_passes_from_cycle(
+        [_verdict(NEW, "approve", at="2026-11-19T12:00:00+00:00")],
+        [_ci(OLD, at="2026-11-19T10:00:00+00:00")],
+        pr=7,
+    )
+    assert count == 0
+
+
+def test_checks_failure_escalates_when_the_fix_cap_is_reached() -> None:
+    head = "d" * 40
+    decision = evaluate_pr_shepherd_eligibility(
+        PRCandidate(
+            "Runner_Dashboard",
+            7,
+            checks_status="FAILURE",
+            head_sha=head,
+            failed_fix_passes=1,
+        )
+    )
+    assert (decision.action, decision.reason) == (ShepherdAction.SKIP, IneligibleReason.FIX_PASS_CAP)
+    assert decision.escalation.startswith(FIX_PASS_ESCALATION_MARK)
+    assert "barb" in decision.escalation
+
+
+def test_one_checks_failure_still_allows_the_fix() -> None:
+    decision = evaluate_pr_shepherd_eligibility(
+        PRCandidate("Runner_Dashboard", 7, checks_status="FAILURE", head_sha=OLD, failed_fix_passes=0)
+    )
+    assert (decision.action, decision.reason) == (ShepherdAction.SKIP, IneligibleReason.CHECKS_FAILED)
+    assert decision.escalation == ""
 
 
 def test_carry_forward_is_not_wired_into_arm_eligibility() -> None:
