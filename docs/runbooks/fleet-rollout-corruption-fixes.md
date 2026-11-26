@@ -22,13 +22,13 @@ see [CT-NVMe recovery interlock](./ct-nvme-recovery-interlock.md) ([#4046](https
 
 As of 2026-05-18 the fleet is:
 
-| Host                        | Runners | Platform      | Notes                                            |
-| --------------------------- | ------- | ------------- | ------------------------------------------------ |
-| `d-sorg-local-node-a` | 16      | WSL2 (Ubuntu) | Confirmed corruption 2026-05-18, healed manually |
-| `d-sorg-local-Desktop`      | 8       | WSL2 (Ubuntu) | Same layout — assume corruption present          |
-| `d-sorg-local-node-b`     | 8       | Linux         | Verify before rollout                            |
-| `d-sorg-local-node-c`        | 1       | Linux         | Verify before rollout                            |
-| `node-a-MATLAB`       | 1       | Windows       | NOT AFFECTED — different code path               |
+| Host                   | Runners | Platform      | Notes                                            |
+| ---------------------- | ------- | ------------- | ------------------------------------------------ |
+| `d-sorg-local-node-a`  | 16      | WSL2 (Ubuntu) | Confirmed corruption 2026-05-18, healed manually |
+| `d-sorg-local-Desktop` | 8       | WSL2 (Ubuntu) | Same layout — assume corruption present          |
+| `d-sorg-local-node-b`  | 8       | Linux         | Verify before rollout                            |
+| `d-sorg-local-node-c`  | 1       | Linux         | Verify before rollout                            |
+| `node-a-MATLAB`        | 1       | Windows       | NOT AFFECTED — different code path               |
 
 Skip the Windows host; the bug is Linux-specific (`KillMode=process`, journald, `_diag/pages` filesystem layout).
 

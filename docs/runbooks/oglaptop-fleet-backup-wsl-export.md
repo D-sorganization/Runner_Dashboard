@@ -14,11 +14,11 @@ Copy `deploy/fleet-backup-wsl-export.env.example` to:
 
 `C:\ProgramData\runner-dashboard\fleet-backup-wsl-export.env`
 
-| Key | Purpose |
-|-----|---------|
-| `RESTIC_REPOSITORY` | Same rest-server URL as the pilot |
-| `RESTIC_PASSWORD_FILE` | restic password file (mode 600) |
-| `WSL_DISTRO_NAME` | Distribution name from `wsl --list --verbose` |
+| Key                    | Purpose                                       |
+| ---------------------- | --------------------------------------------- |
+| `RESTIC_REPOSITORY`    | Same rest-server URL as the pilot             |
+| `RESTIC_PASSWORD_FILE` | restic password file (mode 600)               |
+| `WSL_DISTRO_NAME`      | Distribution name from `wsl --list --verbose` |
 
 Exports land under `C:\ProgramData\runner-dashboard\wsl-exports\`. State is written to `fleet_backup_wsl_export.json`.
 

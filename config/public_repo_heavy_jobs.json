@@ -3,8 +3,11 @@
   "environment": "ci-self-hosted-heavy-public",
   "group_label": "d-sorg-fleet-public-heavy",
   "jobs": [
-    {"workflow": "frontend-tests.yml", "job_id": "playwright-e2e"},
-    {"workflow": "frontend-tests.yml", "job_id": "staff-console-e2e"},
-    {"workflow": "ci-auto-deploy-regression.yml", "job_id": "auto-deploy-regression"}
+    { "workflow": "frontend-tests.yml", "job_id": "playwright-e2e" },
+    { "workflow": "frontend-tests.yml", "job_id": "staff-console-e2e" },
+    {
+      "workflow": "ci-auto-deploy-regression.yml",
+      "job_id": "auto-deploy-regression"
+    }
   ]
 }

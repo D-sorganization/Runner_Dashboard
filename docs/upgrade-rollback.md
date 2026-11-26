@@ -54,8 +54,8 @@ restores via a plain `rsync` from the backup directory and never reads or
 checks a `.manifest.sha256` file.
 
 In short: a backup taken by `update-deployed.sh` is integrity-manifested, but
-only the *manual* rollback path (`deploy/rollback.sh`) verifies that manifest
-before restoring. The *automatic* rollback-on-failure path
+only the _manual_ rollback path (`deploy/rollback.sh`) verifies that manifest
+before restoring. The _automatic_ rollback-on-failure path
 (`rollback-deployed.sh`) restores unconditionally, with no integrity check and
 no DB migration downgrade. An operator recovering from a failed automatic
 rollback should also run `deploy/rollback.sh --list` to confirm the resulting

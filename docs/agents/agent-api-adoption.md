@@ -6,23 +6,23 @@ Runner Dashboard coordinates the fleet (briefings, claims, staff, Barb threads).
 
 ## Ops MCP servers
 
-| Server id      | Entry point                         | `.mcp.json` key |
-| -------------- | ----------------------------------- | --------------- |
-| `fleet`        | `clients/fleet/fleet_mcp.py`        | `fleet`         |
-| `rd-threads`   | `scripts/rd_threads_mcp.py`         | `rd-threads`    |
-| `scan_sandbox` | `backend/vuln_scan/scan_mcp.py`     | _(executor only — not in `.mcp.json`)_ |
+| Server id      | Entry point                     | `.mcp.json` key                        |
+| -------------- | ------------------------------- | -------------------------------------- |
+| `fleet`        | `clients/fleet/fleet_mcp.py`    | `fleet`                                |
+| `rd-threads`   | `scripts/rd_threads_mcp.py`     | `rd-threads`                           |
+| `scan_sandbox` | `backend/vuln_scan/scan_mcp.py` | _(executor only — not in `.mcp.json`)_ |
 
 ## Conformance subset (CI)
 
 `tests/test_ops_mcp_conformance.py` enforces:
 
-| Check                    | Status   | Notes |
-| ------------------------ | -------- | ----- |
-| Bounded `tools/list`     | Enforced | `MAX_TOOLS_LIST_ITEMS` in `backend/ops_mcp_contract.py` |
+| Check                    | Status   | Notes                                                          |
+| ------------------------ | -------- | -------------------------------------------------------------- |
+| Bounded `tools/list`     | Enforced | `MAX_TOOLS_LIST_ITEMS` in `backend/ops_mcp_contract.py`        |
 | Structured tool errors   | Enforced | `error`, `code`, `message`, `retryable` on tool error payloads |
-| `contract_version` field | Enforced | `runner-dashboard-ops-mcp/1.0.0` on tool JSON payloads |
-| Stdio JSON-RPC handshake | Enforced | subprocess JSON-RPC + real `mcp` SDK session smoke |
-| **run-contract**         | **N/A**  | RD does not execute model runs or emit v1 run records |
+| `contract_version` field | Enforced | `runner-dashboard-ops-mcp/1.0.0` on tool JSON payloads         |
+| Stdio JSON-RPC handshake | Enforced | subprocess JSON-RPC + real `mcp` SDK session smoke             |
+| **run-contract**         | **N/A**  | RD does not execute model runs or emit v1 run records          |
 
 Copy the **run-contract** N/A row into the RM spec adoption table when that document is updated upstream.
 

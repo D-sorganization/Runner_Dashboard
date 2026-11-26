@@ -13,7 +13,7 @@ Prepare `context.json` from the work item and verified evidence:
   "context": "Expiry behavior needs verification after the cache fix.",
   "decisions": ["Use a bounded cache"],
   "evidence": [
-    {"ref": "tests/test_cache.py", "summary": "3 targeted tests passed"}
+    { "ref": "tests/test_cache.py", "summary": "3 targeted tests passed" }
   ],
   "next_steps": ["Verify expiry"]
 }

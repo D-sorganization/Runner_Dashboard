@@ -4,13 +4,13 @@ The default path is **IMAP pull** (no public HTTP endpoint on the hub). The
 `InboundAdapter` interface in `backend/email_intake/adapters/base.py` is the
 contract for later provider-specific adapters:
 
-| Adapter | Source | Notes |
-| --- | --- | --- |
-| `imap` | Poll mailbox | Shipped in epic #2092 |
-| `cloudflare-email-routing` | HTTP webhook | Normalize to `InboundMessage` |
-| `postmark` | Inbound webhook JSON | Map `Authentication-Results` from headers |
-| `mailgun` | Routes API webhook | |
-| `ses` | SNS → Lambda → hub | |
+| Adapter                    | Source               | Notes                                     |
+| -------------------------- | -------------------- | ----------------------------------------- |
+| `imap`                     | Poll mailbox         | Shipped in epic #2092                     |
+| `cloudflare-email-routing` | HTTP webhook         | Normalize to `InboundMessage`             |
+| `postmark`                 | Inbound webhook JSON | Map `Authentication-Results` from headers |
+| `mailgun`                  | Routes API webhook   |                                           |
+| `ses`                      | SNS → Lambda → hub   |                                           |
 
 Each adapter must populate:
 

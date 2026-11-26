@@ -40,7 +40,7 @@ protection to do it).
 ## What to check afterward
 
 - Re-run the slice-3 scan (`scripts/scan_history.py --report <private path
-  outside the repo>`) against the now-private repo.
+outside the repo>`) against the now-private repo.
 - Confirm HOLD #2657, #2658 and #2880 are still in force on repo settings —
   rollback must never silently drop a hold.
 - A public-repo exposure can reach a fork, cache, or search index; scrubbing

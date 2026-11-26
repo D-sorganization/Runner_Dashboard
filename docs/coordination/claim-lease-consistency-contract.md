@@ -21,7 +21,7 @@ cites), #4170 (lifecycle-fence re-assertion at prompt-execute time).
   `_blocks_on_claim_check()` decides from that single response whether to set
   `failure_class="lease_blocked"` and return `None` (the run never starts).
 - **Operator/public claim lookup**: `backend/coordination/claims.py::check()`
-  (and `claim()`, which calls `check()` first). It calls the *same* RM
+  (and `claim()`, which calls `check()` first). It calls the _same_ RM
   `check_agent_claim` subprocess, independently, plus (only on an un-held
   result) an in-process 60-second coordination-board cache read
   (`_board_claim_override` / `board.cached_board_state`) that can override a
@@ -34,23 +34,23 @@ snapshot between them: `lease.acquire()`'s read and a later
 `coordination.claims.check()` read are two separate point-in-time photographs
 of the same live system, taken seconds or minutes apart, with no mechanism to
 compare "as of" markers between them. (`claims.check()`'s own board-cache layer
-is the *one* place a cached read exists at all, and it only ever makes a "free"
+is the _one_ place a cached read exists at all, and it only ever makes a "free"
 result stricter — "held" — never looser, see §2.)
 
 ## 2. What "agree" means, and legitimate divergence vs. a bug
 
-**Agreement** means: a `check_agent_claim` read taken at wall-clock time *T1*
-during admission, and a `check_agent_claim` (or claim-API) read taken at *T2 >
-T1* during an operator lookup, report compatible holder state for the issue,
+**Agreement** means: a `check_agent_claim` read taken at wall-clock time _T1_
+during admission, and a `check_agent_claim` (or claim-API) read taken at _T2 >
+T1_ during an operator lookup, report compatible holder state for the issue,
 where "compatible" allows for any state change whose timestamp lies between
-*T1* and *T2* (a release, an expiry, a renewal). Two reads are not required to
+_T1_ and _T2_ (a release, an expiry, a renewal). Two reads are not required to
 report the identical holder — only a holder-state transition that is
 consistent with time passing.
 
 Legitimate reasons the two reads can diverge seconds apart (each reproduced in
 `tests/unit/test_claim_lease_cross_path_consistency.py`, see §4):
 
-- **Expiry boundary.** The lease's `expires_at` falls between *T1* and *T2*;
+- **Expiry boundary.** The lease's `expires_at` falls between _T1_ and _T2_;
   RM's `check_agent_claim` naturally reports the same lease as held, then
   expired/unheld. This is exactly #4156's reported incident, reproduced in
   `test_expire_release_race_between_admission_block_and_later_lookup`.
@@ -60,7 +60,7 @@ Legitimate reasons the two reads can diverge seconds apart (each reproduced in
   response between the admission call and the lookup call.
 - **Same-owner-renewal asymmetry.** The two paths define "is this my own
   hold?" differently, and that difference alone can make one path block while
-  the other calls it a renewal for the *same* `(agent, session)` pair at
+  the other calls it a renewal for the _same_ `(agent, session)` pair at
   nearly the same instant:
   - `coordination.claims.py::_is_own()` treats any live read whose
     `(agent, session)` matches the caller as a renewal — unconditionally.
@@ -74,12 +74,12 @@ Legitimate reasons the two reads can diverge seconds apart (each reproduced in
     example, by the operator claim API) still blocks dispatch admission.
     `tests/unit/test_claim_lease_cross_path_consistency.py::test_same_agent_session_hold_is_not_symmetric_across_paths`
     reproduces this: the admission path blocks (`failure_class ==
-    "lease_blocked"`) on the same `(agent, session)` that `claims.claim()`
+"lease_blocked"`) on the same `(agent, session)` that `claims.claim()`
     treats as `claimed: True`. This is a documented asymmetry in "my own
     hold" semantics, not a correctness bug in either path — each path's
     definition is locally correct for what it is guarding (dispatch admission
     vs. operator claim renewal).
-- **Board-cache staleness making a lookup *stricter*, not looser.** The one
+- **Board-cache staleness making a lookup _stricter_, not looser.** The one
   cached read in this system, `coordination.claims.check()`'s
   `_board_claim_override`, can turn a live "free" `check_agent_claim` answer
   into a reported "held" when the 60-second board-presence cache still lists
@@ -89,12 +89,13 @@ Legitimate reasons the two reads can diverge seconds apart (each reproduced in
 
 **What would actually indicate a bug**, as opposed to legitimate divergence of
 independent live reads:
+
 - A **normalization mismatch** — the two paths disagreeing about the same
   `repo#issue` key because of case folding, a `D-sorganization/` prefix
   inconsistency, or a different `issue` string-vs-int representation, such
   that they are not actually asking RM the same question. Both paths in this
   codebase call the identical `check_agent_claim --repo <repo> --issue
-  <issue>` subprocess shape, so this class is believed absent today, but
+<issue>` subprocess shape, so this class is believed absent today, but
   nothing in the current tests pins the exact repo-string normalization that
   both call sites apply before invoking it — see the gap noted in §4.
 - A **stale read with no cache-invalidation path** — i.e., a cache that can go
@@ -123,14 +124,14 @@ held-by-someone-else claim attempt (DRY: one stream, not a second log). The
 envelope carries, in addition to the standard job-claim fields
 (`repo`, `issue`, `session`, `agent`, `holder_principal`, `fencing_token_id`):
 
-| Field | Meaning |
-| --- | --- |
-| `run_id` | The dispatch run that was blocked. |
-| `decision` | Always `"lease_blocked"` for this event. |
-| `held_reason` | The RM-reported reason, sanitized by `_sanitize_reason()`: path-like substrings become `<redacted-path>`, secret/token-like substrings (`ghp_`, `ghs_`, `github_pat_`, `Bearer ...`) become `<redacted-token>`, truncated to 300 chars, defaulting to `"unknown"`. |
-| `held_expires_at` | The lease's reported `expires_at`, or `"unknown"` if RM did not report one. |
-| `observed_at` | Wall-clock UTC timestamp (`datetime.now(UTC).isoformat()`) of *this* read — the *T1* in §2's agreement definition. |
-| `storage_backend` | Always `"rm.check_agent_claim"` today — names the authoritative store this read came from. |
+| Field             | Meaning                                                                                                                                                                                                                                                            |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `run_id`          | The dispatch run that was blocked.                                                                                                                                                                                                                                 |
+| `decision`        | Always `"lease_blocked"` for this event.                                                                                                                                                                                                                           |
+| `held_reason`     | The RM-reported reason, sanitized by `_sanitize_reason()`: path-like substrings become `<redacted-path>`, secret/token-like substrings (`ghp_`, `ghs_`, `github_pat_`, `Bearer ...`) become `<redacted-token>`, truncated to 300 chars, defaulting to `"unknown"`. |
+| `held_expires_at` | The lease's reported `expires_at`, or `"unknown"` if RM did not report one.                                                                                                                                                                                        |
+| `observed_at`     | Wall-clock UTC timestamp (`datetime.now(UTC).isoformat()`) of _this_ read — the _T1_ in §2's agreement definition.                                                                                                                                                 |
+| `storage_backend` | Always `"rm.check_agent_claim"` today — names the authoritative store this read came from.                                                                                                                                                                         |
 
 `holder_principal` is derived as `f"agent-{held_agent}"` from the RM-reported
 `agent` field, or `"unknown"` when RM reports none — never a raw token,
@@ -144,7 +145,7 @@ the later lookup's own timestamp, and can conclude "the lease was reported
 held as of `observed_at`, expired/was releasable by `held_expires_at`, and the
 later lookup happened after that" — without ever seeing a holder token, a
 session secret, or a private filesystem path. What it does **not** give an
-operator: the *exact* instant the holder actually released (only this read's
+operator: the _exact_ instant the holder actually released (only this read's
 own `observed_at`, and the lease's own reported expiry) — that is inherent to
 two independent uncached reads with no shared epoch, not a gap in this
 evidence envelope.

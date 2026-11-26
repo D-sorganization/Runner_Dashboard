@@ -1,8 +1,6 @@
 ---
 issue: 4084
 summary: "Cap per-node runner-scheduler max_count at 6 (Dieter 2026-11-05)"
-dl-state: in_review
-next-step: "Merge; apply max_count:6 to the live schedule JSON on configured nodes; confirm scheduler apply"
 ---
 
 Dieter capped each node at six org runners. The node-specific seed drops

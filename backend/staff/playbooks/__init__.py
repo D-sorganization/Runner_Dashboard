@@ -1,4 +1,53 @@
 """Barb Operating Manual and versioned Playbooks package (#3486)."""
 
-from staff.playbooks.linter import *  # noqa: F403
-from staff.playbooks.schema import *  # noqa: F403
+from staff.playbooks.linter import (
+    PlaybookLintIssue,
+    assert_playbooks_clean,
+    lint_playbook_against_manual,
+)
+from staff.playbooks.schema import (
+    ALLOWED_ASSIGNMENT_TRANSITIONS,
+    CLAIM_ENDPOINT,
+    CLAIM_RELEASE_ENDPOINT,
+    DB_IS_REBUILDABLE_CACHE,
+    DEPRECATED_CLAIM_ENDPOINTS,
+    HOLDS_AUTHORITY_MODULES,
+    SOURCE_OF_TRUTH_MODE,
+    TERMINAL_ASSIGNMENT_STATES,
+    BarbOperatingManual,
+    ManualSection,
+    PlaybookAssignmentState,
+    PlaybookDefinition,
+    PlaybookParameter,
+    PlaybookValidationError,
+    compute_content_sha256,
+    normalize_anchor,
+    parse_operating_manual,
+    parse_playbook,
+    validate_assignment_transition,
+)
+
+__all__ = [
+    "ALLOWED_ASSIGNMENT_TRANSITIONS",
+    "CLAIM_ENDPOINT",
+    "CLAIM_RELEASE_ENDPOINT",
+    "DB_IS_REBUILDABLE_CACHE",
+    "DEPRECATED_CLAIM_ENDPOINTS",
+    "HOLDS_AUTHORITY_MODULES",
+    "SOURCE_OF_TRUTH_MODE",
+    "TERMINAL_ASSIGNMENT_STATES",
+    "BarbOperatingManual",
+    "ManualSection",
+    "PlaybookAssignmentState",
+    "PlaybookDefinition",
+    "PlaybookLintIssue",
+    "PlaybookParameter",
+    "PlaybookValidationError",
+    "assert_playbooks_clean",
+    "compute_content_sha256",
+    "lint_playbook_against_manual",
+    "normalize_anchor",
+    "parse_operating_manual",
+    "parse_playbook",
+    "validate_assignment_transition",
+]

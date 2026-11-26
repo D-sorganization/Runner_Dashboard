@@ -71,13 +71,13 @@ Exit code `0` = **go**, `1` = **no-go** (or use the markdown report for
 
 ## Go / no-go criteria (defaults in config)
 
-| Signal | Default tolerance |
-|--------|-------------------|
-| Failure rate vs baseline | ≤ +0.5 pp |
-| Timeout rate vs baseline | ≤ +0.25 pp |
-| Job duration p95 | ≤ +15% |
-| Interactive latency p95 | ≤ +20% |
-| OOM-like failures | Must not increase |
+| Signal                   | Default tolerance |
+| ------------------------ | ----------------- |
+| Failure rate vs baseline | ≤ +0.5 pp         |
+| Timeout rate vs baseline | ≤ +0.25 pp        |
+| Job duration p95         | ≤ +15%            |
+| Interactive latency p95  | ≤ +20%            |
+| OOM-like failures        | Must not increase |
 
 Record the rendered report (numbers + decision) on the trial issue before fleet-wide rollout.
 

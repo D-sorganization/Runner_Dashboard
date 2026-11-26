@@ -29,9 +29,7 @@ Every value here is a placeholder.
     { "repo": "example-corp/widgets-public", "level": "PUBLIC" },
     { "repo": "example-corp/widgets-internal", "level": "INTERNAL" }
   ],
-  "path_globs": [
-    { "glob": "secrets/**", "level": "SENSITIVE" }
-  ],
+  "path_globs": [{ "glob": "secrets/**", "level": "SENSITIVE" }],
   "operator_marks": {
     "example-corp/widgets-internal#42": "SENSITIVE"
   }

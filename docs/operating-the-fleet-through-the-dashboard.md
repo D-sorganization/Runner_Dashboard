@@ -177,8 +177,8 @@ and `agent-codex-hands` list them in `config/agent_principals.yml`; others need 
 
 | Need                      | Call                                                                                                                 |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| Start of Barb session     | `GET /api/v1/staff/barb/continuity`; `GET /api/priorities`; `GET /api/v1/staff/holds`                                 |
-| Legacy context pack       | `GET /api/v1/memory/context-pack` (`fleetctl memory-context-pack`) — deprecated for agent startup                     |
+| Start of Barb session     | `GET /api/v1/staff/barb/continuity`; `GET /api/priorities`; `GET /api/v1/staff/holds`                                |
+| Legacy context pack       | `GET /api/v1/memory/context-pack` (`fleetctl memory-context-pack`) — deprecated for agent startup                    |
 | Search                    | `GET /api/v1/memory?type=&tag=&author=&since=&limit=` (`memory-list`), or `fleetctl query --source memory`           |
 | Checkpoint a turn         | `POST /api/v1/memory/session-digest` (`memory-append-session-digest`): short summary, idempotent, never a transcript |
 | Record a decision or task | `POST /api/v1/memory` with `entry_type` `decision` or `task` (`memory-append`)                                       |

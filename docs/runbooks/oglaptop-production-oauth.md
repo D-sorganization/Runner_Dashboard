@@ -16,9 +16,9 @@ Tailscale **Serve** terminates TLS at the tailnet edge; the dashboard listens on
 loopback `:8321`. The browser-facing origin is always **HTTPS MagicDNS without a
 port**.
 
-| Host | Role | Registry `dashboard_url` (HTTP, direct) | HTTPS origin (Serve) | OAuth callback (register on GitHub App) |
-| ---- | ---- | --------------------------------------- | -------------------- | --------------------------------------- |
-| **hub-a** | Fleet hub (production operator UI) | `http://hub-a.fleet-example.ts.net:8321` | `https://hub-a.fleet-example.ts.net` | `https://hub-a.fleet-example.ts.net/api/auth/callback` |
+| Host       | Role                                 | Registry `dashboard_url` (HTTP, direct)   | HTTPS origin (Serve)                  | OAuth callback (register on GitHub App)                 |
+| ---------- | ------------------------------------ | ----------------------------------------- | ------------------------------------- | ------------------------------------------------------- |
+| **hub-a**  | Fleet hub (production operator UI)   | `http://hub-a.fleet-example.ts.net:8321`  | `https://hub-a.fleet-example.ts.net`  | `https://hub-a.fleet-example.ts.net/api/auth/callback`  |
 | **node-b** | Worker (not a hub origin by default) | `http://node-b.fleet-example.ts.net:8321` | `https://node-b.fleet-example.ts.net` | `https://node-b.fleet-example.ts.net/api/auth/callback` |
 
 GitHub Apps permit multiple user authorization callback URLs. Register the
@@ -67,11 +67,11 @@ admission are both required.
 
 Paths and modes only — never commit values.
 
-| Item | Path / rule |
-| ---- | ----------- |
-| Env directory | `~/.config/runner-dashboard/` mode **0700** |
-| Service env file | `~/.config/runner-dashboard/env` mode **0600**, referenced by `EnvironmentFile=` in `runner-dashboard.service` |
-| App PEM (agents) | `~/.config/runner-dashboard/github-app.private-key.pem` mode **0600** |
+| Item                        | Path / rule                                                                                                       |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Env directory               | `~/.config/runner-dashboard/` mode **0700**                                                                       |
+| Service env file            | `~/.config/runner-dashboard/env` mode **0600**, referenced by `EnvironmentFile=` in `runner-dashboard.service`    |
+| App PEM (agents)            | `~/.config/runner-dashboard/github-app.private-key.pem` mode **0600**                                             |
 | OAuth token store (runtime) | `~/.config/runner-dashboard/github_user_oauth.json` mode **0600** (override: `DASHBOARD_GITHUB_USER_OAUTH_STORE`) |
 
 Required keys for browser OAuth (names only):
@@ -142,17 +142,17 @@ After the authorized hub environment setup and a normal deploy:
 `/api/health` → `oauth` reports `ready`, `status`, `reason`, and `flow` only, plus
 redacted `operator_sessions`. Reason codes (no secret values):
 
-| Reason | Operator action |
-| ------ | ----------------- |
-| `github_client_id_invalid` | Set fleet App Client ID on hub. |
-| `github_client_secret_invalid` | Set or rotate App client secret on hub. |
-| `github_org_missing` | Set `GITHUB_ORG` to the organization whose members may sign in. |
-| `github_org_invalid` | Use a valid GitHub organization name in `GITHUB_ORG`. |
-| `public_origin_mismatch` | Use an active registry hub HTTPS origin or add a planned HTTPS origin to the explicit allowlist. |
-| `callback_url_mismatch` | Set the callback to `{origin}/api/auth/callback` and register it in GitHub App settings. |
-| `session_secret_invalid` | Explicit `SESSION_SECRET` ≥32 chars. |
-| `tls_required` | `DASHBOARD_TLS=1`. |
-| `development_auth_must_be_unset` | Remove dev/loopback auth env keys. |
+| Reason                           | Operator action                                                                                  |
+| -------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `github_client_id_invalid`       | Set fleet App Client ID on hub.                                                                  |
+| `github_client_secret_invalid`   | Set or rotate App client secret on hub.                                                          |
+| `github_org_missing`             | Set `GITHUB_ORG` to the organization whose members may sign in.                                  |
+| `github_org_invalid`             | Use a valid GitHub organization name in `GITHUB_ORG`.                                            |
+| `public_origin_mismatch`         | Use an active registry hub HTTPS origin or add a planned HTTPS origin to the explicit allowlist. |
+| `callback_url_mismatch`          | Set the callback to `{origin}/api/auth/callback` and register it in GitHub App settings.         |
+| `session_secret_invalid`         | Explicit `SESSION_SECRET` ≥32 chars.                                                             |
+| `tls_required`                   | `DASHBOARD_TLS=1`.                                                                               |
+| `development_auth_must_be_unset` | Remove dev/loopback auth env keys.                                                               |
 
 ## Rotation and rollback
 

@@ -31,7 +31,7 @@ feature on later never changes behaviour for anyone who leaves it off.
 ## Decision
 
 1. **Three levels, a total order:** `Level.PUBLIC < Level.INTERNAL <
-   Level.SENSITIVE` (`backend/private_mode.py`, an `IntEnum`). Joining two
+Level.SENSITIVE` (`backend/private_mode.py`, an `IntEnum`). Joining two
    levels for the same content always keeps the more restrictive one — the
    property every later resolution slice (PM-1's `max_join`, in particular)
    depends on.
@@ -41,17 +41,17 @@ feature on later never changes behaviour for anyone who leaves it off.
      GitHub issues/PRs/comments, OSS artifacts) but may still reach the
      fleet's own private hub logs, transcripts and board. PM-1 migrates
      legacy (pre-flag) threads here, not to `PUBLIC`.
-   - `SENSITIVE`: never reaches *any* shared surface — not hub logs, not
+   - `SENSITIVE`: never reaches _any_ shared surface — not hub logs, not
      transcripts, not panel threads, not board posts, not metrics, not
      GitHub logs or artifacts. Confined to private, ephemeral, RD-owned
      infrastructure built out in Wave B/C of the epic.
 3. **Schema field:** `private_mode` is a new, optional, additive top-level
    key in the `private-overlay.v1` schema: `{"enabled": bool,
-   "default_level": "PUBLIC" | "INTERNAL" | "SENSITIVE"}`. An overlay that
+"default_level": "PUBLIC" | "INTERNAL" | "SENSITIVE"}`. An overlay that
    omits the key, or no overlay at all, validates exactly as it did before
    this ADR.
 4. **Safe-disable contract:** `private_mode.DISABLED` (`enabled=False,
-   default_level=Level.PUBLIC`) is the value every flag-off path resolves
+default_level=Level.PUBLIC`) is the value every flag-off path resolves
    to. No separate env var gates this — per the overlay contract, it is only
    readable through `overlay_contract.get_overlay()`, so there is exactly
    one way for any later module to ask "is Private Mode on" and no second
@@ -93,10 +93,9 @@ the schema field they will all read.
 per-thread DEK wrapped via `KeyWrappingProvider` (#3257). `crypto_shred(thread_id)`
 zeroes and unlinks `<thread_id>.meta.json` and `<thread_id>.chunks.jsonl` and
 appends a tombstone to `shred_tombstones.jsonl`. Per Board D14, residue boundaries:
+
 - **Backups:** Pre-shred filesystem backups may retain ciphertext/wrapped DEKs until
   expiry or KEK rotation, but `shred_tombstones.jsonl` is checked before every read,
   append, or create so restoring backups **cannot resurrect a shredded thread**.
 - **SQLite WAL, indexes, and caches:** `SENSITIVE` chunks live in append-only
   `.chunks.jsonl` files (never SQLite tables/WAL, FTS indexes, or plaintext caches).
-
-

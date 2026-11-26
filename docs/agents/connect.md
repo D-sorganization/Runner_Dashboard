@@ -164,12 +164,12 @@ See [Grok Bot Guide](grok.md) for `curl` recipes for threads, messages, and work
 
 Runner Dashboard coordinates the fleet (briefings, claims, staff threads, Barb seat) and does **not** proxy model runs. Load model-side MCP servers from the repo that owns the work:
 
-| Repo | Model / tooling MCP manifest |
-| ---- | ---------------------------- |
+| Repo                    | Model / tooling MCP manifest                                                                                |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
 | Gasification_Model (GM) | [`Gasification_Model/.mcp.json`](https://github.com/D-sorganization/Gasification_Model/blob/main/.mcp.json) |
-| UpstreamDrift (UD) | [`UpstreamDrift/.mcp.json`](https://github.com/D-sorganization/UpstreamDrift/blob/main/.mcp.json) |
-| Tools | [`Tools/.mcp.json`](https://github.com/D-sorganization/Tools/blob/main/.mcp.json) |
-| Tools_Private (TP) | [`Tools_Private/.mcp.json`](https://github.com/D-sorganization/Tools_Private/blob/main/.mcp.json) |
+| UpstreamDrift (UD)      | [`UpstreamDrift/.mcp.json`](https://github.com/D-sorganization/UpstreamDrift/blob/main/.mcp.json)           |
+| Tools                   | [`Tools/.mcp.json`](https://github.com/D-sorganization/Tools/blob/main/.mcp.json)                           |
+| Tools_Private (TP)      | [`Tools_Private/.mcp.json`](https://github.com/D-sorganization/Tools_Private/blob/main/.mcp.json)           |
 
 Use `clients/fleet/fleet_mcp.py` and `scripts/rd_threads_mcp.py` (below) for fleet coordination only.
 
