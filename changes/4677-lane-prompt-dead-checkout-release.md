@@ -1,7 +1,7 @@
 ---
 issue: 4677
 summary: "Expire lane-prompt checkouts after 15 minutes without a heartbeat, and let operators force-release a live checkout without its fence"
-paths: "backend/coordination/lane_prompts.py, backend/routers/coordination.py, tests/api/test_coordination_lane_prompts.py, tests/test_lane_prompts_health.py"
+paths: "backend/coordination/lane_prompts.py, backend/routers/coordination.py, docs/coordination-api.md, tests/api/test_coordination_lane_prompts.py, tests/test_lane_prompts_health.py"
 ---
 
 Dead CLI lanes no longer keep a lane_id locked for the full 60-minute TTL.
