@@ -48,6 +48,8 @@ _DETERMINISTIC_MARKERS = (
 # Exact GitHub logins. A fragment such as "barb" inside another login is not authority.
 _AUTHORIZED_RETRY_LOGINS = frozenset({"dieterolson", "openbot-barb", "openbotgit"})
 _RETRY_AUTHORIZED = re.compile(r"\b(?:retry|requeue) authorized\b", re.IGNORECASE)
+# An owner or Barb instruction to leave the PR unarmed. A new head does not lift it.
+_OWNER_UNARMED = re.compile(r"\bunarmed\b|\bdo not (?:requeue|arm)\b", re.IGNORECASE)
 
 
 def _text(value: object) -> str:
@@ -64,6 +66,11 @@ def _after_head(stamp: str, head_at: str) -> bool:
     if not head_at:
         return True
     return stamp > head_at
+
+
+def _page_truncated(page: object) -> bool:
+    """True when a GraphQL connection reports another page."""
+    return isinstance(page, Mapping) and bool(page.get("hasNextPage") or page.get("hasPreviousPage"))
 
 
 def _suite_nodes(before_commit: Mapping[str, Any]) -> list[Mapping[str, Any]]:
@@ -143,6 +150,27 @@ def _attempt_from_removal(event: Mapping[str, Any]) -> tuple[str, str] | None:
     return (kind, "+".join(sorted(set(names))))
 
 
+def _removal_checks_truncated(event: Mapping[str, Any]) -> bool:
+    """True when merge-group checks on this removal are not the full page.
+
+    Pre: ``event`` is a ``RemovedFromMergeQueueEvent`` node.
+    Post: a missing ``pageInfo`` is complete. ``hasNextPage`` on ``checkSuites``
+    or ``checkRuns`` means a deterministic failure can sit outside the window.
+    """
+    before = event.get("beforeCommit")
+    if not isinstance(before, Mapping):
+        return False
+    suites = before.get("checkSuites")
+    if not isinstance(suites, Mapping):
+        return False
+    if _page_truncated(suites.get("pageInfo")):
+        return True
+    return any(
+        isinstance(suite.get("checkRuns"), Mapping) and _page_truncated(suite["checkRuns"].get("pageInfo"))
+        for suite in _suite_nodes(before)
+    )
+
+
 def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
     """Read requeue evidence from a production shepherd pull-request node.
 
@@ -163,6 +191,7 @@ def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
     head_sha = _text(node.get("headRefOid"))
     removals: list[tuple[str, str]] = []
     failures: list[tuple[str, str, str]] = []
+    checks_truncated = False
     for event in (node.get("timelineItems") or {}).get("nodes") or []:
         if not isinstance(event, Mapping):
             continue
@@ -172,6 +201,7 @@ def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
             removals.append((created_at, reason))
         if not head_sha or not _after_head(created_at, head_at):
             continue
+        checks_truncated = checks_truncated or _removal_checks_truncated(event)
         attempt = _attempt_from_removal(event)
         if attempt is not None:
             failures.append((head_sha, attempt[0], attempt[1]))
@@ -187,20 +217,24 @@ def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
                 _text(run.get("signature")),
             )
         )
+    comment_block = node.get("comments") or {}
     comments: list[tuple[str, str, str]] = []
-    for comment in (node.get("comments") or {}).get("nodes") or []:
+    for comment in (comment_block.get("nodes") or []) if isinstance(comment_block, Mapping) else []:
         if not isinstance(comment, Mapping):
             continue
         created_at = _text(comment.get("createdAt"))
         body = _text(comment.get("body"))
         if created_at and body:
             comments.append((created_at, _comment_author(comment), body))
+    comments_truncated = isinstance(comment_block, Mapping) and _page_truncated(comment_block.get("pageInfo"))
     return {
         "head_committed_at": head_at,
         "queue_removals": tuple(removals),
         "merge_group_failures": tuple(failures),
         "comment_bodies": tuple(comments),
         "queue_history_truncated": _queue_history_hides_events_after_head(node, head_at),
+        "comments_truncated": comments_truncated,
+        "checks_truncated": checks_truncated,
     }
 
 
@@ -266,6 +300,43 @@ def _authorized_retry_author(login: str) -> bool:
     return normalized in _AUTHORIZED_RETRY_LOGINS
 
 
+def _owner_unarmed_active(comments: Sequence[tuple[str, str, str]]) -> bool:
+    """True when the newest owner or Barb instruction still says to stay unarmed.
+
+    Pre: each comment is ``(created_at, author, body)``.
+    Post: a later ``retry authorized`` from an exact owner or Barb login clears
+    the hold. A newer head commit does not. Other logins do not set or lift it.
+    """
+    held = False
+    for _created_at, author, body in sorted(comments, key=lambda row: row[0]):
+        if not _authorized_retry_author(author):
+            continue
+        if _RETRY_AUTHORIZED.search(body):
+            held = False
+        elif _OWNER_UNARMED.search(body):
+            held = True
+    return held
+
+
+def _truncated_comments_may_hide_hold(
+    comments: Sequence[tuple[str, str, str]],
+    *,
+    comments_truncated: bool,
+) -> bool:
+    """True when an older page could still contain an unreleased owner hold.
+
+    Pre: ``comments`` are the newest page ``OPEN_PRS_QUERY`` returned.
+    Post: a visible authorized retry is newer than every off-page comment, so
+    the visible page is enough. No such retry means a missing older note could
+    still be in force.
+    """
+    if not comments_truncated or _owner_unarmed_active(comments):
+        return False
+    return not any(
+        _authorized_retry_author(author) and _RETRY_AUTHORIZED.search(body) for _created_at, author, body in comments
+    )
+
+
 def _manual_dequeue_without_authorization(
     *,
     head_committed_at: str,
@@ -300,16 +371,22 @@ def suppression_detail(
     failures: Sequence[tuple[str, str, str]],
     comments: Sequence[tuple[str, str, str]],
     queue_history_truncated: bool = False,
+    comments_truncated: bool = False,
+    checks_truncated: bool = False,
 ) -> str:
     """Return why automatic requeue must stop, or ``""`` when it may proceed.
 
     Pre: ``queue_history_truncated`` comes from :func:`_queue_history_hides_events_after_head`.
-    Post: deterministic evidence wins. A truncated page then fails closed, so a manual
-    dequeue that fell off the page cannot be treated as absent. An exact owner or Barb
-    retry note lifts only a manual dequeue that the page actually contains.
+    ``comments_truncated`` and ``checks_truncated`` come from connection ``pageInfo``.
+    Post: visible deterministic evidence wins. A truncated check page then fails
+    closed, then a truncated timeline, then a manual dequeue. An owner or Barb
+    unarmed instruction holds across a new head until a later authorized retry.
+    A truncated comment page fails closed when that instruction could be off-page.
     """
     if _deterministic_signatures(head_sha=head_sha, failures=failures):
         return "deterministic_merge_group"
+    if checks_truncated:
+        return "incomplete_check_page"
     if queue_history_truncated:
         return "incomplete_queue_history"
     if _manual_dequeue_without_authorization(
@@ -318,4 +395,8 @@ def suppression_detail(
         comments=comments,
     ):
         return "manual_dequeue"
+    if _owner_unarmed_active(comments):
+        return "owner_unarmed"
+    if _truncated_comments_may_hide_hold(comments, comments_truncated=comments_truncated):
+        return "incomplete_comment_history"
     return ""
