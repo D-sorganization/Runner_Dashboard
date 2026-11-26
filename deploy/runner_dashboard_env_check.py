@@ -240,7 +240,15 @@ def atomic_set_gh_token(path: Path, token: str) -> None:
 
     os.chmod(tmp, mode)
     os.replace(tmp, path)
-    dir_fd = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    _fsync_parent_directory(path.parent)
+
+
+def _fsync_parent_directory(directory: Path) -> None:
+    """Flush the rename. Windows has no ``O_DIRECTORY``; the file fsync already ran."""
+    directory_flag = getattr(os, "O_DIRECTORY", None)
+    if directory_flag is None:
+        return
+    dir_fd = os.open(directory, os.O_RDONLY | directory_flag)
     try:
         os.fsync(dir_fd)
     finally:
