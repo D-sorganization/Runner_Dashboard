@@ -496,7 +496,7 @@ def test_sessions_fail_closed_on_active_conflicts_or_unclassified_warnings(rm: F
 
 @pytest.mark.unit
 def test_has_live_session_malformed_history_does_not_invent_presence(rm: FakeRM) -> None:
-    """Malformed history is not independently verifiable, so no parsed row is live (#4569)."""
+    """Malformed noise does not invent a missing session, and a parsed row stays live (#4569)."""
     rm.respond(
         "agent_communicate:list",
         {
@@ -514,7 +514,7 @@ def test_has_live_session_malformed_history_does_not_invent_presence(rm: FakeRM)
     )
     assert board_mod.has_live_session("missing-s", "Tools") is False
     board_mod.reset_cache()
-    assert board_mod.has_live_session("other-s", "Tools") is False
+    assert board_mod.has_live_session("other-s", "Tools") is True
 
 
 @pytest.mark.unit
@@ -617,8 +617,8 @@ def test_send_message_rejects_absent_session_when_history_is_malformed(rm: FakeR
 
 
 @pytest.mark.unit
-def test_send_message_rejects_parsed_session_when_history_is_malformed(rm: FakeRM, client: TestClient) -> None:
-    """A parsed row under malformed history is not verifiable, so send is 409 (#4569)."""
+def test_send_message_allows_parsed_session_when_only_malformed(rm: FakeRM, client: TestClient) -> None:
+    """A parsed session stays reachable when the only defect is an unrelated malformed comment (#4569)."""
     rm.respond(
         "agent_communicate:list",
         {
@@ -635,21 +635,21 @@ def test_send_message_rejects_parsed_session_when_history_is_malformed(rm: FakeR
     )
     rm.respond("agent_communicate:send", {"ok": True})
     msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "hi"}
-    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 409
-    assert not any(name == "agent_communicate" and "send" in argv for name, argv in rm.calls())
+    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 200
+    assert any(name == "agent_communicate" and "send" in argv for name, argv in rm.calls())
 
 
-def _presence_then_malformed_release() -> list[dict[str, Any]]:
-    """A parsed registration followed by a release comment replay cannot apply."""
+def _presence_comment(session_name: str, comment_id: int) -> dict[str, Any]:
+    """One valid presence envelope for ``session_name`` on repo Tools."""
     now = datetime.now(UTC)
     at_s = (now - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
     exp_s = (now + timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
     presence = {
         "version": 1,
-        "id": "msg-reg",
+        "id": f"msg-reg-{session_name}",
         "kind": "presence",
         "agent": "codex",
-        "session": "codex-1",
+        "session": session_name,
         "repo": "Tools",
         "issue": 4569,
         "branch": "fix/4569-presence-degraded-board",
@@ -658,55 +658,81 @@ def _presence_then_malformed_release() -> list[dict[str, Any]]:
         "at": at_s,
         "expires": exp_s,
     }
-    registered = {
-        "id": 1,
+    return {
+        "id": comment_id,
         "user": {"login": "d-sorgcodexagent[bot]"},
-        "body": "<!-- agent-msg v1 id=msg-reg kind=presence -->\n```json agent-msg\n" + json.dumps(presence) + "\n```",
+        "body": "<!-- agent-message v1 -->\n```json\n" + json.dumps(presence) + "\n```",
     }
-    skipped_release = {
-        "id": 2,
+
+
+def _fenced(comment_id: int, payload: str) -> dict[str, Any]:
+    return {
+        "id": comment_id,
         "user": {"login": "d-sorgcodexagent[bot]"},
-        "body": "<!-- agent-message v1 -->\n```json\n{not-json}\n```",
+        "body": "<!-- agent-message v1 -->\n```json\n" + payload + "\n```",
     }
-    return [registered, skipped_release]
+
+
+def _truncated_list() -> dict[str, Any]:
+    """A list payload that forces the hub to replay comments itself."""
+    return {
+        "ok": True,
+        "complete": False,
+        "comment_limit_exceeded": True,
+        "read_warnings": [],
+        "replay_warnings": [],
+        "active_conflicts": [],
+        "sessions": [],
+        "messages": [],
+        "conflicts": [],
+        "warnings": ["comment limit reached"],
+    }
 
 
 @pytest.mark.unit
-def test_send_and_ack_deny_when_malformed_release_follows_registration(
+def test_send_and_ack_allow_healthy_session_despite_unrelated_malformed_comment(
     rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Replay keeps the session after a skipped release; send and ack still fail closed (#4569)."""
-    comments = _presence_then_malformed_release()
+    """Replay of a valid presence still sends and acks when another comment is malformed (#4569)."""
+    comments = [
+        _presence_comment("codex-1", 1),
+        _fenced(2, "{not-json}"),
+    ]
     replay = board_mod.paginate_board_comments(lambda page, per_page: comments if page == 1 else [])
     assert [s["session"] for s in replay["sessions"]] == ["codex-1"]
     assert replay["complete"] is False
-    assert replay["read_warnings"]
-    monkeypatch.setattr(
-        board_mod,
-        "board_page_fetcher",
-        lambda page, per_page: comments if page == 1 else [],
-    )
-    rm.respond(
-        "agent_communicate:list",
-        {
-            "ok": True,
-            "complete": False,
-            "comment_limit_exceeded": True,
-            "read_warnings": [],
-            "replay_warnings": [],
-            "active_conflicts": [],
-            "sessions": [],
-            "messages": [],
-            "conflicts": [],
-            "warnings": ["comment limit reached"],
-        },
-    )
+    assert replay["release_uncertain_sessions"] == []
+    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda page, per_page: comments if page == 1 else [])
+    rm.respond("agent_communicate:list", _truncated_list())
     rm.respond("agent_communicate:send", {"ok": True})
+    rm.respond("agent_communicate:ack", {"ok": True})
     msg = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "hi"}
     ack = {"session": "codex-1", "repo": "Tools", "message_id": "m1"}
-    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 409
-    assert client.post("/api/coordination/messages/ack", json=ack, headers=_BOT).status_code == 409
-    assert not any(name == "agent_communicate" and "send" in argv for name, argv in rm.calls())
+    assert client.post("/api/coordination/messages", json=msg, headers=_BOT).status_code == 200
+    assert client.post("/api/coordination/messages/ack", json=ack, headers=_BOT).status_code == 200
+
+
+@pytest.mark.unit
+def test_send_and_ack_deny_when_malformed_release_names_the_session(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A broken release drops only the session it names; a sibling session still sends (#4569)."""
+    broken = '{"version": 1, "id": "rel-1", "kind": "release", "session": "codex-1", "repo": "Tools", "at": '
+    comments = [
+        _presence_comment("codex-1", 1),
+        _presence_comment("codex-2", 2),
+        _fenced(3, broken),
+    ]
+    replay = board_mod.paginate_board_comments(lambda page, per_page: comments if page == 1 else [])
+    assert replay["release_uncertain_sessions"] == ["codex-1"]
+    assert {s["session"] for s in replay["sessions"]} == {"codex-1", "codex-2"}
+    monkeypatch.setattr(board_mod, "board_page_fetcher", lambda page, per_page: comments if page == 1 else [])
+    rm.respond("agent_communicate:list", _truncated_list())
+    rm.respond("agent_communicate:send", {"ok": True})
+    denied = {"session": "codex-1", "repo": "Tools", "to": "claude-2", "text": "hi"}
+    allowed = {"session": "codex-2", "repo": "Tools", "to": "claude-2", "text": "hi"}
+    assert client.post("/api/coordination/messages", json=denied, headers=_BOT).status_code == 409
+    assert client.post("/api/coordination/messages", json=allowed, headers=_BOT).status_code == 200
 
 
 @pytest.mark.unit

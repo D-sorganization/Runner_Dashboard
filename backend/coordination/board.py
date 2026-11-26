@@ -244,6 +244,7 @@ def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, A
         "replay_warnings": replay_warnings,
         "active_conflicts": active_conflicts,
         "comment_limit_exceeded": limit_hit,
+        "release_uncertain_sessions": [str(item) for item in data.get("release_uncertain_sessions") or []],
         "sessions": [_session(s) for s in data.get("sessions") or [] if isinstance(s, dict)],
         "messages": list(data.get("messages") or []),
         "conflicts": list(data.get("conflicts") or []),
@@ -285,6 +286,7 @@ def _merge(parts: list[dict[str, Any]]) -> dict[str, Any]:
     read_warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
     replay_warnings = [w for p in ok for w in p.get("replay_warnings", [])]
     active_conflicts = [w for p in ok for w in p.get("active_conflicts", [])]
+    uncertain = [str(item) for p in ok for item in p.get("release_uncertain_sessions") or []]
     all_warnings = [w for p in ok for w in p["warnings"]]
     all_warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
     return {
@@ -295,6 +297,7 @@ def _merge(parts: list[dict[str, Any]]) -> dict[str, Any]:
         "replay_warnings": list(dict.fromkeys(replay_warnings)),
         "active_conflicts": list(dict.fromkeys(active_conflicts)),
         "sessions": list(seen.values()),
+        "release_uncertain_sessions": list(dict.fromkeys(uncertain)),
         "messages": [],
         "conflicts": [],
         "warnings": list(dict.fromkeys(all_warnings)),
@@ -318,7 +321,7 @@ def cached_board_state() -> dict[str, Any] | None:
 
 
 def has_live_session(session: str, repo: str) -> bool:
-    """Live presence requires a complete board read that still lists ``session`` (#4569)."""
+    """Parsed presence stays live under malformed-only history; truncation does not (#4569)."""
     _invalidate()
     data = read_sessions(repo)
     live, error = live_session_verdict(session, data)
