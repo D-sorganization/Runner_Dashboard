@@ -26,6 +26,7 @@ from coordination.merge_shepherd import (
     get_auto_merge_flag,
     rank_candidates_for_shepherding,
 )
+from coordination.merge_shepherd_carry_forward import failed_fix_passes_from_reviews
 from coordination.merge_shepherd_exact_head import (
     DEFAULT_REVIEW_PASS_TTL_HOURS,
     HeadReviewPass,
@@ -507,6 +508,7 @@ def node_to_candidate(
         line_cap=effective_line_cap,
         files_complete=files_complete,
         review_pass_ttl_hours=review_pass_ttl_hours,
+        failed_fix_passes=failed_fix_passes_from_reviews(review_passes, pr=number),
     )
 
 
