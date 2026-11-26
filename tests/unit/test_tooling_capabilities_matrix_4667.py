@@ -1,0 +1,71 @@
+"""The tooling capability matrix must match the handoff store, not conflate its columns (#4667)."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+DOC = ROOT / "docs" / "agents" / "tooling-capabilities-matrix.md"
+STORE = ROOT / "backend" / "staff" / "barb_task_inventory.py"
+
+
+def _handoff_section() -> str:
+    text = DOC.read_text(encoding="utf-8")
+    return text.split("## 2.", 1)[1].split("## 3.", 1)[0]
+
+
+def test_handoff_section_separates_state_status_and_surface() -> None:
+    section = _handoff_section()
+    assert "status = needs_desktop" not in section
+    assert "status = desktop_claimed" not in section
+    assert "status = resume_ready" not in section
+    assert "back to `headless_cli`" not in section
+    assert "handoff_state" in section
+    assert "blocked_desktop" in section
+    assert "in_desktop" in section
+    assert "`actor`" in section
+    assert "expected_epoch" in section
+    assert "X-Barb-Scope" in section
+    assert "X-Barb-Lease-Epoch" in section
+    assert "X-Barb-Holder" in section
+    assert "unchanged" in section
+    assert "HTTP 200" in section
+    assert "HTTP 503" in section
+    text = DOC.read_text(encoding="utf-8")
+    assert "not enforced yet" not in text
+    assert "DASHBOARD_BARB_FENCE_MODE" in text
+    assert "claim_required" in text
+    # FIX-NEEDED @b5e95cfd: create and update resolve an invalid surface differently.
+    assert "On create" in section
+    assert "replaced by `classify_task_surface`" in section
+    assert "On update" in section
+    assert "keeps the stored `surface`" in section
+    assert "otherwise it keeps the stored surface" not in section
+    # The error code is stale_barb_lease; claim_required is the reason.
+    assert "409 `stale_barb_lease` with reason `claim_required`" in section
+    assert "returns 409 `claim_required`" not in section
+
+
+def test_inventory_module_records_that_handoff_leaves_surface_unchanged() -> None:
+    """Issue #4667 names this module; the docstring must match the UPDATE.
+
+    Review at 399161f6: the UPDATE writes owner, fencing, handoff metadata,
+    and updated_at as well as handoff_state and status. Surface is preserved.
+    """
+    docstring = STORE.read_text(encoding="utf-8").split('"""', 2)[1]
+    assert "transition_handoff" in docstring
+    assert "preserves ``surface``" in docstring
+    assert "handoff_state" in docstring and "status" in docstring
+    assert "and ``status`` only" not in docstring
+    assert "status only" not in docstring.lower()
+    for column in (
+        "owner_persona",
+        "fencing_epoch",
+        "handoff_request",
+        "handoff_resolution",
+        "artifact_ref",
+        "next_action",
+        "updated_at",
+    ):
+        assert column in docstring
+    assert "docs/agents/tooling-capabilities-matrix.md" in docstring

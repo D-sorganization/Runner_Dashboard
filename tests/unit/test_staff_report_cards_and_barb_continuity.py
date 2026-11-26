@@ -322,6 +322,7 @@ def test_barb_continuity_parallel_leases_turnover_compliance_and_fenced_handoff(
     assert h3["transitioned"] is True
     assert h3["task"]["handoff_state"] == "resume_ready"
     assert h3["task"]["status"] == "in_progress"
+    assert h3["task"]["surface"] == task["surface"]
 
     h4 = store.transition_handoff(task_id=tid, target_state="completed", actor_persona="codex-barb", expected_epoch=4)
     assert h4["transitioned"] is True

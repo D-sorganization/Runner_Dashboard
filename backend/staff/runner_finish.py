@@ -37,6 +37,9 @@ def finish_run_after_execution(
     """Classify exit, apply pre-terminal verify, transition, and emit terminal notifier."""
     from staff import workspace  # noqa: PLC0415
 
+    # One guarded lookup. A second raw opens_pr() call re-raised the resolver
+    # error and crashed a run that had already been classified as no-PR (#3622).
+    opens_pr = runner._opens_pr_or_false(rec.role)
     status, failure_class, retryable, remediation, error = classify_execution_result(
         cancelled=cancelled,
         rc=rc,
@@ -48,7 +51,7 @@ def finish_run_after_execution(
         machine=runner.machine,
         has_thread=bool(rec.thread_id),
         run=rec,
-        opens_pr=runner._opens_pr_or_false(rec.role),
+        opens_pr=opens_pr,
         probe=verification.GhCliPrProbe(),
     )
     same_provider = review.is_same_provider_review(rec.prompt)
@@ -56,7 +59,6 @@ def finish_run_after_execution(
         store, rec, plan, rc, status, failure_class, retryable, error, remediation, result_line, transcript
     )
     workspace.persist_run_transcript(store, rec.id, workdir)
-    opens_pr = runner.opens_pr(rec.role)
     pre_terminal_verdict: verification.Verdict | None = None
     if status == "succeeded" and not cancelled:
         (
