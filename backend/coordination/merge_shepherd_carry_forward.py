@@ -115,20 +115,20 @@ def failed_fix_passes_from_cycle(
         row.head_sha for row in check_failures if row.pr == pr
     )
     events: list[tuple[datetime, str, str]] = []
-    for row in passes:
-        if row.pr != pr:
+    for review in passes:
+        if review.pr != pr:
             continue
-        stamp = _parse_recorded_at(row.recorded_at)
-        sha = row.head_sha.strip().lower()
+        stamp = _parse_recorded_at(review.recorded_at)
+        sha = review.head_sha.strip().lower()
         if stamp is None or not sha:
             continue
-        kind = "approve" if row.verdict.strip().lower() == "approve" else "fail"
+        kind = "approve" if review.verdict.strip().lower() == "approve" else "fail"
         events.append((stamp, sha, kind))
-    for row in check_failures:
-        if row.pr != pr or row.state.strip().upper() not in _CI_FAILURE_STATES:
+    for failure in check_failures:
+        if failure.pr != pr or failure.state.strip().upper() not in _CI_FAILURE_STATES:
             continue
-        stamp = _parse_recorded_at(row.recorded_at)
-        sha = row.head_sha.strip().lower()
+        stamp = _parse_recorded_at(failure.recorded_at)
+        sha = failure.head_sha.strip().lower()
         if stamp is None or not sha:
             continue
         events.append((stamp, sha, "fail"))
