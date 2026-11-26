@@ -209,6 +209,14 @@ def test_the_open_pr_query_fetches_merge_group_check_runs() -> None:
     assert "timelineItems(last: 100" in OPEN_PRS_QUERY
     assert "hasPreviousPage" in OPEN_PRS_QUERY
     assert "hasNextPage" in OPEN_PRS_QUERY
+    assert "checkSuites(first: 5)" in OPEN_PRS_QUERY
+    assert "checkRuns(first: 20)" in OPEN_PRS_QUERY
+    suites = OPEN_PRS_QUERY.split("checkSuites(first: 5)", 1)[1].split("checkRuns(first: 20)", 1)[0]
+    runs = OPEN_PRS_QUERY.split("checkRuns(first: 20)", 1)[1].split("nodes { name conclusion title summary }", 1)[0]
+    comments = OPEN_PRS_QUERY.split("comments(last: 10)", 1)[1].split("author { login }", 1)[0]
+    assert "pageInfo" in suites and "hasNextPage" in suites
+    assert "pageInfo" in runs and "hasNextPage" in runs
+    assert "pageInfo" in comments and "hasPreviousPage" in comments
 
 
 def test_repeated_deterministic_failures_block_a_fresh_arm() -> None:
@@ -379,6 +387,90 @@ def test_timeline_truncated_before_the_head_does_not_hide_this_head() -> None:
     assert candidate.queue_history_truncated is False
     _, disarms = _plan([node])
     assert disarms == []
+
+
+def _owner_note(at: str, body: str, login: str = "dieterolson") -> dict[str, object]:
+    return {"createdAt": at, "author": {"login": login}, "body": body}
+
+
+def test_owner_unarmed_note_alone_blocks_arm_until_authorized_release() -> None:
+    """An owner unarmed instruction is enough. No manual removal or deterministic checks required."""
+    node = _with_head(_open_pr_node(91, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["comments"] = {
+        "nodes": [_owner_note("2026-11-24T23:10:36Z", "owner-directed unarmed note; do not requeue this head")]
+    }
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.action == ShepherdAction.SKIP
+    assert decision.reason == IneligibleReason.OWNER_UNARMED
+    assert decision.detail == "owner_unarmed"
+    arms, _ = _plan([node])
+    assert arms == []
+
+    node["comments"]["nodes"].append(_owner_note("2026-11-24T23:40:00Z", "retry authorized for this head"))
+    released = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    assert evaluate_pr_shepherd_eligibility(released).reason != IneligibleReason.OWNER_UNARMED
+    armed, _ = _plan([node])
+    assert [action.pr_number for action in armed] == [91]
+
+
+def test_new_head_does_not_release_an_owner_unarmed_hold() -> None:
+    """A later commit is not an authorized release. The note predates this head and still holds."""
+    new_head = "c" * 40
+    node = _with_head(_open_pr_node(92, paths=["docs/readme.md"]), new_head, "2026-11-25T01:00:00Z")
+    node["comments"] = {
+        "nodes": [_owner_note("2026-11-24T23:10:36Z", "owner-directed unarmed note; do not requeue this head")]
+    }
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=new_head)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.action == ShepherdAction.SKIP
+    assert decision.detail == "owner_unarmed"
+    assert [action.pr_number for action in _plan([node])[0]] == []
+
+
+def test_truncated_comment_history_fails_closed_when_the_owner_note_is_off_the_page() -> None:
+    node = _with_head(_open_pr_node(93, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["comments"] = {
+        "pageInfo": {"hasPreviousPage": True, "hasNextPage": False},
+        "nodes": [_owner_note("2026-11-24T23:50:00Z", "shipping the docs fix", login="teammate")],
+    }
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.action == ShepherdAction.SKIP
+    assert decision.reason == IneligibleReason.INCOMPLETE_COMMENT_HISTORY
+    assert decision.detail == "incomplete_comment_history"
+    assert [action.pr_number for action in _plan([node])[0]] == []
+
+
+def test_visible_retry_covers_comments_older_than_a_truncated_page() -> None:
+    node = _with_head(_open_pr_node(94, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["comments"] = {
+        "pageInfo": {"hasPreviousPage": True, "hasNextPage": False},
+        "nodes": [_owner_note("2026-11-24T23:40:00Z", "retry authorized for this head")],
+    }
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.detail != "incomplete_comment_history"
+    assert decision.reason != IneligibleReason.OWNER_UNARMED
+    assert [action.pr_number for action in _plan([node])[0]] == [94]
+
+
+def test_truncated_check_pages_fail_closed_when_deterministic_runs_may_be_off_page() -> None:
+    """checkSuites(first: 5) / checkRuns(first: 20) must not look complete when another page exists."""
+    node = _with_head(_open_pr_node(95, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    visible = [_check("queue entry", "FAILURE", summary="job failed without a classified cause")]
+    first = _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", visible, run_id=41)
+    second = _removal_with_checks("2026-11-24T22:40:00Z", "CI_FAILURE", visible, run_id=42)
+    for event in (first, second):
+        event["beforeCommit"]["checkSuites"]["pageInfo"] = {"hasNextPage": True}
+        event["beforeCommit"]["checkSuites"]["nodes"][0]["checkRuns"]["pageInfo"] = {"hasNextPage": True}
+    node["timelineItems"] = {"nodes": [first, second]}
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.action == ShepherdAction.SKIP
+    assert decision.reason == IneligibleReason.INCOMPLETE_CHECK_PAGE
+    assert decision.detail == "incomplete_check_page"
+    assert [action.pr_number for action in _plan([node])[0]] == []
 
 
 def test_unclassified_failures_do_not_disarm() -> None:

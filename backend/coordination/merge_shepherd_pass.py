@@ -114,10 +114,12 @@ query($owner: String!, $name: String!) {
               beforeCommit {
                 oid
                 checkSuites(first: 5) {
+                  pageInfo { hasNextPage }
                   nodes {
                     conclusion
                     workflowRun { event databaseId }
                     checkRuns(first: 20) {
+                      pageInfo { hasNextPage }
                       nodes { name conclusion title summary }
                     }
                   }
@@ -127,6 +129,7 @@ query($owner: String!, $name: String!) {
           }
         }
         comments(last: 10) {
+          pageInfo { hasPreviousPage hasNextPage }
           nodes {
             body
             createdAt
@@ -530,6 +533,8 @@ def node_to_candidate(
         merge_group_failures=evidence["merge_group_failures"],
         comment_bodies=evidence["comment_bodies"],
         queue_history_truncated=bool(evidence["queue_history_truncated"]),
+        comments_truncated=bool(evidence["comments_truncated"]),
+        checks_truncated=bool(evidence["checks_truncated"]),
     )
 
 

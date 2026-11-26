@@ -61,6 +61,18 @@ class IneligibleReason(_StrEnum):
     DETERMINISTIC_REQUEUE = "deterministic_requeue"
     MANUAL_DEQUEUE = "manual_dequeue"
     INCOMPLETE_QUEUE_HISTORY = "incomplete_queue_history"
+    OWNER_UNARMED = "owner_unarmed"
+    INCOMPLETE_COMMENT_HISTORY = "incomplete_comment_history"
+    INCOMPLETE_CHECK_PAGE = "incomplete_check_page"
+
+
+_UNARMED_HOLD_REASONS = {
+    "manual_dequeue": IneligibleReason.MANUAL_DEQUEUE,
+    "incomplete_queue_history": IneligibleReason.INCOMPLETE_QUEUE_HISTORY,
+    "owner_unarmed": IneligibleReason.OWNER_UNARMED,
+    "incomplete_comment_history": IneligibleReason.INCOMPLETE_COMMENT_HISTORY,
+    "incomplete_check_page": IneligibleReason.INCOMPLETE_CHECK_PAGE,
+}
 
 
 @dataclass(frozen=True)
@@ -94,6 +106,8 @@ class PRCandidate:
     merge_group_failures: tuple[tuple[str, str, str], ...] = ()
     comment_bodies: tuple[tuple[str, str, str], ...] = ()
     queue_history_truncated: bool = False
+    comments_truncated: bool = False
+    checks_truncated: bool = False
 
 
 @dataclass(frozen=True)
@@ -156,6 +170,8 @@ def requeue_suppression(candidate: PRCandidate) -> str:
         failures=candidate.merge_group_failures,
         comments=candidate.comment_bodies,
         queue_history_truncated=candidate.queue_history_truncated,
+        comments_truncated=candidate.comments_truncated,
+        checks_truncated=candidate.checks_truncated,
     )
 
 
@@ -189,17 +205,12 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
                 detail=suppression,
                 priority=priority,
             )
-        if suppression in {"manual_dequeue", "incomplete_queue_history"}:
-            reason = (
-                IneligibleReason.INCOMPLETE_QUEUE_HISTORY
-                if suppression == "incomplete_queue_history"
-                else IneligibleReason.MANUAL_DEQUEUE
-            )
+        if suppression in _UNARMED_HOLD_REASONS:
             return ShepherdDecision(
                 ShepherdAction.SKIP,
                 pr_num,
                 repo,
-                reason=reason,
+                reason=_UNARMED_HOLD_REASONS[suppression],
                 detail=suppression,
                 priority=priority,
             )
