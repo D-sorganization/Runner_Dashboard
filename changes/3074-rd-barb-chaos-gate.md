@@ -1,1 +1,6 @@
+---
+issue: 3074
+summary: "Add rd-barb slice 6 chaos gate tests (`test_dedupe_60s_under_retry`, `test_webhook_heartbeat_shared_failure`, `test_leader_kill`, `test_hop_limit_loop`) against the slice 3 and slice 5 modules (#3074)."
+---
+
 Add rd-barb slice 6 chaos gate tests (`test_dedupe_60s_under_retry`, `test_webhook_heartbeat_shared_failure`, `test_leader_kill`, `test_hop_limit_loop`) against the slice 3 and slice 5 modules (#3074).

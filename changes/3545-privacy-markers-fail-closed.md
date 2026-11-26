@@ -1,1 +1,6 @@
+---
+issue: 3545
+summary: "Fail closed (`MALFORMED_PLACEHOLDER`) on any malformed, ambiguous, case-varied, unclosed, nested, or orphan `PRIVATE:...` / `END_PRIVATE` double-angle-bracket markers in `private_surface_gate.gate_text`, and preserve `SENSITIVE` classification across `private_mode`, `private_mode_emit`, `private_mode_operator_ui`, and `private_mode_dry_run` when Private Mode is `DISABLED` (#3545)."
+---
+
 - Fail closed (`MALFORMED_PLACEHOLDER`) on any malformed, ambiguous, case-varied, unclosed, nested, or orphan `<<PRIVATE:...>>` / `<<END_PRIVATE>>` markers in `private_surface_gate.gate_text`, and preserve `SENSITIVE` classification across `private_mode`, `private_mode_emit`, `private_mode_operator_ui`, and `private_mode_dry_run` when Private Mode is `DISABLED` (#3545).
