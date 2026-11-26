@@ -196,7 +196,6 @@ Body `{repo, issue, agent?, session, reason}` → RM `release_agent_lease` →
 → 200 with `warnings`; nothing posted (e.g. RM "Release requires the current lease's exact agent and session")
 → 502 with RM's errors.
 
-
 ### `GET /api/coordination/jobs?repo=&limit=&include_excluded=`
 
 Fleet Job Board S1+S2 (epic #2781, issues #2782/#2783), read-only: open issues (`repo` optional,
@@ -304,8 +303,9 @@ Read-only. Lists registered lane-prompt assignments and any active checkout meta
 Returns a health summary with `healthy_active`, `stalled_heartbeat`, `stalled_progress`, `expired_recent`, and
 `idle_lanes` entries, plus `needs_attention`. Query thresholds are `stall_heartbeat_sec` (default 900),
 `stall_progress_sec` (default 1800), and `expired_window_sec` (default 86400); each has an effective minimum of
-60 seconds. Expired active checkouts are marked expired while building the summary, and recovered or disabled lanes
-are excluded from recent-expiration alerts.
+60 seconds. Active checkouts whose TTL has elapsed, or whose last heartbeat is at least 900 seconds old, are
+marked expired while building the summary (#4677). Recovered or disabled lanes are excluded from
+recent-expiration alerts.
 
 ### `POST /api/coordination/lane-prompts/checkout`
 
@@ -324,7 +324,14 @@ and `session_id` match (`409` on stale fence).
 ### `POST /api/coordination/lane-prompts/release`
 
 Body `{checkout_id, fence_token, session_id, reason?}` → releases an active lane-prompt checkout (`409` on
-stale fence).
+stale fence). Checkout also expires an active row when its heartbeat is at least 900 seconds old, so a new
+session can reclaim the lane before `ttl_sec` elapses (#4677).
+
+### `POST /api/coordination/lane-prompts/force-release`
+
+Body `{lane_id?, checkout_id?, reason?}`. Requires `priorities.write` (operator or admin). Releases one
+active checkout without the holder's `fence_token` or `session_id` (`422` when neither id is set, `404`
+when nothing active is held, `403` for a bot principal).
 
 ## Configuration
 
