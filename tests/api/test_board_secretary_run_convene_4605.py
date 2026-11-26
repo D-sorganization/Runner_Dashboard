@@ -1,4 +1,4 @@
-"""Board-secretary run tokens may propose ``board.convene`` without ``staff.chat`` (#4605).
+"""Board-secretary run tokens may propose ``board.convene`` and use staff chat.
 
 Exercises the real mint -> Bearer -> HTTP path (no dependency override on proposals).
 """
@@ -100,7 +100,7 @@ def _proposal_payload(ctx: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def test_board_secretary_run_token_has_convene_scope_without_staff_chat(board_secretary_run: dict[str, str]) -> None:
+def test_board_secretary_run_token_has_convene_and_chat_scopes(board_secretary_run: dict[str, str]) -> None:
     raw = mint_run_token(
         role=BOARD_PROPOSAL_ROLE,
         run_id=_RUN_ID,
@@ -111,8 +111,20 @@ def test_board_secretary_run_token_has_convene_scope_without_staff_chat(board_se
     assert principal is not None
     assert principal_has_scope(principal, "board.convene")
     assert principal_has_scope(principal, "staff.read")
-    assert not principal_has_scope(principal, "staff.chat")
+    assert principal_has_scope(principal, "staff.chat")
     assert not principal_has_scope(principal, "staff.approve")
+
+
+def test_board_secretary_run_token_can_create_chat_thread(
+    client: TestClient, board_secretary_run: dict[str, str]
+) -> None:
+    token = mint_run_token(BOARD_PROPOSAL_ROLE, _RUN_ID, [], ttl_seconds=300.0)
+    resp = client.post(
+        "/api/v1/staff/threads",
+        headers={**_XHR, "Authorization": f"Bearer {token}"},
+        json={"title": "Board meeting", "kind": "direct", "participants": ["board-secretary"]},
+    )
+    assert resp.status_code == 201, resp.text
 
 
 def test_board_secretary_run_token_can_create_board_convene_proposal(

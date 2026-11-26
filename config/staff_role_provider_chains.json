@@ -31,7 +31,7 @@
     "fleet-curator": ["codex", "claude", "cursor-agent"],
     "bean-counter": ["codex", "claude", "cursor-agent"],
     "postman": ["codex", "claude", "cursor-agent"],
-    "fleet-watch": ["claude", "codex", "cursor-agent"],
+    "fleet-watch": ["codex", "claude", "cursor-agent"],
     "librarian": ["claude", "codex", "cursor-agent"],
     "board-secretary": ["claude", "codex", "cursor-agent"],
     "project-steward": ["claude", "codex", "cursor-agent"],
