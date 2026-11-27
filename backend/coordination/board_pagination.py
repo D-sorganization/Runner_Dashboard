@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from coordination.board_route import BoardConfigUnavailable, load_board_config, unavailable_board_read
 from coordination.gh_cli import gh_api_json
 from staff.workspace import rm_root
 
@@ -75,6 +76,11 @@ def _validate_envelope(env: Any) -> str | None:
     return None
 
 
+def _author_login(login: str) -> str:
+    """GitHub's ``app/<login>`` display form is the same author as ``<login>``."""
+    return login[4:] if login.startswith("app/") else login
+
+
 def _parse_comment_envelope(comment: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None, str | None]:
     raw = str(comment.get("body") or "").replace("\r\n", "\n")
     if not raw.lstrip().startswith(_PREFIXES):
@@ -82,6 +88,7 @@ def _parse_comment_envelope(comment: dict[str, Any]) -> tuple[dict[str, Any] | N
     user = (comment.get("user") or {}).get("login") if isinstance(comment.get("user"), dict) else None
     if not user:
         return None, None, "Rejected comment without verified GitHub user.login"
+    user = _author_login(str(user))
     if not raw.startswith(_PREFIXES) or len(raw) > MAX_EVENT_BYTES:
         return None, str(user), "Malformed coordination envelope"
     body = _FOOTER.sub("", raw).rstrip()
@@ -194,19 +201,8 @@ def _read_predecessor_comments(
 
 
 def board_config() -> tuple[str, int, int, list[int]]:
-    root, repo, issue, days, preds = rm_root(), "D-sorganization/Repository_Management", 2539, 3, []
-    if root and (cfg := root / "config" / "agent_communication.json").is_file():
-        try:
-            c = json.loads(cfg.read_text(encoding="utf-8"))
-            if not isinstance(c, dict):
-                raise ValueError("root must be a dict")
-            repo = str(c.get("board_repo") or repo)
-            issue = int(c.get("board_issue") or issue)
-            days = int(c.get("board_window_days") or days)
-            preds = [int(p) for p in c.get("board_predecessors") or []]
-        except Exception as exc:
-            raise RuntimeError(f"Invalid agent_communication.json: {exc}") from exc
-    return repo, issue, days, preds
+    """Return ``(repo, issue, window_days, predecessors)`` using this module's ``rm_root``."""
+    return load_board_config(rm_root())
 
 
 def default_board_page_fetcher(page: int, per_page: int) -> list[dict[str, Any]]:
@@ -300,7 +296,15 @@ def paginate_board_comments(
     fetch_page: BoardPageFetcher, *, per_page: int = BOARD_PAGE_SIZE, max_pages: int = BOARD_MAX_PAGES,
     now: datetime | None = None, session: str | None = None,
 ) -> dict[str, Any]:  # fmt: skip
-    """Paginate RM#2376 comments across all pages (>1,000 comments) and replay coordination."""
+    """Paginate the configured coordination board and replay its comments.
+
+    Post: a missing RM config returns ``available: False`` and does not fetch comments.
+    """
+    if fetch_page is default_board_page_fetcher:
+        try:
+            board_config()
+        except BoardConfigUnavailable as exc:
+            return unavailable_board_read(str(exc))
     st: dict[str, Any] = {
         "active": {}, "owners": {}, "released": set(), "messages": [], "acks": set(),
         "replay_w": [], "live_c": [], "read_w": [], "rejected": {}, "release_uncertain": set(),
@@ -312,7 +316,7 @@ def paginate_board_comments(
     rw, rep = list(dict.fromkeys(st["read_w"])), list(dict.fromkeys(st["replay_w"]))
     out_m, out_c = _filter_coordination(session, st["active"], st["messages"], st["acks"])
     return {
-        "available": True, "complete": done and not rw and not act_c, "pages_complete": done,
+        "available": True, "complete": done and not rw, "pages_complete": done,
         "degraded_history": bool(rep), "read_warnings": rw, "replay_warnings": rep, "active_conflicts": act_c,
         "comment_limit_exceeded": not done and total >= BOARD_COMMENT_LIMIT, "comment_count": total,
         "sessions": list(st["active"].values()), "messages": out_m, "conflicts": out_c,
@@ -322,6 +326,8 @@ def paginate_board_comments(
 
 
 def _merge_paginated(data: dict[str, Any], pag: dict[str, Any]) -> dict[str, Any]:
+    if pag.get("available") is False:
+        return unavailable_board_read(str(pag.get("reason") or "coordination board unavailable"))
     done, pw = bool(pag.get("pages_complete", pag.get("complete", False))), pag.get
     sess = pw("sessions", []) if done else [_session(s) for s in data.get("sessions") or [] if isinstance(s, dict)]
     live_names = {str(s.get("session")) for s in sess if isinstance(s, dict)}
@@ -345,7 +351,7 @@ def _merge_paginated(data: dict[str, Any], pag: dict[str, Any]) -> dict[str, Any
     uncertain = [str(item) for item in data.get("release_uncertain_sessions") or []]
     uncertain += [str(item) for item in pw("release_uncertain_sessions") or []]
     return {
-        "available": True, "complete": done and not all_act and not all_rw,
+        "available": True, "complete": done and not all_rw and all(_is_replay_warning(w) for w in all_act),
         "degraded_history": bool(pw("degraded_history")) or bool(all_rep),
         "read_warnings": all_rw, "replay_warnings": all_rep, "active_conflicts": all_act,
         "comment_limit_exceeded": not done, "comment_count": pw("comment_count", data.get("comment_count", 0)),

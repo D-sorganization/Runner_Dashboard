@@ -399,11 +399,12 @@ def _expire_inactive(conn: sqlite3.Connection, ts: float) -> None:
     conn.execute(
         """
         UPDATE lane_checkouts
-        SET status = 'expired'
+        SET status = 'expired', expired_at = ?,
+            expiry_reason = CASE WHEN expires_at <= heartbeat_at + ? THEN 'lease_ttl' ELSE 'heartbeat_stale' END
         WHERE status = 'active'
           AND (expires_at <= ? OR (? - heartbeat_at) >= ?)
         """,
-        (ts, ts, _STALE_HEARTBEAT_SEC),
+        (ts, _STALE_HEARTBEAT_SEC, ts, ts, _STALE_HEARTBEAT_SEC),
     )
 
 
@@ -494,6 +495,11 @@ class LanePromptStore:
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_active_lane
                     ON lane_checkouts(lane_id) WHERE status = 'active';
                 """)
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(lane_checkouts)")}
+            if "expired_at" not in columns:
+                conn.execute("ALTER TABLE lane_checkouts ADD COLUMN expired_at REAL")
+            if "expiry_reason" not in columns:
+                conn.execute("ALTER TABLE lane_checkouts ADD COLUMN expiry_reason TEXT")
         finally:
             conn.close()
 
@@ -859,8 +865,9 @@ class LanePromptStore:
             receipt["released_at"] = ts
             receipt["release_reason"] = reason
             conn.execute(
-                "UPDATE lane_checkouts SET status = 'released', receipt_json = ? WHERE checkout_id = ?",
-                (json.dumps(receipt), checkout_id),
+                "UPDATE lane_checkouts SET status = 'released', expired_at = ?, "
+                "expiry_reason = 'released', receipt_json = ? WHERE checkout_id = ?",
+                (ts, json.dumps(receipt), checkout_id),
             )
             return receipt
 
@@ -904,8 +911,9 @@ class LanePromptStore:
             receipt["released_by"] = actor
             receipt["force_released"] = True
             conn.execute(
-                "UPDATE lane_checkouts SET status = 'released', receipt_json = ? WHERE checkout_id = ?",
-                (json.dumps(receipt), row["checkout_id"]),
+                "UPDATE lane_checkouts SET status = 'released', expired_at = ?, "
+                "expiry_reason = 'force_released', receipt_json = ? WHERE checkout_id = ?",
+                (ts, json.dumps(receipt), row["checkout_id"]),
             )
             return receipt
 
@@ -933,21 +941,27 @@ class LanePromptStore:
             enabled_lanes = {a["lane_id"] for a in assignments if a["enabled"]}
             active_rows = conn.execute("SELECT * FROM lane_checkouts WHERE status='active' ORDER BY lane_id").fetchall()
             expired_rows = conn.execute(
-                """
-                SELECT c.lane_id, c.checkout_id, c.session_id, c.expires_at
+                f"""
+                SELECT c.lane_id, c.checkout_id, c.session_id,
+                       COALESCE(c.expired_at, MIN(c.expires_at, c.heartbeat_at + {_STALE_HEARTBEAT_SEC})) AS expired_at,
+                       COALESCE(c.expiry_reason, CASE WHEN c.expires_at <= c.heartbeat_at + {_STALE_HEARTBEAT_SEC}
+                           THEN 'lease_ttl' ELSE 'heartbeat_stale' END) AS expiry_reason
                 FROM lane_checkouts c
                 JOIN lane_assignments a ON a.lane_id = c.lane_id
                 WHERE c.status = 'expired'
                   AND a.enabled = 1
-                  AND (? - c.expires_at) <= ?
+                  AND (? - COALESCE(c.expired_at, MIN(c.expires_at, c.heartbeat_at + {_STALE_HEARTBEAT_SEC}))) <= ?
                   AND NOT EXISTS (
                       SELECT 1
                       FROM lane_checkouts c2
                       WHERE c2.lane_id = c.lane_id
                         AND c2.status IN ('active', 'released')
-                        AND c2.created_at > c.expires_at
+                        AND c2.checkout_id != c.checkout_id
+                        AND c2.created_at >= COALESCE(
+                            c.expired_at, MIN(c.expires_at, c.heartbeat_at + {_STALE_HEARTBEAT_SEC})
+                        )
                   )
-                ORDER BY c.expires_at DESC
+                ORDER BY expired_at DESC
                 LIMIT 25
                 """,
                 (ts, exp_window),
@@ -994,7 +1008,8 @@ class LanePromptStore:
                     "lane_id": r["lane_id"],
                     "checkout_id": r["checkout_id"],
                     "session_id": r["session_id"],
-                    "expired_ago_sec": round(ts - float(r["expires_at"]), 1),
+                    "expired_ago_sec": round(max(0.0, ts - float(r["expired_at"])), 1),
+                    "expiry_reason": r["expiry_reason"],
                 }
                 for r in expired_rows
             ]

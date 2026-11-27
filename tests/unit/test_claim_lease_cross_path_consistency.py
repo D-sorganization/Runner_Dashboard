@@ -30,6 +30,7 @@ concurrent-claim-one-wins is ``tests/api/test_coordination_jobs.py``.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -37,11 +38,11 @@ import pytest
 from activity import ActivityStore
 from coordination import board as board_mod
 from coordination import claims as claims_mod
-from staff import claim_guard
-from staff import lease as lease_mod
 from staff.dispatch_self_claim import expected_staff_session as dispatch_self_claim_expected_session
 from staff.store import RunRecord, RunStore
 
+from staff import claim_guard
+from staff import lease as lease_mod
 from tests.api.coordination_fake_rm import FakeRM, claim_status, lease_result, session
 
 RUN_ID = "run-crosspath1"
@@ -236,4 +237,76 @@ def test_stale_board_cache_can_diverge_from_a_live_check_agent_claim_read(rm_roo
 
     assert result["held"] is True
     assert result["agent"] == "codex"
-    assert "RM #" in result["reason"]
+    # No RM config in this fixture: fail closed on the cache, but do not invent a board number.
+    assert "unknown board provenance" in result["reason"]
+    assert "RM #" not in result["reason"]
+
+
+def _write_board_config(root: Path, *, issue: int = 3089) -> None:
+    cfg = root / "config" / "agent_communication.json"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "board_repo": "D-sorganization/Repository_Management",
+        "board_issue": issue,
+        "board_window_days": 3,
+        "board_predecessors": [],
+    }
+    cfg.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_named_board_presence_includes_the_configured_issue(rm_root: FakeRM) -> None:
+    """An active cached claim on a configured board names that issue (#4686)."""
+    _write_board_config(rm_root.root, issue=3089)
+    rm_root.respond("check_agent_claim", claim_status(False))
+    stale = session("named-board-session", REPO, issue=int(ISSUE), agent="codex")
+    board_mod._cache["all"] = (
+        board_mod._clock(),
+        {"available": True, "complete": True, "sessions": [stale], "warnings": []},
+    )
+
+    result = claims_mod.check(REPO, int(ISSUE))
+
+    assert result["held"] is True
+    assert "RM #3089" in result["reason"]
+    assert "unknown board provenance" not in result["reason"]
+
+
+def test_unreadable_board_config_reports_unknown_provenance(rm_root: FakeRM) -> None:
+    """Unreadable board config is unknown provenance, not a guessed RM number (#4686)."""
+    cfg = rm_root.root / "config" / "agent_communication.json"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text("{", encoding="utf-8")
+    rm_root.respond("check_agent_claim", claim_status(False))
+    stale = session("unreadable-board-session", REPO, issue=int(ISSUE), agent="codex")
+    board_mod._cache["all"] = (
+        board_mod._clock(),
+        {"available": True, "complete": True, "sessions": [stale], "warnings": []},
+    )
+
+    result = claims_mod.check(REPO, int(ISSUE))
+
+    assert result["held"] is True
+    assert "unknown board provenance" in result["reason"]
+    assert "RM #" not in result["reason"]
+
+
+def test_comment_limit_without_config_does_not_invent_a_board_number(rm_root: FakeRM) -> None:
+    """A comment-limit denial with no config must not reference an unbound board issue."""
+    rm_root.respond("check_agent_claim", claim_status(False))
+    board_mod._cache["all"] = (
+        board_mod._clock(),
+        {
+            "available": True,
+            "complete": False,
+            "comment_limit_exceeded": True,
+            "sessions": [],
+            "warnings": [],
+        },
+    )
+
+    result = claims_mod.check(REPO, int(ISSUE))
+
+    assert result["available"] is False
+    assert result["held"] is None
+    assert "unknown board provenance" in result["reason"]
+    assert "RM #" not in result["reason"]

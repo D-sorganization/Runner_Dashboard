@@ -233,7 +233,7 @@ def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, A
         bool(data.get("complete", False))
         and not limit_hit
         and not read_warnings
-        and not active_conflicts
+        and all(_is_replay_warning(w) for w in active_conflicts)
         and (data.get("ok", True) is True or (not has_structured_warnings and bool(replay_warnings)))
     )
     return {

@@ -31,7 +31,7 @@ from coordination import board as board_mod
 from coordination import claim_state as claim_state_mod
 from coordination import gh_cli
 from coordination.board import BOARD_COMMENT_LIMIT, RMScriptError
-from coordination.board_pagination import board_config
+from coordination.board_pagination import BoardConfigUnavailable, board_config
 from coordination.gh_cli import gh_api_json
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from coordination.rm_scripts import ScriptResult, run_module
@@ -192,6 +192,32 @@ def _is_non_reserving_session(sess: dict[str, Any]) -> bool:
     return not paths and branch in ("", "none")
 
 
+_UNKNOWN_BOARD_PROVENANCE = "unknown board provenance"
+
+
+def _configured_board_issue() -> int | None:
+    """Board issue from RM config, or None when that config is absent or unreadable.
+
+    Pre: none. Post: the configured issue, or None. Never substitutes a retired board number.
+    """
+    try:
+        return board_config()[1]
+    except (BoardConfigUnavailable, RuntimeError):
+        return None
+
+
+def _presence_reason(issue: int | None) -> str:
+    if issue is None:
+        return f"active board presence; {_UNKNOWN_BOARD_PROVENANCE}"
+    return f"active board presence on RM #{issue}"
+
+
+def _comment_limit_fallback(issue: int | None) -> str:
+    if issue is None:
+        return f"comment limit exceeded; {_UNKNOWN_BOARD_PROVENANCE}"
+    return f"RM #{issue} comment limit exceeded"
+
+
 def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
     state = board_mod.cached_board_state()
     if state is None and board_mod.board_page_fetcher is not None:
@@ -211,7 +237,8 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
             "reason": str(state.get("reason") or "coordination board unavailable"),
             "held": None,
         }  # noqa: E501
-    b_iss = board_config()[1]
+    board_issue = _configured_board_issue()
+    presence = _presence_reason(board_issue)
     for sess in state.get("sessions") or []:
         if str(sess.get("repo") or "").casefold() == repo.casefold() and sess.get("issue") == issue:
             if _is_non_reserving_session(sess):
@@ -221,13 +248,13 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
                 "held": True,
                 "agent": str(sess.get("agent") or ""),
                 "session": str(sess.get("session") or ""),
-                "reason": f"active board presence on RM #{b_iss}",
+                "reason": presence,
                 "expires_at": sess.get("expires") or None,
             }
     if state.get("comment_limit_exceeded") or (
         not state.get("complete", True) and board_mod._comment_limit_reached(state)
     ):  # noqa: E501
-        detail = "; ".join(state.get("warnings") or [f"RM #{b_iss} comment limit exceeded"])
+        detail = "; ".join(state.get("warnings") or [_comment_limit_fallback(board_issue)])
         return {"available": False, "reason": f"coordination board incomplete ({detail})", "held": None}
     return None
 
