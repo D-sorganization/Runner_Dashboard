@@ -91,7 +91,8 @@ def test_atomic_set_gh_token_preserves_other_lines_and_mode(tmp_path: Path) -> N
     assert _TOKEN in text
     assert _PREVIOUS not in text
     assert sum(1 for ln in text.splitlines() if ln.startswith("GH_TOKEN=")) == 1
-    assert stat.S_IMODE(env.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(env.stat().st_mode) == 0o600
 
 
 def test_atomic_set_strips_nul_bytes_from_rewrite(tmp_path: Path) -> None:
