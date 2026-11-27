@@ -753,15 +753,17 @@ def plan_repo_disarms(
     """Plan disarm actions for queued/armed PRs with a fresh FIX-NEEDED at head (#4618).
 
     Runs even when the merge queue is in backoff (arming is throttled, safety disarm is not).
+
+    Disarm is evaluated before the arm pre-filter (#4708): the pre-filter rejects queued,
+    blocked, unstable, changes-requested and failing PRs, which are exactly the PRs whose
+    head-bound FIX-NEEDED must still dequeue them. ``skip_list`` and ``holds`` gate arming
+    only and are deliberately not applied to disarm.
     """
     effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
     is_drained = drained
     actions: list[PassAction] = []
     for node in nodes:
         if node.get("isDraft"):
-            continue
-        pre = pre_filter_skip_reason(node, repo=repo, skip_list=skip_list, holds=holds)
-        if pre:
             continue
         paths, additions, deletions, files_complete = _pr_file_metadata(node)
         number = int(node["number"])
