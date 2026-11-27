@@ -147,9 +147,7 @@ async def post_presence_release(body: ReleaseBody, caller: Caller = WRITER) -> d
 
 @router.post("/messages")
 async def post_message(body: MessageBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _bounded(
-        _write(lambda: service.send_message(body, caller), caller, "message send"), write=True
-    )
+    return await _bounded(_write(lambda: service.send_message(body, caller), caller, "message send"), write=True)
 
 
 @router.post("/messages/ack")
