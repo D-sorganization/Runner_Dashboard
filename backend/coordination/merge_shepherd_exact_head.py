@@ -269,14 +269,19 @@ def collect_review_passes_from_comments(
         unquoted = _strip_quoted_text(body)
         # This is the publisher's visible comment format, not a STAFF_RESULT line.
         if "Independent Exact-Head Acceptance Review" in unquoted:
+            # Bold heading form (#4708): ``**Independent ... — FIX-NEEDED** @sha``.
             match = re.search(
-                r"(?:Verdict:\s*[`'\"]?|^\s*|Blocking:\s*)(PASS|FIX-NEEDED)\s+@([0-9a-fA-F]{7,40})\b",
+                r"(?:Verdict:\s*[`'\"]?|^\s*|Blocking:\s*)(PASS|FIX-NEEDED)\s+@([0-9a-fA-F]{7,40})\b"
+                r"|\*\*[^*\n]*?\b(PASS|FIX-NEEDED)\*\*\s*@([0-9a-fA-F]{7,40})\b",
                 unquoted,
                 re.IGNORECASE | re.MULTILINE,
             )
             if match:
-                decision = "approve" if match.group(1).upper() == "PASS" else "changes"
-                body = f"STAFF_RESULT: review {decision} #{pr} @{match.group(2)}"
+                plain = match.group(1) is not None
+                verdict_word = match.group(1) if plain else match.group(3)
+                sha = match.group(2) if plain else match.group(4)
+                decision = "approve" if verdict_word.upper() == "PASS" else "changes"
+                body = f"STAFF_RESULT: review {decision} #{pr} @{sha}"
         verdict = parse_review_verdict(body)
         if verdict.status != "succeeded" or not verdict.head_sha:
             continue

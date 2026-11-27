@@ -326,6 +326,12 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
 
 def rank_candidates_for_shepherding(candidates: Sequence[PRCandidate]) -> list[ShepherdDecision]:
     """Evaluate candidates and rank decisions, prioritizing merge:priority items."""
-    action_order = {ShepherdAction.AUTO_ARM: 0, ShepherdAction.UPDATE_BRANCH: 1, ShepherdAction.SKIP: 2}
+    # DISARM is a safety action (#4708): it outranks every arm and skip decision.
+    action_order = {
+        ShepherdAction.DISARM: 0,
+        ShepherdAction.AUTO_ARM: 1,
+        ShepherdAction.UPDATE_BRANCH: 2,
+        ShepherdAction.SKIP: 3,
+    }
     decisions = [evaluate_pr_shepherd_eligibility(c) for c in candidates]
     return sorted(decisions, key=lambda d: (action_order.get(d.action, 9), 0 if d.priority else 1, d.pr_number))
