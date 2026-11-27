@@ -207,13 +207,20 @@ def append_check_suite_page(connection: Mapping[str, Any], page: Mapping[str, An
 
     Pre: both arguments are check-suite connections.
     Post: nodes already on ``connection`` stay first. The result ``pageInfo`` is
-    the later page, so a finished walk has ``hasNextPage`` false.
+    the later page when that page has one, so a finished walk has ``hasNextPage``
+    false. A page with no ``pageInfo`` keeps the prior ``pageInfo`` and adds no
+    nodes, so an unread page stays fail-closed.
     """
     nodes = [suite for suite in (connection.get("nodes") or []) if isinstance(suite, Mapping)]
-    extra = page.get("nodes") if isinstance(page, Mapping) else ()
-    nodes.extend(suite for suite in extra or [] if isinstance(suite, Mapping))
-    info = page.get("pageInfo") if isinstance(page, Mapping) and isinstance(page.get("pageInfo"), Mapping) else {}
-    return {"nodes": nodes, "pageInfo": dict(info)}
+    raw_info = page.get("pageInfo") if isinstance(page, Mapping) else None
+    if not isinstance(raw_info, Mapping):
+        prior = connection.get("pageInfo")
+        raw_info = prior if isinstance(prior, Mapping) else {}
+    else:
+        extra = page.get("nodes") if isinstance(page, Mapping) else ()
+        nodes.extend(suite for suite in extra or [] if isinstance(suite, Mapping))
+    info = {str(key): value for key, value in raw_info.items()}
+    return {"nodes": nodes, "pageInfo": info}
 
 
 def complete_check_suites(
@@ -223,8 +230,9 @@ def complete_check_suites(
     """Follow ``checkSuites`` pages until the connection ends or the page cap.
 
     Pre: ``fetch_page(oid, end_cursor)`` returns one check-suite connection.
-    Post: a missing cursor, a missing oid, or ``MAX_CHECK_SUITE_PAGES`` extra
-    pages leaves ``hasNextPage`` set so the removal fails closed.
+    Post: a missing cursor, a missing oid, a page with no ``pageInfo``, or
+    ``MAX_CHECK_SUITE_PAGES`` extra pages leaves ``hasNextPage`` set so the
+    removal fails closed.
     """
     copied = dict(event)
     before = copied.get("beforeCommit")
@@ -245,7 +253,7 @@ def complete_check_suites(
         if not oid or not cursor:
             break
         page = fetch_page(oid, cursor)
-        if not isinstance(page, Mapping):
+        if not isinstance(page, Mapping) or not isinstance(page.get("pageInfo"), Mapping):
             break
         current = append_check_suite_page(current, page)
     before["checkSuites"] = current

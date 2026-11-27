@@ -554,6 +554,38 @@ def test_a_fetched_later_suite_page_suppresses_the_hidden_deterministic_run() ->
     assert decision.reason == IneligibleReason.DETERMINISTIC_REQUEUE
 
 
+def test_an_empty_suite_page_fetch_stays_fail_closed() -> None:
+    """A page fetch with no pageInfo is unread, not a completed connection.
+
+    CI mypy rejected ``dict(info)`` when pageInfo was not a mapping. Treating
+    that missing page as complete would hide a deterministic run still off-page.
+    """
+    transient = [_check("queue entry", "CANCELLED", summary="runner offline; lost communication with the server")]
+    first = _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", transient, run_id=51)
+    second = _removal_with_checks("2026-11-24T22:40:00Z", "CI_FAILURE", transient, run_id=53)
+    for event in (first, second):
+        event["beforeCommit"]["checkSuites"]["pageInfo"] = {"hasNextPage": True, "endCursor": "suite-2"}
+    bare = _with_head(_open_pr_node(100, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    bare["timelineItems"] = {
+        "nodes": [
+            {"createdAt": event["createdAt"], "reason": "CI_FAILURE", "beforeCommit": {"oid": "m" * 40}}
+            for event in (first, second)
+        ]
+    }
+    enriched = enrich_open_pr_nodes(
+        [bare],
+        fetch_checks=lambda _number: [first, second],
+        fetch_suite_page=lambda _oid, _cursor: {},
+    )
+    stitched = enriched[0]["timelineItems"]["nodes"][0]["beforeCommit"]["checkSuites"]
+    assert stitched["pageInfo"]["hasNextPage"] is True
+    candidate = node_to_candidate(REPO, enriched[0], is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.action == ShepherdAction.SKIP
+    assert decision.detail == "incomplete_check_page"
+    assert decision.reason == IneligibleReason.INCOMPLETE_CHECK_PAGE
+
+
 def test_truncated_suites_fail_closed_when_no_merge_group_suite_was_returned() -> None:
     """A later page can still hide the merge_group suite when this page has none."""
     node = _with_head(_open_pr_node(97, paths=["docs/readme.md"]), HEAD, HEAD_AT)
