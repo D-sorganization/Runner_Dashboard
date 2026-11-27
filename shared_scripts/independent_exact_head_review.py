@@ -32,6 +32,7 @@ class IndependentHeadReview:
     head_sha: str
     reviewer_model: str
     created_at: str
+    html_url: str = ""
 
 
 def normalize_model_token(value: str) -> str:
@@ -102,7 +103,9 @@ def is_trusted_independent_reviewer_comment(item: Mapping[str, Any]) -> bool:
     return login.lower() in {name.lower() for name in TRUSTED_INDEPENDENT_REVIEWER_LOGINS}
 
 
-def parse_independent_review_comment(body: str, *, created_at: str = "") -> IndependentHeadReview | None:
+def parse_independent_review_comment(
+    body: str, *, created_at: str = "", html_url: str = ""
+) -> IndependentHeadReview | None:
     if INDEPENDENT_REVIEW_MARKER not in body:
         return None
     model_match = _REVIEWER_MODEL.search(body)
@@ -117,6 +120,7 @@ def parse_independent_review_comment(body: str, *, created_at: str = "") -> Inde
         head_sha=verdict_match.group("sha"),
         reviewer_model=reviewer_model,
         created_at=created_at,
+        html_url=html_url,
     )
 
 
@@ -126,7 +130,11 @@ def parse_issue_comments(comments: Sequence[Mapping[str, Any]]) -> list[Independ
         if not is_trusted_independent_reviewer_comment(item):
             continue
         body = str(item.get("body") or "")
-        parsed = parse_independent_review_comment(body, created_at=str(item.get("created_at") or ""))
+        parsed = parse_independent_review_comment(
+            body,
+            created_at=str(item.get("created_at") or ""),
+            html_url=str(item.get("html_url") or ""),
+        )
         if parsed is not None:
             rows.append(parsed)
     return rows
@@ -161,7 +169,7 @@ def latest_independent_verdict_at_head(
     if not eligible:
         return None, "no_independent_verdict_at_head"
     latest = max(eligible, key=lambda row: row.created_at or "")
-    return latest.verdict, latest.verdict
+    return latest.verdict, latest.html_url
 
 
 def independent_review_hold_reason(
