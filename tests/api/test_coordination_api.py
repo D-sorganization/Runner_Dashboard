@@ -454,11 +454,11 @@ def test_sessions_complete_with_degraded_history_when_warnings_are_historical_on
 
 @pytest.mark.unit
 def test_sessions_fail_closed_on_active_conflicts_or_unclassified_warnings(rm: FakeRM, client: TestClient) -> None:
-    # Sub-case A: classified live active_conflicts even when complete in raw payload is True
+    # Sub-case A: one session's identity rejection stays visible and does not lock other sessions (#4681)
     rm.respond(
         "agent_communicate:list",
         {
-            "ok": False,
+            "ok": True,
             "complete": True,
             "degraded_history": True,
             "read_warnings": [],
@@ -472,10 +472,10 @@ def test_sessions_fail_closed_on_active_conflicts_or_unclassified_warnings(rm: F
     )
     body = client.get("/api/coordination/sessions").json()
     assert body["available"] is True
-    assert body["complete"] is False
+    assert body["complete"] is True
     assert body["active_conflicts"] == ["Rejected identity change for live-s1"]
-    with pytest.raises(board_mod.RMScriptError):
-        board_mod.has_live_session("missing-s", "Tools")
+    assert board_mod.has_live_session("missing-s", "Tools") is False
+    assert board_mod.has_live_session("live-s1", "Tools") is True
 
     # Sub-case B: legacy/unclassified payload (missing structured lists) with non-empty warnings
     board_mod.reset_cache()

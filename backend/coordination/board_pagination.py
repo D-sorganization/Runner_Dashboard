@@ -75,6 +75,11 @@ def _validate_envelope(env: Any) -> str | None:
     return None
 
 
+def _author_login(login: str) -> str:
+    """GitHub's ``app/<login>`` display form is the same author as ``<login>``."""
+    return login[4:] if login.startswith("app/") else login
+
+
 def _parse_comment_envelope(comment: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None, str | None]:
     raw = str(comment.get("body") or "").replace("\r\n", "\n")
     if not raw.lstrip().startswith(_PREFIXES):
@@ -82,6 +87,7 @@ def _parse_comment_envelope(comment: dict[str, Any]) -> tuple[dict[str, Any] | N
     user = (comment.get("user") or {}).get("login") if isinstance(comment.get("user"), dict) else None
     if not user:
         return None, None, "Rejected comment without verified GitHub user.login"
+    user = _author_login(str(user))
     if not raw.startswith(_PREFIXES) or len(raw) > MAX_EVENT_BYTES:
         return None, str(user), "Malformed coordination envelope"
     body = _FOOTER.sub("", raw).rstrip()
@@ -312,7 +318,7 @@ def paginate_board_comments(
     rw, rep = list(dict.fromkeys(st["read_w"])), list(dict.fromkeys(st["replay_w"]))
     out_m, out_c = _filter_coordination(session, st["active"], st["messages"], st["acks"])
     return {
-        "available": True, "complete": done and not rw and not act_c, "pages_complete": done,
+        "available": True, "complete": done and not rw, "pages_complete": done,
         "degraded_history": bool(rep), "read_warnings": rw, "replay_warnings": rep, "active_conflicts": act_c,
         "comment_limit_exceeded": not done and total >= BOARD_COMMENT_LIMIT, "comment_count": total,
         "sessions": list(st["active"].values()), "messages": out_m, "conflicts": out_c,
@@ -345,7 +351,7 @@ def _merge_paginated(data: dict[str, Any], pag: dict[str, Any]) -> dict[str, Any
     uncertain = [str(item) for item in data.get("release_uncertain_sessions") or []]
     uncertain += [str(item) for item in pw("release_uncertain_sessions") or []]
     return {
-        "available": True, "complete": done and not all_act and not all_rw,
+        "available": True, "complete": done and not all_rw and all(_is_replay_warning(w) for w in all_act),
         "degraded_history": bool(pw("degraded_history")) or bool(all_rep),
         "read_warnings": all_rw, "replay_warnings": all_rep, "active_conflicts": all_act,
         "comment_limit_exceeded": not done, "comment_count": pw("comment_count", data.get("comment_count", 0)),
