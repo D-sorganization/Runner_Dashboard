@@ -21,6 +21,7 @@ from coordination.merge_shepherd_pass import (
     hub_hold_blocks_pr,
     is_repo_access_error,
     load_skip_list,
+    node_to_candidate,
     plan_repo_pass,
     pre_filter_skip_reason,
     resolve_hub_holds_policy,
@@ -664,3 +665,102 @@ def test_run_pass_fails_when_every_repo_is_inaccessible() -> None:
 def test_shepherd_repos_contains_all_seven_fleet_repos() -> None:
     assert "D-sorganization/Tools" in SHEPHERD_REPOS
     assert len(SHEPHERD_REPOS) == 7
+
+
+def _ci_commit(oid: str, at: str, state: str) -> dict:
+    return {"commit": {"oid": oid, "committedDate": at, "statusCheckRollup": {"state": state}}}
+
+
+def test_plan_repo_escalates_two_ci_failed_heads() -> None:
+    old, new = "a" * 40, "b" * 40
+    node = _open_pr_node(7, review="", paths=["backend/coordination/merge_shepherd.py"])
+    node["headRefOid"] = new
+    node["reviewDecision"] = ""
+    node["commits"] = {
+        "nodes": [
+            _ci_commit(old, "2026-11-19T10:00:00Z", "FAILURE"),
+            _ci_commit(new, "2026-11-19T12:00:00Z", "FAILURE"),
+        ]
+    }
+    actions, skips, backoff = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+    )
+    assert backoff is False
+    assert actions == []
+    row = next(item for item in skips if item.get("pr") == 7)
+    assert row["reason"] == "fix_pass_cap"
+    assert row["escalation"]["audience"] == "barb"
+    assert row["escalation"]["mark"] == "escalate:fix_pass_cap"
+    assert new in row["escalation"]["notice"]
+
+
+def test_plan_repo_single_ci_failure_stays_checks_failed() -> None:
+    sha = "c" * 40
+    node = _open_pr_node(8, review="", paths=["backend/coordination/merge_shepherd.py"])
+    node["headRefOid"] = sha
+    node["reviewDecision"] = ""
+    node["commits"] = {"nodes": [_ci_commit(sha, "2026-11-19T10:00:00Z", "FAILURE")]}
+    actions, skips, _ = plan_repo_pass(
+        "D-sorganization/Runner_Dashboard",
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+    )
+    assert actions == []
+    row = next(item for item in skips if item.get("pr") == 8)
+    assert row == {"repo": "D-sorganization/Runner_Dashboard", "pr": 8, "reason": "checks_failed"}
+
+
+def test_run_pass_records_fix_cap_escalation() -> None:
+    old, new = "d" * 40, "e" * 40
+    node = _open_pr_node(9, review="", paths=["backend/coordination/merge_shepherd.py"])
+    node["headRefOid"] = new
+    node["reviewDecision"] = ""
+    node["commits"] = {
+        "nodes": [
+            _ci_commit(old, "2026-11-19T10:00:00Z", "FAILURE"),
+            _ci_commit(new, "2026-11-19T12:00:00Z", "ERROR"),
+        ]
+    }
+    payload = {
+        "repository": {
+            "mergeQueue": {"entries": {"totalCount": 0}},
+            "armedPullRequests": {"totalCount": 0, "nodes": []},
+            "pullRequests": {"nodes": [node]},
+        }
+    }
+
+    def fetch(owner: str, name: str):
+        if name == "Runner_Dashboard":
+            return payload
+        return _EMPTY_REPO_PAYLOAD
+
+    summary = run_merge_shepherd_pass(config=PassConfig(live=False), fetch_graphql=fetch)
+    assert summary.armed == []
+    assert summary.escalations[0]["pr"] == 9
+    assert summary.escalations[0]["escalation"]["mark"] == "escalate:fix_pass_cap"
+    assert summary_to_json(summary)["escalations"] == summary.escalations
+
+
+def test_node_to_candidate_reads_head_checks_not_the_oldest_commit() -> None:
+    old, new = "f" * 40, "1" * 40
+    node = _open_pr_node(11, paths=["backend/x.py"])
+    node["headRefOid"] = new
+    node["commits"] = {
+        "nodes": [
+            _ci_commit(old, "2026-11-19T10:00:00Z", "FAILURE"),
+            _ci_commit(new, "2026-11-19T12:00:00Z", "SUCCESS"),
+        ]
+    }
+    candidate = node_to_candidate("D-sorganization/Runner_Dashboard", node, is_drained=False, head_sha=new)
+    assert candidate.checks_status == "SUCCESS"
+    assert candidate.failed_fix_passes == 0

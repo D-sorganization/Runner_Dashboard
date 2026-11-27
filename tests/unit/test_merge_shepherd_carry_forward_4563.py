@@ -5,13 +5,24 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
+from coordination.merge_shepherd import (
+    IneligibleReason,
+    PRCandidate,
+    ShepherdAction,
+    evaluate_pr_shepherd_eligibility,
+)
 from coordination.merge_shepherd_carry_forward import (
+    FIX_PASS_ESCALATION_MARK,
     MAX_FIX_PASSES,
+    HeadCheckFailure,
     diff_fingerprint,
+    failed_fix_passes_from_cycle,
+    failed_fix_passes_from_reviews,
     fix_pass_decision,
     pass_with_carry_forward,
 )
 from coordination.merge_shepherd_exact_head import HeadReviewPass
+from coordination.merge_shepherd_pass import node_to_candidate
 
 OLD = "a" * 40
 NEW = "b" * 40
@@ -116,6 +127,110 @@ def test_mode_only_change_requires_fresh_review() -> None:
         [_pass(OLD)], pr=7, head_sha=NEW, head_fingerprint=new_fp, pass_fingerprints={OLD: old_fp}, now=NOW
     )
     assert (ok, why) == (False, "missing_pass_at_head")
+
+
+T0, T1, T2 = "2026-11-19T10:00:00+00:00", "2026-11-19T11:00:00+00:00", "2026-11-19T12:00:00+00:00"
+THIRD = "c" * 40
+
+
+def _verdict(sha: str, verdict: str = "approve", *, at: str = T0, pr: int = 7) -> HeadReviewPass:
+    return HeadReviewPass(pr=pr, head_sha=sha, verdict=verdict, recorded_at=at)
+
+
+def _ci(sha: str, *, at: str = T0, pr: int = 7) -> HeadCheckFailure:
+    return HeadCheckFailure(pr=pr, head_sha=sha, recorded_at=at, state="FAILURE")
+
+
+@pytest.mark.parametrize(
+    ("passes", "checks", "count", "decision"),
+    [
+        ([_verdict(OLD, "changes")], [], 0, "fix"),
+        ([_verdict(OLD, "changes"), _verdict(NEW, "changes", at=T2)], [], 1, "escalate"),
+        ([_verdict(OLD, "changes"), _verdict(NEW, "approve", at=T1), _verdict(THIRD, "changes", at=T2)], [], 0, "fix"),
+        ([_verdict(OLD, "changes"), _verdict(OLD, "approve", at=T1)], [], 0, "fix"),
+        ([_verdict(OLD, "changes", pr=8), _verdict(NEW, "changes", at=T2, pr=8)], [], 0, "fix"),
+        ([], [_ci(OLD)], 0, "fix"),
+        ([], [_ci(OLD), _ci(NEW, at=T2)], 1, "escalate"),
+        ([_verdict(OLD, "changes")], [_ci(NEW, at=T2)], 1, "escalate"),
+        ([_verdict(OLD, "changes")], [_ci(OLD, at="2026-11-19T10:05:00+00:00")], 0, "fix"),
+        ([_verdict(NEW, "approve", at=T2)], [_ci(OLD)], 0, "fix"),
+    ],
+)
+def test_failed_fix_cycle(passes, checks, count, decision) -> None:
+    assert failed_fix_passes_from_cycle(passes, checks, pr=7) == count
+    if not checks:
+        assert failed_fix_passes_from_reviews(passes, pr=7) == count
+    assert fix_pass_decision(failed_fix_passes=count) == decision
+
+
+def test_shepherd_escalates_after_one_failed_fix_without_a_fresh_pass() -> None:
+    decision = evaluate_pr_shepherd_eligibility(
+        PRCandidate(
+            "Runner_Dashboard",
+            7,
+            checks_status="SUCCESS",
+            head_sha="d" * 40,
+            file_paths=("backend/x.py",),
+            files_complete=True,
+            failed_fix_passes=1,
+        )
+    )
+    assert (decision.action, decision.reason) == (ShepherdAction.SKIP, IneligibleReason.FIX_PASS_CAP)
+
+
+def test_fresh_exact_head_pass_still_arms_after_an_earlier_failed_fix() -> None:
+    head = "e" * 40
+    decision = evaluate_pr_shepherd_eligibility(
+        PRCandidate(
+            "Runner_Dashboard",
+            7,
+            checks_status="SUCCESS",
+            head_sha=head,
+            file_paths=("backend/x.py",),
+            files_complete=True,
+            failed_fix_passes=1,
+            review_passes=(_verdict(head, at=datetime.now(UTC).isoformat()),),
+        )
+    )
+    assert decision.action == ShepherdAction.AUTO_ARM
+
+
+def test_node_to_candidate_counts_failed_fix_passes() -> None:
+    node = {
+        "number": 7,
+        "title": "pr 7",
+        "isDraft": False,
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "CLEAN",
+        "reviewDecision": "",
+        "headRefOid": NEW,
+        "additions": 1,
+        "deletions": 0,
+        "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": "SUCCESS"}}}]},
+        "labels": {"nodes": []},
+        "files": {"pageInfo": {"hasNextPage": False}, "nodes": [{"path": "backend/x.py"}]},
+    }
+    candidate = node_to_candidate(
+        "D-sorganization/Runner_Dashboard",
+        node,
+        is_drained=False,
+        head_sha=NEW,
+        review_passes=[_verdict(OLD, "changes"), _verdict(NEW, "changes", at=T2)],
+    )
+    assert candidate.failed_fix_passes == 1
+
+
+def test_checks_failure_respects_the_fix_cap() -> None:
+    capped = evaluate_pr_shepherd_eligibility(
+        PRCandidate("Runner_Dashboard", 7, checks_status="FAILURE", head_sha="d" * 40, failed_fix_passes=1)
+    )
+    assert (capped.action, capped.reason) == (ShepherdAction.SKIP, IneligibleReason.FIX_PASS_CAP)
+    assert capped.escalation.startswith(FIX_PASS_ESCALATION_MARK) and "barb" in capped.escalation
+    allowed = evaluate_pr_shepherd_eligibility(
+        PRCandidate("Runner_Dashboard", 7, checks_status="FAILURE", head_sha=OLD, failed_fix_passes=0)
+    )
+    assert (allowed.action, allowed.reason) == (ShepherdAction.SKIP, IneligibleReason.CHECKS_FAILED)
+    assert allowed.escalation == ""
 
 
 def test_carry_forward_is_not_wired_into_arm_eligibility() -> None:
