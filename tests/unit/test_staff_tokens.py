@@ -189,15 +189,15 @@ def test_mint_run_token_never_logs_raw_bearer(caplog: pytest.LogCaptureFixture) 
 
 
 @pytest.mark.unit
-def test_board_secretary_run_token_mints_board_convene_without_staff_chat() -> None:
-    """#4605: chair runs propose board.convene without granting full chat."""
+def test_board_secretary_run_token_mints_board_convene_with_staff_chat() -> None:
+    """#4689: chair runs need staff.chat to convene and communicate with seats."""
     run_id = "run-board-secretary-scopes"
     raw_token = mint_run_token(role=BOARD_PROPOSAL_ROLE, run_id=run_id, fleet_actions=[], ttl_seconds=60.0)
     prin = identity_manager.verify_token(raw_token)
     assert prin is not None
     assert principal_has_scope(prin, "board.convene")
     assert principal_has_scope(prin, "staff.read")
-    assert not principal_has_scope(prin, "staff.chat")
+    assert principal_has_scope(prin, "staff.chat")
     revoke_run_token(run_id)
 
 

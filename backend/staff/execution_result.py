@@ -59,6 +59,17 @@ def classify_execution_result(
         except Exception:
             pass
 
+    if run is not None and run.role == "board-secretary" and result_line:
+        _, marker, summary = result_line.partition("STAFF_RESULT:")
+        if marker and summary.strip().lower().startswith(("blocked:", "failed:")):
+            return (
+                "failed",
+                "board_chair_failed",
+                False,
+                "Inspect the chair failure and rerun the meeting after its blockers are resolved.",
+                summary.strip(),
+            )
+
     if rc == 0 and result_line:
         fatal = classify_run_failure(
             provider=provider,
