@@ -12,7 +12,7 @@ pytestmark = pytest.mark.unit
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
 
-_SHA = "aabbccddeeff001122334455667788990011aabb"
+_SHA = "aabbccddeeff001122334455667788990011aabb"  # pragma: allowlist secret
 _SHORT = _SHA[:12]
 _COMMENT_URL = "https://github.com/D-sorganization/Runner_Dashboard/issues/9#issuecomment-9999"
 
