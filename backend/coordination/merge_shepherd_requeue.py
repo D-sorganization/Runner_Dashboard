@@ -46,7 +46,13 @@ _DETERMINISTIC_MARKERS = (
     "snapshot mismatch",
 )
 # Exact GitHub logins. A fragment such as "barb" inside another login is not authority.
-_AUTHORIZED_RETRY_LOGINS = frozenset({"dieterolson", "openbot-barb", "openbotgit"})
+_AUTHORIZED_RETRY_LOGINS = frozenset({
+    "dieterolson",
+    "openbot-barb",
+    "openbotgit",  # OPEN QUESTION (RD#4709): remove openbotgit once confirmed unused?
+    "d-sorggeneralagent",
+    "d-sorggeminiagent",
+})
 _RETRY_AUTHORIZED = re.compile(r"\b(?:retry|requeue) authorized\b", re.IGNORECASE)
 # An owner or Barb instruction to leave the PR unarmed. A new head does not lift it.
 # A status sentence that merely mentions "unarmed" is not that instruction.
