@@ -3,6 +3,6 @@
   "default_models": {
     "codex": "gpt-6-luna",
     "antigravity": "gemini-3.8-flash-high",
-    "cursor-agent": "composer-2.5"
+    "cursor-agent": "grok-4.7-high"
   }
 }
