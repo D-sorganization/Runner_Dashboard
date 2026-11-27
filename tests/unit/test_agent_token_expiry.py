@@ -47,6 +47,17 @@ def test_three_day_warning_supersedes_fourteen() -> None:
     assert alert["threshold_days"] == 3
 
 
+@pytest.mark.parametrize(
+    ("days", "threshold"),
+    [(14.0, 14), (3.0, 3)],
+    ids=["exactly-fourteen", "exactly-three"],
+)
+def test_threshold_boundary_is_inclusive(days: float, threshold: int) -> None:
+    """A token at exactly ``days`` left is inside the warning window (``days <= t``)."""
+    [alert] = due_warnings([_row("agent-grok", days)], sent=set())
+    assert alert["threshold_days"] == threshold
+
+
 def test_each_threshold_alerts_once_per_token() -> None:
     [first] = due_warnings([_row("agent-grok", 13.0)], sent=set())
     assert due_warnings([_row("agent-grok", 12.0)], sent={first["key"]}) == []
@@ -106,6 +117,19 @@ def test_corrupt_state_file_still_warns(id_dir: Path, tmp_path: Path) -> None:
     sent: list[dict] = []
     check_token_expiry(mgr, state_path=state, emit=sent.append)
     assert [a["threshold_days"] for a in sent] == [3]
+
+
+def test_object_shaped_sent_state_is_warned_not_silently_dropped(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A state file that parses but is not a list of keys is a shape mismatch, not an
+    empty set: surface it like a corrupt file instead of silently starting fresh."""
+    state = tmp_path / "warnings.json"
+    state.write_text('{"agent-grok:14:5000000": "sent"}', encoding="utf-8")
+    with caplog.at_level(logging.WARNING):
+        sent = ate._load_sent(state)
+    assert sent == set()
+    assert "agent token expiry state" in caplog.text
 
 
 def test_alerts_and_state_never_carry_the_token(id_dir: Path, tmp_path: Path) -> None:
