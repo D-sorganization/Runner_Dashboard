@@ -31,8 +31,9 @@ with HTTP 200; failed RM writes return 502 with the script's ``error`` and
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from coordination import job_releases as job_releases_mod
@@ -71,6 +72,20 @@ log = logging.getLogger("dashboard.coordination")
 router = APIRouter(prefix="/api/coordination", tags=["coordination"])
 WRITER = Depends(require_coordination_writer)  # one write-auth dependency for every POST
 OPERATOR = Depends(require_priorities_writer)  # force-release: operator/admin only (#4677)
+COORDINATION_TIMEOUT = 4.0
+
+
+async def _bounded(operation: Awaitable[dict[str, Any]], *, write: bool = False) -> dict[str, Any]:
+    """Bound response latency; a timed-out write may still complete in its worker."""
+    try:
+        return await asyncio.wait_for(operation, timeout=COORDINATION_TIMEOUT)
+    except TimeoutError as exc:
+        detail: dict[str, Any] = {"error": "coordination upstream timed out", "retryable": True}
+        if write:
+            detail.update(
+                outcome="unknown", guidance="Check the board for delivery before retrying to avoid duplicates."
+            )
+        raise HTTPException(status_code=503, detail=detail, headers={"Retry-After": "5"}) from exc
 
 
 async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str) -> dict[str, Any]:
@@ -120,7 +135,9 @@ async def get_inbox(
 
 @router.post("/presence")
 async def post_presence(body: PresenceBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _write(lambda: service.register_presence(body, caller), caller, "presence register")
+    return await _bounded(
+        _write(lambda: service.register_presence(body, caller), caller, "presence register"), write=True
+    )
 
 
 @router.post("/presence/release")
@@ -130,7 +147,9 @@ async def post_presence_release(body: ReleaseBody, caller: Caller = WRITER) -> d
 
 @router.post("/messages")
 async def post_message(body: MessageBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _write(lambda: service.send_message(body, caller), caller, "message send")
+    return await _bounded(
+        _write(lambda: service.send_message(body, caller), caller, "message send"), write=True
+    )
 
 
 @router.post("/messages/ack")
@@ -172,7 +191,9 @@ async def get_jobs(
     include_excluded: bool = Query(default=False),
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
-    return await run_in_threadpool(jobs_mod.list_jobs, repo=_repo(repo), limit=limit, include_excluded=include_excluded)
+    return await _bounded(
+        run_in_threadpool(jobs_mod.list_jobs, repo=_repo(repo), limit=limit, include_excluded=include_excluded)
+    )
 
 
 @router.post("/jobs/claim")
@@ -219,7 +240,7 @@ async def get_briefing(
     agent: str | None = Query(default=None, pattern=AGENT_PATTERN),
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
-    return await build_briefing(_repo(repo), agent)
+    return await _bounded(run_in_threadpool(lambda: asyncio.run(build_briefing(_repo(repo), agent))))
 
 
 @router.get("/postman/reports")
