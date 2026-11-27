@@ -6,8 +6,9 @@ Verifies that:
 2. When the board or claim check cannot be read completely past 1,000 comments
    (``complete=False`` / page-limit truncation), issue claims fail closed (deny
    claims) instead of failing open. Incomplete history is not live presence
-   (#4569). Pagination failures, unclassified incompleteness, and conflicts
-   stay fail-closed.
+   (#4569). Pagination failures and unclassified incompleteness stay fail-closed.
+   A single session's identity rejection does not flip ``complete`` for everyone
+   (#4681).
 """
 
 from __future__ import annotations
@@ -333,13 +334,13 @@ def test_paginate_board_comments_enforces_first_owner_binding_and_separates_hist
     assert res_hist["active_conflicts"] == []
     assert [s["session"] for s in res_hist["sessions"]] == ["clean-s"]
 
-    # 2. Live session with contested identity takeover: active conflict, complete=False
+    # 2. Live session with contested identity takeover: recorded, but not a fleet-wide incomplete read (#4681)
     comments_contested = [
         _presence_comment(10, session="live-s", repo="Runner_Dashboard", expires="2099-01-01T00:00:00+00:00"),
         _release_comment(11, session="live-s", repo="Tools"),
     ]
     res_contested = paginate_board_comments(lambda page, per_page: comments_contested)
-    assert res_contested["complete"] is False
+    assert res_contested["complete"] is True
     assert "Rejected identity change for live-s" in res_contested["active_conflicts"]
     assert "Rejected identity change for live-s" in res_contested["replay_warnings"]
     assert [s["session"] for s in res_contested["sessions"]] == ["live-s"]
@@ -355,6 +356,34 @@ def test_paginate_board_comments_enforces_first_owner_binding_and_separates_hist
     assert res_switch["active_conflicts"] == []
     assert [s["session"] for s in res_switch["sessions"]] == ["switch-s"]
     assert res_switch["sessions"][0]["repo"] == "Tools"
+
+
+@pytest.mark.unit
+def test_identity_mismatch_and_duplicate_comment_do_not_lock_the_fleet() -> None:
+    """One session's identity rejection, or a duplicate app/ comment, stays local (#4681)."""
+    from coordination.board_degraded_reads import live_session_verdict
+
+    clean = _presence_comment(1, session="clean-s", author="d-sorggeneralagent[bot]")
+    contested = _presence_comment(2, session="live-s", author="d-sorgcodexagent[bot]")
+    mismatch = _release_comment(3, session="live-s", repo="Tools", author="d-sorgcodexagent[bot]")
+    replay = {
+        **clean,
+        "id": 4,
+        "user": {"login": "app/d-sorggeneralagent[bot]"},
+    }
+    refreshed = _presence_comment(5, session="clean-s", author="app/d-sorggeneralagent[bot]")
+    comments = [clean, contested, mismatch, replay, refreshed]
+    result = paginate_board_comments(lambda page, per_page: comments if page == 1 else [])
+
+    assert result["complete"] is True
+    assert result["pages_complete"] is True
+    assert "Rejected identity change for live-s" in result["active_conflicts"]
+    assert "Rejected identity change for clean-s" not in result["replay_warnings"]
+    sessions = [s["session"] for s in result["sessions"]]
+    assert "clean-s" in sessions and "live-s" in sessions
+    assert live_session_verdict("clean-s", result) == (True, None)
+    assert live_session_verdict("live-s", result) == (True, None)
+    assert live_session_verdict("missing-s", result) == (False, None)
 
 
 @pytest.mark.unit
