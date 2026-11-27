@@ -24,9 +24,13 @@ Probe classification and the alert/cooldown/recovery state machine live in
     local Barb inbox file.
   - `HUB_SENTINEL_SMTP_TO=<addr>` (+ `HUB_SENTINEL_SMTP_HOST`/`_PORT`/`_FROM`) —
     plain SMTP, off unless set. No sink ever receives or logs a token.
-  - `HUB_SENTINEL_RM_REPO=<owner/repo>` (+ `HUB_SENTINEL_RM_ISSUE`, default
-    `2539`) — posts a comment via the fleet `gh` wrapper, which mints its own
-    App token internally (never passed on our command line).
+  - `HUB_SENTINEL_RM_REPO=<owner/repo>` (+ `HUB_SENTINEL_RM_ISSUE`) — posts a
+    comment via the fleet `gh` wrapper, which mints its own App token internally
+    (never passed on our command line). Set `HUB_SENTINEL_RM_ISSUE` to the
+    `board_issue` in Repository_Management `config/agent_communication.json`.
+    An unset variable still falls back to retired issue 2539 in
+    `deploy/hub_sentinel_alerts.py`; set the variable so alerts follow the
+    configured message board.
 
 ## Install (manual, one-time per node)
 

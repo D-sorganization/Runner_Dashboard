@@ -19,11 +19,11 @@ Lanes also typically filter on **taxonomy** (complexity, tier, repo). Issues **w
 
 ## Spec gaps blocking persona lanes
 
-| Issue | Blocker |
-| ----- | ------- |
+| Issue        | Blocker                                                                                                                                           |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | #3700 George | `judgement:design` + `blocked` until Barb/Dieter confirm schedule/duty—spec on issue body + `docs/agents/issue-specs/3700-george-persona-port.md` |
-| #3702 Linus | `judgement:design` + `blocked` until Dieter scope ruling—`3702-linus-persona-port.md` |
-| #3704 | **Closed** checklist epic—not pickable (`state != open`); pick #3792 or newly labeled CLI tasks |
+| #3702 Linus  | `judgement:design` + `blocked` until Dieter scope ruling—`3702-linus-persona-port.md`                                                             |
+| #3704        | **Closed** checklist epic—not pickable (`state != open`); pick #3792 or newly labeled CLI tasks                                                   |
 
 ## Why agy / rd-barb can still show “nothing claimable” (2026-11-02)
 
@@ -47,4 +47,4 @@ Schedule holds from `staff/holds` (RD #2657 deploy hold, Sidekick packaging, Ass
 
 ## Presence / claims
 
-Before coding: claim on Repository_Management **#1576** presence board (not accessible from this cloud agent token) and `GET /api/coordination/claims?repo=Runner_Dashboard&issue=N` on the hub. This session registers intent via PR + `Closes #N` instead.
+Before coding: claim on Repository_Management **#2851** (governing orders and claims; not accessible from this cloud agent token) and `GET /api/coordination/claims?repo=Runner_Dashboard&issue=N` on the hub. Rolling messages use the `board_issue` in Repository_Management `config/agent_communication.json`. This session registers intent via PR + `Closes #N` instead.

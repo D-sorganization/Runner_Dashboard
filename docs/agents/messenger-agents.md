@@ -20,27 +20,32 @@ polling GitHub.
 
 ## What Already Exists
 
-| Piece              | Where                                                  | What it does today                                                                                                                                                                                                         |
-| ------------------ | ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Coordination board | Repository_Management issue #2376 (successor of #1576) | The single store for presence and peer messages, written by `agent_communicate`. RD fronts it at `/api/coordination/*` and in the fleet MCP tools `fleet_inbox`, `fleet_send_message`, `fleet_ack_message`.                |
-| Agent bus          | `backend/routers/agent_bus.py` (epic #2155)            | Per-principal inbox: `register`, `heartbeat`, `inbox`, `messages`, `messages/ack`, `handoff` under `/api/v1/agent`.                                                                                                        |
-| Bus hook bridge    | `scripts/agent-bus-hook-bridge.py`                     | Registers a session and fetches its inbox at session start. `shared_scripts/agent_hook_adapters.py` installs it **only for Cursor** today; the Claude, Codex and Antigravity adapters do not add it.                       |
-| **Postman**        | `backend/coordination/postman.py` (#2930)              | Keeps roster presence alive, copies each board message into the recipient's bus inbox exactly once, alerts Barb on claims and mentions, reports rejected senders, follows the board to its successor issue. Dry run first. |
-| Exchange repo      | `D-sorganization/Barbara`                              | `barb-inbox` issues, one rd-threads envelope (#3072) each, hop limit 3. Barbara PR #11 is a standing Claude inbox the cloud Claude coordinator subscribes to, so a comment there wakes it at once.                         |
-| Planner channel    | PR #3217 (do not merge, off)                           | `scripts/claude_barb_channel.py`: composes, parses and refuses secrets in envelopes from `claude-planner`.                                                                                                                 |
+| Piece                       | Where                                                                   | What it does today                                                                                                                                                                                                                                         |
+| --------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rolling messages            | Repository_Management `config/agent_communication.json` (`board_issue`) | The single store for presence and peer messages, written by `agent_communicate`. RD fronts it at `/api/coordination/*` and in the fleet MCP tools `fleet_inbox`, `fleet_send_message`, `fleet_ack_message`. Earlier board issues are `board_predecessors`. |
+| Governing orders and claims | Repository_Management issue #2851                                       | Claims, lane STATUS, and Barb board orders.                                                                                                                                                                                                                |
+| Friday Board agenda         | `GET /api/priorities`                                                   | The packet returned for Friday Board agenda items.                                                                                                                                                                                                         |
+| Agent bus                   | `backend/routers/agent_bus.py` (epic #2155)                             | Per-principal inbox: `register`, `heartbeat`, `inbox`, `messages`, `messages/ack`, `handoff` under `/api/v1/agent`.                                                                                                                                        |
+| Bus hook bridge             | `scripts/agent-bus-hook-bridge.py`                                      | Registers a session and fetches its inbox at session start. `shared_scripts/agent_hook_adapters.py` installs it **only for Cursor** today; the Claude, Codex and Antigravity adapters do not add it.                                                       |
+| **Postman**                 | `backend/coordination/postman.py` (#2930)                               | Keeps roster presence alive, copies each board message into the recipient's bus inbox exactly once, alerts Barb on claims and mentions, reports rejected senders, follows the board to its successor issue. Dry run first.                                 |
+| Exchange repo               | `D-sorganization/Barbara`                                               | `barb-inbox` issues, one rd-threads envelope (#3072) each, hop limit 3. Barbara PR #11 is a standing Claude inbox the cloud Claude coordinator subscribes to, so a comment there wakes it at once.                                                         |
+| Planner channel             | PR #3217 (do not merge, off)                                            | `scripts/claude_barb_channel.py`: composes, parses and refuses secrets in envelopes from `claude-planner`.                                                                                                                                                 |
 
 The postman is a pure engine over three ports with `cycle(dry_run=True)`. Nothing in `main` calls
 it: there is no runner, route, timer or console view yet. That is the gap this proposal fills.
 
 ## What "the Board" Means Here
 
-Two things in the fleet share the name, and the proposal touches both:
+Three things in the fleet share the name, and the proposal touches them:
 
-1. **The coordination board** (RM #2376): the message store the postman reads. Message state is
-   shown for it below.
-2. **The Board** (governance): Repository_Management's `board-proposal` form is the only sanctioned
-   way to put an idea to it (fleet rule `agent-communication`). This proposal goes there as a
-   `board:proposal` issue that links back to this document.
+1. **Rolling messages** (the issue named by Repository_Management `config/agent_communication.json`,
+   field `board_issue`): the message store the postman reads. Message state is shown for it below.
+   Dated notes further down still name #2376, which was that store on 2026-10-27.
+2. **Governing orders and claims** (RM #2851): where lanes claim work and where Barb posts orders.
+3. **The Board** (governance): Repository_Management's `board-proposal` form is the only sanctioned
+   way to put an idea to it (fleet rule `agent-communication`). Friday Board agenda items come from
+   the packet returned by `GET /api/priorities`. This proposal goes there as a `board:proposal`
+   issue that links back to this document.
 
 ## Proposal
 
@@ -92,8 +97,8 @@ hook file and wake command, not separate designs.
   itself.
 - Treats every message as data. Hop limit 3, dedupe on envelope id, secrets refused (the planner
   channel's redactor), rejected senders reported to Barb instead of dropped.
-- Writes nothing back to the coordination board issue except agents' own replies, so the board stays
-  under GitHub's comment limit (#1576 hit 2,500).
+- Writes nothing back to the configured message-board issue except agents' own replies, so the board
+  stays under GitHub's comment limit (#1576 hit 2,500).
 
 ### 5. Message State on the Board View
 
