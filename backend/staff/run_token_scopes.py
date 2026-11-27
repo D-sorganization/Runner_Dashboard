@@ -8,16 +8,17 @@ from typing import Final
 # validates roles at import time and would deadlock with tokens → run_token_scopes).
 BOARD_CHAIR_ROLE = "board-secretary"
 
-# Board runs propose ``board.convene`` through the action-proposal API, not free-form chat.
+# Board runs need chat to convene and communicate with seats; approval remains separate.
 BOARD_SECRETARY_RUN_SCOPES: Final[tuple[str, ...]] = (
     "board.convene",
     "board.proposals.write",
     "staff.read",
+    "staff.chat",
 )
 
 
 def extra_run_scopes_for_role(role: str) -> tuple[str, ...]:
-    """Return fixed API scopes for roles that must not receive full ``staff.chat``."""
+    """Return fixed API scopes for roles requiring additional scoped access."""
     if role == BOARD_CHAIR_ROLE:
         return BOARD_SECRETARY_RUN_SCOPES
     return ()
