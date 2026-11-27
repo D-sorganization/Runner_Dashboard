@@ -9,7 +9,7 @@ infrastructure failures do not.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 # GitHub's dequeue reason for a failing queue check. ``failed_checks`` stays a
@@ -173,28 +173,124 @@ def _check_runs_truncated(suite: Mapping[str, Any]) -> bool:
     return isinstance(runs, Mapping) and _page_truncated(runs.get("pageInfo"))
 
 
+# One removal is fetched on its own, then suite pages are followed. Five extra
+# pages is 100 further suites; anything still unread fails closed.
+MAX_CHECK_SUITE_PAGES = 5
+
+
 def _removal_checks_truncated(event: Mapping[str, Any]) -> bool:
     """True when this removal's merge-group checks are not fully visible.
 
     Pre: ``event`` is a ``RemovedFromMergeQueueEvent`` node.
-    Post: a missing ``pageInfo`` is complete. Another ``checkSuites`` page fails
-    closed only when no suite on this page has ``workflowRun.event == merge_group``.
-    Other apps fill the start of the connection and leave ``hasNextPage`` true
-    even after the merge-group suites are in the window. A truncated
-    ``checkRuns`` page on a merge-group suite still fails closed.
+    Post: a missing ``beforeCommit`` is not check evidence. A removal commit
+    with no ``checkSuites`` payload is incomplete. ``checkSuites.hasNextPage``
+    fails closed even when this page already shows a merge-group suite, because
+    a later page can carry the deterministic run. A truncated ``checkRuns`` page
+    on a merge-group suite still fails closed. ``hasPreviousPage`` does not:
+    paging forward with ``after`` sets it on a complete last page.
     """
     before = event.get("beforeCommit")
     if not isinstance(before, Mapping):
         return False
     suites = before.get("checkSuites")
     if not isinstance(suites, Mapping):
-        return False
+        return True
     merge_group = [suite for suite in _suite_nodes(before) if _explicit_merge_group(suite)]
     if any(_check_runs_truncated(suite) for suite in merge_group):
         return True
-    if merge_group:
-        return False
-    return _page_truncated(suites.get("pageInfo"))
+    info = suites.get("pageInfo")
+    return isinstance(info, Mapping) and bool(info.get("hasNextPage"))
+
+
+def append_check_suite_page(connection: Mapping[str, Any], page: Mapping[str, Any]) -> dict[str, Any]:
+    """Return ``connection`` with ``page`` suites appended and that page's ``pageInfo``.
+
+    Pre: both arguments are check-suite connections.
+    Post: nodes already on ``connection`` stay first. The result ``pageInfo`` is
+    the later page, so a finished walk has ``hasNextPage`` false.
+    """
+    nodes = [suite for suite in (connection.get("nodes") or []) if isinstance(suite, Mapping)]
+    extra = page.get("nodes") if isinstance(page, Mapping) else ()
+    nodes.extend(suite for suite in extra or [] if isinstance(suite, Mapping))
+    info = page.get("pageInfo") if isinstance(page, Mapping) and isinstance(page.get("pageInfo"), Mapping) else {}
+    return {"nodes": nodes, "pageInfo": dict(info)}
+
+
+def complete_check_suites(
+    event: Mapping[str, Any],
+    fetch_page: Callable[[str, str], Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Follow ``checkSuites`` pages until the connection ends or the page cap.
+
+    Pre: ``fetch_page(oid, end_cursor)`` returns one check-suite connection.
+    Post: a missing cursor, a missing oid, or ``MAX_CHECK_SUITE_PAGES`` extra
+    pages leaves ``hasNextPage`` set so the removal fails closed.
+    """
+    copied = dict(event)
+    before = copied.get("beforeCommit")
+    if not isinstance(before, Mapping):
+        return copied
+    before = dict(before)
+    suites = before.get("checkSuites")
+    if not isinstance(suites, Mapping):
+        copied["beforeCommit"] = before
+        return copied
+    oid = _text(before.get("oid"))
+    current = dict(suites)
+    for _ in range(MAX_CHECK_SUITE_PAGES):
+        info = current.get("pageInfo")
+        if not isinstance(info, Mapping) or not info.get("hasNextPage"):
+            break
+        cursor = _text(info.get("endCursor"))
+        if not oid or not cursor:
+            break
+        page = fetch_page(oid, cursor)
+        if not isinstance(page, Mapping):
+            break
+        current = append_check_suite_page(current, page)
+    before["checkSuites"] = current
+    copied["beforeCommit"] = before
+    return copied
+
+
+def attach_removal_checks(
+    node: Mapping[str, Any],
+    detail_events: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Copy per-PR ``checkSuites`` onto snapshot removals with the same ``createdAt``.
+
+    Pre: ``detail_events`` are ``RemovedFromMergeQueueEvent`` nodes.
+    Post: snapshot events with no matching detail keep their own ``beforeCommit``.
+    """
+    by_at: dict[str, Mapping[str, Any]] = {}
+    for event in detail_events:
+        created_at = _text(event.get("createdAt")) if isinstance(event, Mapping) else ""
+        if created_at:
+            by_at[created_at] = event
+    copied = dict(node)
+    timeline = dict(copied.get("timelineItems") or {})
+    merged_events: list[Any] = []
+    for event in (timeline.get("nodes") or []) if isinstance(timeline, Mapping) else []:
+        if not isinstance(event, Mapping):
+            merged_events.append(event)
+            continue
+        detail = by_at.get(_text(event.get("createdAt")))
+        if detail is None:
+            merged_events.append(dict(event))
+            continue
+        merged = dict(event)
+        before = dict(merged.get("beforeCommit") or {})
+        detail_before = detail.get("beforeCommit")
+        if isinstance(detail_before, Mapping) and isinstance(detail_before.get("checkSuites"), Mapping):
+            before["checkSuites"] = detail_before["checkSuites"]
+            oid = _text(detail_before.get("oid"))
+            if oid:
+                before["oid"] = oid
+        merged["beforeCommit"] = before
+        merged_events.append(merged)
+    timeline["nodes"] = merged_events
+    copied["timelineItems"] = timeline
+    return copied
 
 
 def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
@@ -404,9 +500,9 @@ def suppression_detail(
 
     Pre: ``queue_history_truncated`` comes from :func:`_queue_history_hides_events_after_head`.
     ``comments_truncated`` and ``checks_truncated`` come from connection ``pageInfo``.
-    Post: visible deterministic evidence wins. A truncated check page then fails
-    closed when no merge-group suite was on the page, or when that suite's
-    check runs are themselves truncated. Then a truncated timeline, then a
+    Post: visible deterministic evidence wins. A later ``checkSuites`` page, or
+    truncated check runs on a merge-group suite, then fails closed. Then a
+    truncated timeline, then a
     manual dequeue. An owner or Barb unarmed instruction holds across a new
     head until a later authorized retry.
     A truncated comment page fails closed when that instruction could be off-page.

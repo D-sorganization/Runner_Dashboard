@@ -3,7 +3,18 @@
 from __future__ import annotations
 
 from coordination.merge_shepherd import IneligibleReason, ShepherdAction, evaluate_pr_shepherd_eligibility
-from coordination.merge_shepherd_pass import OPEN_PRS_QUERY, node_to_candidate, plan_repo_disarms, plan_repo_pass
+from coordination.merge_shepherd_pass import (
+    CHECK_SUITES_PAGE_QUERY,
+    GRAPHQL_NODE_LIMIT,
+    OPEN_PRS_QUERY,
+    REMOVAL_CHECKS_QUERY,
+    enrich_open_pr_nodes,
+    graphql_connection_node_count,
+    node_to_candidate,
+    plan_repo_disarms,
+    plan_repo_pass,
+)
+from coordination.merge_shepherd_requeue import append_check_suite_page
 
 from tests.unit.test_merge_shepherd_pass import _open_pr_node, _review_pass
 
@@ -202,20 +213,24 @@ def test_transient_merge_group_checks_do_not_disarm_an_armed_pr() -> None:
 
 
 def test_the_open_pr_query_fetches_merge_group_check_runs() -> None:
+    """The 100-PR snapshot must not nest check runs; one PR query carries them."""
     assert "beforeCommit" in OPEN_PRS_QUERY
-    assert "checkRuns" in OPEN_PRS_QUERY
-    assert "workflowRun" in OPEN_PRS_QUERY
-    assert "event" in OPEN_PRS_QUERY
     assert "timelineItems(last: 100" in OPEN_PRS_QUERY
-    assert "hasPreviousPage" in OPEN_PRS_QUERY
-    assert "hasNextPage" in OPEN_PRS_QUERY
-    assert "checkSuites(first: 20)" in OPEN_PRS_QUERY
-    assert "checkRuns(first: 20)" in OPEN_PRS_QUERY
-    suites = OPEN_PRS_QUERY.split("checkSuites(first: 20)", 1)[1].split("checkRuns(first: 20)", 1)[0]
-    runs = OPEN_PRS_QUERY.split("checkRuns(first: 20)", 1)[1].split("nodes { name conclusion title summary }", 1)[0]
+    assert "checkSuites" not in OPEN_PRS_QUERY
+    assert "checkRuns" not in OPEN_PRS_QUERY
+    assert graphql_connection_node_count(OPEN_PRS_QUERY) <= GRAPHQL_NODE_LIMIT
+    nested = (
+        "pullRequests(first: 100) { timelineItems(last: 100) { "
+        "checkSuites(first: 20) { checkRuns(first: 20) { name } } } }"
+    )
+    assert graphql_connection_node_count(nested) == 4_210_100
+    assert "checkSuites(first: 20)" in REMOVAL_CHECKS_QUERY
+    assert "checkRuns(first: 20)" in REMOVAL_CHECKS_QUERY
+    assert "workflowRun" in REMOVAL_CHECKS_QUERY
+    assert "endCursor" in REMOVAL_CHECKS_QUERY
+    assert graphql_connection_node_count(REMOVAL_CHECKS_QUERY) <= GRAPHQL_NODE_LIMIT
+    assert graphql_connection_node_count(CHECK_SUITES_PAGE_QUERY) <= GRAPHQL_NODE_LIMIT
     comments = OPEN_PRS_QUERY.split("comments(last: 10)", 1)[1].split("author { login }", 1)[0]
-    assert "pageInfo" in suites and "hasNextPage" in suites
-    assert "pageInfo" in runs and "hasNextPage" in runs
     assert "pageInfo" in comments and "hasPreviousPage" in comments
 
 
@@ -473,12 +488,11 @@ def test_truncated_check_pages_fail_closed_when_deterministic_runs_may_be_off_pa
     assert [action.pr_number for action in _plan([node])[0]] == []
 
 
-def test_a_later_check_suite_page_does_not_hide_a_visible_merge_group_suite() -> None:
-    """Other apps occupy the first slots and ``hasNextPage`` stays true.
+def test_a_later_check_suite_page_can_hide_a_deterministic_merge_group_suite() -> None:
+    """A visible transient merge_group suite is not the whole connection.
 
-    Live removals look like this: a non-merge-group suite, then a merge_group
-    suite whose check runs fit on one page, then ``checkSuites.hasNextPage``.
-    That page is enough. A transient merge_group failure must still requeue.
+    ``hasNextPage`` means a later suite can still be the deterministic failure.
+    Requeue stays closed until that page is fetched.
     """
     node = _with_head(_open_pr_node(96, paths=["docs/readme.md"]), HEAD, HEAD_AT)
     node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
@@ -492,15 +506,52 @@ def test_a_later_check_suite_page_does_not_hide_a_visible_merge_group_suite() ->
     suites = first["beforeCommit"]["checkSuites"]
     merge_group = suites["nodes"][0]
     merge_group["checkRuns"]["pageInfo"] = {"hasNextPage": False}
-    suites["pageInfo"] = {"hasNextPage": True}
+    suites["pageInfo"] = {"hasNextPage": True, "endCursor": "suite-2"}
     suites["nodes"] = [other_app, merge_group]
     node["timelineItems"] = {"nodes": [first]}
     candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
     decision = evaluate_pr_shepherd_eligibility(candidate)
-    assert decision.detail != "incomplete_check_page"
-    assert decision.reason != IneligibleReason.INCOMPLETE_CHECK_PAGE
-    _, disarms = _plan([node])
-    assert disarms == []
+    assert decision.action == ShepherdAction.DISARM
+    assert decision.detail == "incomplete_check_page"
+    arms, disarms = _plan([node])
+    assert arms == []
+    assert [action.pr_number for action in disarms] == [96]
+
+
+def test_a_fetched_later_suite_page_suppresses_the_hidden_deterministic_run() -> None:
+    transient = [_check("queue entry", "CANCELLED", summary="runner offline; lost communication with the server")]
+    first = _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", transient, run_id=51)
+    second = _removal_with_checks("2026-11-24T22:40:00Z", "CI_FAILURE", transient, run_id=53)
+    for event in (first, second):
+        event["beforeCommit"]["checkSuites"]["pageInfo"] = {"hasNextPage": True, "endCursor": "suite-2"}
+    hidden = {
+        "conclusion": "FAILURE",
+        "workflowRun": {"event": "merge_group", "databaseId": 52},
+        "checkRuns": {
+            "pageInfo": {"hasNextPage": False},
+            "nodes": [_check("stale generated typescript"), _check("hash-seed determinism")],
+        },
+    }
+    page = {"pageInfo": {"hasNextPage": False}, "nodes": [hidden]}
+    bare = _with_head(_open_pr_node(99, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    bare["timelineItems"] = {
+        "nodes": [
+            {"createdAt": event["createdAt"], "reason": "CI_FAILURE", "beforeCommit": {"oid": "m" * 40}}
+            for event in (first, second)
+        ]
+    }
+    enriched = enrich_open_pr_nodes(
+        [bare],
+        fetch_checks=lambda _number: [first, second],
+        fetch_suite_page=lambda oid, cursor: page if oid == "m" * 40 and cursor == "suite-2" else {},
+    )
+    stitched = enriched[0]["timelineItems"]["nodes"][0]["beforeCommit"]["checkSuites"]
+    assert append_check_suite_page(first["beforeCommit"]["checkSuites"], page)["pageInfo"]["hasNextPage"] is False
+    assert any(suite.get("workflowRun", {}).get("databaseId") == 52 for suite in stitched["nodes"])
+    candidate = node_to_candidate(REPO, enriched[0], is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.detail == "deterministic_merge_group"
+    assert decision.reason == IneligibleReason.DETERMINISTIC_REQUEUE
 
 
 def test_truncated_suites_fail_closed_when_no_merge_group_suite_was_returned() -> None:
