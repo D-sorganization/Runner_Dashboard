@@ -26,9 +26,7 @@ SyncFetch = Callable[[str], Any]
 
 # PRs with these labels are exempt from the aging-PR claim block.
 # They are intentionally parked and must not strand other agents.
-AGING_PR_EXEMPT_LABELS: frozenset[str] = frozenset(
-    {"do-not-merge", "needs-owner", "held", "needs-canonical-model"}
-)
+AGING_PR_EXEMPT_LABELS: frozenset[str] = frozenset({"do-not-merge", "needs-owner", "held", "needs-canonical-model"})
 
 
 def _normalize_agent(agent: str) -> str:
