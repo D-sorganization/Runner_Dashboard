@@ -42,6 +42,11 @@ from coordination.merge_shepherd_exact_head import (
 )
 from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS, normalize_hold_label
 from coordination.merge_shepherd_low_risk import low_risk_line_cap as default_low_risk_line_cap
+from coordination.merge_shepherd_requeue import (
+    attach_removal_checks,
+    complete_check_suites,
+    evidence_from_node,
+)
 from priorities.directives import get_directives
 
 log = logging.getLogger(__name__)
@@ -111,12 +116,18 @@ query($owner: String!, $name: String!) {
             }
           }
         }
-        timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        timelineItems(last: 100, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+          pageInfo { hasPreviousPage hasNextPage }
           nodes {
-            ... on RemovedFromMergeQueueEvent { createdAt reason }
+            ... on RemovedFromMergeQueueEvent {
+              createdAt
+              reason
+              beforeCommit { oid }
+            }
           }
         }
         comments(last: 10) {
+          pageInfo { hasPreviousPage hasNextPage }
           nodes {
             body
             createdAt
@@ -151,6 +162,145 @@ query($owner: String!, $name: String!, $after: String) {
   }
 }
 """
+
+# Check runs stay off the 100-PR snapshot. Nested ``first`` limits multiply, and
+# 100 PRs × 100 removals × 20 suites × 20 runs is 4,000,000 nodes. GitHub rejects
+# a query above 500,000.
+GRAPHQL_NODE_LIMIT = 500_000
+
+REMOVAL_CHECKS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        nodes {
+          ... on RemovedFromMergeQueueEvent {
+            createdAt
+            beforeCommit {
+              oid
+              checkSuites(first: 20) {
+                pageInfo { hasNextPage endCursor }
+                nodes {
+                  conclusion
+                  workflowRun { event databaseId }
+                  checkRuns(first: 20) {
+                    pageInfo { hasNextPage }
+                    nodes { name conclusion title summary }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+CHECK_SUITES_PAGE_QUERY = """
+query($owner: String!, $name: String!, $oid: GitObjectID!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    object(oid: $oid) {
+      ... on Commit {
+        checkSuites(first: 20, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            conclusion
+            workflowRun { event databaseId }
+            checkRuns(first: 20) {
+              pageInfo { hasNextPage }
+              nodes { name conclusion title summary }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def graphql_connection_node_count(query: str) -> int:
+    """Maximum nodes GitHub will charge for nested ``first``/``last`` connections.
+
+    Pre: ``query`` is a GraphQL document.
+    Post: each connection adds the product of its limit and its ancestor limits.
+    A brace that is not a connection does not add nodes and does not reset the
+    product. The result is the sum of those products.
+    """
+    stack: list[int] = []
+    total = 0
+    for index, char in enumerate(query):
+        if char == "{":
+            limit = _connection_limit_before(query, index)
+            parent = stack[-1] if stack else 1
+            product = parent * limit if limit else parent
+            if limit:
+                total += product
+            stack.append(product)
+        elif char == "}" and stack:
+            stack.pop()
+    return total
+
+
+def _connection_limit_before(query: str, brace_at: int) -> int:
+    cursor = brace_at - 1
+    while cursor >= 0 and query[cursor].isspace():
+        cursor -= 1
+    if cursor < 0 or query[cursor] != ")":
+        return 0
+    depth = 0
+    end = cursor
+    while cursor >= 0:
+        if query[cursor] == ")":
+            depth += 1
+        elif query[cursor] == "(":
+            depth -= 1
+            if depth == 0:
+                group = query[cursor : end + 1]
+                limits = [int(value) for value in re.findall(r"(?:first|last)\s*:\s*(\d+)", group)]
+                return max(limits) if limits else 0
+        cursor -= 1
+    return 0
+
+
+def _node_has_queue_removal(node: Mapping[str, Any]) -> bool:
+    timeline = node.get("timelineItems")
+    events = timeline.get("nodes") if isinstance(timeline, Mapping) else ()
+    return any(isinstance(event, Mapping) and event.get("createdAt") and event.get("reason") for event in events or [])
+
+
+def enrich_open_pr_nodes(
+    nodes: Sequence[Mapping[str, Any]],
+    *,
+    fetch_checks: Callable[[int], Sequence[Mapping[str, Any]]],
+    fetch_suite_page: Callable[[str, str], Mapping[str, Any]],
+) -> list[Any]:
+    """Attach per-PR removal checks and follow suite pages before eligibility.
+
+    Pre: ``fetch_checks(pr_number)`` returns removal events for that PR.
+    ``fetch_suite_page(oid, cursor)`` returns one later check-suite page.
+    Post: a PR with no queue removal is unchanged. A removal's unread suite
+    page stays ``hasNextPage`` so eligibility fails closed.
+    """
+    enriched: list[Any] = []
+    for node in nodes:
+        if not isinstance(node, Mapping) or not _node_has_queue_removal(node):
+            enriched.append(node)
+            continue
+        merged = attach_removal_checks(node, fetch_checks(int(node["number"])))
+        timeline = dict(merged.get("timelineItems") or {})
+        events: list[Any] = []
+        for event in timeline.get("nodes") or []:
+            if isinstance(event, Mapping):
+                events.append(complete_check_suites(event, fetch_suite_page))
+            else:
+                events.append(event)
+        timeline["nodes"] = events
+        merged["timelineItems"] = timeline
+        enriched.append(merged)
+    return enriched
 
 
 @dataclass(frozen=True)
@@ -535,6 +685,7 @@ def node_to_candidate(
     is_queued = (node.get("mergeQueueEntry") or {}).get("position") is not None
     auto_merge = node.get("autoMergeRequest") is not None
     effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
+    evidence = evidence_from_node(node)
     return PRCandidate(
         repo=repo,
         pr_number=number,
@@ -558,6 +709,13 @@ def node_to_candidate(
         line_cap=effective_line_cap,
         files_complete=files_complete,
         review_pass_ttl_hours=review_pass_ttl_hours,
+        head_committed_at=str(evidence["head_committed_at"]),
+        queue_removals=evidence["queue_removals"],
+        merge_group_failures=evidence["merge_group_failures"],
+        comment_bodies=evidence["comment_bodies"],
+        queue_history_truncated=bool(evidence["queue_history_truncated"]),
+        comments_truncated=bool(evidence["comments_truncated"]),
+        checks_truncated=bool(evidence["checks_truncated"]),
         failed_fix_passes=failed_fix_passes_from_cycle(
             review_passes,
             ci_failures_from_commits(node, pr=number),
