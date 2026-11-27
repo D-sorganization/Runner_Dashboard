@@ -87,10 +87,13 @@ def classify_release_reason(repo: str, issue: int, *, agent_reason: str) -> str:
     try:
         pr = _landed_pr(repo_full, issue)
         if pr is not None:
-            return f"completed: PR #{pr.get('number')} {pr.get('html_url') or ''}".strip()
+            pr_ref = f"PR #{pr.get('number')} {pr.get('html_url') or ''}".strip()
+            if pr.get("merged_at"):
+                return f"completed: {pr_ref}"
+            return f"pr_open: {pr_ref}"
         branch = _pushed_branch(repo_full, issue)
         if branch is not None:
-            return f"completed: branch {branch} pushed"
+            return f"branch_pushed: branch {branch} pushed"
     except Exception as exc:  # noqa: BLE001
         return f"abandoned: evidence lookup unavailable ({exc}); agent reported: {agent_reason}"
     return f"abandoned: no PR or branch found for #{issue}; agent reported: {agent_reason}"
