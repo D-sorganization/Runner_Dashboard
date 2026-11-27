@@ -28,7 +28,9 @@ def protocol() -> str:
         "Gasification_Model",
         "staff_thread_wait",
         "Idempotency-Key",
-        "RM #2539",
+        # Live claim pointer is RM #2851 (issue #4685). This section is current
+        # routing, so it does not keep the retired #2539 board number.
+        "RM #2851",
         "subscription CLI",
         "ledger/check-in",
         "verified outcome",
