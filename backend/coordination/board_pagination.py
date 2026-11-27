@@ -103,6 +103,27 @@ def _parse_comment_envelope(comment: dict[str, Any]) -> tuple[dict[str, Any] | N
     return (None, str(user), f"Invalid coordination envelope: {err}") if err else (env, str(user), None)
 
 
+_RELEASE_KIND = re.compile(r'"kind"\s*:\s*"release"')
+_SESSION_FIELD = re.compile(r'"session"\s*:\s*"([A-Za-z0-9][A-Za-z0-9_.-]{0,127})"')
+
+
+def uncertain_release_session(comment: dict[str, Any]) -> str | None:
+    """Session a failed envelope may have released, or None when it names nobody.
+
+    Pre: ``comment`` is one board comment. Post: the session id when the fenced body
+    declares ``kind`` ``release`` and a session, including when JSON or validation failed.
+    Unrelated malformed noise returns None.
+    """
+    raw = str(comment.get("body") or "").replace("\r\n", "\n")
+    if not raw.startswith(_PREFIXES) or len(raw) > MAX_EVENT_BYTES:
+        return None
+    matched = _FENCE.match(_FOOTER.sub("", raw).rstrip())
+    if matched is None or _RELEASE_KIND.search(matched.group(1)) is None:
+        return None
+    found = _SESSION_FIELD.search(matched.group(1))
+    return found.group(1) if found else None
+
+
 def _may_bind(
     owners: dict[str, tuple[str, str]],
     released: set[str],
@@ -257,6 +278,8 @@ def _paginate_pages(
                 env, author, err = _parse_comment_envelope(c)
                 if err:
                     st["read_w"].append(err)
+                    if (skipped := uncertain_release_session(c)) is not None:
+                        st["release_uncertain"].add(skipped)
                 elif env and author and (eid := str(env["id"])) not in seen:
                     seen.add(eid)
                     _apply_event(env, author, ref_now, st)
@@ -308,7 +331,7 @@ def paginate_board_comments(
             return _board_unavailable(str(exc))
     st: dict[str, Any] = {
         "active": {}, "owners": {}, "released": set(), "messages": [], "acks": set(),
-        "replay_w": [], "live_c": [], "read_w": [], "rejected": {},
+        "replay_w": [], "live_c": [], "read_w": [], "rejected": {}, "release_uncertain": set(),
     }  # fmt: skip
     done, total = _paginate_pages(fetch_page, per_page, max_pages, now or datetime.now(UTC), st)
     for s in st["active"]:
@@ -321,6 +344,7 @@ def paginate_board_comments(
         "degraded_history": bool(rep), "read_warnings": rw, "replay_warnings": rep, "active_conflicts": act_c,
         "comment_limit_exceeded": not done and total >= BOARD_COMMENT_LIMIT, "comment_count": total,
         "sessions": list(st["active"].values()), "messages": out_m, "conflicts": out_c,
+        "release_uncertain_sessions": sorted(st["release_uncertain"]),
         "warnings": list(dict.fromkeys([*rw, *rep])),
     }  # fmt: skip
 
@@ -368,11 +392,14 @@ def _merge_paginated(data: dict[str, Any], pag: dict[str, Any]) -> dict[str, Any
     all_act = list(dict.fromkeys(act + list(pw("active_conflicts", []))))
     msgs = list(pw("messages") or []) if (done and "messages" in pag) else list(data.get("messages") or [])
     confs = list(pw("conflicts") or []) if (done and "conflicts" in pag) else list(data.get("conflicts") or [])
+    uncertain = [str(item) for item in data.get("release_uncertain_sessions") or []]
+    uncertain += [str(item) for item in pw("release_uncertain_sessions") or []]
     return {
         "available": True, "complete": done and not all_act and not all_rw,
         "degraded_history": bool(pw("degraded_history")) or bool(all_rep),
         "read_warnings": all_rw, "replay_warnings": all_rep, "active_conflicts": all_act,
         "comment_limit_exceeded": not done, "comment_count": pw("comment_count", data.get("comment_count", 0)),
         "sessions": sess, "messages": msgs, "conflicts": confs,
+        "release_uncertain_sessions": list(dict.fromkeys(uncertain)),
         "warnings": list(dict.fromkeys([*all_rw, *all_rep])),
     }  # fmt: skip
