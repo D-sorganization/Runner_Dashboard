@@ -150,3 +150,58 @@ def test_github_review_path_still_recognises_approval_for_arm_regression_guard()
     """Guard: the approve pass used to arm stays head-bound (no regression from parser change)."""
     passes = collect_review_passes_from_github_reviews([_approve_review()], 15843, author_login=AUTHOR)
     assert [(p.head_sha, p.verdict) for p in passes] == [(HEAD, "approve")]
+
+
+# Bob Rec #1 regression guard ───────────────────────────────────────────────
+# After a commit changes the PR head, any PASS recorded for the old head SHA
+# must NOT let the PR re-arm. UD#15452 stale-head re-entry regression.
+
+OLD_SHA = "a" * 40
+NEW_SHA = "b" * 40
+
+
+def _pass_comment(sha: str) -> dict:
+    return {
+        "body": f"**Independent Exact-Head Acceptance Review — PASS** @{sha}",
+        "createdAt": "2026-11-21T17:00:00Z",
+        "author": {"login": REVIEWER},
+    }
+
+
+def test_stale_head_pass_does_not_allow_rearm_after_new_commit() -> None:
+    """Bob Rec #1: PASS @old_sha must not trigger re-arm when head has since advanced.
+
+    Scenario: PR was reviewed and passed at OLD_SHA. A new commit pushes the
+    head to NEW_SHA. The shepherd must require a fresh exact-head PASS and must
+    not re-arm based on the now-stale comment.
+    """
+    node = _queued_node(
+        merge_state="BLOCKED",
+        review_decision="APPROVED",
+        comments=[_pass_comment(OLD_SHA)],
+    )
+    node["headRefOid"] = NEW_SHA  # head has advanced since the PASS was recorded
+
+    arms, _skips, backoff = plan_repo_pass(
+        REPO,
+        [node],
+        skip_list=frozenset(),
+        holds=(),
+        armed_count=0,
+        queue_depth=0,
+        live=False,
+    )
+    assert arms == [], "stale-head PASS must not trigger re-arm after commit change"
+    assert backoff is False
+
+
+def test_stale_head_pass_comment_sha_mismatch_is_not_valid_for_current_head() -> None:
+    """PASS comment parser: a PASS at OLD_SHA does not match the PR's NEW_SHA head."""
+    passes = collect_review_passes_from_comments(
+        [_pass_comment(OLD_SHA)], 15843, author_login=AUTHOR
+    )
+    assert len(passes) == 1
+    assert passes[0].head_sha == OLD_SHA
+    assert passes[0].verdict == "approve"
+    # Crucially: the recorded SHA differs from the new head, so it must not count
+    assert passes[0].head_sha != NEW_SHA
