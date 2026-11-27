@@ -185,3 +185,92 @@ def test_unreadable_pr_files_count_as_overlap() -> None:
     )
 
     assert block is not None
+
+
+# ── Exemption-label tests (fix for aging_pr_blocks_claim P1 stall) ───────────
+
+
+def _old_pr_with_labels(number: int, labels: list[str], branch: str = "codex/old-work") -> dict:
+    return {
+        "number": number,
+        "html_url": f"https://example/pull/{number}",
+        "created_at": "2026-10-01T00:00:00Z",
+        "head": {"ref": branch},
+        "labels": [{"name": lbl} for lbl in labels],
+        "draft": False,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "exempt_label",
+    ["do-not-merge", "needs-owner", "held", "needs-canonical-model"],
+)
+def test_aging_pr_with_exemption_label_does_not_block_claim(exempt_label: str) -> None:
+    """PRs marked held/do-not-merge/needs-owner/needs-canonical-model must NOT
+    count toward the 72-hour aging-PR claim block (UD#15582 / UD#15859 stall)."""
+    fetch = _aging_fetch(
+        {"Runner_Dashboard": [_old_pr_with_labels(15582, [exempt_label])]},
+        {},
+    )
+
+    block = rule.claim_blocked_by_aging_prs(
+        "codex",
+        claim_repo="Runner_Dashboard",
+        fetch=fetch,
+    )
+
+    assert block is None, (
+        f"PR with label '{exempt_label}' should be exempt from aging-PR block but got: {block}"
+    )
+
+
+@pytest.mark.unit
+def test_aging_pr_with_non_exempt_label_still_blocks() -> None:
+    """A regular (non-exempt) label must not suppress the block."""
+    fetch = _aging_fetch(
+        {"Runner_Dashboard": [_old_pr_with_labels(100, ["some-other-label"])]},
+        {},
+    )
+
+    block = rule.claim_blocked_by_aging_prs(
+        "codex",
+        claim_repo="Runner_Dashboard",
+        fetch=fetch,
+    )
+
+    assert block is not None
+    assert block["code"] == "aging_pr_blocks_claim"
+
+
+@pytest.mark.unit
+def test_list_aging_prs_excludes_prs_with_exemption_labels() -> None:
+    """list_aging_prs_for_agent must skip exempt-labelled PRs entirely."""
+
+    def fetch(path: str) -> list[dict]:
+        if "/pulls?state=open" in path:
+            return [
+                _old_pr_with_labels(1, ["do-not-merge"], branch="codex/held-work"),
+                _old_pr_with_labels(2, ["needs-owner"], branch="codex/stalled"),
+                {
+                    "number": 3,
+                    "html_url": "https://example/pull/3",
+                    "created_at": "2026-10-01T00:00:00Z",
+                    "head": {"ref": "codex/normal"},
+                    "labels": [],
+                    "draft": False,
+                },
+            ]
+        raise AssertionError(path)
+
+    hits = rule.list_aging_prs_for_agent(
+        "codex",
+        repos=["Runner_Dashboard"],
+        fetch=fetch,
+        rule_hours=72,
+    )
+
+    numbers = [h["number"] for h in hits]
+    assert 1 not in numbers, "do-not-merge PR must be excluded"
+    assert 2 not in numbers, "needs-owner PR must be excluded"
+    assert 3 in numbers, "normal PR must still be included"

@@ -24,6 +24,10 @@ log = logging.getLogger("dashboard.coordination.pr_age_rule")
 AGENT_LABEL_PREFIX = "agent:"
 SyncFetch = Callable[[str], Any]
 
+# PRs with these labels are exempt from the aging-PR claim block.
+# They are intentionally parked and must not strand other agents.
+AGING_PR_EXEMPT_LABELS: frozenset[str] = frozenset({"do-not-merge", "needs-owner", "held", "needs-canonical-model"})
+
 
 def _normalize_agent(agent: str) -> str:
     lowered = agent.strip().lower()
@@ -76,6 +80,18 @@ def _agent_from_pr_labels(pr: Mapping[str, Any], agent_ids: Sequence[str]) -> st
     if len(matches) == 1:
         return next(iter(matches))
     return None
+
+
+def _is_exempt_pr(pr: Mapping[str, Any]) -> bool:
+    """True when the PR carries a label that exempts it from the aging-PR rule."""
+    labels = pr.get("labels")
+    if not isinstance(labels, list):
+        return False
+    for label in labels:
+        name = label.get("name") if isinstance(label, dict) else label
+        if isinstance(name, str) and name in AGING_PR_EXEMPT_LABELS:
+            return True
+    return False
 
 
 def _roster_has(agent_ids: Sequence[str], candidate: str) -> bool:
@@ -131,6 +147,8 @@ def list_aging_prs_for_agent(
                 continue
             owner = resolve_pr_owner(pr, agent_ids=agent_ids)
             if owner != target:
+                continue
+            if _is_exempt_pr(pr):
                 continue
             age = open_pr_age_hours(str(pr.get("created_at") or ""))
             if age <= rule_hours:
