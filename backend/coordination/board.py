@@ -2,18 +2,8 @@
 
 The board (Repository_Management issue #1576) stays the single message store;
 this module only calls ``python -m scripts.agent_communicate``. Reads are
-cached in-process for ``CACHE_SECONDS`` so one GitHub read serves every
-caller: ``list --all-repos`` when RM supports it, else one ``list`` per fleet
-repo (in parallel), merged. A board read takes seconds, so an expired entry is
-served stale while one background thread refreshes it (stale-while-revalidate);
-only the very first read, and the first read after a write, waits. Writes
-invalidate the cache and bump a generation counter: a read that started
-before the write is never stored afterwards (#1244). Concurrent misses on one
-key share a single load (single-flight). ``reset_cache`` also bumps the
-generation, so a refresh still running from before a reset cannot repopulate
-the cache; ``join_refreshes`` waits for background refreshes (tests, shutdown).
-The per-repo fallback cannot see
-sessions in repos outside ``fleet_repos()``, so it is never ``complete``.
+cached in-process for ``CACHE_SECONDS``. Writes invalidate the cache (#1244).
+Per-repo fallback never returns ``complete`` when it omits repos outside ``fleet_repos()``.
 
 Read results: ``{available, complete, sessions, messages, conflicts, warnings}``
 or ``{available: False, reason}``. Writes raise ``RMScriptError``.
@@ -28,6 +18,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from coordination.board_degraded_reads import live_session_verdict
 from coordination.board_pagination import (
     _is_replay_warning,
     _merge_paginated,
@@ -207,8 +198,12 @@ def _comment_limit_reached(data: dict[str, Any]) -> bool:
     count = data.get("comment_count")
     if isinstance(count, int) and count > BOARD_COMMENT_LIMIT and not data.get("complete", False):
         return True
-    warnings = [str(w).lower() for w in data.get("warnings") or []]
-    return any("page limit" in w or "comment limit" in w or "comment-limit" in w for w in warnings)
+    return _has_limit_warning(data.get("warnings") or [])
+
+
+def _has_limit_warning(warnings: list[Any]) -> bool:
+    lowered = [str(w).lower() for w in warnings]
+    return any("page limit" in w or "comment limit" in w or "comment-limit" in w for w in lowered)
 
 
 def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, Any]:
@@ -249,6 +244,7 @@ def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, A
         "replay_warnings": replay_warnings,
         "active_conflicts": active_conflicts,
         "comment_limit_exceeded": limit_hit,
+        "release_uncertain_sessions": [str(item) for item in data.get("release_uncertain_sessions") or []],
         "sessions": [_session(s) for s in data.get("sessions") or [] if isinstance(s, dict)],
         "messages": list(data.get("messages") or []),
         "conflicts": list(data.get("conflicts") or []),
@@ -290,6 +286,7 @@ def _merge(parts: list[dict[str, Any]]) -> dict[str, Any]:
     read_warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
     replay_warnings = [w for p in ok for w in p.get("replay_warnings", [])]
     active_conflicts = [w for p in ok for w in p.get("active_conflicts", [])]
+    uncertain = [str(item) for p in ok for item in p.get("release_uncertain_sessions") or []]
     all_warnings = [w for p in ok for w in p["warnings"]]
     all_warnings += [f"board read failed: {p['reason']}" for p in parts if not p["available"]]
     return {
@@ -300,6 +297,7 @@ def _merge(parts: list[dict[str, Any]]) -> dict[str, Any]:
         "replay_warnings": list(dict.fromkeys(replay_warnings)),
         "active_conflicts": list(dict.fromkeys(active_conflicts)),
         "sessions": list(seen.values()),
+        "release_uncertain_sessions": list(dict.fromkeys(uncertain)),
         "messages": [],
         "conflicts": [],
         "warnings": list(dict.fromkeys(all_warnings)),
@@ -323,22 +321,13 @@ def cached_board_state() -> dict[str, Any] | None:
 
 
 def has_live_session(session: str, repo: str) -> bool:
-    """Does ``session`` hold live presence in ``repo`` right now? Reads the board fresh (bypasses the cache).
-
-    RM binds a session to the repo it registered in and silently drops messages and acks from any other
-    sender, so this is the precondition for ``send`` / ``ack``. Raises ``RMScriptError`` when the board
-    cannot be read or when the board read is incomplete and ``session`` is absent (fail-closed, #3550).
-    """
+    """Parsed presence stays live under malformed-only history; truncation does not (#4569)."""
     _invalidate()
     data = read_sessions(repo)
-    if not data["available"]:
-        raise RMScriptError(f"board unavailable, cannot confirm presence of {session}: {data.get('reason')}")
-    if any(str(s.get("session")) == session for s in data["sessions"]):
-        return True
-    if not data.get("complete", True):
-        detail = "; ".join(data.get("warnings") or ["incomplete board read"])
-        raise RMScriptError(f"board read incomplete, cannot confirm presence of {session}: {detail}")
-    return False
+    live, error = live_session_verdict(session, data)
+    if error:
+        raise RMScriptError(error)
+    return live
 
 
 def read_inbox(session: str, repo: str) -> dict[str, Any]:
