@@ -129,74 +129,47 @@ def test_mode_only_change_requires_fresh_review() -> None:
     assert (ok, why) == (False, "missing_pass_at_head")
 
 
-def _verdict(sha: str, verdict: str, *, at: str, pr: int = 7) -> HeadReviewPass:
+T0, T1, T2 = "2026-11-19T10:00:00+00:00", "2026-11-19T11:00:00+00:00", "2026-11-19T12:00:00+00:00"
+THIRD = "c" * 40
+
+
+def _verdict(sha: str, verdict: str = "approve", *, at: str = T0, pr: int = 7) -> HeadReviewPass:
     return HeadReviewPass(pr=pr, head_sha=sha, verdict=verdict, recorded_at=at)
 
 
-def test_first_rejection_is_not_a_failed_fix() -> None:
-    count = failed_fix_passes_from_reviews(
-        [_verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00")],
-        pr=7,
-    )
-    assert count == 0
-    assert fix_pass_decision(failed_fix_passes=count) == "fix"
+def _ci(sha: str, *, at: str = T0, pr: int = 7) -> HeadCheckFailure:
+    return HeadCheckFailure(pr=pr, head_sha=sha, recorded_at=at, state="FAILURE")
 
 
-def test_second_rejected_head_is_one_failed_fix() -> None:
-    count = failed_fix_passes_from_reviews(
-        [
-            _verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00"),
-            _verdict(NEW, "changes", at="2026-11-19T12:00:00+00:00"),
-        ],
-        pr=7,
-    )
-    assert count == 1
-    assert fix_pass_decision(failed_fix_passes=count) == "escalate"
-
-
-def test_approve_closes_the_fix_cycle() -> None:
-    third = "c" * 40
-    count = failed_fix_passes_from_reviews(
-        [
-            _verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00"),
-            _verdict(NEW, "approve", at="2026-11-19T11:00:00+00:00"),
-            _verdict(third, "changes", at="2026-11-19T12:00:00+00:00"),
-        ],
-        pr=7,
-    )
-    assert count == 0
-
-
-def test_later_verdict_on_the_same_head_wins() -> None:
-    count = failed_fix_passes_from_reviews(
-        [
-            _verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00"),
-            _verdict(OLD, "approve", at="2026-11-19T11:00:00+00:00"),
-        ],
-        pr=7,
-    )
-    assert count == 0
-
-
-def test_other_pr_rejections_do_not_count() -> None:
-    count = failed_fix_passes_from_reviews(
-        [
-            _verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00", pr=8),
-            _verdict(NEW, "changes", at="2026-11-19T12:00:00+00:00", pr=8),
-        ],
-        pr=7,
-    )
-    assert count == 0
+@pytest.mark.parametrize(
+    ("passes", "checks", "count", "decision"),
+    [
+        ([_verdict(OLD, "changes")], [], 0, "fix"),
+        ([_verdict(OLD, "changes"), _verdict(NEW, "changes", at=T2)], [], 1, "escalate"),
+        ([_verdict(OLD, "changes"), _verdict(NEW, "approve", at=T1), _verdict(THIRD, "changes", at=T2)], [], 0, "fix"),
+        ([_verdict(OLD, "changes"), _verdict(OLD, "approve", at=T1)], [], 0, "fix"),
+        ([_verdict(OLD, "changes", pr=8), _verdict(NEW, "changes", at=T2, pr=8)], [], 0, "fix"),
+        ([], [_ci(OLD)], 0, "fix"),
+        ([], [_ci(OLD), _ci(NEW, at=T2)], 1, "escalate"),
+        ([_verdict(OLD, "changes")], [_ci(NEW, at=T2)], 1, "escalate"),
+        ([_verdict(OLD, "changes")], [_ci(OLD, at="2026-11-19T10:05:00+00:00")], 0, "fix"),
+        ([_verdict(NEW, "approve", at=T2)], [_ci(OLD)], 0, "fix"),
+    ],
+)
+def test_failed_fix_cycle(passes, checks, count, decision) -> None:
+    assert failed_fix_passes_from_cycle(passes, checks, pr=7) == count
+    if not checks:
+        assert failed_fix_passes_from_reviews(passes, pr=7) == count
+    assert fix_pass_decision(failed_fix_passes=count) == decision
 
 
 def test_shepherd_escalates_after_one_failed_fix_without_a_fresh_pass() -> None:
-    head = "d" * 40
     decision = evaluate_pr_shepherd_eligibility(
         PRCandidate(
             "Runner_Dashboard",
             7,
             checks_status="SUCCESS",
-            head_sha=head,
+            head_sha="d" * 40,
             file_paths=("backend/x.py",),
             files_complete=True,
             failed_fix_passes=1,
@@ -216,7 +189,7 @@ def test_fresh_exact_head_pass_still_arms_after_an_earlier_failed_fix() -> None:
             file_paths=("backend/x.py",),
             files_complete=True,
             failed_fix_passes=1,
-            review_passes=(_verdict(head, "approve", at=datetime.now(UTC).isoformat()),),
+            review_passes=(_verdict(head, at=datetime.now(UTC).isoformat()),),
         )
     )
     assert decision.action == ShepherdAction.AUTO_ARM
@@ -242,83 +215,22 @@ def test_node_to_candidate_counts_failed_fix_passes() -> None:
         node,
         is_drained=False,
         head_sha=NEW,
-        review_passes=[
-            _verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00"),
-            _verdict(NEW, "changes", at="2026-11-19T12:00:00+00:00"),
-        ],
+        review_passes=[_verdict(OLD, "changes"), _verdict(NEW, "changes", at=T2)],
     )
     assert candidate.failed_fix_passes == 1
 
 
-def _ci(sha: str, *, at: str, pr: int = 7) -> HeadCheckFailure:
-    return HeadCheckFailure(pr=pr, head_sha=sha, recorded_at=at, state="FAILURE")
-
-
-def test_one_ci_failure_is_the_original_failure() -> None:
-    count = failed_fix_passes_from_cycle([], [_ci(OLD, at="2026-11-19T10:00:00+00:00")], pr=7)
-    assert count == 0
-    assert fix_pass_decision(failed_fix_passes=count) == "fix"
-
-
-def test_second_ci_failed_head_is_one_failed_fix() -> None:
-    count = failed_fix_passes_from_cycle(
-        [],
-        [_ci(OLD, at="2026-11-19T10:00:00+00:00"), _ci(NEW, at="2026-11-19T12:00:00+00:00")],
-        pr=7,
+def test_checks_failure_respects_the_fix_cap() -> None:
+    capped = evaluate_pr_shepherd_eligibility(
+        PRCandidate("Runner_Dashboard", 7, checks_status="FAILURE", head_sha="d" * 40, failed_fix_passes=1)
     )
-    assert count == 1
-    assert fix_pass_decision(failed_fix_passes=count) == "escalate"
-
-
-def test_review_rejection_then_ci_failure_on_a_new_head_escalates() -> None:
-    count = failed_fix_passes_from_cycle(
-        [_verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00")],
-        [_ci(NEW, at="2026-11-19T12:00:00+00:00")],
-        pr=7,
-    )
-    assert count == 1
-
-
-def test_ci_and_review_failure_on_the_same_head_count_once() -> None:
-    count = failed_fix_passes_from_cycle(
-        [_verdict(OLD, "changes", at="2026-11-19T10:00:00+00:00")],
-        [_ci(OLD, at="2026-11-19T10:05:00+00:00")],
-        pr=7,
-    )
-    assert count == 0
-
-
-def test_approve_after_ci_failure_closes_the_cycle() -> None:
-    count = failed_fix_passes_from_cycle(
-        [_verdict(NEW, "approve", at="2026-11-19T12:00:00+00:00")],
-        [_ci(OLD, at="2026-11-19T10:00:00+00:00")],
-        pr=7,
-    )
-    assert count == 0
-
-
-def test_checks_failure_escalates_when_the_fix_cap_is_reached() -> None:
-    head = "d" * 40
-    decision = evaluate_pr_shepherd_eligibility(
-        PRCandidate(
-            "Runner_Dashboard",
-            7,
-            checks_status="FAILURE",
-            head_sha=head,
-            failed_fix_passes=1,
-        )
-    )
-    assert (decision.action, decision.reason) == (ShepherdAction.SKIP, IneligibleReason.FIX_PASS_CAP)
-    assert decision.escalation.startswith(FIX_PASS_ESCALATION_MARK)
-    assert "barb" in decision.escalation
-
-
-def test_one_checks_failure_still_allows_the_fix() -> None:
-    decision = evaluate_pr_shepherd_eligibility(
+    assert (capped.action, capped.reason) == (ShepherdAction.SKIP, IneligibleReason.FIX_PASS_CAP)
+    assert capped.escalation.startswith(FIX_PASS_ESCALATION_MARK) and "barb" in capped.escalation
+    allowed = evaluate_pr_shepherd_eligibility(
         PRCandidate("Runner_Dashboard", 7, checks_status="FAILURE", head_sha=OLD, failed_fix_passes=0)
     )
-    assert (decision.action, decision.reason) == (ShepherdAction.SKIP, IneligibleReason.CHECKS_FAILED)
-    assert decision.escalation == ""
+    assert (allowed.action, allowed.reason) == (ShepherdAction.SKIP, IneligibleReason.CHECKS_FAILED)
+    assert allowed.escalation == ""
 
 
 def test_carry_forward_is_not_wired_into_arm_eligibility() -> None:
