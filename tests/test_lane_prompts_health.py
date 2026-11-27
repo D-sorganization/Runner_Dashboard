@@ -290,3 +290,79 @@ def test_force_release_frees_a_fresh_checkout_without_fence(tmp_path: Path) -> N
         now=now + 40,
     )
     assert nxt["fence_token"] == held["fence_token"] + 1
+
+
+def test_heartbeat_expiry_reports_actual_transition_and_no_healthy_overlap(tmp_path: Path) -> None:
+    from coordination.lane_prompts import LanePromptStore
+
+    store = LanePromptStore(db_path=tmp_path / "expiry.sqlite3")
+    store.register_assignment(
+        lane_id="lane",
+        role="backlog-completion",
+        repos=["Runner_Dashboard"],
+        release_sha="sha",
+        package_hash="pkg",
+        subagent_model="",
+        max_children=0,
+    )
+    checkout = store.checkout(
+        session_id="codex-dead",
+        principal="loopback-dev",
+        idempotency_key="key",
+        lane_id="lane",
+        ttl_sec=3600,
+        now=10000.0,
+    )
+    summary = store.health_summary(now=10901.0)
+    assert summary["healthy_active"] == []
+    expired = summary["expired_recent"][0]
+    assert expired["checkout_id"] == checkout["checkout_id"]
+    assert expired["expired_ago_sec"] == 0.0
+    assert expired["expiry_reason"] == "heartbeat_stale"
+    assert store.health_summary(now=10911.0)["expired_recent"][0]["expired_ago_sec"] == 10.0
+
+
+def test_expiry_metadata_for_ttl_and_releases(tmp_path: Path) -> None:
+    from coordination.lane_prompts import LanePromptStore
+
+    store = LanePromptStore(db_path=tmp_path / "metadata.sqlite3")
+    for lane in ("ttl", "release", "force"):
+        store.register_assignment(
+            lane_id=lane,
+            role="backlog-completion",
+            repos=["Runner_Dashboard"],
+            release_sha="sha",
+            package_hash="pkg",
+            subagent_model="",
+            max_children=0,
+        )
+    items = {
+        lane: store.checkout(
+            session_id=f"codex-{lane}",
+            principal="loopback-dev",
+            idempotency_key=lane,
+            lane_id=lane,
+            ttl_sec=60,
+            now=10000.0,
+        )
+        for lane in ("ttl", "release", "force")
+    }
+    store.release(
+        checkout_id=items["release"]["checkout_id"],
+        fence_token=items["release"]["fence_token"],
+        session_id="codex-release",
+        now=10010.0,
+    )
+    store.force_release(actor="operator", lane_id="force", now=10020.0)
+    summary = store.health_summary(now=10061.0)
+    assert summary["expired_recent"][0]["expiry_reason"] == "lease_ttl"
+    with store._connect() as conn:
+        rows = {
+            row["lane_id"]: (row["expired_at"], row["expiry_reason"])
+            for row in conn.execute("SELECT lane_id, expired_at, expiry_reason FROM lane_checkouts")
+        }
+    assert rows == {
+        "ttl": (10061.0, "lease_ttl"),
+        "release": (10010.0, "released"),
+        "force": (10020.0, "force_released"),
+    }
