@@ -113,7 +113,9 @@ query($owner: String!, $name: String!) {
               reason
               beforeCommit {
                 oid
-                checkSuites(first: 5) {
+                # appId 15368 is GitHub Actions. Other apps' empty suites
+                # otherwise occupy the first page and hide merge_group runs.
+                checkSuites(first: 10, filterBy: {appId: 15368}) {
                   pageInfo { hasNextPage }
                   nodes {
                     conclusion

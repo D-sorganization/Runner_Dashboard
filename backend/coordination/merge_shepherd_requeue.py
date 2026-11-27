@@ -90,10 +90,14 @@ def _suite_is_merge_group(suite: Mapping[str, Any]) -> bool:
 
     Pre: ``suite`` is one ``checkSuites.nodes`` element from ``OPEN_PRS_QUERY``.
     Post: ``pull_request`` and other non-merge-group events are rejected.
+    A null ``workflowRun`` is another app's empty suite, not merge_group evidence.
+    A suite that omits ``workflowRun`` stays accepted so older fixtures still count.
     """
-    workflow = suite.get("workflowRun") or {}
-    if not isinstance(workflow, Mapping):
+    if "workflowRun" not in suite:
         return True
+    workflow = suite.get("workflowRun")
+    if not isinstance(workflow, Mapping):
+        return False
     event = _text(workflow.get("event")).casefold()
     return not event or event == _MERGE_GROUP_EVENT
 
@@ -151,11 +155,14 @@ def _attempt_from_removal(event: Mapping[str, Any]) -> tuple[str, str] | None:
 
 
 def _removal_checks_truncated(event: Mapping[str, Any]) -> bool:
-    """True when merge-group checks on this removal are not the full page.
+    """True when this removal's merge-group checks are not fully visible.
 
     Pre: ``event`` is a ``RemovedFromMergeQueueEvent`` node.
-    Post: a missing ``pageInfo`` is complete. ``hasNextPage`` on ``checkSuites``
-    or ``checkRuns`` means a deterministic failure can sit outside the window.
+    Post: a missing ``pageInfo`` is complete. Extra suites after a visible
+    merge_group suite do not truncate: live queue commits have more than ten
+    GitHub Actions workflows, so ``checkSuites.hasNextPage`` stays true.
+    ``hasNextPage`` on ``checkSuites`` truncates only when no merge_group suite
+    was returned. ``hasNextPage`` on that suite's ``checkRuns`` still truncates.
     """
     before = event.get("beforeCommit")
     if not isinstance(before, Mapping):
@@ -163,12 +170,15 @@ def _removal_checks_truncated(event: Mapping[str, Any]) -> bool:
     suites = before.get("checkSuites")
     if not isinstance(suites, Mapping):
         return False
-    if _page_truncated(suites.get("pageInfo")):
-        return True
-    return any(
+    merge_group = [suite for suite in _suite_nodes(before) if _suite_is_merge_group(suite)]
+    if any(
         isinstance(suite.get("checkRuns"), Mapping) and _page_truncated(suite["checkRuns"].get("pageInfo"))
-        for suite in _suite_nodes(before)
-    )
+        for suite in merge_group
+    ):
+        return True
+    if merge_group:
+        return False
+    return _page_truncated(suites.get("pageInfo"))
 
 
 def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
@@ -378,8 +388,8 @@ def suppression_detail(
 
     Pre: ``queue_history_truncated`` comes from :func:`_queue_history_hides_events_after_head`.
     ``comments_truncated`` and ``checks_truncated`` come from connection ``pageInfo``.
-    Post: visible deterministic evidence wins. A truncated check page then fails
-    closed, then a truncated timeline, then a manual dequeue. An owner or Barb
+    Post: visible deterministic evidence wins. A truncated merge_group check page
+    then fails closed, then a truncated timeline, then a manual dequeue. An owner or Barb
     unarmed instruction holds across a new head until a later authorized retry.
     A truncated comment page fails closed when that instruction could be off-page.
     """
