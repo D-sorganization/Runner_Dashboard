@@ -113,7 +113,8 @@ query($owner: String!, $name: String!) {
               reason
               beforeCommit {
                 oid
-                checkSuites(first: 5) {
+                # 20 covers a live removal (about 15 suites: other apps, then merge_group).
+                checkSuites(first: 20) {
                   pageInfo { hasNextPage }
                   nodes {
                     conclusion

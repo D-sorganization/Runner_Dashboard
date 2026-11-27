@@ -209,9 +209,9 @@ def test_the_open_pr_query_fetches_merge_group_check_runs() -> None:
     assert "timelineItems(last: 100" in OPEN_PRS_QUERY
     assert "hasPreviousPage" in OPEN_PRS_QUERY
     assert "hasNextPage" in OPEN_PRS_QUERY
-    assert "checkSuites(first: 5)" in OPEN_PRS_QUERY
+    assert "checkSuites(first: 20)" in OPEN_PRS_QUERY
     assert "checkRuns(first: 20)" in OPEN_PRS_QUERY
-    suites = OPEN_PRS_QUERY.split("checkSuites(first: 5)", 1)[1].split("checkRuns(first: 20)", 1)[0]
+    suites = OPEN_PRS_QUERY.split("checkSuites(first: 20)", 1)[1].split("checkRuns(first: 20)", 1)[0]
     runs = OPEN_PRS_QUERY.split("checkRuns(first: 20)", 1)[1].split("nodes { name conclusion title summary }", 1)[0]
     comments = OPEN_PRS_QUERY.split("comments(last: 10)", 1)[1].split("author { login }", 1)[0]
     assert "pageInfo" in suites and "hasNextPage" in suites
@@ -471,6 +471,67 @@ def test_truncated_check_pages_fail_closed_when_deterministic_runs_may_be_off_pa
     assert decision.reason == IneligibleReason.INCOMPLETE_CHECK_PAGE
     assert decision.detail == "incomplete_check_page"
     assert [action.pr_number for action in _plan([node])[0]] == []
+
+
+def test_a_later_check_suite_page_does_not_hide_a_visible_merge_group_suite() -> None:
+    """Other apps occupy the first slots and ``hasNextPage`` stays true.
+
+    Live removals look like this: a non-merge-group suite, then a merge_group
+    suite whose check runs fit on one page, then ``checkSuites.hasNextPage``.
+    That page is enough. A transient merge_group failure must still requeue.
+    """
+    node = _with_head(_open_pr_node(96, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["autoMergeRequest"] = {"enabledAt": HEAD_AT}
+    transient = [_check("queue entry", "CANCELLED", summary="runner offline; lost communication with the server")]
+    first = _removal_with_checks("2026-11-24T22:05:00Z", "CI_FAILURE", transient, run_id=51)
+    other_app = {
+        "conclusion": None,
+        "workflowRun": None,
+        "checkRuns": {"pageInfo": {"hasNextPage": False}, "nodes": []},
+    }
+    suites = first["beforeCommit"]["checkSuites"]
+    merge_group = suites["nodes"][0]
+    merge_group["checkRuns"]["pageInfo"] = {"hasNextPage": False}
+    suites["pageInfo"] = {"hasNextPage": True}
+    suites["nodes"] = [other_app, merge_group]
+    node["timelineItems"] = {"nodes": [first]}
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.detail != "incomplete_check_page"
+    assert decision.reason != IneligibleReason.INCOMPLETE_CHECK_PAGE
+    _, disarms = _plan([node])
+    assert disarms == []
+
+
+def test_truncated_suites_fail_closed_when_no_merge_group_suite_was_returned() -> None:
+    """A later page can still hide the merge_group suite when this page has none."""
+    node = _with_head(_open_pr_node(97, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    checks = [_check("unit tests")]
+    event = _removal_with_checks(
+        "2026-11-24T22:05:00Z",
+        "CI_FAILURE",
+        checks,
+        event="pull_request",
+        run_id=61,
+    )
+    event["beforeCommit"]["checkSuites"]["pageInfo"] = {"hasNextPage": True}
+    node["timelineItems"] = {"nodes": [event]}
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.action == ShepherdAction.SKIP
+    assert decision.reason == IneligibleReason.INCOMPLETE_CHECK_PAGE
+    assert decision.detail == "incomplete_check_page"
+
+
+def test_a_status_mention_of_unarmed_is_not_an_owner_hold() -> None:
+    """The bare word unarmed in a status note is not an instruction to stay unarmed."""
+    node = _with_head(_open_pr_node(98, paths=["docs/readme.md"]), HEAD, HEAD_AT)
+    node["comments"] = {"nodes": [_owner_note("2026-11-24T23:10:36Z", "the PR was unarmed because the queue bounced")]}
+    candidate = node_to_candidate(REPO, node, is_drained=False, head_sha=HEAD)
+    decision = evaluate_pr_shepherd_eligibility(candidate)
+    assert decision.detail != "owner_unarmed"
+    assert decision.reason != IneligibleReason.OWNER_UNARMED
+    assert [action.pr_number for action in _plan([node])[0]] == [98]
 
 
 def test_unclassified_failures_do_not_disarm() -> None:

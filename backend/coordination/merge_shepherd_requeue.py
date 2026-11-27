@@ -49,7 +49,11 @@ _DETERMINISTIC_MARKERS = (
 _AUTHORIZED_RETRY_LOGINS = frozenset({"dieterolson", "openbot-barb", "openbotgit"})
 _RETRY_AUTHORIZED = re.compile(r"\b(?:retry|requeue) authorized\b", re.IGNORECASE)
 # An owner or Barb instruction to leave the PR unarmed. A new head does not lift it.
-_OWNER_UNARMED = re.compile(r"\bunarmed\b|\bdo not (?:requeue|arm)\b", re.IGNORECASE)
+# A status sentence that merely mentions "unarmed" is not that instruction.
+_OWNER_UNARMED = re.compile(
+    r"\b(?:leave|stay|keep|remain) unarmed\b|\bdo not (?:requeue|arm)\b",
+    re.IGNORECASE,
+)
 
 
 def _text(value: object) -> str:
@@ -150,12 +154,34 @@ def _attempt_from_removal(event: Mapping[str, Any]) -> tuple[str, str] | None:
     return (kind, "+".join(sorted(set(names))))
 
 
+def _explicit_merge_group(suite: Mapping[str, Any]) -> bool:
+    """True only when ``workflowRun.event`` is exactly ``merge_group``.
+
+    Pre: ``suite`` is one ``checkSuites.nodes`` element.
+    Post: a missing workflow or a ``pull_request`` event is not a merge-group suite.
+    Other apps often have no workflow run; those must not count as the suite we needed.
+    """
+    workflow = suite.get("workflowRun") or {}
+    if not isinstance(workflow, Mapping):
+        return False
+    return _text(workflow.get("event")).casefold() == _MERGE_GROUP_EVENT
+
+
+def _check_runs_truncated(suite: Mapping[str, Any]) -> bool:
+    """True when this suite's check runs report another page."""
+    runs = suite.get("checkRuns")
+    return isinstance(runs, Mapping) and _page_truncated(runs.get("pageInfo"))
+
+
 def _removal_checks_truncated(event: Mapping[str, Any]) -> bool:
-    """True when merge-group checks on this removal are not the full page.
+    """True when this removal's merge-group checks are not fully visible.
 
     Pre: ``event`` is a ``RemovedFromMergeQueueEvent`` node.
-    Post: a missing ``pageInfo`` is complete. ``hasNextPage`` on ``checkSuites``
-    or ``checkRuns`` means a deterministic failure can sit outside the window.
+    Post: a missing ``pageInfo`` is complete. Another ``checkSuites`` page fails
+    closed only when no suite on this page has ``workflowRun.event == merge_group``.
+    Other apps fill the start of the connection and leave ``hasNextPage`` true
+    even after the merge-group suites are in the window. A truncated
+    ``checkRuns`` page on a merge-group suite still fails closed.
     """
     before = event.get("beforeCommit")
     if not isinstance(before, Mapping):
@@ -163,12 +189,12 @@ def _removal_checks_truncated(event: Mapping[str, Any]) -> bool:
     suites = before.get("checkSuites")
     if not isinstance(suites, Mapping):
         return False
-    if _page_truncated(suites.get("pageInfo")):
+    merge_group = [suite for suite in _suite_nodes(before) if _explicit_merge_group(suite)]
+    if any(_check_runs_truncated(suite) for suite in merge_group):
         return True
-    return any(
-        isinstance(suite.get("checkRuns"), Mapping) and _page_truncated(suite["checkRuns"].get("pageInfo"))
-        for suite in _suite_nodes(before)
-    )
+    if merge_group:
+        return False
+    return _page_truncated(suites.get("pageInfo"))
 
 
 def evidence_from_node(node: Mapping[str, Any]) -> dict[str, Any]:
@@ -379,8 +405,10 @@ def suppression_detail(
     Pre: ``queue_history_truncated`` comes from :func:`_queue_history_hides_events_after_head`.
     ``comments_truncated`` and ``checks_truncated`` come from connection ``pageInfo``.
     Post: visible deterministic evidence wins. A truncated check page then fails
-    closed, then a truncated timeline, then a manual dequeue. An owner or Barb
-    unarmed instruction holds across a new head until a later authorized retry.
+    closed when no merge-group suite was on the page, or when that suite's
+    check runs are themselves truncated. Then a truncated timeline, then a
+    manual dequeue. An owner or Barb unarmed instruction holds across a new
+    head until a later authorized retry.
     A truncated comment page fails closed when that instruction could be off-page.
     """
     if _deterministic_signatures(head_sha=head_sha, failures=failures):
