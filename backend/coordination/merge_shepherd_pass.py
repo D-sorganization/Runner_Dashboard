@@ -113,9 +113,8 @@ query($owner: String!, $name: String!) {
               reason
               beforeCommit {
                 oid
-                # appId 15368 is GitHub Actions. Other apps' empty suites
-                # otherwise occupy the first page and hide merge_group runs.
-                checkSuites(first: 10, filterBy: {appId: 15368}) {
+                # 20 covers a live removal (about 15 suites: other apps, then merge_group).
+                checkSuites(first: 20) {
                   pageInfo { hasNextPage }
                   nodes {
                     conclusion
