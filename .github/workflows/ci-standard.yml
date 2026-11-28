@@ -1309,15 +1309,17 @@ jobs:
             python3 scripts/ci/verify_merge_group_companion_checks.py
           fi
           echo "quality-gate: all gated jobs succeeded."
-      # Companion verification above only needs scripts/ci. The recheck below
-      # needs hold_label_gate.py, checked out after that step so the
-      # merge_group sparse-checkout for scripts/ci stays exact.
+      # Companion verification above only needs scripts/ci; once it has run,
+      # scripts/ci is no longer needed. The recheck below re-sparses to the
+      # single hold_label_gate.py file. Cone mode is mandatory here: non-cone
+      # sparse-checkout state persists across jobs (#3608, see
+      # tests/test_workflow_sparse_checkout.py).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'merge_group'
         with:
           persist-credentials: false
           sparse-checkout: scripts/hold_label_gate.py
-          sparse-checkout-cone-mode: false
+          sparse-checkout-cone-mode: true
       # Late re-read of the queued PR's labels (Repository_Management#3091).
       # hold-label-gate read them at the start of the run; a hold added while
       # the rest of the tier ran would otherwise merge. This is the last step
