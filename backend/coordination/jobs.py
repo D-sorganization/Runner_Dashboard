@@ -17,7 +17,7 @@ from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
 from coordination import claim_state as claim_state_mod
 from coordination import claims as claims_mod
-from coordination import gh_cli, job_board_lease
+from coordination import gh_cli, issue_list_cache, job_board_lease
 from coordination.board import RMScriptError
 from coordination.job_filters import gate_reason, repo_schedule_holds
 from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS
@@ -165,17 +165,24 @@ def _closing_pr(
 
 
 def _candidates(repo: str, warnings: list[str]) -> tuple[list[dict[str, Any]], bool]:
-    """Open issues (PRs excluded) for ``repo``; ``(issues, repo_complete)``."""
+    """Open issues (PRs excluded) for ``repo``; ``(issues, repo_complete)``.
+
+    The listing is served through a TTL cache (#4702): a fresh cache hit makes
+    no GitHub call, and a slow/failed fetch degrades to the last-known list with
+    ``repo_complete=False`` instead of blocking past the response budget.
+    """
     repo_full = full_repo(repo)
-    try:
+
+    def _load() -> list[dict[str, Any]]:
         raw = gh_cli.gh_api_json_all(f"/repos/{repo_full}/issues?state=open")
-    except Exception as exc:  # noqa: BLE001
-        warnings.append(f"{repo}: issue list unavailable ({exc})")
-        return [], False
-    if not isinstance(raw, list):
-        warnings.append(f"{repo}: issue list returned an invalid payload")
-        return [], False
-    return [issue for issue in raw if isinstance(issue, dict) and "pull_request" not in issue], True
+        if not isinstance(raw, list):
+            raise ValueError("issue list returned an invalid payload")
+        return [issue for issue in raw if isinstance(issue, dict) and "pull_request" not in issue]
+
+    issues, complete = issue_list_cache.read(repo_full, _load)
+    if not complete:
+        warnings.append(f"{repo}: issue list served from cache (upstream fetch missed the response budget or failed)")
+    return issues, complete
 
 
 def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[str, Any]:
@@ -312,12 +319,14 @@ class StaleFenceError(RuntimeError):
 
 
 def reset_job_board_claim_state() -> None:
-    """Drop this process's handle on the durable claim state, as a restart does (tests).
+    """Drop this process's job-board in-process state, as a restart does (tests).
 
     Fences and lease rows are durable (#4270 B-09), so they are still there afterwards;
-    ``purge_job_board_claim_state`` deletes them.
+    ``purge_job_board_claim_state`` deletes them. The issue-list cache (#4702) is
+    in-process and cleared here so one test's listing cannot leak into the next.
     """
     claim_state_mod.reset_claim_state_store()
+    issue_list_cache.reset()
 
 
 def purge_job_board_claim_state() -> None:
