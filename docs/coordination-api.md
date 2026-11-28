@@ -26,6 +26,13 @@ Code: `backend/routers/coordination.py` (routes), `backend/coordination/` (logic
   it is always `complete: false` with a warning (RM #1704 adds `--all-repos`). Every write clears the cache and
   bumps a generation counter, so a read that started before the write is never cached after it; concurrent
   cache misses share one board read.
+- **Bounded board reads.** One board _read_ is killed at `rm_scripts.READ_TIMEOUT_SECONDS` (15 s — the
+  deadline `GET /sessions` already honors, not the 120 s `DEFAULT_TIMEOUT`), so a stalled GitHub
+  round-trip can no longer occupy a worker long after every caller answered; that mismatch is what turned
+  a slow board into fleet-wide 35 s stalls (#4702). A failed read then answers from the last snapshot with
+  `stale: true, complete: false` and a fatal read warning: listings keep their rows, presence checks still
+  fail closed. Writes keep `DEFAULT_TIMEOUT`, because killing `gh api` after GitHub accepted the comment
+  turns a delivered LANE_EVENT into a duplicate retry.
 - **Advisory presence, binding claims.** Presence is advisory. A claim held by anyone but this agent and
   session is a 409.
 
@@ -141,7 +148,9 @@ register sessions whose id starts with `<agent>-` (same impersonation rules as p
 ### `GET /api/coordination/inbox?session=&repo=`
 
 `{available, complete, messages, conflicts, warnings, generated_at}` for `session` (`repo` defaults to
-Repository_Management; the board is shared).
+Repository_Management; the board is shared). Like `/jobs` and `/briefing` this route is bounded by
+`COORDINATION_TIMEOUT`: a board that cannot answer in time is **503** `{error, retryable: true}` with
+`Retry-After`, never a hung request (#4702).
 
 ### `POST /api/coordination/presence`
 

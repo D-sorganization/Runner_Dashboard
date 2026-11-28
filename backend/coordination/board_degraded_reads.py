@@ -83,6 +83,27 @@ def _history_class(data: dict[str, Any], texts: list[str]) -> str:
     return "fatal"
 
 
+def degraded_snapshot(snapshot: dict[str, Any] | None, reason: str) -> dict[str, Any] | None:
+    """Last-known board state shaped as an explicitly incomplete read (#4702).
+
+    Pre: ``snapshot`` is an earlier available board read or ``None``. Post: ``None`` when nothing
+    was ever read; otherwise the snapshot with ``complete`` cleared plus a fatal read warning, so a
+    listing still has rows while a presence check served from it keeps failing closed (#4594).
+    """
+    if snapshot is None:
+        return None
+    warning = f"board read failed: {reason} (serving last-known board state)"
+    return {
+        **snapshot,
+        "available": True,
+        "complete": False,
+        "stale": True,
+        "retryable": True,
+        "read_warnings": [*(snapshot.get("read_warnings") or []), warning],
+        "warnings": [*(snapshot.get("warnings") or []), warning],
+    }
+
+
 def live_session_verdict(session: str, data: dict[str, Any]) -> tuple[bool, str | None]:
     """Return ``(is_live, error)``. A non-empty ``error`` must be raised by the caller.
 
