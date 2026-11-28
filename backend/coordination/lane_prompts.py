@@ -881,6 +881,13 @@ class LanePromptStore:
                 or row["session_id"] != session_id
             ):
                 raise StaleLaneFenceError(f"Stale or invalid checkout {checkout_id!r}")
+            if float(row["expires_at"]) <= ts:
+                # Epoch fence: a late heartbeat must not revive a lease whose TTL
+                # already elapsed. The stale-heartbeat window is a reclaim-side
+                # concern (#4677); the renewal fence is TTL-only (#4598).
+                raise StaleLaneFenceError(
+                    f"Checkout {checkout_id!r} expired at {row['expires_at']}; late heartbeat refused"
+                )
             new_exp = ts + ttl
             new_prog = ts if progress else row["progress_at"]
             receipt = json.loads(row["receipt_json"])
