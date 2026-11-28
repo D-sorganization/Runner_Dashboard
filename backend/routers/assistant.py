@@ -23,7 +23,7 @@ from dashboard_config import ORG, REPO_ROOT
 from fastapi import APIRouter, Depends, HTTPException, Request
 from gh_utils import gh_api
 from identity import Principal, require_scope
-from security import validate_owner_repo_format, validate_repo_slug
+from security import normalize_repository_input
 from staff.actions import (
     ActionError,
     ParamsHashMismatchError,
@@ -41,28 +41,6 @@ router = APIRouter(tags=["assistant"])
 
 # In-memory store for proposed actions (keyed by action_id).
 _proposed_actions: dict[str, dict] = {}
-
-
-# ─── Internal helpers ─────────────────────────────────────────────────────────
-
-
-def _normalize_repository_input(value: str) -> tuple[str, str]:
-    """Return (short_name, full_org/name) from a bare or qualified repo name (issue #326).
-
-    Validates against a strict regex before any owner comparison or subprocess
-    interpolation to prevent SSRF via malformed owner/repo slugs.
-    """
-    text = str(value).strip().lstrip("/")
-    if "/" in text:
-        # Validate full owner/repo format before extracting parts (issue #326)
-        validate_owner_repo_format(text)
-        owner, _, repo_name = text.partition("/")
-        if owner.lower() != ORG.lower():
-            raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")
-        repo_name = validate_repo_slug(repo_name)
-        return repo_name, f"{ORG}/{repo_name}"
-    repo_name = validate_repo_slug(text)
-    return repo_name, f"{ORG}/{repo_name}"
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -120,7 +98,7 @@ async def execute_assistant_tool(
             correlation_id=((req.confirmation.correlation_id or "") if req.confirmation else ""),
             gh_api_fn=gh_api,
             run_cmd_fn=run_cmd,
-            normalize_repository_fn=_normalize_repository_input,
+            normalize_repository_fn=normalize_repository_input,
             org=ORG,
             repo_root=REPO_ROOT,
         )
