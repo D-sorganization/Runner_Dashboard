@@ -24,6 +24,7 @@ MERGE_GROUP_JOB_ALLOWLIST: dict[str, frozenset[str]] = {
             "changes",
             "ci-health-check",
             "lint",
+            "hold-label-gate",
             "tests",
             "tests-required",
             "quality-gate",
