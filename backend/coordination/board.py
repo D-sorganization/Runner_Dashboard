@@ -6,7 +6,7 @@ cached in-process for ``CACHE_SECONDS``. Writes invalidate the cache (#1244).
 Per-repo fallback never returns ``complete`` when it omits repos outside ``fleet_repos()``.
 
 Read results: ``{available, complete, sessions, messages, conflicts, warnings}``
-or ``{available: False, reason}``. Writes raise ``RMScriptError``.
+or ``{available: False, reason, retryable}``. Writes raise ``RMScriptError``; a timeout serves the snapshot (#4702).
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from coordination.board_degraded_reads import live_session_verdict
+from coordination.board_degraded_reads import degraded_snapshot, live_session_verdict
 from coordination.board_pagination import (
     _is_replay_warning,
     _merge_paginated,
@@ -26,11 +26,12 @@ from coordination.board_pagination import (
     default_board_page_fetcher,
     paginate_board_comments,
 )
-from coordination.rm_scripts import ScriptResult, run_module
+from coordination.rm_scripts import DEFAULT_TIMEOUT, READ_TIMEOUT_SECONDS, ScriptResult, run_module
 
 from staff.roles import load_roles
 
 CACHE_SECONDS = 60.0
+BOARD_STATE_KEY = "all"
 BOARD_REPO = "Repository_Management"
 BOARD_COMMENT_LIMIT = 1000
 BOARD_PAGE_SIZE = 100
@@ -46,6 +47,7 @@ _clock = time.monotonic  # cache ages; tests replace it with a fake clock
 _real_clock = time.monotonic  # wall time for join timeouts, never faked
 _lock = threading.Lock()
 _cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_last_known: dict[str, Any] | None = None
 _refreshing: set[str] = set()
 _key_locks: dict[str, threading.Lock] = {}
 _threads: set[threading.Thread] = set()
@@ -71,13 +73,14 @@ class RMScriptError(RuntimeError):
 
 
 def reset_cache() -> None:
-    """Forget cached reads and the ``--all-repos`` probe (tests, and after writes).
+    """Forget cached reads, the fallback snapshot and the ``--all-repos`` probe (tests, and after writes).
 
     Post: reads in flight when this ran can no longer be stored (their generation is stale).
     """
-    global _all_repos_supported, _generation, board_page_fetcher
+    global _all_repos_supported, _generation, _last_known, board_page_fetcher
     with _lock:
         _cache.clear()
+        _last_known = None
         _refreshing.clear()
         _key_locks.clear()
         _all_repos_supported = None
@@ -105,10 +108,13 @@ def _invalidate() -> None:
 
 def _store(key: str, stamp: float, value: dict[str, Any], generation: int) -> None:
     """Cache ``value`` unless a write happened since the read began. Pre: ``generation`` sampled before loading."""
+    global _last_known
     if value.get("available"):
         with _lock:
             if generation == _generation:
                 _cache[key] = (stamp, value)
+                if key == BOARD_STATE_KEY:
+                    _last_known = value
 
 
 def _refresh(key: str, loader: Any, generation: int) -> None:
@@ -176,10 +182,11 @@ def fleet_repos() -> list[str]:
     return sorted(repos)
 
 
-def _unavailable(reason: str) -> dict[str, Any]:
+def _unavailable(reason: str, *, retryable: bool = False) -> dict[str, Any]:
     return {
         "available": False,
         "reason": reason,
+        "retryable": retryable,
         "complete": False,
         "degraded_history": False,
         "read_warnings": [],
@@ -209,7 +216,7 @@ def _has_limit_warning(warnings: list[Any]) -> bool:
 def _parse_read(res: ScriptResult, *, session: str | None = None) -> dict[str, Any]:
     data = res.json()
     if data is None or data.get("error") or "sessions" not in data:
-        return _unavailable(res.failure())
+        return _unavailable(res.failure(), retryable=res.timed_out)
     limit_hit = _comment_limit_reached(data)
     if limit_hit and board_page_fetcher is not None:
         return _merge_paginated(data, paginate_board_comments(board_page_fetcher, session=session))
@@ -256,10 +263,15 @@ def _unsupported(res: ScriptResult) -> bool:
     return res.rc != 0 and "--all-repos" in res.stderr and "unrecognized" in res.stderr
 
 
+def _read(*args: str) -> ScriptResult:
+    """One ``agent_communicate`` read, bounded so it cannot outlive the deadline of its caller."""
+    return run_module(SCRIPT, *args, timeout=READ_TIMEOUT_SECONDS)
+
+
 def _read_all() -> dict[str, Any]:
     global _all_repos_supported
     if _all_repos_supported is not False:
-        res = run_module(SCRIPT, "--repo", BOARD_REPO, "list", "--all-repos")
+        res = _read("--repo", BOARD_REPO, "list", "--all-repos")
         if not _unsupported(res):
             parsed = _parse_read(res)
             _all_repos_supported = True if parsed["available"] else None
@@ -267,7 +279,7 @@ def _read_all() -> dict[str, Any]:
         _all_repos_supported = False
     repos = fleet_repos()
     with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_READS, max(len(repos), 1))) as pool:
-        parts = list(pool.map(lambda repo: _parse_read(run_module(SCRIPT, "--repo", repo, "list")), repos))
+        parts = list(pool.map(lambda repo: _parse_read(_read("--repo", repo, "list")), repos))
     merged = _merge(parts)
     if merged["available"]:
         merged = {**merged, "complete": False, "warnings": [*merged["warnings"], FALLBACK_WARNING]}
@@ -306,7 +318,9 @@ def _merge(parts: list[dict[str, Any]]) -> dict[str, Any]:
 
 def read_sessions(repo: str | None = None) -> dict[str, Any]:
     """Every live board session (optionally only ``repo``, case-insensitive)."""
-    data = _cached("all", _read_all)
+    data = _cached(BOARD_STATE_KEY, _read_all)
+    if not data.get("available"):
+        data = degraded_snapshot(_last_known, str(data.get("reason") or "unknown")) or data
     if not data["available"] or not repo:
         return data
     wanted = repo.casefold()
@@ -316,7 +330,7 @@ def read_sessions(repo: str | None = None) -> dict[str, Any]:
 def cached_board_state() -> dict[str, Any] | None:
     """Return the cached board read if present, without triggering a subprocess call."""
     with _lock:
-        hit = _cache.get("all")
+        hit = _cache.get(BOARD_STATE_KEY)
         return hit[1] if hit is not None else None
 
 
@@ -334,7 +348,7 @@ def read_inbox(session: str, repo: str) -> dict[str, Any]:
     """Messages and path/goal conflicts addressed to ``session``."""
 
     def load() -> dict[str, Any]:
-        return _parse_read(run_module(SCRIPT, "--repo", repo, "--session", session, "inbox"), session=session)
+        return _parse_read(_read("--repo", repo, "--session", session, "inbox"), session=session)
 
     data = _cached(f"inbox:{repo.casefold()}:{session}", load)
     keys = (
@@ -354,7 +368,7 @@ def read_inbox(session: str, repo: str) -> dict[str, Any]:
 
 def publish(repo: str, session: str, command: str, *args: str) -> dict[str, Any]:
     """Run one board write (``register``/``release``/``send``/``ack``). Post: cache cleared."""
-    res = run_module(SCRIPT, "--repo", repo, "--session", session, command, *args)
+    res = run_module(SCRIPT, "--repo", repo, "--session", session, command, *args, timeout=DEFAULT_TIMEOUT)
     _invalidate()
     data = res.json()
     if data is None or not data.get("ok"):

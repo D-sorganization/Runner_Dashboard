@@ -27,6 +27,9 @@ A bot principal ``agent-<name>`` may only act as ``<name>`` on
 sessions ``<name>-*`` (403 otherwise). Reads degrade to ``available: false``
 with HTTP 200; failed RM writes return 502 with the script's ``error`` and
 ``guidance``; 409 when the issue is held or the sender has no live presence.
+``/jobs``, ``/briefing``, ``/inbox``, ``/presence`` and ``/messages`` answer 503
+``{error, retryable}`` (writes add ``outcome: unknown``) once the upstream misses
+``COORDINATION_TIMEOUT``, so a lane is never left waiting on a stalled board (#4702).
 """
 
 from __future__ import annotations
@@ -134,7 +137,7 @@ async def get_inbox(
     repo: str = Query(default=BOARD_REPO, pattern=REPO_PATTERN),
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
-    return await run_in_threadpool(service.inbox, session, _repo(repo) or BOARD_REPO)
+    return await _bounded(run_in_threadpool(service.inbox, session, _repo(repo) or BOARD_REPO))
 
 
 @router.post("/presence")

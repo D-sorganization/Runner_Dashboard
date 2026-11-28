@@ -18,6 +18,12 @@ from typing import Any
 from staff.workspace import rm_root
 
 DEFAULT_TIMEOUT = 120
+# One board READ must not outlive the deadline of the endpoint that joins on it
+# (coordination.service.SESSION_RESPONSE_DEADLINE_SECONDS, 15 s). DEFAULT_TIMEOUT is ~8x that, so a
+# stalled GitHub round-trip kept a worker hostage long after every caller had already answered -- the
+# threadpool exhaustion behind the 35 s lane stalls (#4702). Writes keep DEFAULT_TIMEOUT: killing
+# ``gh api`` after GitHub accepted the comment turns a delivered LANE_EVENT into a duplicate retry.
+READ_TIMEOUT_SECONDS = 15.0
 RM_MISSING = "Repository_Management checkout not found (set STAFF_RM_ROOT)"
 
 
@@ -33,6 +39,15 @@ class ScriptResult:
     def output(self) -> str:
         """stdout and stderr combined, for logs and run events."""
         return (self.stdout + self.stderr).strip()
+
+    @property
+    def timed_out(self) -> bool:
+        """True when the script was killed at its timeout, as opposed to never having started.
+
+        ``run_argv`` maps both ``OSError`` and ``TimeoutExpired`` to rc 130, so the rc alone cannot
+        tell an unreachable RM checkout from a slow one. Only the second is retryable (#4702).
+        """
+        return self.rc == 130 and "timed out" in self.stderr.casefold()
 
     def json(self) -> dict[str, Any] | None:
         """The JSON object the script printed (whole stdout, else its last JSON line), or None."""
@@ -104,7 +119,7 @@ def _rm_env() -> dict[str, str]:
     return env
 
 
-def run_argv(argv: list[str], cwd: Path, timeout: int = DEFAULT_TIMEOUT) -> ScriptResult:
+def run_argv(argv: list[str], cwd: Path, timeout: float = DEFAULT_TIMEOUT) -> ScriptResult:
     try:
         r = subprocess.run(
             argv,
@@ -119,8 +134,13 @@ def run_argv(argv: list[str], cwd: Path, timeout: int = DEFAULT_TIMEOUT) -> Scri
         return ScriptResult(130, "", str(exc))
 
 
-def run_module(module: str, *args: str, root: Path | None = None, timeout: int = DEFAULT_TIMEOUT) -> ScriptResult:
-    """Run ``scripts.<module>`` in the RM checkout. Pre: ``root`` or a discoverable checkout."""
+def run_module(module: str, *args: str, root: Path | None = None, timeout: float = DEFAULT_TIMEOUT) -> ScriptResult:
+    """Run ``scripts.<module>`` in the RM checkout. Pre: ``root`` or a discoverable checkout.
+
+    ``timeout`` bounds how long the caller keeps a worker hostage: reads pass the coordination
+    read budget, writes keep ``DEFAULT_TIMEOUT`` because interrupting a board write mid-flight is
+    how a LANE_EVENT is lost with the delivery already committed (#4702).
+    """
     root = root or rm_root()
     if root is None:
         return ScriptResult(127, "", RM_MISSING)
