@@ -10,6 +10,9 @@ on:
       - LICENSE
       - .gitignore
   pull_request:
+    # labeled/unlabeled: a hold added or removed after a green run must re-run
+    # the required check (Repository_Management#3091). Default types omit both.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
     # NOTE: no `paths`/`paths-ignore` filter here, deliberately. `quality-gate`
     # and `tests` are required status checks on main, so a PR that skips this
     # workflow never reports them and can never merge -- it sits BLOCKED with
@@ -1098,6 +1101,39 @@ jobs:
           fi
           echo "Python test matrix passed."
 
+  # Required-check input for Repository_Management#3091. Runs on pull_request
+  # and merge_group, including docs-only PRs, and fails when do-not-merge,
+  # needs-owner, or hold is attached. quality-gate needs this job, so a skip
+  # on those events is a failure. Push, schedule, and workflow_dispatch have
+  # no pull request.
+  hold-label-gate:
+    name: Hold label gate
+    needs: pick-runner
+    if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    runs-on: >-
+      ${{ github.event.pull_request &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      'ubuntu-latest' || needs.pick-runner.outputs.fast_checks_runner }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/hold_label_gate.py
+      - name: Reject hold labels
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          HEAD_MESSAGE: ${{ github.event.merge_group.head_commit.message }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/hold_label_gate.py --check-event
+
   # Required branch-protection context for `main` (org ruleset
   # Repository_Protections requires exactly this name). Before 2026-09-15 this
   # name belonged to the lint job above, conditioned on the PR touching
@@ -1118,6 +1154,7 @@ jobs:
         lint,
         tests-required,
         security-scan,
+        hold-label-gate,
       ]
     if: >-
       always() &&
@@ -1138,7 +1175,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'merge_group'
         with:
-          sparse-checkout: scripts/ci
+          sparse-checkout: |
+            scripts/ci
+            scripts/hold_label_gate.py
       - name: Require every gated job to succeed
         shell: bash
         env:
@@ -1157,6 +1196,7 @@ jobs:
           RESULT_LINT: ${{ needs.lint.result }}
           RESULT_TESTS: ${{ needs.tests-required.result }}
           RESULT_SECURITY: ${{ needs.security-scan.result }}
+          RESULT_HOLD: ${{ needs.hold-label-gate.result }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           RUN_HEAD_SHA: ${{ github.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -1175,6 +1215,16 @@ jobs:
             [ "$(echo "$RUN_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" != "$(echo "$PR_HEAD_SHA" | tr '[:upper:]' '[:lower:]')" ]
           }
           failed=0
+          echo "hold-label-gate: ${RESULT_HOLD:-unset}"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] || [ "$GITHUB_EVENT_NAME" = "merge_group" ]; then
+            if [ "$RESULT_HOLD" != "success" ]; then
+              echo "::error::hold-label-gate reported '${RESULT_HOLD:-unset}' on $GITHUB_EVENT_NAME; hold labels must fail closed."
+              exit 1
+            fi
+          elif [ "$RESULT_HOLD" != "skipped" ] && [ "$RESULT_HOLD" != "success" ]; then
+            echo "::error::hold-label-gate reported '${RESULT_HOLD:-unset}'."
+            exit 1
+          fi
           if [ "$PUSH_HYGIENE" = "failure" ]; then
             echo "::error::push-hygiene refused this synchronize push; see the Push hygiene guard job."
             failed=1
@@ -1257,6 +1307,21 @@ jobs:
             python3 scripts/ci/verify_merge_group_companion_checks.py
           fi
           echo "quality-gate: all gated jobs succeeded."
+      # Late re-read of the queued PR's labels (Repository_Management#3091).
+      # hold-label-gate read them at the start of the run; a hold added while
+      # the rest of the tier ran would otherwise merge. This is the last step
+      # of the required context.
+      - name: Recheck hold labels before merge
+        shell: bash
+        if: github.event_name == 'merge_group'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          HEAD_MESSAGE: ${{ github.event.merge_group.head_commit.message }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/hold_label_gate.py --check-event
 
   record-failure-visibility:
     name: Record CI failure
