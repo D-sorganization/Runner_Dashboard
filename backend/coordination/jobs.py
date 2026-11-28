@@ -439,8 +439,8 @@ def claim_job(
             posted = claims_mod.post_lease(
                 repo, issue, agent, session, intent, ttl_hours=ttl_hours, rollback_orphan_label=True
             )
-        except Exception:
-            claim_state_mod.get_store().abandon_acquire(repo, issue, agent=agent, session=session)
+        except Exception as exc:
+            claim_state_mod.keep_authoritative_claim(repo, issue, agent=agent, session=session, exc=exc)
             raise
         try:
             after = claims_mod.check(repo, issue)

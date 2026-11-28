@@ -1,8 +1,8 @@
-"""Issue claims (leases) via the RM lease scripts (issues #1229, #1244).
+"""Issue claims (leases) via the serving hub and the RM mirror (issues #1229, #1244, #4270).
 
-Leases stay as issue comments plus ``claim:*`` labels written by RM
-``post_agent_lease`` / ``release_agent_lease``; ``check_agent_claim`` is the
-read. Nothing is stored here.
+``claim_state`` SQLite compare-and-set is the authoritative hold. RM
+``post_agent_lease`` / ``release_agent_lease`` / ``check_agent_claim`` are the
+GitHub mirror. A failed mirror leaves the SQLite row held.
 
 RM shapes this module relies on (``shared_scripts/agent_coordination.py``):
 
@@ -12,7 +12,7 @@ RM shapes this module relies on (``shared_scripts/agent_coordination.py``):
   referencing branch) and never carries the lease's ``session`` today.
 * ``post_agent_lease`` / ``release_agent_lease`` print a ``LeaseWriteResult``:
   ``{label_updated, comment_posted, receipt, errors: [...], ok}``. The lease
-  comment is the durable record, so a posted comment with a failed label is a
+  comment is the GitHub mirror, so a posted comment with a failed label is a
   partial success (200 + ``warnings``), not a failure.
 """
 
@@ -460,8 +460,8 @@ def claim(
             raise ClaimHeldError(held_status)
         try:
             posted = _post(repo, issue, agent, session, intent)
-        except Exception:
-            claim_state_mod.get_store().abandon_acquire(repo, issue, agent=agent, session=session)
+        except Exception as exc:
+            claim_state_mod.keep_authoritative_claim(repo, issue, agent=agent, session=session, exc=exc)
             raise
         receipt = str(posted["result"].get("receipt") or "")
         record_job_claim_activity(
