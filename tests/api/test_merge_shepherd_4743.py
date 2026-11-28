@@ -68,10 +68,10 @@ def test_queued_drained_returns_disarm() -> None:
     assert d.reason is IneligibleReason.DRAINED
 
 
-def test_queued_already_queued_healthy_returns_disarm() -> None:
-    """A queued PR that passes all guards but is already queued must DISARM (not SKIP)."""
+def test_queued_already_queued_healthy_returns_skip() -> None:
+    """A queued PR that passes all structural guards must SKIP — it stays in the merge queue."""
     d = evaluate_pr_shepherd_eligibility(_queued())
-    assert d.action is ShepherdAction.DISARM, f"expected DISARM, got {d.action} ({d.reason})"
+    assert d.action is ShepherdAction.SKIP, f"expected SKIP, got {d.action} ({d.reason})"
     assert d.reason is IneligibleReason.ALREADY_QUEUED
 
 

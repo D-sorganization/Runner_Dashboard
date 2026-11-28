@@ -391,7 +391,7 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
         return ShepherdDecision(_action, pr_num, repo, reason=IneligibleReason.DRAINED, priority=priority)
     if candidate.is_queued:
         return ShepherdDecision(
-            ShepherdAction.DISARM, pr_num, repo, reason=IneligibleReason.ALREADY_QUEUED, priority=priority
+            ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.ALREADY_QUEUED, priority=priority
         )
 
     checks = candidate.checks_status.upper()
