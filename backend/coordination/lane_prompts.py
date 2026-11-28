@@ -318,12 +318,43 @@ def _infer_host(session_id: str, explicit_host: str | None) -> str | None:
 def _is_lane_compatible(cand: sqlite3.Row, want_provider: str | None, want_host: str | None) -> bool:
     cand_prov = normalize_lane_provider(_lane_provider(cand["lane_id"], cand["subagent_model"]))
     want_norm = normalize_lane_provider(want_provider)
-    if cand_prov is not None and (want_norm is None or cand_prov != want_norm):
+    if want_norm is not None and cand_prov is not None and cand_prov != want_norm:
         return False
     cand_host = _lane_host(cand["lane_id"])
     if cand_host is not None and (want_host is None or cand_host != want_host):
         return False
     return True
+
+
+def _pick_want_provider_for_candidates(
+    candidates: list[sqlite3.Row],
+    inferred_provider: str | None,
+    provider_down: set[str],
+    want_host: str | None,
+) -> str | None:
+    """Honor inferred provider unless marked down; then walk the lane chain for an eligible lane."""
+    from coordination import provider_down_markers  # noqa: PLC0415
+
+    want_norm = normalize_lane_provider(inferred_provider)
+    if not provider_down or (want_norm is not None and want_norm not in provider_down):
+        return want_norm
+
+    chain = list(provider_down_markers.LANE_CHECKOUT_PROVIDER_CHAIN)
+    if want_norm and want_norm in chain:
+        idx = chain.index(want_norm)
+        order = chain[idx:] + chain[:idx]
+    elif want_norm:
+        order = [want_norm, *[p for p in chain if p != want_norm]]
+    else:
+        order = chain
+
+    for prov in order:
+        if prov in provider_down:
+            continue
+        for cand in candidates:
+            if _is_lane_compatible(cand, prov, want_host):
+                return prov
+    return None
 
 
 def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
@@ -607,7 +638,11 @@ class LanePromptStore:
     ) -> dict[str, Any]:
         ts = time.time() if now is None else float(now)
         ttl = max(60, int(ttl_sec))
-        want_provider = _infer_provider(session_id, provider, principal)
+        from coordination import provider_down_markers  # noqa: PLC0415
+
+        inferred_provider = _infer_provider(session_id, provider, principal)
+        provider_down = provider_down_markers.providers_marked_down(now=ts)
+        want_provider = normalize_lane_provider(inferred_provider)
         want_host = _infer_host(session_id, host)
         requested_role = normalize_requested_role(role)
         # Idempotency keys are caller supplied, so scope them to the session and
@@ -651,6 +686,7 @@ class LanePromptStore:
 
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
             _expire_inactive(conn, ts)
+            effective_want_provider = want_provider
             existing_idem = conn.execute(
                 """SELECT receipt_json FROM lane_checkouts
                    WHERE idempotency_key = ? AND principal = ? AND session_id = ?
@@ -678,7 +714,7 @@ class LanePromptStore:
                        WHERE c.session_id = ? AND c.status = 'active'""",
                     (session_id,),
                 ).fetchone()
-                if active_self is not None and _is_lane_compatible(active_self, want_provider, want_host):
+                if active_self is not None and _is_lane_compatible(active_self, effective_want_provider, want_host):
                     rec = json.loads(active_self["receipt_json"])
                     _assert_receipt_role(rec)
                     return enrich_lane_receipt(rec)
@@ -690,7 +726,10 @@ class LanePromptStore:
                 ).fetchone()
                 if row is None:
                     raise LaneConflictError(f"Lane {lane_id!r} not found or disabled")
-                if not _is_lane_compatible(row, want_provider, want_host):
+                lane_prov = normalize_lane_provider(_lane_provider(row["lane_id"], row["subagent_model"]))
+                if provider_down and lane_prov is not None and lane_prov in provider_down:
+                    raise LaneConflictError(f"Lane {lane_id!r} provider {lane_prov!r} is marked down")
+                if not _is_lane_compatible(row, effective_want_provider, want_host):
                     raise LaneConflictError(f"Lane {lane_id!r} is incompatible with caller provider/host")
                 _assert_assignment_role(str(row["role"]), lane_id=lane_id)
                 held = conn.execute(
@@ -720,14 +759,37 @@ class LanePromptStore:
                     params.append(requested_role)
                 query += " ORDER BY a.lane_id"
                 candidates = conn.execute(query, params).fetchall()
-                filtered = [cand for cand in candidates if _is_lane_compatible(cand, want_provider, want_host)]
-                if want_host is not None:
-                    filtered.sort(
-                        key=lambda r: (
-                            0 if _lane_host(r["lane_id"]) == want_host else 1,
-                            r["lane_id"],
-                        )
+                effective_want_provider = _pick_want_provider_for_candidates(
+                    candidates,
+                    inferred_provider,
+                    provider_down,
+                    want_host,
+                )
+                filtered = [
+                    cand for cand in candidates if _is_lane_compatible(cand, effective_want_provider, want_host)
+                ]
+                if provider_down:
+                    filtered = [
+                        cand
+                        for cand in filtered
+                        if normalize_lane_provider(_lane_provider(cand["lane_id"], cand["subagent_model"]))
+                        not in provider_down
+                    ]
+
+                def _provider_chain_rank(row: sqlite3.Row) -> int:
+                    prov = normalize_lane_provider(_lane_provider(row["lane_id"], row["subagent_model"]))
+                    chain = provider_down_markers.LANE_CHECKOUT_PROVIDER_CHAIN
+                    if prov in chain:
+                        return chain.index(prov)
+                    return len(chain)
+
+                filtered.sort(
+                    key=lambda r: (
+                        0 if want_host is not None and _lane_host(r["lane_id"]) == want_host else 1,
+                        _provider_chain_rank(r),
+                        r["lane_id"],
                     )
+                )
                 if not filtered:
                     if requested_role is not None:
                         raise LaneRoleUnavailableError(

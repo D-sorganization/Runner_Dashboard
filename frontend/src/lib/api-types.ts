@@ -1821,6 +1821,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/coordination/provider-markers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Provider Markers */
+        get: operations["get_provider_markers_api_coordination_provider_markers_get"];
+        put?: never;
+        /** Post Provider Marker */
+        post: operations["post_provider_marker_api_coordination_provider_markers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/coordination/provider-markers/{provider}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete Provider Marker */
+        delete: operations["delete_provider_marker_api_coordination_provider_markers__provider__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/coordination/sessions": {
         parameters: {
             query?: never;
@@ -12016,6 +12051,19 @@ export interface components {
              */
             total: number;
         };
+        /** ProviderMarkerSetBody */
+        ProviderMarkerSetBody: {
+            /** Kind */
+            kind: string;
+            /** Provider */
+            provider: string;
+            /** Reason */
+            reason?: string | null;
+            /** Ttl Sec */
+            ttl_sec?: number | null;
+            /** Until */
+            until?: number | null;
+        };
         /** PushKeys */
         PushKeys: {
             /** Auth */
@@ -17331,6 +17379,98 @@ export interface operations {
                 "application/json": components["schemas"]["coordination__models__ReleaseBody"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_provider_markers_api_coordination_provider_markers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    post_provider_marker_api_coordination_provider_markers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProviderMarkerSetBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_provider_marker_api_coordination_provider_markers__provider__delete: {
+        parameters: {
+            query?: {
+                kind?: string | null;
+            };
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

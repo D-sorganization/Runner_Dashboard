@@ -5486,6 +5486,61 @@
         "title": "ProposalsListResponse",
         "type": "object"
       },
+      "ProviderMarkerSetBody": {
+        "properties": {
+          "kind": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Kind",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "ttl_sec": {
+            "anyOf": [
+              {
+                "maximum": 604800.0,
+                "minimum": 1.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Sec"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
+          }
+        },
+        "required": ["provider", "kind"],
+        "title": "ProviderMarkerSetBody",
+        "type": "object"
+      },
       "PushKeys": {
         "properties": {
           "auth": {
@@ -14633,6 +14688,143 @@
           }
         ],
         "summary": "Post Presence Release",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/provider-markers": {
+      "get": {
+        "operationId": "get_provider_markers_api_coordination_provider_markers_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Provider Markers Api Coordination Provider Markers Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Provider Markers",
+        "tags": ["coordination"]
+      },
+      "post": {
+        "operationId": "post_provider_marker_api_coordination_provider_markers_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderMarkerSetBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Provider Marker Api Coordination Provider Markers Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Post Provider Marker",
+        "tags": ["coordination"]
+      }
+    },
+    "/api/coordination/provider-markers/{provider}": {
+      "delete": {
+        "operationId": "delete_provider_marker_api_coordination_provider_markers__provider__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Provider Marker Api Coordination Provider Markers  Provider  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          }
+        ],
+        "summary": "Delete Provider Marker",
         "tags": ["coordination"]
       }
     },
