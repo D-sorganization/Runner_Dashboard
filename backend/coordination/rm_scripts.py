@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -124,4 +125,9 @@ def run_module(module: str, *args: str, root: Path | None = None, timeout: int =
     root = root or rm_root()
     if root is None:
         return ScriptResult(127, "", RM_MISSING)
-    return run_argv([python_for_rm(), "-m", f"scripts.{module}", *args], cwd=root, timeout=timeout)
+    started = time.monotonic()
+    result = run_argv([python_for_rm(), "-m", f"scripts.{module}", *args], cwd=root, timeout=timeout)
+    from coordination import claim_telemetry  # noqa: PLC0415 — deferred: keep rm_scripts import-light
+
+    claim_telemetry.record_rm_subprocess(module, time.monotonic() - started, timed_out=result.rc == 130)
+    return result

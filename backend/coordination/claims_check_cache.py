@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from coordination import claims
+from coordination import claim_telemetry, claims
 from time_utils import utc_now_iso
 
 DEFAULT_TTL_SECONDS = 45.0
@@ -96,10 +96,13 @@ def read(repo: str, issue: int, *, budget_seconds: float | None = None) -> dict[
     """
     budget = _budget_seconds() if budget_seconds is None else max(0.0, float(budget_seconds))
     deadline = _clock() + budget
+    started = _clock()
 
     hit = _fresh_hit(repo, issue)
     if hit is not None:
-        return _envelope(hit, stale=False)
+        envelope = _envelope(hit, stale=False)
+        _record_read(envelope, started)
+        return envelope
 
     future = _shared_load(repo, issue)
     remaining = deadline - _clock()
@@ -108,7 +111,10 @@ def read(repo: str, issue: int, *, budget_seconds: float | None = None) -> dict[
     except FuturesTimeoutError as exc:
         stale = _stale_hit(repo, issue)
         if stale is not None:
-            return _envelope(stale, stale=True)
+            envelope = _envelope(stale, stale=True)
+            _record_read(envelope, started)
+            return envelope
+        _record_budget_exceeded(started)
         raise ClaimCheckUnavailable(
             "claim check not ready within request budget and no cached result",
             retry_after=_retry_after_seconds(),
@@ -117,13 +123,18 @@ def read(repo: str, issue: int, *, budget_seconds: float | None = None) -> dict[
     if entry.generation != _current_generation():
         stale = _stale_hit(repo, issue)
         if stale is not None:
-            return _envelope(stale, stale=True)
+            envelope = _envelope(stale, stale=True)
+            _record_read(envelope, started)
+            return envelope
+        _record_budget_exceeded(started)
         raise ClaimCheckUnavailable(
             "claim check was invalidated while loading",
             retry_after=_retry_after_seconds(),
         )
 
-    return _envelope(entry, stale=False)
+    envelope = _envelope(entry, stale=False)
+    _record_read(envelope, started)
+    return envelope
 
 
 def _ttl_seconds() -> float:
@@ -234,3 +245,34 @@ def _envelope(entry: _CacheEntry, *, stale: bool) -> dict[str, Any]:
     if stale:
         out["age_sec"] = round(_age_sec(entry.as_of), 3)
     return out
+
+
+def _classify(envelope: dict[str, Any]) -> str:
+    """Map a claim-check envelope to a telemetry result kind."""
+    if envelope.get("stale"):
+        return "stale"
+    if envelope.get("available") is False:
+        return "unavailable"
+    if envelope.get("held"):
+        return "held"
+    return "available"
+
+
+def _maybe_record_expired_hold(envelope: dict[str, Any]) -> None:
+    """Record a held claim whose ``expires_at`` is already in the past (#4595 holds-older-than-TTL)."""
+    if not envelope.get("held") or not envelope.get("expires_at"):
+        return
+    age = _age_sec(str(envelope["expires_at"]))
+    if age > 0.0:
+        claim_telemetry.record_expired_hold(age)
+
+
+def _record_read(envelope: dict[str, Any], started: float) -> None:
+    claim_telemetry.record_claim_check(_clock() - started, _classify(envelope))
+    _maybe_record_expired_hold(envelope)
+
+
+def _record_budget_exceeded(started: float) -> None:
+    """A claims read could not finish within the request budget and had no stale result."""
+    claim_telemetry.record_blocked_exit("budget_exceeded")
+    claim_telemetry.record_claim_check(_clock() - started, "unavailable_budget")

@@ -37,10 +37,10 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from coordination import claim_telemetry, postman_runner, service
 from coordination import job_releases as job_releases_mod
 from coordination import jobs as jobs_mod
 from coordination import lane_prompts as lane_prompts_mod
-from coordination import postman_runner, service
 from coordination import provider_down_markers as provider_markers_mod
 from coordination import provider_marker_restore as provider_marker_restore_mod
 from coordination.auth import Caller, require_coordination_writer, require_priorities_writer
@@ -96,7 +96,10 @@ async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str
     """Run one RM write off the event loop and map its failures to HTTP (DRY for every POST)."""
     try:
         result = await run_in_threadpool(action)
-    except (ClaimHeldError, AgingPrBlockedError, service.NotRegisteredError) as exc:
+    except ClaimHeldError as exc:
+        claim_telemetry.record_blocked_exit("held")
+        raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
+    except (AgingPrBlockedError, service.NotRegisteredError) as exc:
         raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
     except (JobIneligibleError, StaleFenceError) as exc:
         raise HTTPException(status_code=409, detail=exc.to_detail()) from exc
