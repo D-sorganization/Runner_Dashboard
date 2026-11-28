@@ -19,7 +19,8 @@ from agent_remediation.policy import _as_tuple_strings, _load_workflow_type_rule
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope
-from security import check_dispatch_rate, normalize_repository_input as _normalize_repository_input
+from security import check_dispatch_rate
+from security import normalize_repository_input as _normalize_repository_input
 from system_utils import run_cmd
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10

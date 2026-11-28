@@ -21,9 +21,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from fastapi import HTTPException
-
 from dashboard_config import ORG
+from fastapi import HTTPException
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 
