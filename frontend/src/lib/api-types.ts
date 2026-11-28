@@ -8729,6 +8729,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/staff/scorecard/daily": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Daily Scorecard
+         * @description Daily per-model scorecard (#4564): merge time, CI failure rate and review findings per UTC day.
+         *
+         *     ``days`` is the look-back when no ``since`` is given; ``model`` narrows every row,
+         *     roll-up and total to that model alone. PR facts are the same reads ``/outcomes`` already
+         *     makes, so the scorecard costs no extra GitHub traffic beyond its own run window.
+         */
+        get: operations["get_daily_scorecard_api_v1_staff_scorecard_daily_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/staff/skills": {
         parameters: {
             query?: never;
@@ -13000,6 +13024,118 @@ export interface components {
             [key: string]: unknown;
         };
         /**
+         * StaffDailyScorecardModelRow
+         * @description One model summed over the window, with the UTC days it was measured on.
+         */
+        StaffDailyScorecardModelRow: {
+            /** Ci Failed */
+            ci_failed: number;
+            /** Ci Failure Rate */
+            ci_failure_rate: number | null;
+            /** Ci Known */
+            ci_known: number;
+            /** Closed Unmerged */
+            closed_unmerged: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Days Measured */
+            days_measured: number;
+            /** Failed Verification */
+            failed_verification: number;
+            /** Findings Per Merged Pr */
+            findings_per_merged_pr: number | null;
+            /** Merge Seconds Known */
+            merge_seconds_known: number;
+            /** Merge Seconds Median */
+            merge_seconds_median: number | null;
+            /** Merged */
+            merged: number;
+            /** Model */
+            model: string;
+            /** Open */
+            open: number;
+            /** Prs */
+            prs: number;
+            /** Prs Unknown */
+            prs_unknown: number;
+            /** Review Findings */
+            review_findings: number | null;
+            /** Runs */
+            runs: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Verified */
+            verified: number;
+        };
+        /**
+         * StaffDailyScorecardResponse
+         * @description ``GET /api/v1/staff/scorecard/daily`` — daily per-model scorecard (#4564).
+         */
+        StaffDailyScorecardResponse: {
+            /** Days */
+            days: number;
+            /** Machine */
+            machine: string;
+            /** Models */
+            models?: components["schemas"]["StaffDailyScorecardModelRow"][];
+            /**
+             * Prs Truncated
+             * @default false
+             */
+            prs_truncated: boolean;
+            /** Rows */
+            rows?: components["schemas"]["StaffDailyScorecardRow"][];
+            /** Since */
+            since: string;
+            totals: components["schemas"]["StaffScorecardMeasures"];
+            /** Until */
+            until: string;
+        };
+        /**
+         * StaffDailyScorecardRow
+         * @description One UTC day and model (#4564).
+         */
+        StaffDailyScorecardRow: {
+            /** Ci Failed */
+            ci_failed: number;
+            /** Ci Failure Rate */
+            ci_failure_rate: number | null;
+            /** Ci Known */
+            ci_known: number;
+            /** Closed Unmerged */
+            closed_unmerged: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Date */
+            date: string;
+            /** Failed Verification */
+            failed_verification: number;
+            /** Findings Per Merged Pr */
+            findings_per_merged_pr: number | null;
+            /** Merge Seconds Known */
+            merge_seconds_known: number;
+            /** Merge Seconds Median */
+            merge_seconds_median: number | null;
+            /** Merged */
+            merged: number;
+            /** Model */
+            model: string;
+            /** Open */
+            open: number;
+            /** Prs */
+            prs: number;
+            /** Prs Unknown */
+            prs_unknown: number;
+            /** Review Findings */
+            review_findings: number | null;
+            /** Runs */
+            runs: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Verified */
+            verified: number;
+        };
+        /**
          * StaffDispatchResponse
          * @description Response model for POST /api/staff/{role}/run.
          */
@@ -13883,6 +14019,46 @@ export interface components {
             running: boolean;
         } & {
             [key: string]: unknown;
+        };
+        /**
+         * StaffScorecardMeasures
+         * @description What one daily scorecard bucket measured (#4564). A ``None`` rate is no data, not zero.
+         */
+        StaffScorecardMeasures: {
+            /** Ci Failed */
+            ci_failed: number;
+            /** Ci Failure Rate */
+            ci_failure_rate: number | null;
+            /** Ci Known */
+            ci_known: number;
+            /** Closed Unmerged */
+            closed_unmerged: number;
+            /** Cost Usd */
+            cost_usd: number;
+            /** Failed Verification */
+            failed_verification: number;
+            /** Findings Per Merged Pr */
+            findings_per_merged_pr: number | null;
+            /** Merge Seconds Known */
+            merge_seconds_known: number;
+            /** Merge Seconds Median */
+            merge_seconds_median: number | null;
+            /** Merged */
+            merged: number;
+            /** Open */
+            open: number;
+            /** Prs */
+            prs: number;
+            /** Prs Unknown */
+            prs_unknown: number;
+            /** Review Findings */
+            review_findings: number | null;
+            /** Runs */
+            runs: number;
+            /** Succeeded */
+            succeeded: number;
+            /** Verified */
+            verified: number;
         };
         /** StaffSkillAttachment */
         StaffSkillAttachment: {
@@ -28437,6 +28613,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffScheduleResponse"];
+                };
+            };
+        };
+    };
+    get_daily_scorecard_api_v1_staff_scorecard_daily_get: {
+        parameters: {
+            query?: {
+                days?: number;
+                since?: string | null;
+                model?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffDailyScorecardResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -7545,6 +7545,316 @@
         "title": "StaffConsolidationDecision",
         "type": "object"
       },
+      "StaffDailyScorecardModelRow": {
+        "description": "One model summed over the window, with the UTC days it was measured on.",
+        "properties": {
+          "ci_failed": {
+            "title": "Ci Failed",
+            "type": "integer"
+          },
+          "ci_failure_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Failure Rate"
+          },
+          "ci_known": {
+            "title": "Ci Known",
+            "type": "integer"
+          },
+          "closed_unmerged": {
+            "title": "Closed Unmerged",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "days_measured": {
+            "title": "Days Measured",
+            "type": "integer"
+          },
+          "failed_verification": {
+            "title": "Failed Verification",
+            "type": "integer"
+          },
+          "findings_per_merged_pr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Findings Per Merged Pr"
+          },
+          "merge_seconds_known": {
+            "title": "Merge Seconds Known",
+            "type": "integer"
+          },
+          "merge_seconds_median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Seconds Median"
+          },
+          "merged": {
+            "title": "Merged",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "prs": {
+            "title": "Prs",
+            "type": "integer"
+          },
+          "prs_unknown": {
+            "title": "Prs Unknown",
+            "type": "integer"
+          },
+          "review_findings": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Findings"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "succeeded",
+          "verified",
+          "failed_verification",
+          "cost_usd",
+          "prs",
+          "prs_unknown",
+          "merged",
+          "closed_unmerged",
+          "open",
+          "ci_known",
+          "ci_failed",
+          "ci_failure_rate",
+          "merge_seconds_known",
+          "merge_seconds_median",
+          "review_findings",
+          "findings_per_merged_pr",
+          "model",
+          "days_measured"
+        ],
+        "title": "StaffDailyScorecardModelRow",
+        "type": "object"
+      },
+      "StaffDailyScorecardResponse": {
+        "description": "``GET /api/v1/staff/scorecard/daily`` \u2014 daily per-model scorecard (#4564).",
+        "properties": {
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "machine": {
+            "title": "Machine",
+            "type": "string"
+          },
+          "models": {
+            "items": {
+              "$ref": "#/components/schemas/StaffDailyScorecardModelRow"
+            },
+            "title": "Models",
+            "type": "array"
+          },
+          "prs_truncated": {
+            "default": false,
+            "title": "Prs Truncated",
+            "type": "boolean"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/StaffDailyScorecardRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/StaffScorecardMeasures"
+          },
+          "until": {
+            "title": "Until",
+            "type": "string"
+          }
+        },
+        "required": ["machine", "since", "until", "days", "totals"],
+        "title": "StaffDailyScorecardResponse",
+        "type": "object"
+      },
+      "StaffDailyScorecardRow": {
+        "description": "One UTC day and model (#4564).",
+        "properties": {
+          "ci_failed": {
+            "title": "Ci Failed",
+            "type": "integer"
+          },
+          "ci_failure_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Failure Rate"
+          },
+          "ci_known": {
+            "title": "Ci Known",
+            "type": "integer"
+          },
+          "closed_unmerged": {
+            "title": "Closed Unmerged",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "failed_verification": {
+            "title": "Failed Verification",
+            "type": "integer"
+          },
+          "findings_per_merged_pr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Findings Per Merged Pr"
+          },
+          "merge_seconds_known": {
+            "title": "Merge Seconds Known",
+            "type": "integer"
+          },
+          "merge_seconds_median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Seconds Median"
+          },
+          "merged": {
+            "title": "Merged",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "prs": {
+            "title": "Prs",
+            "type": "integer"
+          },
+          "prs_unknown": {
+            "title": "Prs Unknown",
+            "type": "integer"
+          },
+          "review_findings": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Findings"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "succeeded",
+          "verified",
+          "failed_verification",
+          "cost_usd",
+          "prs",
+          "prs_unknown",
+          "merged",
+          "closed_unmerged",
+          "open",
+          "ci_known",
+          "ci_failed",
+          "ci_failure_rate",
+          "merge_seconds_known",
+          "merge_seconds_median",
+          "review_findings",
+          "findings_per_merged_pr",
+          "date",
+          "model"
+        ],
+        "title": "StaffDailyScorecardRow",
+        "type": "object"
+      },
       "StaffDispatchResponse": {
         "additionalProperties": true,
         "description": "Response model for POST /api/staff/{role}/run.",
@@ -9194,6 +9504,128 @@
         },
         "required": ["enabled", "running"],
         "title": "StaffScheduleToggleResponse",
+        "type": "object"
+      },
+      "StaffScorecardMeasures": {
+        "description": "What one daily scorecard bucket measured (#4564). A ``None`` rate is no data, not zero.",
+        "properties": {
+          "ci_failed": {
+            "title": "Ci Failed",
+            "type": "integer"
+          },
+          "ci_failure_rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ci Failure Rate"
+          },
+          "ci_known": {
+            "title": "Ci Known",
+            "type": "integer"
+          },
+          "closed_unmerged": {
+            "title": "Closed Unmerged",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "failed_verification": {
+            "title": "Failed Verification",
+            "type": "integer"
+          },
+          "findings_per_merged_pr": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Findings Per Merged Pr"
+          },
+          "merge_seconds_known": {
+            "title": "Merge Seconds Known",
+            "type": "integer"
+          },
+          "merge_seconds_median": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merge Seconds Median"
+          },
+          "merged": {
+            "title": "Merged",
+            "type": "integer"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "prs": {
+            "title": "Prs",
+            "type": "integer"
+          },
+          "prs_unknown": {
+            "title": "Prs Unknown",
+            "type": "integer"
+          },
+          "review_findings": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review Findings"
+          },
+          "runs": {
+            "title": "Runs",
+            "type": "integer"
+          },
+          "succeeded": {
+            "title": "Succeeded",
+            "type": "integer"
+          },
+          "verified": {
+            "title": "Verified",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "runs",
+          "succeeded",
+          "verified",
+          "failed_verification",
+          "cost_usd",
+          "prs",
+          "prs_unknown",
+          "merged",
+          "closed_unmerged",
+          "open",
+          "ci_known",
+          "ci_failed",
+          "ci_failure_rate",
+          "merge_seconds_known",
+          "merge_seconds_median",
+          "review_findings",
+          "findings_per_merged_pr"
+        ],
+        "title": "StaffScorecardMeasures",
         "type": "object"
       },
       "StaffSkillAttachment": {
@@ -32511,6 +32943,92 @@
         ],
         "summary": "Get Schedule V1",
         "tags": ["staff-v1"]
+      }
+    },
+    "/api/v1/staff/scorecard/daily": {
+      "get": {
+        "description": "Daily per-model scorecard (#4564): merge time, CI failure rate and review findings per UTC day.\n\n``days`` is the look-back when no ``since`` is given; ``model`` narrows every row,\nroll-up and total to that model alone. PR facts are the same reads ``/outcomes`` already\nmakes, so the scorecard costs no extra GitHub traffic beyond its own run window.",
+        "operationId": "get_daily_scorecard_api_v1_staff_scorecard_daily_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 14,
+              "maximum": 90,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 40,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "model",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StaffDailyScorecardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "APIKeyHeader": []
+          },
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Daily Scorecard",
+        "tags": ["staff"]
       }
     },
     "/api/v1/staff/skills": {
