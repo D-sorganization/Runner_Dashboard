@@ -8,6 +8,7 @@ from scripts.backtest_decider_dataset import (
     is_eligible_unclassified_issue,
     sanitize_issue_payload,
 )
+from scripts.sanitize_private_topology import LITERAL_REPLACEMENTS
 
 
 def test_is_eligible_unclassified_issue_filters_explicit_tier() -> None:
@@ -29,17 +30,33 @@ def test_is_eligible_unclassified_issue_accepts_clean_unlabeled() -> None:
     assert is_eligible_unclassified_issue(["bug", "backend"], "investigate flaky test in scheduler")
 
 
+def _replacement_for(public: str, *, capitalized: bool = False) -> tuple[str, str]:
+    """Pick a sanitizer pair by its public example so the test file stays free of live names."""
+    for private, replacement in LITERAL_REPLACEMENTS:
+        if replacement != public:
+            continue
+        if capitalized and not private[:1].isupper():
+            continue
+        return private, replacement
+    raise AssertionError(f"no sanitizer pair for {public!r}")
+
+
 def test_sanitize_issue_payload_strips_private_identifiers() -> None:
+    tail_private, tail_public = _replacement_for("hub-a.fleet-example.ts.net")
+    title_private, title_public = _replacement_for("hub-a", capitalized=True)
+    prompt_private, prompt_public = _replacement_for("node-b", capitalized=True)
     payload = {
-        "title": "Fix crash on DeskComputer",
-        "body": "See tailnet host deskcomputer.tail2bbcc7.ts.net and user diete",
-        "prompt": "Investigate OGLaptop memory usage",
+        "title": f"Fix crash on {title_private}",
+        "body": f"See tailnet host {tail_private}",
+        "prompt": f"Investigate {prompt_private} memory usage",
     }
     sanitized = sanitize_issue_payload(payload)
-    assert "deskcomputer.tail2bbcc7.ts.net" not in sanitized["body"]
-    assert "hub-a.fleet-example.ts.net" in sanitized["body"]
-    assert "hub-a" in sanitized["title"]
-    assert "node-b" in sanitized["prompt"]
+    assert tail_private not in sanitized["body"]
+    assert tail_public in sanitized["body"]
+    assert title_private not in sanitized["title"]
+    assert title_public in sanitized["title"]
+    assert prompt_private not in sanitized["prompt"]
+    assert prompt_public in sanitized["prompt"]
 
 
 def test_evaluate_backtest_case_fail_safe_on_unclear() -> None:
