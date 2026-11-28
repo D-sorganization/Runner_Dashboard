@@ -26,6 +26,7 @@ class MergeShepherdHoldLabel(_StrEnum):
     DNM = "dnm"
     DRAIN_HOLD = "drain-hold"
     HOLD = "hold"
+    MERGE_HOLD = "merge:hold"
     NEEDS_DECISION = "needs-decision"
     NEEDS_DIETER = "needs-dieter"
     NEEDS_OWNER = "needs-owner"

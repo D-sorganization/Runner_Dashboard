@@ -103,7 +103,7 @@ query($owner: String!, $name: String!) {
         additions
         deletions
         labels(first: 30) { nodes { name } }
-        files(first: 100) {
+        files(first: 50) {
           pageInfo { hasNextPage }
           nodes { path }
         }
@@ -118,7 +118,7 @@ query($owner: String!, $name: String!) {
             }
           }
         }
-        timelineItems(last: 100, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
           pageInfo { hasPreviousPage hasNextPage }
           nodes {
             ... on RemovedFromMergeQueueEvent {

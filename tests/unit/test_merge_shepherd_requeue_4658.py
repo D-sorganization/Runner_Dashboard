@@ -215,7 +215,7 @@ def test_transient_merge_group_checks_do_not_disarm_an_armed_pr() -> None:
 def test_the_open_pr_query_fetches_merge_group_check_runs() -> None:
     """The 100-PR snapshot must not nest check runs; one PR query carries them."""
     assert "beforeCommit" in OPEN_PRS_QUERY
-    assert "timelineItems(last: 100" in OPEN_PRS_QUERY
+    assert "timelineItems(last: 20" in OPEN_PRS_QUERY
     assert "checkSuites" not in OPEN_PRS_QUERY
     assert "checkRuns" not in OPEN_PRS_QUERY
     assert graphql_connection_node_count(OPEN_PRS_QUERY) <= GRAPHQL_NODE_LIMIT

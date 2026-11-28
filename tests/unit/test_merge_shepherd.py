@@ -140,10 +140,21 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
                 IneligibleReason.CHECKS_FAILED,
             ),
         ]
+        _structural = frozenset({
+            IneligibleReason.DRAFT,
+            IneligibleReason.CONFLICT,
+            IneligibleReason.HELD,
+            IneligibleReason.BOUNCE_LIMIT,
+            IneligibleReason.RETRY_SUPPRESSED,
+            IneligibleReason.DRAINED,
+        })
         for cand, expected_reason in cases:
             with self.subTest(cand=cand.pr_number):
                 dec = evaluate_pr_shepherd_eligibility(cand)
-                self.assertEqual((dec.action, dec.reason), (ShepherdAction.SKIP, expected_reason))
+                expected_action = (
+                    ShepherdAction.DISARM if (cand.is_queued and expected_reason in _structural) else ShepherdAction.SKIP
+                )
+                self.assertEqual((dec.action, dec.reason), (expected_action, expected_reason))
 
     def test_ineligible_when_held(self) -> None:
         cases = [

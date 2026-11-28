@@ -368,19 +368,19 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
                 detail=suppression,
                 priority=priority,
             )
+    # Queued PRs that fail any eligibility guard must be dequeued (DISARM), not silently skipped.
+    _action = ShepherdAction.DISARM if candidate.is_queued else ShepherdAction.SKIP
     if candidate.is_draft:
-        return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.DRAFT, priority=priority)
+        return ShepherdDecision(_action, pr_num, repo, reason=IneligibleReason.DRAFT, priority=priority)
     if candidate.mergeable.upper() == "CONFLICTING":
-        return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.CONFLICT, priority=priority)
+        return ShepherdDecision(_action, pr_num, repo, reason=IneligibleReason.CONFLICT, priority=priority)
     if is_pr_held(candidate.labels, candidate.title):
-        return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.HELD, priority=priority)
+        return ShepherdDecision(_action, pr_num, repo, reason=IneligibleReason.HELD, priority=priority)
     if candidate.bounces >= BOUNCE_LIMIT:
-        return ShepherdDecision(
-            ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.BOUNCE_LIMIT, priority=priority
-        )
+        return ShepherdDecision(_action, pr_num, repo, reason=IneligibleReason.BOUNCE_LIMIT, priority=priority)
     if candidate.retry_suppressed:
         return ShepherdDecision(
-            ShepherdAction.SKIP,
+            _action,
             pr_num,
             repo,
             reason=IneligibleReason.RETRY_SUPPRESSED,
@@ -388,7 +388,7 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
             priority=priority,
         )
     if candidate.is_drained and not candidate.is_exempt:
-        return ShepherdDecision(ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.DRAINED, priority=priority)
+        return ShepherdDecision(_action, pr_num, repo, reason=IneligibleReason.DRAINED, priority=priority)
     if candidate.is_queued:
         return ShepherdDecision(
             ShepherdAction.SKIP, pr_num, repo, reason=IneligibleReason.ALREADY_QUEUED, priority=priority
