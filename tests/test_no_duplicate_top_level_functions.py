@@ -37,6 +37,9 @@ _ALLOWLISTED_BODY_DUP_NAMES = frozenset(
         "detect_sharing_violations",
         "get_gpu_info",
         "get_runner_routing_audit",
+        # single-flight inflight-drop helper shared by claims_check_cache and
+        # issue_list_cache (#4702); consolidate when the caches are unified
+        "_drop_inflight",
     }
 )
 
