@@ -159,7 +159,8 @@ def test_disarm_if_held_marks_its_disarm_with_the_hold_reasons() -> None:
 
 
 def test_disarm_if_held_posts_no_marker_when_nothing_was_disarmed() -> None:
-    fake = ActorGh(labels=["do-not-merge"], disarm_on_delete=False)
+    # Both disarm routes fail: the supported CLI route and the legacy REST route.
+    fake = ActorGh(labels=["do-not-merge"], disarm_on_delete=False, merge_returncode=1)
     automerge_guard.disarm_if_held("o/r", 7, runner=fake)
     assert fake.posted == []
 
