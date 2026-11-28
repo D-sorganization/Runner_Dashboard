@@ -1,0 +1,10 @@
+{
+  "meta": {
+    "source": "synthetic recorded snapshot — NOT live telemetry; generated for this lab experiment only",
+    "window_days": 30,
+    "population": 900,
+    "mean_recovery_days": 4.0,
+    "note": "Each value is the number of main-branch CI runs first observed red that day."
+  },
+  "daily_new_red": [3, 4, 6, 9, 14, 20, 28, 36, 44, 50, 54, 55, 52, 47, 40, 33, 26, 20, 15, 11, 8, 6, 4, 3, 2, 2, 1, 1, 1, 1]
+}
