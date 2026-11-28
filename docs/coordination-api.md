@@ -333,6 +333,21 @@ Body `{lane_id?, checkout_id?, reason?}`. Requires `priorities.write` (operator 
 active checkout without the holder's `fence_token` or `session_id` (`422` when neither id is set, `404`
 when nothing active is held, `403` for a bot principal).
 
+### `GET /api/coordination/provider-markers`
+
+Read-only. Returns active shared `provider_down` and `rate_limited` markers persisted in hub RD state (`until` UNIX
+timestamp). Expired markers are pruned on read.
+
+### `POST /api/coordination/provider-markers`
+
+Body `{provider, kind, until?|ttl_sec?, reason?}` → sets or replaces a marker (`kind` is `provider_down` or
+`rate_limited`). Requires `until` or `ttl_sec`.
+
+### `DELETE /api/coordination/provider-markers/{provider}?kind=`
+
+Clears marker(s) for a provider; optional `kind` limits the clear to one class. Lane-prompt checkout skips marked
+providers and walks the default provider chain; an unreadable marker store fails open (no skips).
+
 ## Configuration
 
 | Variable                  | Meaning                                                                       |
