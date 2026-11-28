@@ -194,7 +194,13 @@ async def get_jobs(
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
     return await _bounded(
-        run_in_threadpool(jobs_mod.list_jobs, repo=_repo(repo), limit=limit, include_excluded=include_excluded)
+        run_in_threadpool(
+            jobs_mod.list_jobs,
+            repo=_repo(repo),
+            limit=limit,
+            include_excluded=include_excluded,
+            budget_seconds=max(0.05, COORDINATION_TIMEOUT - 0.5),
+        )
     )
 
 

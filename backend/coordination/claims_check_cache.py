@@ -87,9 +87,14 @@ def invalidate_repo(repo: str) -> None:
         _generation += 1
 
 
-def read(repo: str, issue: int) -> dict[str, Any]:
-    """Return claim status with ``as_of`` / ``stale`` metadata."""
-    budget = _budget_seconds()
+def read(repo: str, issue: int, *, budget_seconds: float | None = None) -> dict[str, Any]:
+    """Return claim status with ``as_of`` / ``stale`` metadata.
+
+    ``budget_seconds`` overrides the process budget for one caller (the job
+    board passes the time it has left so one slow check cannot outlive the
+    coordination response deadline).
+    """
+    budget = _budget_seconds() if budget_seconds is None else max(0.0, float(budget_seconds))
     deadline = _clock() + budget
 
     hit = _fresh_hit(repo, issue)
