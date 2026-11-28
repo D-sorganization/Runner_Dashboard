@@ -226,6 +226,20 @@ def _disarm_via_guard(repo: str, pr: int, *, repo_root: Path, head_sha: str, det
     import automerge_guard  # noqa: PLC0415
 
     try:
+        planned = automerge_guard.read_merge_disposition(repo, pr)
+        if automerge_guard.disposition_cleared(planned):
+            # Neither armed nor queued: the plan is already satisfied and the guard would
+            # issue no route call anyway, so do not pay its hold read and repository-wide
+            # revalidation GraphQL, which can only turn a satisfied plan into a red main.
+            return {
+                "exit_code": 0,
+                "disarmed": True,
+                "already_clear": True,
+                "before_auto_merge": planned.auto_merge_on,
+                "before_in_merge_queue": planned.in_merge_queue,
+                "after_auto_merge": planned.auto_merge_on,
+                "after_in_merge_queue": planned.in_merge_queue,
+            }
         before, after, verdict = automerge_guard.disarm_for_shepherd(
             repo,
             pr,
