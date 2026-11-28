@@ -171,6 +171,20 @@ def _shared_load(repo: str, issue: int) -> Future[_CacheEntry]:
         inflight = _inflight.get(key)
         if inflight is not None:
             return inflight
+        # A completed future may have been removed from _inflight by its done
+        # callback before all callers reached here. If _cache already has a
+        # fresh entry for this generation, return a resolved future so callers
+        # never submit a second _loader call.
+        cached = _cache.get(key)
+        now = _clock()
+        if (
+            cached is not None
+            and cached.generation == _generation
+            and now - cached.completed_mono < _ttl_seconds()
+        ):
+            resolved: Future[_CacheEntry] = Future()
+            resolved.set_result(cached)
+            return resolved
         generation = _generation
         future = _pool.submit(_compute_and_store, repo, issue, generation, key)
         _inflight[key] = future
