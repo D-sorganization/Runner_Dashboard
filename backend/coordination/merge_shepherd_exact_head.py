@@ -96,13 +96,16 @@ def _provider_family(provider: str) -> str:
     from staff.review import PROVIDER_FAMILY
 
     value = provider.strip().lower()
-    known = {*PROVIDER_FAMILY.values(), "deepseek"}
+    known = {*PROVIDER_FAMILY.values(), "deepseek", "fleet"}
     return PROVIDER_FAMILY.get(value, value if value in known else "")
 
 
 def _login_provider(login: str) -> str:
     """Only known authenticated fleet App logins carry provider provenance."""
-    match = re.fullmatch(r"d-sorg(codex|claude|gemini|agy|cursor|deepseek)agent\[bot\]", login.lower())
+    lower = login.lower()
+    if lower == "d-sorggeneralagent[bot]":
+        return "fleet"
+    match = re.fullmatch(r"d-sorg(codex|claude|gemini|agy|cursor|deepseek)agent\[bot\]", lower)
     return {"agy": "antigravity", "cursor": "cursor-agent"}.get(match[1], match[1]) if match else ""
 
 
