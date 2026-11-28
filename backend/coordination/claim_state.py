@@ -1,9 +1,8 @@
-"""Durable issue-claim state machine and compare-and-set acquire (#4270 PR 2).
+"""Durable issue-claim state machine and compare-and-set acquire (#4270).
 
-Hub-local SQLite is the coordination anti-double-win layer before RM lease posts.
-GitHub (via ``post_agent_lease``) stays authoritative for operators; this store
-prevents two concurrent acquires in the same process or across workers sharing
-the hub database from both posting.
+The serving hub's SQLite row is the authoritative claim. GitHub
+``post_agent_lease`` / ``check_agent_claim`` / ``release_agent_lease`` are the
+mirror. A failed mirror must not release a row this store already set to held.
 """
 
 from __future__ import annotations
@@ -314,7 +313,11 @@ class ClaimStateStore(JobBoardRows):
             return self._retry(_mutate)
 
     def abandon_acquire(self, repo: str, issue: int, *, agent: str, session: str) -> None:
-        """Drop a CAS reservation when the subsequent RM lease post failed."""
+        """Drop a CAS row after a successful mirror when local bookkeeping could not record it.
+
+        A failed ``post_agent_lease`` is a mirror failure. Call ``keep_authoritative_claim``
+        for that case and leave this row held.
+        """
         self.release(repo, issue, agent=agent, session=session)
 
     def close(self) -> None:
@@ -342,6 +345,18 @@ def reset_claim_state_store() -> None:
 
 def acquire_compare_and_set(repo: str, issue: int, *, agent: str, session: str) -> AcquireResult:
     return get_store().try_acquire(repo, issue, agent=agent, session=session)
+
+
+def keep_authoritative_claim(repo: str, issue: int, *, agent: str, session: str, exc: BaseException) -> None:
+    """Leave the CAS row held. ``exc`` is the GitHub mirror error the caller re-raises."""
+    log.warning(
+        "GitHub claim mirror failed for %s#%s (%s/%s); SQLite CAS row kept: %s",
+        repo,
+        issue,
+        agent,
+        session,
+        exc,
+    )
 
 
 def holder_status_from_row(repo: str, issue: int, result: AcquireResult) -> dict[str, Any]:
