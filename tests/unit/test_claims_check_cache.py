@@ -45,6 +45,47 @@ def test_concurrent_reads_coalesce_one_loader_call(monkeypatch: pytest.MonkeyPat
     assert all(r["stale"] is False and r["held"] is False for r in results)
 
 
+def test_missed_then_completed_load_does_not_start_duplicate_loader(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A reader that already missed the cache must not start a second loader call.
+
+    Reproduces the single-flight race from #4592: reader B misses the cache,
+    reader A's in-flight load completes (cache populated, in-flight future
+    dropped) before B reaches the single-flight lock. B must serve the fresh
+    entry instead of duplicating the loader call.
+    """
+    calls: list[tuple[str, int]] = []
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow_check(repo: str, issue: int) -> dict:
+        calls.append((repo, issue))
+        entered.set()
+        release.wait(timeout=5.0)
+        return _payload()
+
+    monkeypatch.setattr(cache, "_loader", slow_check)
+    monkeypatch.setenv("CLAIMS_CHECK_REQUEST_BUDGET_SECONDS", "30")
+    monkeypatch.setenv("CLAIMS_CHECK_CACHE_TTL_SECONDS", "45")
+
+    # Reader A starts a load and blocks inside the loader.
+    reader_a = threading.Thread(target=cache.read, args=("Tools", 12))
+    reader_a.start()
+    assert entered.wait(timeout=2.0)
+
+    # Reader B observes a cache miss while the load is still in flight.
+    assert cache._fresh_hit("Tools", 12) is None
+
+    # Reader A's load completes: cache is populated and the in-flight future
+    # is dropped before reader B reaches the single-flight lock.
+    release.set()
+    reader_a.join(timeout=5.0)
+
+    # Reader B now performs the load it already decided to perform.
+    cache._shared_load("Tools", 12).result(timeout=5.0)
+
+    assert len(calls) == 1
+
+
 def test_ttl_serves_fresh_without_second_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = 0
 

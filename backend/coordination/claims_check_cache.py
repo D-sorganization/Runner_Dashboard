@@ -171,11 +171,24 @@ def _shared_load(repo: str, issue: int) -> Future[_CacheEntry]:
         inflight = _inflight.get(key)
         if inflight is not None:
             return inflight
+        # A concurrent load may have finished between this reader's earlier
+        # cache miss (in read()) and now: the done-callback has already
+        # dropped it from _inflight and stored a fresh entry. Serve that entry
+        # instead of starting a duplicate loader call (single-flight).
+        hit = _cache.get(key)
+        if hit is not None and hit.generation == _generation and _is_fresh(hit, _clock()):
+            completed: Future[_CacheEntry] = Future()
+            completed.set_result(hit)
+            return completed
         generation = _generation
         future = _pool.submit(_compute_and_store, repo, issue, generation, key)
         _inflight[key] = future
         future.add_done_callback(lambda completed: _drop_inflight(key, completed))
         return future
+
+
+def _is_fresh(hit: _CacheEntry, now: float) -> bool:
+    return now - hit.completed_mono < _ttl_seconds()
 
 
 def _fresh_hit(repo: str, issue: int) -> _CacheEntry | None:
@@ -185,7 +198,7 @@ def _fresh_hit(repo: str, issue: int) -> _CacheEntry | None:
         hit = _cache.get(key)
         if hit is None or hit.generation != _generation:
             return None
-        if now - hit.completed_mono < _ttl_seconds():
+        if _is_fresh(hit, now):
             return hit
     return None
 
