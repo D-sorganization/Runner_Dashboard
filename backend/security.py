@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from dashboard_config import ORG
 from fastapi import HTTPException
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
@@ -256,6 +257,28 @@ def validate_owner_repo_format(value: str) -> str:
             ),
         )
     return stripped
+
+
+def normalize_repository_input(value: str) -> tuple[str, str]:
+    """Return ``(short_name, full_org/name)`` from a bare or qualified repo name (issue #326).
+
+    Validates against a strict regex before any owner comparison or subprocess
+    interpolation to prevent SSRF via malformed owner/repo slugs. This is the
+    single shared implementation for the assistant and remediation routers
+    (issues #326/#404); the private copies that lived in those routers were
+    removed to satisfy the DRY duplicate guard.
+    """
+    text = str(value).strip().lstrip("/")
+    if "/" in text:
+        # Validate full owner/repo format before extracting parts (issue #326)
+        validate_owner_repo_format(text)
+        owner, _, repo_name = text.partition("/")
+        if owner.lower() != ORG.lower():
+            raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")
+        repo_name = validate_repo_slug(repo_name)
+        return repo_name, f"{ORG}/{repo_name}"
+    repo_name = validate_repo_slug(text)
+    return repo_name, f"{ORG}/{repo_name}"
 
 
 # ─── Path Validation ───────────────────────────────────────────────────────────
