@@ -55,7 +55,7 @@ def test_claim_blocked_when_agent_owns_aging_pr(
     assert "post_agent_lease" not in [name for name, _ in rm.calls()]
 
 
-def _stale_pr_in(repo: str, files: list[str]):
+def _stale_pr_in(repo: str, files: list[str], labels: list | None = None):
     """Evidence stub: one aging claude PR in ``repo`` that changes ``files`` (#3892)."""
 
     def fetch(path: str) -> list[dict]:
@@ -69,7 +69,7 @@ def _stale_pr_in(repo: str, files: list[str]):
                     "html_url": f"https://github.com/D-sorganization/{repo}/pull/87",
                     "created_at": "2026-10-01T00:00:00Z",
                     "head": {"ref": "claude/held-draft"},
-                    "labels": [],
+                    "labels": labels if labels is not None else [],
                     "draft": True,
                 }
             ]
@@ -126,3 +126,28 @@ def test_same_repo_aging_pr_with_overlapping_claim_paths_blocks(
     detail = resp.json()["detail"]
     assert detail["code"] == "aging_pr_blocks_claim"
     assert "src/movement_optimizer/core.py" in detail["message"]
+
+
+# #4720: a held aging PR must not 409 the claim even when its changed files
+# overlap the claim paths; an unheld aging PR (labels=[]) already has coverage above.
+_HELD_LABELS = ["do-not-merge", "needs-owner", "do-not-automate", "needs-canonical-model"]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("label", _HELD_LABELS)
+def test_held_aging_pr_does_not_block_claim(
+    rm: FakeRM, client: TestClient, monkeypatch: pytest.MonkeyPatch, label: str
+) -> None:
+    rm.respond("check_agent_claim", claim_status(False))
+    rm.respond("post_agent_lease", lease_result(agent="claude"))
+    import coordination.claims as claims_mod
+
+    monkeypatch.setattr(
+        claims_mod,
+        "evidence_fetch",
+        _stale_pr_in("Tools", ["src/movement_optimizer/core.py"], labels=[{"name": label}]),
+    )
+    resp = client.post("/api/coordination/claims", json={**_CLAIM, "paths": ["src/movement_optimizer"]}, headers=_BOT)
+
+    assert resp.status_code == 200, resp.text
+    assert "post_agent_lease" in [name for name, _ in rm.calls()]
