@@ -52,7 +52,7 @@ def _normalize_repository_input(value: str) -> tuple[str, str]:
     Validates against a strict regex before any owner comparison or subprocess
     interpolation to prevent SSRF via malformed owner/repo slugs.
     """
-    text = str(value).strip()
+    text = str(value).strip().lstrip("/")
     if "/" in text:
         # Validate full owner/repo format before extracting parts (issue #326)
         validate_owner_repo_format(text)
