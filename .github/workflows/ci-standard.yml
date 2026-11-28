@@ -1110,10 +1110,14 @@ jobs:
     name: Hold label gate
     needs: pick-runner
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+    # Same-repo pull requests use the fleet runner. fast_checks_runner is hosted
+    # and this gate is not an allowlisted required check (local_only_runner_guard).
+    # Fork pull requests take ubuntu-latest first, so fork code never reaches
+    # the fleet (fork_pr_runner_guard, RM#1989).
     runs-on: >-
       ${{ github.event.pull_request &&
       github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.fast_checks_runner }}
+      'ubuntu-latest' || needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     permissions:
       contents: read
@@ -1175,9 +1179,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'merge_group'
         with:
-          sparse-checkout: |
-            scripts/ci
-            scripts/hold_label_gate.py
+          sparse-checkout: scripts/ci
       - name: Require every gated job to succeed
         shell: bash
         env:
@@ -1307,6 +1309,15 @@ jobs:
             python3 scripts/ci/verify_merge_group_companion_checks.py
           fi
           echo "quality-gate: all gated jobs succeeded."
+      # Companion verification above only needs scripts/ci. The recheck below
+      # needs hold_label_gate.py, checked out after that step so the
+      # merge_group sparse-checkout for scripts/ci stays exact.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'merge_group'
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/hold_label_gate.py
+          sparse-checkout-cone-mode: false
       # Late re-read of the queued PR's labels (Repository_Management#3091).
       # hold-label-gate read them at the start of the run; a hold added while
       # the rest of the tier ran would otherwise merge. This is the last step

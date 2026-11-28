@@ -90,6 +90,19 @@ def test_quality_gate_depends_on_the_hold_job() -> None:
     assert "hold-label-gate" in needs
 
 
+def test_hold_label_gate_stays_on_the_fleet_runner() -> None:
+    """Same-repo work stays on the fleet runner; forks are hosted first.
+
+    fast_checks_runner is not an allowlisted lane for this job. The fork
+    route is the conjunct fork_pr_runner_guard accepts.
+    """
+    runs_on = str(_workflow()["jobs"]["hold-label-gate"]["runs-on"])
+    assert "fast_checks_runner" not in runs_on
+    assert "pick-runner.outputs.runner" in runs_on
+    assert "head.repo.full_name != github.repository" in runs_on
+    assert runs_on.strip().startswith("${{ github.event.pull_request &&")
+
+
 def test_check_event_reads_live_labels_for_each_queued_pr() -> None:
     from scripts.hold_label_gate import check_event
 
