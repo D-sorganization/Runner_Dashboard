@@ -72,7 +72,9 @@ def test_job_claim_failed_lease_comment_removes_the_label_it_added(rm: FakeRM, m
     assert releases[0][releases[0].index("--agent") + 1] == AGENT
     assert jobs_mod._current_fence(REPO, issue) == 0
     assert _lease_row(issue) is None
-    assert claim_state_mod.get_store().read(REPO, issue) is None
+    row = claim_state_mod.get_store().read(REPO, issue)
+    assert row is not None and row.state == claim_state_mod.ClaimState.HELD
+    assert (row.agent, row.session) == (AGENT, f"{AGENT}-{issue}")
 
 
 @pytest.mark.unit
@@ -92,7 +94,9 @@ def test_job_claim_rollback_failure_is_retried_and_reported(rm: FakeRM, monkeypa
     assert len(_releases(rm)) == claims_mod.ROLLBACK_ATTEMPTS > 1
     assert jobs_mod._current_fence(REPO, issue) == 0
     assert _lease_row(issue) is None
-    assert claim_state_mod.get_store().read(REPO, issue) is None
+    row = claim_state_mod.get_store().read(REPO, issue)
+    assert row is not None and row.state == claim_state_mod.ClaimState.HELD
+    assert (row.agent, row.session) == (AGENT, f"{AGENT}-{issue}")
 
 
 _NOTHING_TO_RELEASE = {

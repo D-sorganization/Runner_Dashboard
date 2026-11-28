@@ -202,6 +202,8 @@ class HoldVerdict:
     #: ``head_sha`` when an independent PASS is recorded at exactly that head,
     #: else empty. "No objection" is not a PASS (#4249 B-02).
     pass_head_sha: str = ""
+    #: GitHub html_url of the independent approval comment, when a PASS is recorded.
+    approval_link: str = ""
 
     def describe(self) -> str:
         if not self.held:
@@ -495,11 +497,12 @@ def _commit_messages(run: CommandRunner, repo: str, pr: int) -> list[str]:
     return rows
 
 
-def _independent_review_state(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> tuple[list[str], str]:
+def _independent_review_state(run: CommandRunner, repo: str, pr: int, pull: _PullRequest) -> tuple[list[str], str, str]:
     """Signal 5 (#4315, #4323) plus the PASS evidence (#4249 B-02).
 
-    Returns ``(hold_reasons, pass_head_sha)``. ``pass_head_sha`` is the PR head
-    when the latest independent verdict at that head is PASS, else empty.
+    Returns ``(hold_reasons, pass_head_sha, approval_link)``. ``pass_head_sha``
+    is the PR head when the latest independent verdict at that head is PASS,
+    else empty. ``approval_link`` is the GitHub html_url of the approval comment.
     """
     _repo_root_on_path()
     from shared_scripts.independent_exact_head_review import (  # noqa: PLC0415
@@ -514,7 +517,7 @@ def _independent_review_state(run: CommandRunner, repo: str, pr: int, pull: _Pul
         comments = _issue_comments(run, repo, pr)
         messages = _commit_messages(run, repo, pr)
     except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError):
-        return ["independent exact-head review state is unreadable"], ""
+        return ["independent exact-head review state is unreadable"], "", ""
     author_model = author_model_from_labels(pull.labels) or author_model_from_commit_messages(messages)
     reviews = parse_issue_comments(comments)
     reasons = independent_review_hold_reason(
@@ -523,17 +526,35 @@ def _independent_review_state(run: CommandRunner, repo: str, pr: int, pull: _Pul
         author_model=author_model,
         labels=pull.labels,
     )
-    verdict, _detail = latest_independent_verdict_at_head(reviews, head_sha=pull.head_sha, author_model=author_model)
-    return reasons, (pull.head_sha if verdict == "PASS" and not reasons else "")
+    verdict, approval_link = latest_independent_verdict_at_head(reviews, head_sha=pull.head_sha, author_model=author_model)
+    pass_head_sha = pull.head_sha if verdict == "PASS" and not reasons else ""
+    return reasons, pass_head_sha, (approval_link if verdict == "PASS" and not reasons else "")
+
+
+def _try_disarm_routes(repo: str, pr: int, run: CommandRunner) -> tuple[bool, str]:
+    """Try every disarm route GitHub serves; return ``(disarmed, error)``.
+
+    ``gh pr merge --disable-auto`` is the supported route (``disablePullRequestAutoMerge``)
+    and is idempotent when nothing is armed. The legacy ``ccr/auto_merge`` REST path answers
+    ``404 Not Found`` on every repo, so it stays only as the fallback for runners whose
+    GraphQL writes are blocked (#4251).
+    """
+    proc = run(["gh", "pr", "merge", str(pr), "--repo", repo, "--disable-auto"])
+    if proc.returncode == 0:
+        return True, ""
+    cli_error = proc.stderr.strip() or proc.stdout.strip()
+    legacy = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
+    if legacy.returncode == 0:
+        return True, ""
+    return False, legacy.stderr.strip() or legacy.stdout.strip() or cli_error
 
 
 def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> bool:
-    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
-    if proc.returncode == 0:
+    disarmed, error = _try_disarm_routes(repo, pr, run)
+    if disarmed:
         logger.warning("Disarmed auto-merge on %s#%s before a blocked merge.", repo, pr)
         return True
-    err = proc.stderr.strip() or proc.stdout.strip()
-    logger.warning("Could not disarm auto-merge on %s#%s: %s", repo, pr, err)
+    logger.warning("Could not disarm auto-merge on %s#%s: %s", repo, pr, error)
     return False
 
 
@@ -541,7 +562,7 @@ def disarm_if_held(repo: str, pr: int, *, runner: CommandRunner | None = None) -
     """Re-check holds on an already-armed PR; disarm when a hold applies (#4315).
 
       Post: returns the current :func:`evaluate_hold` verdict. When ``held``, one
-    ``DELETE .../ccr/auto_merge`` is attempted (author-bot / scheduled paths).
+    disarm is attempted through :func:`_try_disarm_routes` (author-bot / scheduled paths).
     """
     run = runner or _default_runner
     verdict = evaluate_hold(repo, pr, runner=run)
@@ -667,7 +688,7 @@ def _deletion_reasons(run: CommandRunner, repo: str, pr: int, pull: _PullRequest
     return [f"diff deletes {len(removed)} tracked file(s) with no acknowledgement: {sample}{more}"]
 
 
-def _verdict_from(raw: dict[str, Any], pull: _PullRequest, reasons: list[str], pass_head_sha: str = "") -> HoldVerdict:
+def _verdict_from(raw: dict[str, Any], pull: _PullRequest, reasons: list[str], pass_head_sha: str = "", approval_link: str = "") -> HoldVerdict:
     """Build the verdict, carrying the PR facts later merge steps pin to."""
     head, base = _obj(raw.get("head")), _obj(raw.get("base"))
     head_repo = str(_obj(head.get("repo")).get("full_name") or "").lower()
@@ -681,6 +702,7 @@ def _verdict_from(raw: dict[str, Any], pull: _PullRequest, reasons: list[str], p
         head_ref=str(head.get("ref") or ""),
         head_in_base_repo=bool(head_repo) and head_repo == base_repo,
         pass_head_sha="" if reasons else pass_head_sha,
+        approval_link="" if reasons else approval_link,
     )
 
 
@@ -744,13 +766,13 @@ def evaluate_hold(repo: str, pr: int, *, runner: CommandRunner | None = None) ->
             reasons.append("PR is a draft (mark ready first)")
         reasons += _disarm_reasons(run, repo, pr, pull.head_sha)
         reasons += _deletion_reasons(run, repo, pr, pull)
-        review_reasons, pass_head_sha = _independent_review_state(run, repo, pr, pull)
+        review_reasons, pass_head_sha, approval_link = _independent_review_state(run, repo, pr, pull)
         reasons += review_reasons
         reasons += _closing_board_reasons(pull.body)
     except (RuntimeError, json.JSONDecodeError, OSError, TypeError, ValueError) as exc:
         # Fail closed. An unknown state is not a licence to arm.
         return HoldVerdict(True, (), error=str(exc))
-    return _verdict_from(raw, pull, reasons, pass_head_sha)
+    return _verdict_from(raw, pull, reasons, pass_head_sha, approval_link)
 
 
 def _deletions_acknowledged(lowered_labels: set[str], body: str) -> bool:
@@ -799,16 +821,15 @@ def _revoke_rest_arm(repo: str, pr: int, run: CommandRunner) -> tuple[str, bool]
     """Undo a REST arm whose stored method could not be confirmed.
 
     The PUT already succeeded, so GitHub may still auto-merge the PR with the
-    wrong strategy. Returns a message for ``ArmResult.detail``; a failed DELETE
+    wrong strategy. Returns a message for ``ArmResult.detail``; a failed disarm
     is reported loudly because auto-merge may then still be on. The second item
     is True in exactly that case.
     """
-    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
-    if proc.returncode == 0:
+    revoked, err = _try_disarm_routes(repo, pr, run)
+    if revoked:
         logger.warning("Revoked unverified REST auto-merge arm on %s#%s.", repo, pr)
         _mark_guard_disarm(repo, pr, "the REST arm could not be verified", run)
         return "auto-merge revoked", False
-    err = proc.stderr.strip() or proc.stdout.strip()
     logger.error("Could not revoke REST auto-merge arm on %s#%s: %s", repo, pr, err)
     return (
         f"revoke FAILED ({err}); auto-merge may still be ON and needs manual disarm",
@@ -947,6 +968,7 @@ def arm_auto_merge(
     if refusal:
         logger.warning("Refusing to arm auto-merge on %s#%s: %s", repo, pr, refusal)
         return ArmResult(False, verdict, refusal)
+    logger.info("approval_link: %s", verdict.approval_link)
     result = _arm_pinned(repo, pr, strategy, delete_branch, verdict, run)
     if (result.armed or result.merged) and not verdict.pass_head_sha:
         return replace(result, pass_missing=True)

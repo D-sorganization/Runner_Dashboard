@@ -100,13 +100,13 @@ def _aging_fetch(pulls_by_repo: dict[str, list[dict]], files_by_pr: dict[tuple[s
     return fetch
 
 
-def _old_pr(number: int, branch: str = "codex/old-work", draft: bool = True) -> dict:
+def _old_pr(number: int, branch: str = "codex/old-work", draft: bool = True, labels: list | None = None) -> dict:
     return {
         "number": number,
         "html_url": f"https://example/pull/{number}",
         "created_at": "2026-10-01T00:00:00Z",
         "head": {"ref": branch},
-        "labels": [],
+        "labels": labels if labels is not None else [],
         "draft": draft,
     }
 
@@ -185,3 +185,83 @@ def test_unreadable_pr_files_count_as_overlap() -> None:
     )
 
     assert block is not None
+
+
+# #4720: PRs carrying a merge-shepherd hold label are excluded from the aging-PR
+# blocking set, but an unheld aging PR still blocks. ``needs-canonical-model`` is
+# not part of the canonical merge-shepherd hold set, so it is exercised as the
+# pr-age-rule extension that motivated the issue.
+_HELD_LABELS = ["do-not-merge", "needs-owner", "do-not-automate", "needs-canonical-model"]
+
+
+def _old_pr_with_labels(number: int, labels: list[str], branch: str = "codex/old-work") -> dict:
+    return {
+        "number": number,
+        "html_url": f"https://example/pull/{number}",
+        "created_at": "2026-10-01T00:00:00Z",
+        "head": {"ref": branch},
+        "labels": [{"name": lbl} for lbl in labels],
+        "draft": False,
+    }
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("label", _HELD_LABELS)
+def test_held_pr_does_not_block_claim(label: str) -> None:
+    fetch = _aging_fetch({"Repository_Management": [_old_pr(87, labels=[{"name": label}])]}, {})
+
+    block = rule.claim_blocked_by_aging_prs("codex", claim_repo="Repository_Management", fetch=fetch)
+
+    assert block is None
+
+
+@pytest.mark.unit
+def test_held_label_matches_case_insensitively() -> None:
+    fetch = _aging_fetch({"Repository_Management": [_old_pr(87, labels=[{"name": "Do-Not-Merge"}])]}, {})
+
+    block = rule.claim_blocked_by_aging_prs("codex", claim_repo="Repository_Management", fetch=fetch)
+
+    assert block is None
+
+
+@pytest.mark.unit
+def test_unheld_aging_pr_with_non_hold_label_still_blocks() -> None:
+    fetch = _aging_fetch({"Repository_Management": [_old_pr(87, labels=[{"name": "bug"}])]}, {})
+
+    block = rule.claim_blocked_by_aging_prs("codex", claim_repo="Repository_Management", fetch=fetch)
+
+    assert block is not None
+    assert block["aging_prs"][0]["number"] == 87
+
+
+@pytest.mark.unit
+def test_list_aging_prs_excludes_held_prs() -> None:
+    """list_aging_prs_for_agent must skip held PRs entirely."""
+
+    def fetch(path: str) -> list[dict]:
+        if "/pulls?state=open" in path:
+            return [
+                _old_pr_with_labels(1, ["do-not-merge"], branch="codex/held-work"),
+                _old_pr_with_labels(2, ["needs-owner"], branch="codex/stalled"),
+                {
+                    "number": 3,
+                    "html_url": "https://example/pull/3",
+                    "created_at": "2026-10-01T00:00:00Z",
+                    "head": {"ref": "codex/normal"},
+                    "labels": [],
+                    "draft": False,
+                },
+            ]
+        raise AssertionError(path)
+
+    hits = rule.list_aging_prs_for_agent(
+        "codex",
+        repos=["Runner_Dashboard"],
+        fetch=fetch,
+        rule_hours=72,
+    )
+
+    numbers = [h["number"] for h in hits]
+    assert 1 not in numbers, "do-not-merge PR must be excluded"
+    assert 2 not in numbers, "needs-owner PR must be excluded"
+    assert 3 in numbers, "normal PR must still be included"

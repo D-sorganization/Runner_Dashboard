@@ -100,7 +100,14 @@ def _load_sent(path: Path) -> set[str]:
     except (OSError, ValueError):
         log.warning("agent token expiry state %s unreadable; starting fresh", path.name)
         return set()
-    return {str(k) for k in data} if isinstance(data, list) else set()
+    if not isinstance(data, list):
+        log.warning(
+            "agent token expiry state %s has unexpected shape %s; starting fresh",
+            path.name,
+            type(data).__name__,
+        )
+        return set()
+    return {str(k) for k in data}
 
 
 def check_token_expiry(

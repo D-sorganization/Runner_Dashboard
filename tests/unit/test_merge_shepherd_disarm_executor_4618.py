@@ -40,6 +40,11 @@ class ShepherdDisarmGh:
             body = next((cmd[i + 1] for i, part in enumerate(cmd) if part == "-f" and i + 1 < len(cmd)), "")
             self.comments.append(body)
             return _completed("{}")
+        if "pr" in cmd and "merge" in cmd and "--disable-auto" in joined:
+            self.deleted = True
+            self.auto_merge_on = False
+            self.in_merge_queue = False
+            return _completed("{}")
         if "/ccr/auto_merge" in joined and "-X" in joined and "DELETE" in joined:
             self.deleted = True
             self.auto_merge_on = False

@@ -29,13 +29,16 @@ def utc_now_iso() -> str:
 def parse_github_ts(value: str | None) -> datetime | None:
     """Parse a GitHub REST ISO-8601 timestamp (trailing ``Z``).
 
-    Returns ``None`` for ``None`` or ``""``. A ``Z`` suffix yields an aware UTC
-    datetime and an explicit offset is preserved. Malformed input raises
-    :class:`ValueError`. Input without any offset yields a naive datetime.
+    Returns ``None`` for ``None`` or ``""``. A trailing ``Z``/``z`` UTC
+    designator yields an aware UTC datetime and an explicit offset is
+    preserved. Malformed input raises :class:`ValueError`. Input without any
+    offset yields a naive datetime.
     """
     if not value:
         return None
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if value.endswith(("Z", "z")):
+        value = value[:-1] + "+00:00"
+    return datetime.fromisoformat(value)
 
 
 def now_ms() -> int:

@@ -16,6 +16,7 @@ from typing import Any
 
 from activity_context import _hit_path
 from coordination import gh_cli, roster
+from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS, normalize_hold_label
 from flow_metrics import PR_AGE_RULE_HOURS, open_pr_age_hours
 from staff.claim_guard import full_repo
 
@@ -23,6 +24,11 @@ log = logging.getLogger("dashboard.coordination.pr_age_rule")
 
 AGENT_LABEL_PREFIX = "agent:"
 SyncFetch = Callable[[str], Any]
+
+# #4720: held PRs never block a new claim. The canonical merge-shepherd hold set
+# is the source of truth; ``needs-canonical-model`` is the pr-age-rule extension
+# that motivated the issue (it is not a merge-shepherd hold label).
+PR_AGE_RULE_HOLD_LABELS: frozenset[str] = MERGE_SHEPHERD_HOLD_LABELS | frozenset({"needs-canonical-model"})
 
 
 def _normalize_agent(agent: str) -> str:
@@ -107,6 +113,24 @@ def resolve_pr_owner(pr: Mapping[str, Any], *, agent_ids: Sequence[str]) -> str 
     return _agent_from_branch(str(branch or ""), agent_ids)
 
 
+def _pr_is_held(pr: Mapping[str, Any]) -> bool:
+    """True when ``pr`` carries a label in :data:`PR_AGE_RULE_HOLD_LABELS` (case-insensitive)."""
+    labels = pr.get("labels")
+    if not isinstance(labels, list):
+        return False
+    held = {normalize_hold_label(name) for name in _label_names(labels)}
+    return bool(held & PR_AGE_RULE_HOLD_LABELS)
+
+
+def _label_names(labels: Sequence[Any]) -> list[str]:
+    names: list[str] = []
+    for label in labels:
+        name = label.get("name") if isinstance(label, dict) else label
+        if isinstance(name, str):
+            names.append(name)
+    return names
+
+
 def list_aging_prs_for_agent(
     agent: str,
     *,
@@ -128,6 +152,8 @@ def list_aging_prs_for_agent(
             continue
         for pr in pulls if isinstance(pulls, list) else []:
             if not isinstance(pr, dict):
+                continue
+            if _pr_is_held(pr):
                 continue
             owner = resolve_pr_owner(pr, agent_ids=agent_ids)
             if owner != target:

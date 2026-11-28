@@ -1,8 +1,8 @@
-"""Issue claims (leases) via the RM lease scripts (issues #1229, #1244).
+"""Issue claims (leases) via the serving hub and the RM mirror (issues #1229, #1244, #4270).
 
-Leases stay as issue comments plus ``claim:*`` labels written by RM
-``post_agent_lease`` / ``release_agent_lease``; ``check_agent_claim`` is the
-read. Nothing is stored here.
+``claim_state`` SQLite compare-and-set is the authoritative hold. RM
+``post_agent_lease`` / ``release_agent_lease`` / ``check_agent_claim`` are the
+GitHub mirror. A failed mirror leaves the SQLite row held.
 
 RM shapes this module relies on (``shared_scripts/agent_coordination.py``):
 
@@ -12,7 +12,7 @@ RM shapes this module relies on (``shared_scripts/agent_coordination.py``):
   referencing branch) and never carries the lease's ``session`` today.
 * ``post_agent_lease`` / ``release_agent_lease`` print a ``LeaseWriteResult``:
   ``{label_updated, comment_posted, receipt, errors: [...], ok}``. The lease
-  comment is the durable record, so a posted comment with a failed label is a
+  comment is the GitHub mirror, so a posted comment with a failed label is a
   partial success (200 + ``warnings``), not a failure.
 """
 
@@ -31,7 +31,7 @@ from coordination import board as board_mod
 from coordination import claim_state as claim_state_mod
 from coordination import gh_cli
 from coordination.board import BOARD_COMMENT_LIMIT, RMScriptError
-from coordination.board_pagination import board_config
+from coordination.board_pagination import BoardConfigUnavailable, board_config
 from coordination.gh_cli import gh_api_json
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
 from coordination.rm_scripts import ScriptResult, run_module
@@ -87,10 +87,13 @@ def classify_release_reason(repo: str, issue: int, *, agent_reason: str) -> str:
     try:
         pr = _landed_pr(repo_full, issue)
         if pr is not None:
-            return f"completed: PR #{pr.get('number')} {pr.get('html_url') or ''}".strip()
+            pr_ref = f"PR #{pr.get('number')} {pr.get('html_url') or ''}".strip()
+            if pr.get("merged_at"):
+                return f"completed: {pr_ref}"
+            return f"pr_open: {pr_ref}"
         branch = _pushed_branch(repo_full, issue)
         if branch is not None:
-            return f"completed: branch {branch} pushed"
+            return f"branch_pushed: branch {branch} pushed"
     except Exception as exc:  # noqa: BLE001
         return f"abandoned: evidence lookup unavailable ({exc}); agent reported: {agent_reason}"
     return f"abandoned: no PR or branch found for #{issue}; agent reported: {agent_reason}"
@@ -192,6 +195,32 @@ def _is_non_reserving_session(sess: dict[str, Any]) -> bool:
     return not paths and branch in ("", "none")
 
 
+_UNKNOWN_BOARD_PROVENANCE = "unknown board provenance"
+
+
+def _configured_board_issue() -> int | None:
+    """Board issue from RM config, or None when that config is absent or unreadable.
+
+    Pre: none. Post: the configured issue, or None. Never substitutes a retired board number.
+    """
+    try:
+        return board_config()[1]
+    except (BoardConfigUnavailable, RuntimeError):
+        return None
+
+
+def _presence_reason(issue: int | None) -> str:
+    if issue is None:
+        return f"active board presence; {_UNKNOWN_BOARD_PROVENANCE}"
+    return f"active board presence on RM #{issue}"
+
+
+def _comment_limit_fallback(issue: int | None) -> str:
+    if issue is None:
+        return f"comment limit exceeded; {_UNKNOWN_BOARD_PROVENANCE}"
+    return f"RM #{issue} comment limit exceeded"
+
+
 def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
     state = board_mod.cached_board_state()
     if state is None and board_mod.board_page_fetcher is not None:
@@ -211,7 +240,8 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
             "reason": str(state.get("reason") or "coordination board unavailable"),
             "held": None,
         }  # noqa: E501
-    b_iss = board_config()[1]
+    board_issue = _configured_board_issue()
+    presence = _presence_reason(board_issue)
     for sess in state.get("sessions") or []:
         if str(sess.get("repo") or "").casefold() == repo.casefold() and sess.get("issue") == issue:
             if _is_non_reserving_session(sess):
@@ -221,13 +251,13 @@ def _board_claim_override(repo: str, issue: int) -> dict[str, Any] | None:
                 "held": True,
                 "agent": str(sess.get("agent") or ""),
                 "session": str(sess.get("session") or ""),
-                "reason": f"active board presence on RM #{b_iss}",
+                "reason": presence,
                 "expires_at": sess.get("expires") or None,
             }
     if state.get("comment_limit_exceeded") or (
         not state.get("complete", True) and board_mod._comment_limit_reached(state)
     ):  # noqa: E501
-        detail = "; ".join(state.get("warnings") or [f"RM #{b_iss} comment limit exceeded"])
+        detail = "; ".join(state.get("warnings") or [_comment_limit_fallback(board_issue)])
         return {"available": False, "reason": f"coordination board incomplete ({detail})", "held": None}
     return None
 
@@ -430,8 +460,8 @@ def claim(
             raise ClaimHeldError(held_status)
         try:
             posted = _post(repo, issue, agent, session, intent)
-        except Exception:
-            claim_state_mod.get_store().abandon_acquire(repo, issue, agent=agent, session=session)
+        except Exception as exc:
+            claim_state_mod.keep_authoritative_claim(repo, issue, agent=agent, session=session, exc=exc)
             raise
         receipt = str(posted["result"].get("receipt") or "")
         record_job_claim_activity(

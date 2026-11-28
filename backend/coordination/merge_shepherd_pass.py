@@ -8,6 +8,7 @@ import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,14 @@ from coordination.merge_shepherd import (
     count_queue_bounces,
     evaluate_pr_shepherd_eligibility,
     get_auto_merge_flag,
+    has_deterministic_failure_or_unauthorized_requeue,
     rank_candidates_for_shepherding,
+)
+from coordination.merge_shepherd_carry_forward import (
+    FIX_PASS_ESCALATION_AUDIENCE,
+    FIX_PASS_ESCALATION_MARK,
+    HeadCheckFailure,
+    failed_fix_passes_from_cycle,
 )
 from coordination.merge_shepherd_exact_head import (
     DEFAULT_REVIEW_PASS_TTL_HOURS,
@@ -36,6 +44,11 @@ from coordination.merge_shepherd_exact_head import (
 )
 from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS, normalize_hold_label
 from coordination.merge_shepherd_low_risk import low_risk_line_cap as default_low_risk_line_cap
+from coordination.merge_shepherd_requeue import (
+    attach_removal_checks,
+    complete_check_suites,
+    evidence_from_node,
+)
 from priorities.directives import get_directives
 
 log = logging.getLogger(__name__)
@@ -96,20 +109,27 @@ query($owner: String!, $name: String!) {
         }
         autoMergeRequest { enabledAt }
         mergeQueueEntry { position }
-        commits(last: 1) {
+        commits(last: 20) {
           nodes {
             commit {
+              oid
               committedDate
               statusCheckRollup { state }
             }
           }
         }
-        timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        timelineItems(last: 100, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+          pageInfo { hasPreviousPage hasNextPage }
           nodes {
-            ... on RemovedFromMergeQueueEvent { createdAt reason }
+            ... on RemovedFromMergeQueueEvent {
+              createdAt
+              reason
+              beforeCommit { oid }
+            }
           }
         }
         comments(last: 10) {
+          pageInfo { hasPreviousPage hasNextPage }
           nodes {
             body
             createdAt
@@ -144,6 +164,145 @@ query($owner: String!, $name: String!, $after: String) {
   }
 }
 """
+
+# Check runs stay off the 100-PR snapshot. Nested ``first`` limits multiply, and
+# 100 PRs × 100 removals × 20 suites × 20 runs is 4,000,000 nodes. GitHub rejects
+# a query above 500,000.
+GRAPHQL_NODE_LIMIT = 500_000
+
+REMOVAL_CHECKS_QUERY = """
+query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    pullRequest(number: $number) {
+      timelineItems(last: 20, itemTypes: [REMOVED_FROM_MERGE_QUEUE_EVENT]) {
+        nodes {
+          ... on RemovedFromMergeQueueEvent {
+            createdAt
+            beforeCommit {
+              oid
+              checkSuites(first: 20) {
+                pageInfo { hasNextPage endCursor }
+                nodes {
+                  conclusion
+                  workflowRun { event databaseId }
+                  checkRuns(first: 20) {
+                    pageInfo { hasNextPage }
+                    nodes { name conclusion title summary }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+CHECK_SUITES_PAGE_QUERY = """
+query($owner: String!, $name: String!, $oid: GitObjectID!, $after: String) {
+  repository(owner: $owner, name: $name) {
+    object(oid: $oid) {
+      ... on Commit {
+        checkSuites(first: 20, after: $after) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            conclusion
+            workflowRun { event databaseId }
+            checkRuns(first: 20) {
+              pageInfo { hasNextPage }
+              nodes { name conclusion title summary }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
+
+def graphql_connection_node_count(query: str) -> int:
+    """Maximum nodes GitHub will charge for nested ``first``/``last`` connections.
+
+    Pre: ``query`` is a GraphQL document.
+    Post: each connection adds the product of its limit and its ancestor limits.
+    A brace that is not a connection does not add nodes and does not reset the
+    product. The result is the sum of those products.
+    """
+    stack: list[int] = []
+    total = 0
+    for index, char in enumerate(query):
+        if char == "{":
+            limit = _connection_limit_before(query, index)
+            parent = stack[-1] if stack else 1
+            product = parent * limit if limit else parent
+            if limit:
+                total += product
+            stack.append(product)
+        elif char == "}" and stack:
+            stack.pop()
+    return total
+
+
+def _connection_limit_before(query: str, brace_at: int) -> int:
+    cursor = brace_at - 1
+    while cursor >= 0 and query[cursor].isspace():
+        cursor -= 1
+    if cursor < 0 or query[cursor] != ")":
+        return 0
+    depth = 0
+    end = cursor
+    while cursor >= 0:
+        if query[cursor] == ")":
+            depth += 1
+        elif query[cursor] == "(":
+            depth -= 1
+            if depth == 0:
+                group = query[cursor : end + 1]
+                limits = [int(value) for value in re.findall(r"(?:first|last)\s*:\s*(\d+)", group)]
+                return max(limits) if limits else 0
+        cursor -= 1
+    return 0
+
+
+def _node_has_queue_removal(node: Mapping[str, Any]) -> bool:
+    timeline = node.get("timelineItems")
+    events = timeline.get("nodes") if isinstance(timeline, Mapping) else ()
+    return any(isinstance(event, Mapping) and event.get("createdAt") and event.get("reason") for event in events or [])
+
+
+def enrich_open_pr_nodes(
+    nodes: Sequence[Mapping[str, Any]],
+    *,
+    fetch_checks: Callable[[int], Sequence[Mapping[str, Any]]],
+    fetch_suite_page: Callable[[str, str], Mapping[str, Any]],
+) -> list[Any]:
+    """Attach per-PR removal checks and follow suite pages before eligibility.
+
+    Pre: ``fetch_checks(pr_number)`` returns removal events for that PR.
+    ``fetch_suite_page(oid, cursor)`` returns one later check-suite page.
+    Post: a PR with no queue removal is unchanged. A removal's unread suite
+    page stays ``hasNextPage`` so eligibility fails closed.
+    """
+    enriched: list[Any] = []
+    for node in nodes:
+        if not isinstance(node, Mapping) or not _node_has_queue_removal(node):
+            enriched.append(node)
+            continue
+        merged = attach_removal_checks(node, fetch_checks(int(node["number"])))
+        timeline = dict(merged.get("timelineItems") or {})
+        events: list[Any] = []
+        for event in timeline.get("nodes") or []:
+            if isinstance(event, Mapping):
+                events.append(complete_check_suites(event, fetch_suite_page))
+            else:
+                events.append(event)
+        timeline["nodes"] = events
+        merged["timelineItems"] = timeline
+        enriched.append(merged)
+    return enriched
 
 
 @dataclass(frozen=True)
@@ -205,6 +364,7 @@ class PassSummary:
     backoff: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     inaccessible_repos: list[dict[str, str]] = field(default_factory=list)
+    escalations: list[dict[str, Any]] = field(default_factory=list)
 
 
 def default_skip_path(repo_root: Path) -> Path:
@@ -242,13 +402,56 @@ def _repo_arm_cap(repo: str) -> int:
     return ARM_CAP_RD if repo == RD_REPO else ARM_CAP_DEFAULT
 
 
-def _checks_state(node: Mapping[str, Any]) -> str:
-    commits = (node.get("commits") or {}).get("nodes") or []
+def _commit_nodes(node: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    raw = (node.get("commits") or {}).get("nodes") or []
+    commits: list[Mapping[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, Mapping):
+            continue
+        commit = item.get("commit")
+        if isinstance(commit, Mapping):
+            commits.append(commit)
+    return commits
+
+
+def _head_commit(node: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The head commit. Prefer ``headRefOid``; otherwise the last node.
+
+    ``commits(last: N)`` is chronological, so the last node is the newest head
+    when the oid is absent (older fixtures).
+    """
+    commits = _commit_nodes(node)
     if not commits:
-        return "UNKNOWN"
-    commit = commits[0].get("commit") if isinstance(commits[0], Mapping) else {}
-    rollup = (commit or {}).get("statusCheckRollup") if isinstance(commit, Mapping) else {}
+        return {}
+    head = str(node.get("headRefOid") or "").strip().lower()
+    if head:
+        for commit in commits:
+            if str(commit.get("oid") or "").strip().lower() == head:
+                return commit
+    return commits[-1]
+
+
+def _checks_state(node: Mapping[str, Any]) -> str:
+    commit = _head_commit(node)
+    rollup = commit.get("statusCheckRollup") if commit else {}
     return str((rollup or {}).get("state") or "UNKNOWN").upper()
+
+
+def ci_failures_from_commits(node: Mapping[str, Any], *, pr: int) -> tuple[HeadCheckFailure, ...]:
+    """CI-failed heads in ``node``. A commit without an oid or time is not evidence."""
+    if pr <= 0:
+        raise ValueError("pr must be > 0")
+    failures: list[HeadCheckFailure] = []
+    for commit in _commit_nodes(node):
+        state = str((commit.get("statusCheckRollup") or {}).get("state") or "").upper()
+        if state not in {"FAILURE", "ERROR"}:
+            continue
+        sha = str(commit.get("oid") or "").strip()
+        recorded = str(commit.get("committedDate") or "").strip()
+        if not sha or not recorded:
+            continue
+        failures.append(HeadCheckFailure(pr=pr, head_sha=sha, recorded_at=recorded, state=state))
+    return tuple(failures)
 
 
 def _label_names(node: Mapping[str, Any]) -> tuple[str, ...]:
@@ -465,6 +668,7 @@ def node_to_candidate(
     additions: int = 0,
     deletions: int = 0,
     files_complete: bool = True,
+    now: datetime | None = None,
 ) -> PRCandidate:
     number = int(node["number"])
     mergeable = str(node.get("mergeable") or "UNKNOWN").upper()
@@ -484,6 +688,18 @@ def node_to_candidate(
     is_queued = (node.get("mergeQueueEntry") or {}).get("position") is not None
     auto_merge = node.get("autoMergeRequest") is not None
     effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
+    evidence = evidence_from_node(node)
+    commits = (node.get("commits") or {}).get("nodes") or []
+    last = commits[-1] if commits and isinstance(commits[-1], Mapping) else {}
+    head_committed_at = str((last.get("commit") or {}).get("committedDate") or "")
+    timeline_events = (node.get("timelineItems") or {}).get("nodes") or []
+    comments = (node.get("comments") or {}).get("nodes") or []
+    retry_suppressed, retry_detail = has_deterministic_failure_or_unauthorized_requeue(
+        timeline_events,
+        comments,
+        head_sha=head_sha,
+        head_committed_at=head_committed_at,
+    )
     return PRCandidate(
         repo=repo,
         pr_number=number,
@@ -507,6 +723,21 @@ def node_to_candidate(
         line_cap=effective_line_cap,
         files_complete=files_complete,
         review_pass_ttl_hours=review_pass_ttl_hours,
+        head_committed_at=str(evidence["head_committed_at"]),
+        queue_removals=evidence["queue_removals"],
+        merge_group_failures=evidence["merge_group_failures"],
+        comment_bodies=evidence["comment_bodies"],
+        queue_history_truncated=bool(evidence["queue_history_truncated"]),
+        comments_truncated=bool(evidence["comments_truncated"]),
+        checks_truncated=bool(evidence["checks_truncated"]),
+        failed_fix_passes=failed_fix_passes_from_cycle(
+            review_passes,
+            ci_failures_from_commits(node, pr=number),
+            pr=number,
+        ),
+        retry_suppressed=retry_suppressed,
+        retry_suppressed_detail=retry_detail,
+        now=now,
     )
 
 
@@ -539,15 +770,17 @@ def plan_repo_disarms(
     """Plan disarm actions for queued/armed PRs with a fresh FIX-NEEDED at head (#4618).
 
     Runs even when the merge queue is in backoff (arming is throttled, safety disarm is not).
+
+    Disarm is evaluated before the arm pre-filter (#4708): the pre-filter rejects queued,
+    blocked, unstable, changes-requested and failing PRs, which are exactly the PRs whose
+    head-bound FIX-NEEDED must still dequeue them. ``skip_list`` and ``holds`` gate arming
+    only and are deliberately not applied to disarm.
     """
     effective_line_cap = line_cap if line_cap is not None else default_low_risk_line_cap()
     is_drained = drained
     actions: list[PassAction] = []
     for node in nodes:
         if node.get("isDraft"):
-            continue
-        pre = pre_filter_skip_reason(node, repo=repo, skip_list=skip_list, holds=holds)
-        if pre:
             continue
         paths, additions, deletions, files_complete = _pr_file_metadata(node)
         number = int(node["number"])
@@ -588,6 +821,24 @@ def plan_repo_disarms(
     return actions
 
 
+def _skip_row_from_gate(repo: str, number: int, gate: ShepherdDecision) -> dict[str, Any]:
+    """Audit row for a non-arm decision. A fix-pass cap carries the Barb escalation."""
+    if gate.reason == IneligibleReason.FIX_PASS_CAP:
+        row: dict[str, Any] = {"repo": repo, "pr": number, "reason": gate.reason.value}
+        if gate.escalation:
+            row["escalation"] = {
+                "audience": FIX_PASS_ESCALATION_AUDIENCE,
+                "mark": FIX_PASS_ESCALATION_MARK,
+                "notice": gate.escalation,
+            }
+        return row
+    if gate.reason == IneligibleReason.NO_EXACT_HEAD_PASS:
+        reason = f"no_approval:{gate.detail}"
+    else:
+        reason = gate.reason.value if gate.reason else gate.detail or "skip"
+    return {"repo": repo, "pr": number, "reason": reason}
+
+
 def plan_repo_pass(
     repo: str,
     nodes: Sequence[Mapping[str, Any]],
@@ -602,6 +853,7 @@ def plan_repo_pass(
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
     hold_reason: HoldReasonFn | None = None,
     drained: bool = False,
+    now: datetime | None = None,
 ) -> tuple[list[PassAction], list[dict[str, Any]], bool]:
     """Plan arm actions for one repo. Returns actions, skip audit rows, backoff flag.
 
@@ -618,7 +870,8 @@ def plan_repo_pass(
         if node.get("isDraft"):
             continue
         pre = pre_filter_skip_reason(node, repo=repo, skip_list=skip_list, holds=holds)
-        if pre:
+        checks_pre = pre if pre in {"checks_failed", "checks_error"} else ""
+        if pre and not checks_pre:
             skip_rows.append({"repo": repo, "pr": int(node["number"]), "reason": pre})
             continue
         paths, additions, deletions, files_complete = _pr_file_metadata(node)
@@ -642,15 +895,15 @@ def plan_repo_pass(
             additions=additions,
             deletions=deletions,
             files_complete=files_complete,
+            now=now,
         )
         gate = evaluate_pr_shepherd_eligibility(cand)
+        if checks_pre and gate.reason != IneligibleReason.FIX_PASS_CAP:
+            skip_rows.append({"repo": repo, "pr": number, "reason": checks_pre})
+            continue
         if gate.action != ShepherdAction.AUTO_ARM:
             if gate.action == ShepherdAction.SKIP:
-                if gate.reason == IneligibleReason.NO_EXACT_HEAD_PASS:
-                    skip_reason = f"no_approval:{gate.detail}"
-                else:
-                    skip_reason = gate.reason.value if gate.reason else gate.detail or "skip"
-                skip_rows.append({"repo": repo, "pr": number, "reason": skip_reason})
+                skip_rows.append(_skip_row_from_gate(repo, number, gate))
             continue
         eligibility_by_pr[number] = "reviewed"
         candidates.append(cand)
@@ -775,6 +1028,7 @@ def run_merge_shepherd_pass(
         }
         summary.repos.append(repo_row)
         summary.skipped.extend(skips)
+        summary.escalations.extend(row for row in skips if row.get("reason") == IneligibleReason.FIX_PASS_CAP.value)
         for act in disarm_actions:
             summary.disarmed.append(
                 {
@@ -816,4 +1070,5 @@ def summary_to_json(summary: PassSummary) -> dict[str, Any]:
         "backoff": summary.backoff,
         "errors": summary.errors,
         "inaccessible_repos": summary.inaccessible_repos,
+        "escalations": summary.escalations,
     }

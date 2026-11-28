@@ -25,6 +25,12 @@ from coordination.rm_scripts import ScriptResult
 NOW = datetime(2026, 10, 27, 23, 0, tzinfo=UTC)
 
 
+@pytest.fixture(autouse=True)
+def _configured_board(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests name board 2376 explicitly. Runtime no longer invents that number."""
+    monkeypatch.setattr(postman_runner, "configured_board_issue", lambda: 2376)
+
+
 def sessions_ok() -> dict[str, Any]:
     return {
         "available": True,

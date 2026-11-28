@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "cases": {
+    "rd4682": {
+      "outcome": "fail",
+      "failure_class": null,
+      "authoritative": "merge_group run 45882374313: tests (3.11, 1, 1) / Run Python tests"
+    },
+    "calibration": {
+      "outcome": "pass",
+      "failure_class": "stalled",
+      "authoritative": "merge_group run 45873459525: all gated jobs succeeded"
+    }
+  },
+  "stop_gate": {
+    "decision": "STOP_BEFORE_SHADOW"
+  }
+}

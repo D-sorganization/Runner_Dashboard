@@ -47,4 +47,4 @@ Schedule holds from `staff/holds` (RD #2657 deploy hold, Sidekick packaging, Ass
 
 ## Presence / claims
 
-Before coding: claim on Repository_Management **#1576** presence board (not accessible from this cloud agent token) and `GET /api/coordination/claims?repo=Runner_Dashboard&issue=N` on the hub. This session registers intent via PR + `Closes #N` instead.
+Before coding: claim on Repository_Management **#2851** (governing orders and claims; not accessible from this cloud agent token) and `GET /api/coordination/claims?repo=Runner_Dashboard&issue=N` on the hub. Rolling messages use the `board_issue` in Repository_Management `config/agent_communication.json`. This session registers intent via PR + `Closes #N` instead.

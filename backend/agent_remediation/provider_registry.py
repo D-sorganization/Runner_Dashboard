@@ -234,7 +234,7 @@ PROVIDER_REGISTRY: tuple[ProviderEntry, ...] = (
         cloud_mutation_allowed=False,
         notes=(
             "Paid route through Claude CLI + DeepSeek API; requires STAFF_DEEPSEEK_API_ENABLED on the host. "
-            "Opt in per role (draft-only qualification lanes first)."
+            "All Qwen/DeepSeek CLI lanes are graduated to production backlog-completion role."
         ),
     ),
     ProviderEntry(

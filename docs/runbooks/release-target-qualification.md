@@ -4,7 +4,7 @@ Read-only preflight before upgrading the Runner Dashboard on a **dashboard worke
 
 ## When to run
 
-After a release candidate is published through normal CI/publication gates and **before** applying a Brick-only install. Coordinate with Dots Barb on Repository_Management **#2539** before any production edit.
+After a release candidate is published through normal CI/publication gates and **before** applying a Brick-only install. Coordinate with Dots Barb on Repository_Management **#2851** before any production edit.
 
 ## Command
 

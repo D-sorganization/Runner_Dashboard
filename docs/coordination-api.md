@@ -303,8 +303,9 @@ Read-only. Lists registered lane-prompt assignments and any active checkout meta
 Returns a health summary with `healthy_active`, `stalled_heartbeat`, `stalled_progress`, `expired_recent`, and
 `idle_lanes` entries, plus `needs_attention`. Query thresholds are `stall_heartbeat_sec` (default 900),
 `stall_progress_sec` (default 1800), and `expired_window_sec` (default 86400); each has an effective minimum of
-60 seconds. Expired active checkouts are marked expired while building the summary, and recovered or disabled lanes
-are excluded from recent-expiration alerts.
+60 seconds. Active checkouts whose TTL has elapsed, or whose last heartbeat is at least 900 seconds old, are
+marked expired while building the summary (#4677). Recovered or disabled lanes are excluded from
+recent-expiration alerts.
 
 ### `POST /api/coordination/lane-prompts/checkout`
 
@@ -323,14 +324,43 @@ and `session_id` match (`409` on stale fence).
 ### `POST /api/coordination/lane-prompts/release`
 
 Body `{checkout_id, fence_token, session_id, reason?}` → releases an active lane-prompt checkout (`409` on
-stale fence).
+stale fence). Checkout also expires an active row when its heartbeat is at least 900 seconds old, so a new
+session can reclaim the lane before `ttl_sec` elapses (#4677).
+
+### `POST /api/coordination/lane-prompts/force-release`
+
+Body `{lane_id?, checkout_id?, reason?}`. Requires `priorities.write` (operator or admin). Releases one
+active checkout without the holder's `fence_token` or `session_id` (`422` when neither id is set, `404`
+when nothing active is held, `403` for a bot principal).
+
+### `GET /api/coordination/provider-markers`
+
+Read-only. Returns active shared `provider_down` and `rate_limited` markers persisted in hub RD state (`until` UNIX
+timestamp). Expired markers are pruned on read.
+
+### `POST /api/coordination/provider-markers`
+
+Body `{provider, kind, until?|ttl_sec?, reason?}` → sets or replaces a marker (`kind` is `provider_down` or
+`rate_limited`). Requires `until` or `ttl_sec`.
+
+### `DELETE /api/coordination/provider-markers/{provider}?kind=`
+
+Clears marker(s) for a provider; optional `kind` limits the clear to one class. Lane-prompt checkout skips marked
+providers and walks the default provider chain; an unreadable marker store fails open (no skips).
+
+### `POST /api/coordination/provider-markers/restore`
+
+Body `{}` → runs one hub maintenance tick: drops markers whose `until` has passed and markers whose provider is healthy
+again. Returns `{store_ok, cleared_expired, cleared_recovered, cleared_total, remaining}`. Writes an activity-log audit
+when anything was cleared. The hub also runs this on a schedule (`PROVIDER_MARKER_RESTORE_INTERVAL_S`, default 300).
 
 ## Configuration
 
-| Variable                  | Meaning                                                                       |
-| ------------------------- | ----------------------------------------------------------------------------- |
-| `STAFF_RM_ROOT`           | Repository_Management checkout (must contain `scripts/check_agent_claim.py`). |
-| `STAFF_RM_PYTHON`         | Interpreter for the RM scripts (default `python3`).                           |
-| `COORDINATION_REPOS`      | Comma-separated repos for the per-repo fallback read.                         |
-| `DASHBOARD_LOOPBACK_AUTH` | `1` lets the node's own loopback Conductor write without a token.             |
-| `POSTMAN_DATA_DIR`        | Where postman dry-run reports are kept (default `backend/data`).              |
+| Variable                             | Meaning                                                                       |
+| ------------------------------------ | ----------------------------------------------------------------------------- |
+| `STAFF_RM_ROOT`                      | Repository_Management checkout (must contain `scripts/check_agent_claim.py`). |
+| `STAFF_RM_PYTHON`                    | Interpreter for the RM scripts (default `python3`).                           |
+| `COORDINATION_REPOS`                 | Comma-separated repos for the per-repo fallback read.                         |
+| `DASHBOARD_LOOPBACK_AUTH`            | `1` lets the node's own loopback Conductor write without a token.             |
+| `POSTMAN_DATA_DIR`                   | Where postman dry-run reports are kept (default `backend/data`).              |
+| `PROVIDER_MARKER_RESTORE_INTERVAL_S` | Hub auto-restore tick interval for shared provider markers (default `300`).   |

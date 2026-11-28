@@ -15,6 +15,8 @@ from coordination.default_host_aliases import DEFAULT_HOST_ALIASES
 from coordination.fleet_efficiency import enrich_lane_receipt
 
 _DEFAULT_TTL_SEC = 3600
+# A checkout with no heartbeat for this long is expired even if ttl_sec has not elapsed (#4677).
+_STALE_HEARTBEAT_SEC = 900
 _BUSY_RETRIES = 8
 _BUSY_SLEEP_S = 0.05
 
@@ -140,46 +142,46 @@ DEFAULT_LANE_ASSIGNMENTS: tuple[dict[str, Any], ...] = (
     },
     {
         "lane_id": "qwen-ct-1",
-        "role": "mad-scientist",
+        "role": "backlog-completion",
         "repos": ["Runner_Dashboard"],
         "release_sha": _DEFAULT_RELEASE_SHA,
         "package_hash": _DEFAULT_PACKAGE_HASH,
         "subagent_model": _DEFAULT_QWEN_MODEL,
         "max_children": 1,
-        "task_focus": "CT host Qwen Code CLI lane (draft-only qualification).",
+        "task_focus": "CT host Qwen Code CLI lane; open non-draft PRs targeting main.",
         "enabled": True,
     },
     {
         "lane_id": "qwen-oglaptop-1",
-        "role": "mad-scientist",
+        "role": "backlog-completion",
         "repos": ["Runner_Dashboard"],
         "release_sha": _DEFAULT_RELEASE_SHA,
         "package_hash": _DEFAULT_PACKAGE_HASH,
         "subagent_model": _DEFAULT_QWEN_MODEL,
         "max_children": 1,
-        "task_focus": "node-b host Qwen Code CLI lane (draft-only qualification).",
+        "task_focus": "node-b host Qwen Code CLI lane; open non-draft PRs targeting main.",
         "enabled": True,
     },
     {
         "lane_id": "deepseek-ct-1",
-        "role": "mad-scientist",
+        "role": "backlog-completion",
         "repos": ["Runner_Dashboard"],
         "release_sha": _DEFAULT_RELEASE_SHA,
         "package_hash": _DEFAULT_PACKAGE_HASH,
         "subagent_model": _DEFAULT_DEEPSEEK_MODEL,
         "max_children": 1,
-        "task_focus": "CT host DeepSeek API CLI lane (draft-only qualification).",
+        "task_focus": "CT host DeepSeek API CLI lane; open non-draft PRs targeting main.",
         "enabled": True,
     },
     {
         "lane_id": "deepseek-oglaptop-1",
-        "role": "mad-scientist",
+        "role": "backlog-completion",
         "repos": ["Runner_Dashboard"],
         "release_sha": _DEFAULT_RELEASE_SHA,
         "package_hash": _DEFAULT_PACKAGE_HASH,
         "subagent_model": _DEFAULT_DEEPSEEK_MODEL,
         "max_children": 1,
-        "task_focus": "node-b host DeepSeek API CLI lane (draft-only qualification).",
+        "task_focus": "node-b host DeepSeek API CLI lane; open non-draft PRs targeting main.",
         "enabled": True,
     },
     {
@@ -316,12 +318,43 @@ def _infer_host(session_id: str, explicit_host: str | None) -> str | None:
 def _is_lane_compatible(cand: sqlite3.Row, want_provider: str | None, want_host: str | None) -> bool:
     cand_prov = normalize_lane_provider(_lane_provider(cand["lane_id"], cand["subagent_model"]))
     want_norm = normalize_lane_provider(want_provider)
-    if cand_prov is not None and (want_norm is None or cand_prov != want_norm):
+    if want_norm is not None and cand_prov is not None and cand_prov != want_norm:
         return False
     cand_host = _lane_host(cand["lane_id"])
     if cand_host is not None and (want_host is None or cand_host != want_host):
         return False
     return True
+
+
+def _pick_want_provider_for_candidates(
+    candidates: list[sqlite3.Row],
+    inferred_provider: str | None,
+    provider_down: set[str],
+    want_host: str | None,
+) -> str | None:
+    """Honor inferred provider unless marked down; then walk the lane chain for an eligible lane."""
+    from coordination import provider_down_markers  # noqa: PLC0415
+
+    want_norm = normalize_lane_provider(inferred_provider)
+    if not provider_down or (want_norm is not None and want_norm not in provider_down):
+        return want_norm
+
+    chain = list(provider_down_markers.LANE_CHECKOUT_PROVIDER_CHAIN)
+    if want_norm and want_norm in chain:
+        idx = chain.index(want_norm)
+        order = chain[idx:] + chain[:idx]
+    elif want_norm:
+        order = [want_norm, *[p for p in chain if p != want_norm]]
+    else:
+        order = chain
+
+    for prov in order:
+        if prov in provider_down:
+            continue
+        for cand in candidates:
+            if _is_lane_compatible(cand, prov, want_host):
+                return prov
+    return None
 
 
 def _lane_provider(lane_id: str, subagent_model: str) -> str | None:
@@ -386,6 +419,24 @@ class LaneRoleUnavailableError(LaneConflictError):
 
 class StaleLaneFenceError(RuntimeError):
     """Raised when a heartbeat/release presents a stale fence or wrong session."""
+
+
+class LaneNotActiveError(LookupError):
+    """Raised when a force-release finds no active checkout."""
+
+
+def _expire_inactive(conn: sqlite3.Connection, ts: float) -> None:
+    """Drop active checkouts whose TTL elapsed or whose heartbeat is at least 15 minutes old."""
+    conn.execute(
+        """
+        UPDATE lane_checkouts
+        SET status = 'expired', expired_at = ?,
+            expiry_reason = CASE WHEN expires_at <= heartbeat_at + ? THEN 'lease_ttl' ELSE 'heartbeat_stale' END
+        WHERE status = 'active'
+          AND (expires_at <= ? OR (? - heartbeat_at) >= ?)
+        """,
+        (ts, _STALE_HEARTBEAT_SEC, ts, ts, _STALE_HEARTBEAT_SEC),
+    )
 
 
 def _default_db_path() -> Path:
@@ -475,6 +526,11 @@ class LanePromptStore:
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_active_lane
                     ON lane_checkouts(lane_id) WHERE status = 'active';
                 """)
+            columns = {row["name"] for row in conn.execute("PRAGMA table_info(lane_checkouts)")}
+            if "expired_at" not in columns:
+                conn.execute("ALTER TABLE lane_checkouts ADD COLUMN expired_at REAL")
+            if "expiry_reason" not in columns:
+                conn.execute("ALTER TABLE lane_checkouts ADD COLUMN expiry_reason TEXT")
         finally:
             conn.close()
 
@@ -538,10 +594,7 @@ class LanePromptStore:
         ts = time.time() if now is None else float(now)
 
         def _tx(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-            conn.execute(
-                "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
-                (ts,),
-            )
+            _expire_inactive(conn, ts)
             rows = conn.execute("""
                 SELECT a.lane_id, a.role, a.repos_json, a.release_sha, a.package_hash,
                        a.subagent_model, a.max_children, a.task_focus, a.enabled,
@@ -585,7 +638,11 @@ class LanePromptStore:
     ) -> dict[str, Any]:
         ts = time.time() if now is None else float(now)
         ttl = max(60, int(ttl_sec))
-        want_provider = _infer_provider(session_id, provider, principal)
+        from coordination import provider_down_markers  # noqa: PLC0415
+
+        inferred_provider = _infer_provider(session_id, provider, principal)
+        provider_down = provider_down_markers.providers_marked_down(now=ts)
+        want_provider = normalize_lane_provider(inferred_provider)
         want_host = _infer_host(session_id, host)
         requested_role = normalize_requested_role(role)
         # Idempotency keys are caller supplied, so scope them to the session and
@@ -628,9 +685,12 @@ class LanePromptStore:
             return rec
 
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
+            _expire_inactive(conn, ts)
+            effective_want_provider = want_provider
             existing_idem = conn.execute(
                 """SELECT receipt_json FROM lane_checkouts
-                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?""",
+                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?
+                     AND status = 'active'""",
                 (scoped_idempotency_key, principal, session_id),
             ).fetchone()
             if existing_idem is not None:
@@ -639,16 +699,12 @@ class LanePromptStore:
             # Honor pre-scope database records only for the original owner.
             legacy_idem = conn.execute(
                 """SELECT receipt_json FROM lane_checkouts
-                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?""",
+                   WHERE idempotency_key = ? AND principal = ? AND session_id = ?
+                     AND status = 'active'""",
                 (idempotency_key, principal, session_id),
             ).fetchone()
             if legacy_idem is not None:
                 return _check_receipt_compatible(conn, legacy_idem["receipt_json"])
-
-            conn.execute(
-                "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
-                (ts,),
-            )
 
             if lane_id is None and requested_role is None:
                 active_self = conn.execute(
@@ -658,7 +714,7 @@ class LanePromptStore:
                        WHERE c.session_id = ? AND c.status = 'active'""",
                     (session_id,),
                 ).fetchone()
-                if active_self is not None and _is_lane_compatible(active_self, want_provider, want_host):
+                if active_self is not None and _is_lane_compatible(active_self, effective_want_provider, want_host):
                     rec = json.loads(active_self["receipt_json"])
                     _assert_receipt_role(rec)
                     return enrich_lane_receipt(rec)
@@ -670,7 +726,10 @@ class LanePromptStore:
                 ).fetchone()
                 if row is None:
                     raise LaneConflictError(f"Lane {lane_id!r} not found or disabled")
-                if not _is_lane_compatible(row, want_provider, want_host):
+                lane_prov = normalize_lane_provider(_lane_provider(row["lane_id"], row["subagent_model"]))
+                if provider_down and lane_prov is not None and lane_prov in provider_down:
+                    raise LaneConflictError(f"Lane {lane_id!r} provider {lane_prov!r} is marked down")
+                if not _is_lane_compatible(row, effective_want_provider, want_host):
                     raise LaneConflictError(f"Lane {lane_id!r} is incompatible with caller provider/host")
                 _assert_assignment_role(str(row["role"]), lane_id=lane_id)
                 held = conn.execute(
@@ -700,14 +759,37 @@ class LanePromptStore:
                     params.append(requested_role)
                 query += " ORDER BY a.lane_id"
                 candidates = conn.execute(query, params).fetchall()
-                filtered = [cand for cand in candidates if _is_lane_compatible(cand, want_provider, want_host)]
-                if want_host is not None:
-                    filtered.sort(
-                        key=lambda r: (
-                            0 if _lane_host(r["lane_id"]) == want_host else 1,
-                            r["lane_id"],
-                        )
+                effective_want_provider = _pick_want_provider_for_candidates(
+                    candidates,
+                    inferred_provider,
+                    provider_down,
+                    want_host,
+                )
+                filtered = [
+                    cand for cand in candidates if _is_lane_compatible(cand, effective_want_provider, want_host)
+                ]
+                if provider_down:
+                    filtered = [
+                        cand
+                        for cand in filtered
+                        if normalize_lane_provider(_lane_provider(cand["lane_id"], cand["subagent_model"]))
+                        not in provider_down
+                    ]
+
+                def _provider_chain_rank(row: sqlite3.Row) -> int:
+                    prov = normalize_lane_provider(_lane_provider(row["lane_id"], row["subagent_model"]))
+                    chain = provider_down_markers.LANE_CHECKOUT_PROVIDER_CHAIN
+                    if prov in chain:
+                        return chain.index(prov)
+                    return len(chain)
+
+                filtered.sort(
+                    key=lambda r: (
+                        0 if want_host is not None and _lane_host(r["lane_id"]) == want_host else 1,
+                        _provider_chain_rank(r),
+                        r["lane_id"],
                     )
+                )
                 if not filtered:
                     if requested_role is not None:
                         raise LaneRoleUnavailableError(
@@ -845,8 +927,55 @@ class LanePromptStore:
             receipt["released_at"] = ts
             receipt["release_reason"] = reason
             conn.execute(
-                "UPDATE lane_checkouts SET status = 'released', receipt_json = ? WHERE checkout_id = ?",
-                (json.dumps(receipt), checkout_id),
+                "UPDATE lane_checkouts SET status = 'released', expired_at = ?, "
+                "expiry_reason = 'released', receipt_json = ? WHERE checkout_id = ?",
+                (ts, json.dumps(receipt), checkout_id),
+            )
+            return receipt
+
+        return self._run_tx(_tx)
+
+    def force_release(
+        self,
+        *,
+        actor: str,
+        reason: str = "operator force-release",
+        lane_id: str | None = None,
+        checkout_id: str | None = None,
+        now: float | None = None,
+    ) -> dict[str, Any]:
+        """Release an active checkout without the holder's fence token or session id.
+
+        The route admits only operator/admin principals. This frees a lane whose
+        process died inside the 15-minute heartbeat window (#4677).
+        """
+        if not lane_id and not checkout_id:
+            raise ValueError("lane_id or checkout_id is required")
+        ts = time.time() if now is None else float(now)
+
+        def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
+            if checkout_id:
+                row = conn.execute(
+                    "SELECT * FROM lane_checkouts WHERE checkout_id = ?",
+                    (checkout_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT * FROM lane_checkouts WHERE lane_id = ? AND status = 'active'",
+                    (lane_id,),
+                ).fetchone()
+            if row is None or row["status"] != "active":
+                raise LaneNotActiveError("No active lane checkout to force-release")
+            receipt = json.loads(row["receipt_json"])
+            receipt["status"] = "released"
+            receipt["released_at"] = ts
+            receipt["release_reason"] = reason
+            receipt["released_by"] = actor
+            receipt["force_released"] = True
+            conn.execute(
+                "UPDATE lane_checkouts SET status = 'released', expired_at = ?, "
+                "expiry_reason = 'force_released', receipt_json = ? WHERE checkout_id = ?",
+                (ts, json.dumps(receipt), row["checkout_id"]),
             )
             return receipt
 
@@ -867,31 +996,34 @@ class LanePromptStore:
         exp_window = max(60, int(expired_window_sec))
 
         def _tx(conn: sqlite3.Connection) -> dict[str, Any]:
-            conn.execute(
-                "UPDATE lane_checkouts SET status='expired' WHERE status='active' AND expires_at <= ?",
-                (ts,),
-            )
+            _expire_inactive(conn, ts)
             assignments = conn.execute(
                 "SELECT lane_id, role, task_focus, enabled FROM lane_assignments ORDER BY lane_id"
             ).fetchall()
             enabled_lanes = {a["lane_id"] for a in assignments if a["enabled"]}
             active_rows = conn.execute("SELECT * FROM lane_checkouts WHERE status='active' ORDER BY lane_id").fetchall()
             expired_rows = conn.execute(
-                """
-                SELECT c.lane_id, c.checkout_id, c.session_id, c.expires_at
+                f"""
+                SELECT c.lane_id, c.checkout_id, c.session_id,
+                       COALESCE(c.expired_at, MIN(c.expires_at, c.heartbeat_at + {_STALE_HEARTBEAT_SEC})) AS expired_at,
+                       COALESCE(c.expiry_reason, CASE WHEN c.expires_at <= c.heartbeat_at + {_STALE_HEARTBEAT_SEC}
+                           THEN 'lease_ttl' ELSE 'heartbeat_stale' END) AS expiry_reason
                 FROM lane_checkouts c
                 JOIN lane_assignments a ON a.lane_id = c.lane_id
                 WHERE c.status = 'expired'
                   AND a.enabled = 1
-                  AND (? - c.expires_at) <= ?
+                  AND (? - COALESCE(c.expired_at, MIN(c.expires_at, c.heartbeat_at + {_STALE_HEARTBEAT_SEC}))) <= ?
                   AND NOT EXISTS (
                       SELECT 1
                       FROM lane_checkouts c2
                       WHERE c2.lane_id = c.lane_id
                         AND c2.status IN ('active', 'released')
-                        AND c2.created_at > c.expires_at
+                        AND c2.checkout_id != c.checkout_id
+                        AND c2.created_at >= COALESCE(
+                            c.expired_at, MIN(c.expires_at, c.heartbeat_at + {_STALE_HEARTBEAT_SEC})
+                        )
                   )
-                ORDER BY c.expires_at DESC
+                ORDER BY expired_at DESC
                 LIMIT 25
                 """,
                 (ts, exp_window),
@@ -938,7 +1070,8 @@ class LanePromptStore:
                     "lane_id": r["lane_id"],
                     "checkout_id": r["checkout_id"],
                     "session_id": r["session_id"],
-                    "expired_ago_sec": round(ts - float(r["expires_at"]), 1),
+                    "expired_ago_sec": round(max(0.0, ts - float(r["expired_at"])), 1),
+                    "expiry_reason": r["expiry_reason"],
                 }
                 for r in expired_rows
             ]

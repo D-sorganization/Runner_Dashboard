@@ -36,11 +36,11 @@ def test_no_pr_and_no_branch_is_abandoned_with_agents_reason_kept(monkeypatch: p
 
 
 @pytest.mark.unit
-def test_open_pr_closing_the_issue_is_completed_and_linked(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_open_pr_closing_the_issue_is_pr_open_and_linked(monkeypatch: pytest.MonkeyPatch) -> None:
     pr = {"number": 88, "state": "open", "title": "fix: x", "body": "Closes #12", "html_url": "https://x/pr/88"}
     patch_gh_list_fetch(monkeypatch, _fetch([pr], []))
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
-    assert result == "completed: PR #88 https://x/pr/88"
+    assert result == "pr_open: PR #88 https://x/pr/88"
 
 
 @pytest.mark.unit
@@ -67,10 +67,10 @@ def test_closed_unmerged_pr_does_not_count_as_evidence(monkeypatch: pytest.Monke
 
 
 @pytest.mark.unit
-def test_pushed_branch_with_no_pr_is_completed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_pushed_branch_with_no_pr_is_branch_pushed(monkeypatch: pytest.MonkeyPatch) -> None:
     patch_gh_list_fetch(monkeypatch, _fetch([], [{"name": "claude/12-fix-release-outcome"}]))
     result = claims.classify_release_reason("Tools", 12, agent_reason="work completed")
-    assert result == "completed: branch claude/12-fix-release-outcome pushed"
+    assert result == "branch_pushed: branch claude/12-fix-release-outcome pushed"
 
 
 @pytest.mark.unit

@@ -1134,7 +1134,7 @@ def test_disarm_if_held_author_bot_path_disarms_armed_pr() -> None:
     )
     verdict = automerge_guard.disarm_if_held("o/r", 7, runner=fake)
     assert verdict.held
-    assert any("DELETE" in call and "/ccr/auto_merge" in " ".join(call) for call in fake.calls)
+    assert any("--disable-auto" in " ".join(call) for call in fake.calls)
 
 
 def test_arm_cli_in_flight_hold_after_completion_exits_five(

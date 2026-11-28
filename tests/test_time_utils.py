@@ -65,6 +65,14 @@ def test_parse_github_ts_z_suffix_is_utc() -> None:
     assert parsed.utcoffset() == timedelta(0)
 
 
+def test_parse_github_ts_lowercase_z_is_utc() -> None:
+    """A lowercase ``z`` UTC designator (valid ISO-8601 variant) parses as UTC."""
+    parsed = parse_github_ts("2026-11-16T19:03:13z")
+    assert parsed is not None
+    assert parsed == datetime(2026, 11, 16, 19, 3, 13, tzinfo=UTC)
+    assert parsed.utcoffset() == timedelta(0)
+
+
 def test_parse_github_ts_keeps_explicit_offset() -> None:
     """An explicit offset is preserved and compares equal to the UTC instant."""
     parsed = parse_github_ts("2026-11-16T11:03:13-08:00")

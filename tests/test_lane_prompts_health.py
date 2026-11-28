@@ -56,7 +56,7 @@ def test_health_summary_classifies_healthy_stalled_expired_and_idle(tmp_path: Pa
         ttl_sec=3600,
         now=base,
     )
-    # No heartbeat for 1000s (>= 900s) -> stalled_heartbeat
+    # No heartbeat for 1900s (>= 900s) -> expired, not left active (#4677).
     _ = c_hb
 
     c_prog = store.checkout(
@@ -93,11 +93,11 @@ def test_health_summary_classifies_healthy_stalled_expired_and_idle(tmp_path: Pa
     )
     assert summary["needs_attention"] is True
     assert [x["lane_id"] for x in summary["healthy_active"]] == ["lane-healthy"]
-    assert [x["lane_id"] for x in summary["stalled_heartbeat"]] == ["lane-hb-stale"]
+    assert summary["stalled_heartbeat"] == []
     assert [x["lane_id"] for x in summary["stalled_progress"]] == ["lane-prog-stale"]
-    assert [x["lane_id"] for x in summary["expired_recent"]] == ["lane-expired"]
-    # lane-expired becomes unassigned/idle once expired, alongside lane-idle
-    assert {x["lane_id"] for x in summary["idle_lanes"]} == {"lane-idle", "lane-expired"}
+    assert {x["lane_id"] for x in summary["expired_recent"]} == {"lane-expired", "lane-hb-stale"}
+    # Expired lanes become unassigned/idle, alongside lane-idle.
+    assert {x["lane_id"] for x in summary["idle_lanes"]} == {"lane-idle", "lane-expired", "lane-hb-stale"}
 
 
 @pytest.mark.requires_posix
@@ -195,3 +195,174 @@ def test_recovered_and_disabled_lanes_clear_expired_attention(tmp_path: Path) ->
     assert summary_disabled["expired_recent"] == []
     assert summary_disabled["idle_lanes"] == []
     assert summary_disabled["needs_attention"] is False
+
+
+def test_missing_heartbeat_expires_before_ttl_and_allows_reclaim(tmp_path: Path) -> None:
+    """A relaunch can take the lane 15 minutes after the last heartbeat, before TTL (#4677)."""
+    from coordination.lane_prompts import LaneConflictError, LanePromptStore
+
+    store = LanePromptStore(db_path=tmp_path / "lane_prompts.sqlite3")
+    store.register_assignment(
+        lane_id="cursor-ct-2",
+        role="backlog-completion",
+        repos=["Runner_Dashboard"],
+        release_sha="abc123",
+        package_hash="pkg123",
+        subagent_model="grok-4.7-high",
+        max_children=1,
+    )
+    now = 10_000.0
+    held = store.checkout(
+        session_id="cursor-dead",
+        principal="agent-cursor",
+        idempotency_key="dead-key",
+        lane_id="cursor-ct-2",
+        host="ct",
+        ttl_sec=3600,
+        now=now,
+    )
+    with pytest.raises(LaneConflictError):
+        store.checkout(
+            session_id="cursor-relaunch",
+            principal="agent-cursor",
+            idempotency_key="relaunch-early",
+            lane_id="cursor-ct-2",
+            host="ct",
+            ttl_sec=3600,
+            now=now + 899,
+        )
+    reclaimed = store.checkout(
+        session_id="cursor-relaunch",
+        principal="agent-cursor",
+        idempotency_key="relaunch-key",
+        lane_id="cursor-ct-2",
+        host="ct",
+        ttl_sec=3600,
+        now=now + 900,
+    )
+    assert reclaimed["session_id"] == "cursor-relaunch"
+    assert reclaimed["fence_token"] == held["fence_token"] + 1
+    assert reclaimed["checkout_id"] != held["checkout_id"]
+
+
+def test_force_release_frees_a_fresh_checkout_without_fence(tmp_path: Path) -> None:
+    """Operator force-release drops a checkout that still has a fresh heartbeat (#4677)."""
+    from coordination.lane_prompts import LaneNotActiveError, LanePromptStore
+
+    store = LanePromptStore(db_path=tmp_path / "lane_prompts.sqlite3")
+    store.register_assignment(
+        lane_id="cursor-ct-2",
+        role="backlog-completion",
+        repos=["Runner_Dashboard"],
+        release_sha="abc123",
+        package_hash="pkg123",
+        subagent_model="grok-4.7-high",
+        max_children=1,
+    )
+    now = 20_000.0
+    held = store.checkout(
+        session_id="cursor-dead",
+        principal="agent-cursor",
+        idempotency_key="dead-key",
+        lane_id="cursor-ct-2",
+        host="ct",
+        ttl_sec=3600,
+        now=now,
+    )
+    released = store.force_release(
+        actor="principal:op-1",
+        reason="dead pid",
+        lane_id="cursor-ct-2",
+        now=now + 30,
+    )
+    assert released["force_released"] is True
+    assert released["released_by"] == "principal:op-1"
+    assert released["checkout_id"] == held["checkout_id"]
+    with pytest.raises(LaneNotActiveError):
+        store.force_release(actor="principal:op-1", lane_id="cursor-ct-2", now=now + 31)
+    nxt = store.checkout(
+        session_id="cursor-relaunch",
+        principal="agent-cursor",
+        idempotency_key="relaunch-key",
+        lane_id="cursor-ct-2",
+        host="ct",
+        ttl_sec=3600,
+        now=now + 40,
+    )
+    assert nxt["fence_token"] == held["fence_token"] + 1
+
+
+def test_heartbeat_expiry_reports_actual_transition_and_no_healthy_overlap(tmp_path: Path) -> None:
+    from coordination.lane_prompts import LanePromptStore
+
+    store = LanePromptStore(db_path=tmp_path / "expiry.sqlite3")
+    store.register_assignment(
+        lane_id="lane",
+        role="backlog-completion",
+        repos=["Runner_Dashboard"],
+        release_sha="sha",
+        package_hash="pkg",
+        subagent_model="",
+        max_children=0,
+    )
+    checkout = store.checkout(
+        session_id="codex-dead",
+        principal="loopback-dev",
+        idempotency_key="key",
+        lane_id="lane",
+        ttl_sec=3600,
+        now=10000.0,
+    )
+    summary = store.health_summary(now=10901.0)
+    assert summary["healthy_active"] == []
+    expired = summary["expired_recent"][0]
+    assert expired["checkout_id"] == checkout["checkout_id"]
+    assert expired["expired_ago_sec"] == 0.0
+    assert expired["expiry_reason"] == "heartbeat_stale"
+    assert store.health_summary(now=10911.0)["expired_recent"][0]["expired_ago_sec"] == 10.0
+
+
+def test_expiry_metadata_for_ttl_and_releases(tmp_path: Path) -> None:
+    from coordination.lane_prompts import LanePromptStore
+
+    store = LanePromptStore(db_path=tmp_path / "metadata.sqlite3")
+    for lane in ("ttl", "release", "force"):
+        store.register_assignment(
+            lane_id=lane,
+            role="backlog-completion",
+            repos=["Runner_Dashboard"],
+            release_sha="sha",
+            package_hash="pkg",
+            subagent_model="",
+            max_children=0,
+        )
+    items = {
+        lane: store.checkout(
+            session_id=f"codex-{lane}",
+            principal="loopback-dev",
+            idempotency_key=lane,
+            lane_id=lane,
+            ttl_sec=60,
+            now=10000.0,
+        )
+        for lane in ("ttl", "release", "force")
+    }
+    store.release(
+        checkout_id=items["release"]["checkout_id"],
+        fence_token=items["release"]["fence_token"],
+        session_id="codex-release",
+        now=10010.0,
+    )
+    store.force_release(actor="operator", lane_id="force", now=10020.0)
+    summary = store.health_summary(now=10061.0)
+    assert summary["expired_recent"][0]["expiry_reason"] == "lease_ttl"
+    with store._connect() as conn:
+        rows = {
+            row["lane_id"]: (row["expired_at"], row["expiry_reason"])
+            for row in conn.execute("SELECT lane_id, expired_at, expiry_reason FROM lane_checkouts")
+        }
+    assert rows == {
+        "ttl": (10061.0, "lease_ttl"),
+        "release": (10010.0, "released"),
+        "force": (10020.0, "force_released"),
+    }

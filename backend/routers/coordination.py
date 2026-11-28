@@ -18,10 +18,12 @@ Routes (all under ``/api/coordination``):
   GET  /jobs/releases       Recent job-board claim releases (activity projection; slice toward #2785).
   GET  /briefing            Priorities, holds, sessions, staff runs, claim protocol and fleet rules.
   GET  /postman/reports     Newest postman dry-run reports (what it would deliver; nothing is sent).
+  POST /lane-prompts/force-release  Operator/admin release of a live checkout without its fence (#4677).
 
 Auth: reads ``require_fleet_peer``; writes ``require_coordination_writer``
 (scope ``coordination.write`` or the loopback orchestrator peer) plus the
-CSRF header. A bot principal ``agent-<name>`` may only act as ``<name>`` on
+CSRF header. Force-release uses ``require_priorities_writer`` (operator/admin).
+A bot principal ``agent-<name>`` may only act as ``<name>`` on
 sessions ``<name>-*`` (403 otherwise). Reads degrade to ``available: false``
 with HTTP 200; failed RM writes return 502 with the script's ``error`` and
 ``guidance``; 409 when the issue is held or the sender has no live presence.
@@ -29,15 +31,19 @@ with HTTP 200; failed RM writes return 502 with the script's ``error`` and
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from collections.abc import Callable
+import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from coordination import job_releases as job_releases_mod
 from coordination import jobs as jobs_mod
 from coordination import lane_prompts as lane_prompts_mod
 from coordination import postman_runner, service
-from coordination.auth import Caller, require_coordination_writer
+from coordination import provider_down_markers as provider_markers_mod
+from coordination import provider_marker_restore as provider_marker_restore_mod
+from coordination.auth import Caller, require_coordination_writer, require_priorities_writer
 from coordination.board import BOARD_REPO, RMScriptError
 from coordination.briefing import build_briefing
 from coordination.claims import AgingPrBlockedError, ClaimHeldError
@@ -64,10 +70,26 @@ from fastapi.concurrency import run_in_threadpool
 from identity import require_fleet_peer
 from pydantic import BaseModel, Field
 from routers.repo_query import bare_repo_query as _repo
+from staff.barb_runtime import local_node_name
 
 log = logging.getLogger("dashboard.coordination")
 router = APIRouter(prefix="/api/coordination", tags=["coordination"])
 WRITER = Depends(require_coordination_writer)  # one write-auth dependency for every POST
+OPERATOR = Depends(require_priorities_writer)  # force-release: operator/admin only (#4677)
+COORDINATION_TIMEOUT = 4.0
+
+
+async def _bounded(operation: Awaitable[dict[str, Any]], *, write: bool = False) -> dict[str, Any]:
+    """Bound response latency; a timed-out write may still complete in its worker."""
+    try:
+        return await asyncio.wait_for(operation, timeout=COORDINATION_TIMEOUT)
+    except TimeoutError as exc:
+        detail: dict[str, Any] = {"error": "coordination upstream timed out", "retryable": True}
+        if write:
+            detail.update(
+                outcome="unknown", guidance="Check the board for delivery before retrying to avoid duplicates."
+            )
+        raise HTTPException(status_code=503, detail=detail, headers={"Retry-After": "5"}) from exc
 
 
 async def _write(action: Callable[[], dict[str, Any]], caller: Caller, what: str) -> dict[str, Any]:
@@ -117,7 +139,9 @@ async def get_inbox(
 
 @router.post("/presence")
 async def post_presence(body: PresenceBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _write(lambda: service.register_presence(body, caller), caller, "presence register")
+    return await _bounded(
+        _write(lambda: service.register_presence(body, caller), caller, "presence register"), write=True
+    )
 
 
 @router.post("/presence/release")
@@ -127,7 +151,7 @@ async def post_presence_release(body: ReleaseBody, caller: Caller = WRITER) -> d
 
 @router.post("/messages")
 async def post_message(body: MessageBody, caller: Caller = WRITER) -> dict[str, Any]:
-    return await _write(lambda: service.send_message(body, caller), caller, "message send")
+    return await _bounded(_write(lambda: service.send_message(body, caller), caller, "message send"), write=True)
 
 
 @router.post("/messages/ack")
@@ -169,7 +193,9 @@ async def get_jobs(
     include_excluded: bool = Query(default=False),
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
-    return await run_in_threadpool(jobs_mod.list_jobs, repo=_repo(repo), limit=limit, include_excluded=include_excluded)
+    return await _bounded(
+        run_in_threadpool(jobs_mod.list_jobs, repo=_repo(repo), limit=limit, include_excluded=include_excluded)
+    )
 
 
 @router.post("/jobs/claim")
@@ -216,7 +242,7 @@ async def get_briefing(
     agent: str | None = Query(default=None, pattern=AGENT_PATTERN),
     _peer: str = Depends(require_fleet_peer),
 ) -> dict[str, Any]:
-    return await build_briefing(_repo(repo), agent)
+    return await _bounded(run_in_threadpool(lambda: asyncio.run(build_briefing(_repo(repo), agent))))
 
 
 @router.get("/postman/reports")
@@ -252,6 +278,14 @@ class LaneReleaseBody(BaseModel):
     fence_token: int = Field(ge=1)
     session_id: str = Field(min_length=1, max_length=128, pattern=SESSION_PATTERN)
     reason: str = Field(default="completed", max_length=128)
+
+
+class LaneForceReleaseBody(BaseModel):
+    """Operator release. Exactly one of ``lane_id`` or ``checkout_id`` is required."""
+
+    lane_id: str | None = Field(default=None, max_length=64)
+    checkout_id: str | None = Field(default=None, max_length=64)
+    reason: str = Field(default="operator force-release", min_length=1, max_length=128)
 
 
 def _check_lane_session(caller: Caller, session_id: str) -> None:
@@ -342,3 +376,96 @@ async def post_lane_prompt_release(body: LaneReleaseBody, caller: Caller = WRITE
         )
     except lane_prompts_mod.StaleLaneFenceError as exc:
         raise HTTPException(status_code=409, detail={"error": str(exc)}) from exc
+
+
+@router.post("/lane-prompts/force-release")
+async def post_lane_prompt_force_release(
+    body: LaneForceReleaseBody,
+    caller: Caller = OPERATOR,
+) -> dict[str, Any]:
+    """Release a dead checkout without the holder's session id or fence token."""
+    if not body.lane_id and not body.checkout_id:
+        raise HTTPException(status_code=422, detail={"error": "lane_id or checkout_id is required"})
+    try:
+        return await run_in_threadpool(
+            lane_prompts_mod.get_lane_prompt_store().force_release,
+            actor=caller.label,
+            reason=body.reason,
+            lane_id=body.lane_id,
+            checkout_id=body.checkout_id,
+        )
+    except lane_prompts_mod.LaneNotActiveError as exc:
+        raise HTTPException(status_code=404, detail={"error": str(exc)}) from exc
+
+
+class ProviderMarkerSetBody(BaseModel):
+    provider: str = Field(min_length=1, max_length=64)
+    kind: str = Field(min_length=1, max_length=32)
+    until: float | None = None
+    ttl_sec: float | None = Field(default=None, ge=1, le=604800)
+    reason: str | None = Field(default=None, max_length=512)
+
+
+@router.get("/provider-markers")
+async def get_provider_markers(
+    _peer: str = Depends(require_fleet_peer),
+) -> dict[str, Any]:
+    markers = await run_in_threadpool(provider_markers_mod.list_active_markers)
+    return {"markers": markers}
+
+
+@router.post("/provider-markers")
+async def post_provider_marker(body: ProviderMarkerSetBody, caller: Caller = WRITER) -> dict[str, Any]:
+    now = time.time()
+    if body.until is not None:
+        until = float(body.until)
+    elif body.ttl_sec is not None:
+        until = now + float(body.ttl_sec)
+    else:
+        raise HTTPException(status_code=422, detail={"error": "until or ttl_sec required"})
+    try:
+        marker = await run_in_threadpool(
+            provider_markers_mod.set_marker,
+            body.provider,
+            body.kind,
+            until=until,
+            now=now,
+            reason=body.reason,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    log.info("coordination: provider marker set by %s for %s (%s)", caller.label, body.provider, body.kind)
+    return {"marker": marker}
+
+
+@router.delete("/provider-markers/{provider}")
+async def delete_provider_marker(
+    provider: str,
+    kind: str | None = Query(default=None, max_length=32),
+    caller: Caller = WRITER,
+) -> dict[str, Any]:
+    try:
+        removed = await run_in_threadpool(provider_markers_mod.clear_marker, provider, kind)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"error": str(exc)}) from exc
+    log.info("coordination: provider marker cleared by %s for %r (%s)", caller.label, provider, kind)
+    return {"removed": removed}
+
+
+@router.post("/provider-markers/restore")
+async def post_provider_marker_restore(caller: Caller = WRITER) -> dict[str, Any]:
+    """Run one maintenance tick (expired + recovered clears) and emit audit metadata."""
+    node = local_node_name()
+
+    def _run() -> dict[str, Any]:
+        return provider_marker_restore_mod.run_provider_marker_restore_tick(
+            audit=lambda body: provider_marker_restore_mod.emit_restore_audit(body, node=node),
+        )
+
+    payload = await run_in_threadpool(_run)
+    log.info(
+        "coordination: provider marker restore by %s cleared=%s",
+        caller.label,
+        payload.get("cleared_total"),
+    )
+    return payload

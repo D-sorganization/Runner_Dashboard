@@ -19,7 +19,8 @@ from agent_remediation.policy import _as_tuple_strings, _load_workflow_type_rule
 from dashboard_config import ORG
 from fastapi import APIRouter, Depends, HTTPException, Request
 from identity import Principal, require_scope
-from security import check_dispatch_rate, validate_owner_repo_format, validate_repo_slug
+from security import check_dispatch_rate
+from security import normalize_repository_input as _normalize_repository_input
 from system_utils import run_cmd
 
 # Python 3.11+ has datetime.UTC; fall back to timezone.utc for 3.10
@@ -43,23 +44,9 @@ def workflow_dispatch_endpoint(workflow_file: str) -> str:
     return f"/repos/{ORG}/{DASHBOARD_REPO}/actions/workflows/{workflow_file}/dispatches"
 
 
-def _normalize_repository_input(value: str) -> tuple[str, str]:
-    """Return (repo_name, full_name) from a bare or qualified repo name (issue #326).
-
-    Validates against a strict regex before any owner comparison or subprocess
-    interpolation to prevent SSRF via malformed owner/repo slugs.
-    """
-    text = str(value).strip().lstrip("/")
-    if "/" in text:
-        # Validate full owner/repo format before extracting parts (issue #326)
-        validate_owner_repo_format(text)
-        owner, _, repo_name = text.partition("/")
-        if owner.lower() != ORG.lower():
-            raise HTTPException(status_code=422, detail=f"repository owner must be {ORG}")
-        repo_name = validate_repo_slug(repo_name)
-        return repo_name, f"{ORG}/{repo_name}"
-    repo_name = validate_repo_slug(text)
-    return repo_name, f"{ORG}/{repo_name}"
+# ``_normalize_repository_input`` is re-exported here (aliasing the shared
+# ``security.normalize_repository_input``) because ``remediation_bulk.py`` and
+# ``staff/work_request_dispatch.py`` import it by that private name.
 
 
 from .remediation_bulk import (  # noqa: E402

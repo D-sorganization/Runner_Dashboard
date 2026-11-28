@@ -19,10 +19,13 @@ if str(_BACKEND) not in sys.path:
 
 from coordination.merge_shepherd_pass import (  # noqa: E402
     ARMED_PULL_REQUESTS_PAGE_QUERY,
+    CHECK_SUITES_PAGE_QUERY,
     OPEN_PRS_QUERY,
+    REMOVAL_CHECKS_QUERY,
     PassConfig,
     armed_pull_requests_has_next_page,
     collect_review_passes_from_store,
+    enrich_open_pr_nodes,
     graphql_nodes,
     holds_gate_failed_payload,
     plan_repo_disarms,
@@ -47,6 +50,8 @@ def _graphql_query(
     name: str,
     *,
     after: str | None = None,
+    number: int | None = None,
+    oid: str | None = None,
     runner=_default_runner,
 ) -> Mapping[str, Any]:
     cmd = [
@@ -60,6 +65,10 @@ def _graphql_query(
         "-f",
         f"name={name}",
     ]
+    if number is not None:
+        cmd.extend(["-F", f"number={number}"])
+    if oid:
+        cmd.extend(["-f", f"oid={oid}"])
     if after:
         cmd.extend(["-f", f"after={after}"])
     proc = runner(cmd)
@@ -104,7 +113,50 @@ def _graphql(owner: str, name: str, *, runner=_default_runner) -> Mapping[str, A
     stitched = stitch_armed_pull_request_pages(pages)
     merged_repo = dict(repo)
     merged_repo["armedPullRequests"] = stitched
+    pr_block = merged_repo.get("pullRequests")
+    if isinstance(pr_block, Mapping):
+        raw_nodes = [node for node in (pr_block.get("nodes") or []) if isinstance(node, Mapping)]
+
+        def fetch_checks(pr_number: int) -> list[Mapping[str, Any]]:
+            payload = _graphql_query(REMOVAL_CHECKS_QUERY, owner, name, number=pr_number, runner=runner)
+            return _removal_check_events(payload)
+
+        def fetch_suite_page(commit_oid: str, cursor: str) -> Mapping[str, Any]:
+            payload = _graphql_query(
+                CHECK_SUITES_PAGE_QUERY,
+                owner,
+                name,
+                oid=commit_oid,
+                after=cursor,
+                runner=runner,
+            )
+            return _check_suite_page(payload)
+
+        refreshed = dict(pr_block)
+        refreshed["nodes"] = enrich_open_pr_nodes(
+            raw_nodes,
+            fetch_checks=fetch_checks,
+            fetch_suite_page=fetch_suite_page,
+        )
+        merged_repo["pullRequests"] = refreshed
     return {**data, "repository": merged_repo}
+
+
+def _removal_check_events(payload: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    repo = payload.get("repository") if isinstance(payload, Mapping) else {}
+    pull = repo.get("pullRequest") if isinstance(repo, Mapping) else {}
+    timeline = pull.get("timelineItems") if isinstance(pull, Mapping) else {}
+    nodes = timeline.get("nodes") if isinstance(timeline, Mapping) else []
+    return [node for node in nodes or [] if isinstance(node, Mapping)]
+
+
+def _check_suite_page(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    repo = payload.get("repository") if isinstance(payload, Mapping) else {}
+    obj = repo.get("object") if isinstance(repo, Mapping) else {}
+    suites = obj.get("checkSuites") if isinstance(obj, Mapping) else {}
+    if isinstance(suites, Mapping):
+        return suites
+    return {"nodes": [], "pageInfo": {"hasNextPage": True}}
 
 
 def _fetch_hub_holds(url: str, token: str) -> list[dict[str, Any]]:
@@ -162,7 +214,7 @@ def _revalidate_disarm(*, repo: str, pr: int, head_sha: str, repo_root: Path) ->
     passes = collect_review_passes_from_store(store=resolve_merge_shepherd_review_store(repo_root=repo_root), repo=name)
     actions = plan_repo_disarms(repo, nodes, skip_list=frozenset(), holds=(), live=True, review_passes=passes)
     return any(
-        action.pr_number == pr and action.head_sha == head_sha and action.detail == "rejected_at_head"
+        action.pr_number == pr and action.head_sha == head_sha
         for action in actions
     )
 
