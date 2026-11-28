@@ -1024,6 +1024,7 @@ def _quality_gate(**env: str) -> int:
         "RESULT_LINT": "success",
         "RESULT_TESTS": "success",
         "RESULT_SECURITY": "success",
+        "RESULT_HOLD": "success",
         "RESULT_FRONTEND": "skipped",
         "RESULT_SECRETS": "skipped",  # pragma: allowlist secret
         "RESULT_API_CONTRACT": "skipped",
@@ -1044,6 +1045,15 @@ def _tests_required(**env: str) -> int:
     }
     code, _ = _run_step(_ci_step("tests-required", name="Confirm Python test matrix"), {**defaults, **env})
     return code
+
+
+def test_quality_gate_requires_hold_label_success_on_pr_and_merge_group() -> None:
+    assert _quality_gate(RESULT_HOLD="failure") == 1
+    assert _quality_gate(RESULT_HOLD="skipped") == 1
+    assert _quality_gate(GITHUB_EVENT_NAME="merge_group", RESULT_HOLD="skipped") == 1
+    assert _quality_gate(GITHUB_EVENT_NAME="push", RESULT_HOLD="skipped") == 0
+    assert _quality_gate(GITHUB_EVENT_NAME="workflow_dispatch", RESULT_HOLD="skipped") == 0
+    assert _quality_gate(GITHUB_EVENT_NAME="schedule", RESULT_HOLD="skipped") == 0
 
 
 def test_quality_gate_passes_the_pr_tier_when_security_scan_succeeds() -> None:
