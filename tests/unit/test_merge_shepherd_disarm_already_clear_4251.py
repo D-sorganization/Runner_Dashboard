@@ -40,11 +40,13 @@ from tests.unit.test_automerge_guard_disarm_route_4251 import LiveGitHubGh
 from tests.unit.test_merge_shepherd_disarm_revalidate_4251 import _NotHeld
 
 UD = "D-sorganization/UpstreamDrift"
-# The three rows Merge shepherd run 46139657286 planned for disarm, with their real heads.
+# The three rows Merge shepherd run 46139657286 planned for disarm. The heads are synthetic in
+# the shape the 4618 executor tests already use: the disposition read never consults them, and a
+# literal 40-hex value reads as a high-entropy string to detect-secrets, which drifts the baseline.
 SATISFIED_PLAN = (
-    (15922, "ee19e13cea9ee1ca6db98c615bb1cdb59b236bc5"),
-    (15939, "105e83fa3d350ce79f9581cd90852311d41b6ed9"),
-    (15944, "7264fbee71012ad155d021949307f7ef8af7415d"),
+    (15922, "a" * 40),
+    (15939, "b" * 40),
+    (15944, "c" * 40),
 )
 TRANSIENT = OSError("gh: HTTP 502")
 
