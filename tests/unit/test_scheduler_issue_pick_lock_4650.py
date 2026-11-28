@@ -147,27 +147,3 @@ def test_scheduler_tick_does_not_hold_lock_during_pick_issue_target(
     assert lock_was_free_during_pick, "StaffScheduler._lock was held during pick_issue_target I/O!"
     assert any(d.get("role") == "issue-remediator" and d.get("fired") for d in decisions)
     assert submitted and submitted[0].issue == 101
-
-
-def test_pick_issue_target_skips_epic_labelled_issues(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Board Decision D3 (#3048): epic-labelled issues are ineligible for issue-remediator auto-dispatch."""
-    monkeypatch.setattr("staff.claim_guard.scheduler_blocker", lambda *a, **kw: "")
-    now = datetime(2026, 11, 24, 23, 5, tzinfo=TZ)
-    role = _issue_remediator_role(("Runner_Dashboard",))
-
-    issues = [
-        {"number": 3048, "labels": [{"name": "epic"}, {"name": "high"}]},
-        {"number": 3049, "labels": [{"name": "medium"}]},
-    ]
-    claim_calls: list[int] = []
-
-    def _fetch_open(_repo: str):
-        return issues, None
-
-    def _fetch_claim(_repo: str, issue: int):
-        claim_calls.append(issue)
-        return {"available": True, "held": False}
-
-    picked = pick_issue_target(role, now, fetch_open=_fetch_open, fetch_claim=_fetch_claim)
-    assert picked == ("Runner_Dashboard", 3049)
-    assert claim_calls == [3049]

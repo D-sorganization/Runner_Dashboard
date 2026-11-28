@@ -8,6 +8,7 @@ import math
 import os
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -28,10 +29,7 @@ LANE_CHECKOUT_PROVIDER_CHAIN: tuple[str, ...] = (
     "qwen",
 )
 
-# Re-entrant so a writer can persist while it already holds the critical section.
-# The lock must cover load, mutate, and write together. Locking only the final
-# replace lets a second writer persist a stale snapshot and drop a new marker.
-_lock = threading.RLock()
+_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -117,37 +115,35 @@ def _load_raw() -> tuple[list[ProviderMarker], bool]:
     return markers, True
 
 
-def _write_markers(markers: list[ProviderMarker]) -> None:
-    """Replace the store file. Caller must hold ``_lock``."""
+def _persist(markers: list[ProviderMarker]) -> None:
     path = state_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"version": 1, "markers": [m.to_dict() for m in markers]}
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    with _lock:
+        tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
 
 
 def list_active_markers(*, now: float | None = None) -> list[dict[str, Any]]:
     """Active markers only; expires stale entries and rewrites state when pruning."""
     current = time.time() if now is None else float(now)
-    with _lock:
-        markers, _ok = _load_raw()
-        active = [m for m in markers if m.until > current]
-        if len(active) != len(markers):
-            _write_markers(active)
-        return [m.to_dict() for m in active]
+    markers, _ok = _load_raw()
+    active = [m for m in markers if m.until > current]
+    if len(active) != len(markers):
+        _persist(active)
+    return [m.to_dict() for m in active]
 
 
 def providers_marked_down(*, now: float | None = None) -> set[str]:
     current = time.time() if now is None else float(now)
-    with _lock:
-        markers, store_ok = _load_raw()
-        if not store_ok:
-            return set()
-        pruned = [m for m in markers if m.until > current]
-        if len(pruned) != len(markers):
-            _write_markers(pruned)
-        return {m.provider for m in pruned}
+    markers, store_ok = _load_raw()
+    if not store_ok:
+        return set()
+    pruned = [m for m in markers if m.until > current]
+    if len(pruned) != len(markers):
+        _persist(pruned)
+    return {m.provider for m in pruned}
 
 
 def set_marker(
@@ -169,12 +165,11 @@ def set_marker(
     ts = time.time() if now is None else float(now)
     marker = ProviderMarker(provider=norm, kind=kind_norm, until=float(until), set_at=ts, reason=reason)
 
-    with _lock:
-        markers, _ = _load_raw()
-        current = ts
-        kept = [m for m in markers if m.until > current and not (m.provider == norm and m.kind == kind_norm)]
-        kept.append(marker)
-        _write_markers(kept)
+    markers, _ = _load_raw()
+    current = ts
+    kept = [m for m in markers if m.until > current and not (m.provider == norm and m.kind == kind_norm)]
+    kept.append(marker)
+    _persist(kept)
     return marker.to_dict()
 
 
@@ -186,21 +181,45 @@ def clear_marker(provider: str, kind: str | None = None) -> int:
     if kind_norm is not None and kind_norm not in MARKER_KINDS:
         raise ValueError(f"invalid marker kind {kind!r}")
 
-    with _lock:
-        markers, _ = _load_raw()
-        before = len(markers)
+    markers, _ = _load_raw()
+    before = len(markers)
 
-        def _keep(m: ProviderMarker) -> bool:
-            if m.provider != norm:
-                return True
-            if kind_norm is None:
-                return False
-            return m.kind != kind_norm
+    def _keep(m: ProviderMarker) -> bool:
+        if m.provider != norm:
+            return True
+        if kind_norm is None:
+            return False
+        return m.kind != kind_norm
 
-        kept = [m for m in markers if _keep(m)]
-        if len(kept) != before:
-            _write_markers(kept)
-        return before - len(kept)
+    kept = [m for m in markers if _keep(m)]
+    if len(kept) != before:
+        _persist(kept)
+    return before - len(kept)
+
+
+def restore_prune_markers(
+    *,
+    now: float,
+    provider_recovered: Callable[[str], bool],
+) -> tuple[bool, list[dict[str, Any]], list[dict[str, Any]], int]:
+    """Drop expired markers and those whose provider has recovered (maintenance tick)."""
+    markers, store_ok = _load_raw()
+    if not store_ok:
+        return False, [], [], 0
+    cleared_expired: list[dict[str, Any]] = []
+    cleared_recovered: list[dict[str, Any]] = []
+    kept: list[ProviderMarker] = []
+    for marker in markers:
+        if marker.until <= now:
+            cleared_expired.append({**marker.to_dict(), "reason": "expired"})
+            continue
+        if provider_recovered(marker.provider):
+            cleared_recovered.append({**marker.to_dict(), "reason": "recovered"})
+            continue
+        kept.append(marker)
+    if cleared_expired or cleared_recovered:
+        _persist(kept)
+    return store_ok, cleared_expired, cleared_recovered, len(kept)
 
 
 def resolve_lane_provider_with_failover(want_provider: str | None, *, now: float | None = None) -> str | None:
