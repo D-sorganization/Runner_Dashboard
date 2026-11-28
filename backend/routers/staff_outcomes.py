@@ -18,12 +18,13 @@ from identity import Principal, require_scope
 from staff.adapters import available_providers
 from staff.models_insights import (
     StaffBeanCounterResponse,
+    StaffDailyScorecardResponse,
     StaffOutcomesResponse,
     StaffReportCardsResponse,
 )
 from staff.runner import get_runner
 
-from staff import outcomes, report_cards
+from staff import outcomes, report_cards, scorecard
 
 log = logging.getLogger("dashboard.staff.outcomes")
 router = APIRouter(tags=["staff"])
@@ -90,6 +91,30 @@ async def get_outcomes(
     facts = await outcomes.read_pr_facts(wanted)
     body = outcomes.aggregate(runs, facts, group_by=group_by)
     return {**body, "since": start, "machine": runner.machine, "prs_truncated": truncated}
+
+
+@router.get("/scorecard/daily", response_model=StaffDailyScorecardResponse)
+async def get_daily_scorecard(
+    days: int = Query(default=scorecard.DEFAULT_DAYS, ge=1, le=scorecard.MAX_DAYS),
+    since: str | None = Query(default=None, max_length=40),
+    model: str | None = Query(default=None, max_length=64),
+    _peer: Principal = Depends(require_scope("staff.read")),
+) -> dict[str, Any]:
+    """Daily per-model scorecard (#4564): merge time, CI failure rate and review findings per UTC day.
+
+    ``days`` is the look-back when no ``since`` is given; ``model`` narrows every row,
+    roll-up and total to that model alone. PR facts are the same reads ``/outcomes`` already
+    makes, so the scorecard costs no extra GitHub traffic beyond its own run window.
+    """
+    start, end = scorecard.window(days=days)
+    if since is not None:
+        start = _checked_since(since)
+    runner = get_runner()
+    runs = runner.store.list_runs(limit=RUN_LIMIT, since=start)
+    wanted, truncated = outcomes.prs_to_read(runs)
+    facts = await outcomes.read_pr_facts(wanted)
+    body = scorecard.daily_scorecard(runs, facts, model=model or None)
+    return {**body, "since": start, "until": end, "days": days, "machine": runner.machine, "prs_truncated": truncated}
 
 
 @router.get("/report-cards", response_model=StaffReportCardsResponse)

@@ -531,13 +531,30 @@ def _independent_review_state(run: CommandRunner, repo: str, pr: int, pull: _Pul
     return reasons, pass_head_sha, (approval_link if verdict == "PASS" and not reasons else "")
 
 
-def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> bool:
-    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
+def _try_disarm_routes(repo: str, pr: int, run: CommandRunner) -> tuple[bool, str]:
+    """Try every disarm route GitHub serves; return ``(disarmed, error)``.
+
+    ``gh pr merge --disable-auto`` is the supported route (``disablePullRequestAutoMerge``)
+    and is idempotent when nothing is armed. The legacy ``ccr/auto_merge`` REST path answers
+    ``404 Not Found`` on every repo, so it stays only as the fallback for runners whose
+    GraphQL writes are blocked (#4251).
+    """
+    proc = run(["gh", "pr", "merge", str(pr), "--repo", repo, "--disable-auto"])
     if proc.returncode == 0:
+        return True, ""
+    cli_error = proc.stderr.strip() or proc.stdout.strip()
+    legacy = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
+    if legacy.returncode == 0:
+        return True, ""
+    return False, legacy.stderr.strip() or legacy.stdout.strip() or cli_error
+
+
+def _disarm_auto_merge(repo: str, pr: int, run: CommandRunner) -> bool:
+    disarmed, error = _try_disarm_routes(repo, pr, run)
+    if disarmed:
         logger.warning("Disarmed auto-merge on %s#%s before a blocked merge.", repo, pr)
         return True
-    err = proc.stderr.strip() or proc.stdout.strip()
-    logger.warning("Could not disarm auto-merge on %s#%s: %s", repo, pr, err)
+    logger.warning("Could not disarm auto-merge on %s#%s: %s", repo, pr, error)
     return False
 
 
@@ -545,7 +562,7 @@ def disarm_if_held(repo: str, pr: int, *, runner: CommandRunner | None = None) -
     """Re-check holds on an already-armed PR; disarm when a hold applies (#4315).
 
       Post: returns the current :func:`evaluate_hold` verdict. When ``held``, one
-    ``DELETE .../ccr/auto_merge`` is attempted (author-bot / scheduled paths).
+    disarm is attempted through :func:`_try_disarm_routes` (author-bot / scheduled paths).
     """
     run = runner or _default_runner
     verdict = evaluate_hold(repo, pr, runner=run)
@@ -804,16 +821,15 @@ def _revoke_rest_arm(repo: str, pr: int, run: CommandRunner) -> tuple[str, bool]
     """Undo a REST arm whose stored method could not be confirmed.
 
     The PUT already succeeded, so GitHub may still auto-merge the PR with the
-    wrong strategy. Returns a message for ``ArmResult.detail``; a failed DELETE
+    wrong strategy. Returns a message for ``ArmResult.detail``; a failed disarm
     is reported loudly because auto-merge may then still be on. The second item
     is True in exactly that case.
     """
-    proc = run(["gh", "api", "-X", "DELETE", f"repos/{repo}/pulls/{pr}/ccr/auto_merge"])
-    if proc.returncode == 0:
+    revoked, err = _try_disarm_routes(repo, pr, run)
+    if revoked:
         logger.warning("Revoked unverified REST auto-merge arm on %s#%s.", repo, pr)
         _mark_guard_disarm(repo, pr, "the REST arm could not be verified", run)
         return "auto-merge revoked", False
-    err = proc.stderr.strip() or proc.stdout.strip()
     logger.error("Could not revoke REST auto-merge arm on %s#%s: %s", repo, pr, err)
     return (
         f"revoke FAILED ({err}); auto-merge may still be ON and needs manual disarm",

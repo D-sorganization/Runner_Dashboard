@@ -214,7 +214,7 @@ def _revalidate_disarm(*, repo: str, pr: int, head_sha: str, repo_root: Path) ->
     passes = collect_review_passes_from_store(store=resolve_merge_shepherd_review_store(repo_root=repo_root), repo=name)
     actions = plan_repo_disarms(repo, nodes, skip_list=frozenset(), holds=(), live=True, review_passes=passes)
     return any(
-        action.pr_number == pr and action.head_sha == head_sha and action.detail == "rejected_at_head"
+        action.pr_number == pr and action.head_sha == head_sha
         for action in actions
     )
 

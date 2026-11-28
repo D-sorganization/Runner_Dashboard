@@ -78,17 +78,18 @@ def test_validate_owner_repo_rejects_extra_path() -> None:
 
 
 def test_normalizer_source_code_calls_validate_owner_repo_format() -> None:
-    """Verify each _normalize_repository_input body calls validate_owner_repo_format.
+    """Verify the shared normalize_repository_input calls validate_owner_repo_format.
 
-    server.py's unused body-identical copy was removed in #941; the function now
-    lives only in the two router modules that actually call it.
+    assistant.py and remediation.py previously carried body-identical private
+    copies (tripping the DRY duplicate guard); they were extracted into a single
+    ``security.normalize_repository_input`` (#326/#404). The one implementation
+    must still validate the owner/repo format before any owner comparison or
+    subprocess interpolation.
     """
-    source_paths = [
-        _BACKEND / "routers" / "assistant.py",
-        _BACKEND / "routers" / "remediation.py",
-    ]
-    for src_path in source_paths:
-        src = src_path.read_text(encoding="utf-8")
-        assert "validate_owner_repo_format" in src, (
-            f"{src_path.name} must call validate_owner_repo_format in _normalize_repository_input"
-        )
+    src = (_BACKEND / "security.py").read_text(encoding="utf-8")
+    assert "def normalize_repository_input" in src, (
+        "security.py must define the shared normalize_repository_input"
+    )
+    assert "validate_owner_repo_format(" in src, (
+        "security.normalize_repository_input must call validate_owner_repo_format"
+    )

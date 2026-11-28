@@ -5,7 +5,7 @@ import security
 import server
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from routers import assistant, remediation
+from routers import remediation
 
 
 def test_validate_repo_slug_accepts_github_repo_names() -> None:
@@ -24,9 +24,10 @@ def test_validate_repo_slug_rejects_path_and_query_injection(repo: str) -> None:
 @pytest.mark.parametrize(
     "normalizer",
     [
-        # server._normalize_repository_input was removed in #941 (unused twin);
-        # the helper now lives only in the two router modules that call it.
-        assistant._normalize_repository_input,
+        # The body-identical router copies were extracted into one shared
+        # security.normalize_repository_input (#326/#404); remediation keeps the
+        # private alias for remediation_bulk.py / work_request_dispatch.py.
+        security.normalize_repository_input,
         remediation._normalize_repository_input,
     ],
 )
@@ -41,6 +42,27 @@ def test_repository_normalizers_reuse_slug_validation(normalizer) -> None:
         normalizer("D-sorganization/../etc")
 
     assert exc_info.value.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected_short"),
+    [
+        ("/Runner_Dashboard", "Runner_Dashboard"),
+        ("//Runner_Dashboard", "Runner_Dashboard"),
+        ("/D-sorganization/Runner_Dashboard", "Runner_Dashboard"),
+    ],
+)
+@pytest.mark.parametrize(
+    "normalizer",
+    [security.normalize_repository_input, remediation._normalize_repository_input],
+)
+def test_repository_normalizers_tolerate_leading_slash(normalizer, raw: str, expected_short: str) -> None:
+    """Both router copies must treat a leading ``/`` identically (issue #404 item 3).
+
+    A caller passing ``/D-sorganization/Runner_Dashboard`` or ``//Runner_Dashboard``
+    must not get a 422 from one router and a normalized tuple from the other.
+    """
+    assert normalizer(raw) == (expected_short, "D-sorganization/Runner_Dashboard")
 
 
 @pytest.mark.parametrize("repo", ["abc&def", "../etc", "", "a" * 200])
