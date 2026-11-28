@@ -636,13 +636,19 @@ def disarm_for_shepherd(
     verdict = evaluate_hold(repo, pr, runner=run)
     if not head_sha or not revalidate():
         raise RuntimeError("disarm revalidation failed")
-    # Getting here means the planner still wants this PR out of auto-merge at this exact
-    # head, whatever the reason was. Gating on ``rejected_at_head`` left every
-    # requeue-suppression disarm unexecutable, so armed PRs stayed armed (#4251).
+    # Reaching this point is the authorization: the planner still wants this PR out of
+    # auto-merge at this exact head, whatever the plan reason was. Requiring
+    # ``rejected_at_head`` left every requeue-suppression disarm unexecutable, so armed
+    # PRs stayed armed (#4251).
     why = verdict.describe() if verdict.held else f"merge shepherd ({detail})"
-    if before.auto_merge_on or before.in_merge_queue or verdict.held:
+    if before.auto_merge_on:
         if _disarm_auto_merge(repo, pr, run):
             _mark_guard_disarm(repo, pr, why, run)
+    elif before.in_merge_queue:
+        # Unarmed but still queued, so the queued entry would merge. The route is
+        # idempotent, and the mark records intent rather than a state change.
+        _disarm_auto_merge(repo, pr, run)
+        _mark_guard_disarm(repo, pr, why, run)
     after = read_merge_disposition(repo, pr, runner=run)
     return before, after, verdict
 

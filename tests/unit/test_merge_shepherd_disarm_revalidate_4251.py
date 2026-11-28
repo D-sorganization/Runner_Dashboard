@@ -1,12 +1,18 @@
 """#4251: a shepherd-planned disarm must execute for every disarm reason, not just one.
 
-Measured on `main` 2026-11-28: the scheduled Merge shepherd pass failed more than 20
-consecutive runs (e.g. run 46124351262 at 08:09Z) with
-``{"pr": 5781, "detail": "incomplete_comment_history", "error": "disarm revalidation failed"}``
-while AffineDrift#5781 stayed auto-merge armed. ``_revalidate_disarm`` compared the
-planned row against one reason string, and ``disarm_for_shepherd`` only pulled
-auto-merge for that same reason or a hold, so every requeue-suppression reason was
-unexecutable twice over.
+Gate 1 — ``_revalidate_disarm`` comparing the planned row against the single reason
+``rejected_at_head`` — was fixed on ``main`` by #4738. Gate 2 survived it:
+``disarm_for_shepherd`` only pulled auto-merge when the reason *was*
+``rejected_at_head`` or a hold applied, so an unheld suppression disarm still did nothing.
+
+Measured on ``main`` after #4738 merged (08:35:51Z), run 46128887719 at 09:06Z:
+
+    merge shepherd disarm repo=D-sorganization/Gasification_Model pr=5939 disarmed=False exit_code=1
+      {"pr": 5939, "detail": "incomplete_comment_history", "hold_held": false,
+       "before_auto_merge": true, "after_auto_merge": true, "disarmed": false}
+
+``hold_held`` is false and the reason is not ``rejected_at_head``, so every branch of the
+old guard was skipped and Gasification_Model#5939 stayed auto-merge armed.
 """
 
 from __future__ import annotations
@@ -70,10 +76,6 @@ def _suppression_node(*, number: int = 5781) -> dict[str, Any]:
     }
 
 
-def _plan_disarms(node: dict[str, Any]) -> list[Any]:
-    return msp.plan_repo_disarms(REPO, [node], skip_list=frozenset(), holds=(), live=True, review_passes=())
-
-
 def _patch_graphql(monkeypatch: pytest.MonkeyPatch, node: dict[str, Any]) -> None:
     monkeypatch.setattr(msp, "_graphql", lambda *args: {})
     monkeypatch.setattr(msp, "graphql_nodes", lambda payload: ([node], 1, 0))
@@ -90,21 +92,23 @@ def _guard_module() -> Any:
     return importlib.import_module("automerge_guard")
 
 
-def test_premise_the_suppression_reason_is_not_rejected_at_head() -> None:
-    """Locks the fixture onto the production reason for AffineDrift#5781."""
-    disarms = _plan_disarms(_suppression_node())
-    assert [act.detail for act in disarms] == ["incomplete_comment_history"]
+class _NotHeld:
+    """The production shape for #5939: the log line reads ``"hold_held": false``.
 
+    Without this the shared ``LiveGitHubGh`` fake mis-parses its own canned ``o/r``
+    pull payload and reports a deletion hold, so the old ``verdict.held`` branch
+    carried the test and the reason gate under test was never reached.
+    """
 
-def test_revalidate_accepts_a_disarm_planned_for_a_requeue_suppression_reason(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    node = _suppression_node()
-    _patch_graphql(monkeypatch, node)
-    assert msp._revalidate_disarm(repo=REPO, pr=5781, head_sha=HEAD, repo_root=msp.Path.cwd()) is True
+    held = False
+
+    @staticmethod
+    def describe() -> str:
+        return ""
 
 
 def test_revalidate_still_refuses_a_moved_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dropping the reason gate must not drop the head-movement refusal (#4733 contract)."""
     node = _suppression_node()
     _patch_graphql(monkeypatch, node)
     assert msp._revalidate_disarm(repo=REPO, pr=5781, head_sha="b" * 40, repo_root=msp.Path.cwd()) is False
@@ -119,12 +123,17 @@ def test_revalidate_refuses_when_nothing_is_planned_to_disarm(monkeypatch: pytes
 
 
 def test_disarm_via_guard_executes_a_requeue_suppression_disarm(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The whole shepherd path: plan -> revalidate -> disarm must clear the arm."""
+    """The whole shepherd path: plan -> revalidate -> disarm must clear the arm.
+
+    Reproduces Gasification_Model#5939 in run 46128887719: unheld,
+    ``incomplete_comment_history``, armed before and armed after.
+    """
     node = _suppression_node()
     fake = LiveGitHubGh(auto_merge_on=True, in_merge_queue=False)
     _patch_graphql(monkeypatch, node)
     guard_mod = _guard_module()
     monkeypatch.setattr(automerge_guard, "check_token_identity", lambda **kw: True)
+    monkeypatch.setattr(automerge_guard, "evaluate_hold", lambda *a, **kw: _NotHeld())
     monkeypatch.setattr(
         guard_mod,
         "disarm_for_shepherd",
@@ -138,6 +147,7 @@ def test_disarm_via_guard_executes_a_requeue_suppression_disarm(monkeypatch: pyt
         detail="incomplete_comment_history",
     )
     assert result.get("error") is None, result
+    assert result["hold_held"] is False, "premise: production reported hold_held=false"
     assert result["disarmed"] is True
     assert result["exit_code"] == 0
     assert fake.cli_disarm_calls == 1
@@ -186,3 +196,25 @@ def test_hold_disarm_still_marks_with_the_hold_reason(monkeypatch: pytest.Monkey
     assert verdict.held is True
     assert automerge_guard.disposition_cleared(after) is True
     assert any("do-not-merge label" in body for body in fake.comments)
+
+
+def test_clear_disposition_is_not_marked_as_a_guard_disarm(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nothing armed and nothing queued: no route call, no comment claiming a disarm.
+
+    ``gh pr merge --disable-auto`` succeeds idempotently when nothing is armed, so a
+    broadened guard would post "the merge guard disarmed auto-merge" on PRs it never
+    touched. That marker reads as a hold until the next push, so it must stay accurate.
+    """
+    fake = LiveGitHubGh(auto_merge_on=False, in_merge_queue=False)
+    monkeypatch.setattr(automerge_guard, "check_token_identity", lambda **kw: True)
+    _before, after, _verdict = automerge_guard.disarm_for_shepherd(
+        "o/r",
+        7,
+        detail="incomplete_comment_history",
+        head_sha="a" * 40,
+        revalidate=lambda: True,
+        runner=fake,
+    )
+    assert automerge_guard.disposition_cleared(after) is True
+    assert fake.cli_disarm_calls == 0
+    assert fake.comments == []
