@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from staff import adapters as adapters_mod
 from staff.provider_defaults import default_model_for_provider
+
+from staff import adapters as adapters_mod
 
 
 def test_codex_default_model_from_repo_config() -> None:
@@ -15,7 +16,7 @@ def test_antigravity_default_model_from_repo_config() -> None:
 
 
 def test_cursor_agent_default_model_from_repo_config() -> None:
-    assert default_model_for_provider("cursor-agent") == "composer-2.5"
+    assert default_model_for_provider("cursor-agent") == "grok-4.7-high"
 
 
 def test_codex_build_command_passes_default_model_explicitly() -> None:

@@ -5,9 +5,9 @@ from __future__ import annotations
 import sys
 
 import pytest
+from staff.git_identity import staff_git_user_email, staff_git_user_name
 
 from staff import adapters as adapters_mod
-from staff.git_identity import staff_git_user_email, staff_git_user_name
 
 
 @pytest.mark.unit
@@ -25,10 +25,10 @@ def test_cursor_agent_sandbox_enabled_on_linux(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.unit
-def test_cursor_agent_default_model_is_composer_2_5() -> None:
+def test_cursor_agent_default_model_is_grok_4_7_high() -> None:
     argv = adapters_mod.ADAPTERS["cursor-agent"].build_command("fix it", "/tmp/wt", model=None)
     assert "--model" in argv
-    assert argv[argv.index("--model") + 1] == "composer-2.5"
+    assert argv[argv.index("--model") + 1] == "grok-4.7-high"
     assert "--trust" in argv
 
 
