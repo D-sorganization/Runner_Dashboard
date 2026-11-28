@@ -8,6 +8,7 @@ import os
 import re
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -667,6 +668,7 @@ def node_to_candidate(
     additions: int = 0,
     deletions: int = 0,
     files_complete: bool = True,
+    now: datetime | None = None,
 ) -> PRCandidate:
     number = int(node["number"])
     mergeable = str(node.get("mergeable") or "UNKNOWN").upper()
@@ -735,6 +737,7 @@ def node_to_candidate(
         ),
         retry_suppressed=retry_suppressed,
         retry_suppressed_detail=retry_detail,
+        now=now,
     )
 
 
@@ -850,6 +853,7 @@ def plan_repo_pass(
     review_pass_ttl_hours: int = DEFAULT_REVIEW_PASS_TTL_HOURS,
     hold_reason: HoldReasonFn | None = None,
     drained: bool = False,
+    now: datetime | None = None,
 ) -> tuple[list[PassAction], list[dict[str, Any]], bool]:
     """Plan arm actions for one repo. Returns actions, skip audit rows, backoff flag.
 
@@ -891,6 +895,7 @@ def plan_repo_pass(
             additions=additions,
             deletions=deletions,
             files_complete=files_complete,
+            now=now,
         )
         gate = evaluate_pr_shepherd_eligibility(cand)
         if checks_pre and gate.reason != IneligibleReason.FIX_PASS_CAP:

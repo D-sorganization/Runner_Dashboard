@@ -10,6 +10,7 @@ Reproduces the UD #15555 sequence:
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +73,9 @@ def test_clean_control_pr_is_not_suppressed(replay_fixture: dict[str, Any]) -> N
 
 def test_plan_repo_pass_with_ud_15555_replay(replay_fixture: dict[str, Any]) -> None:
     nodes = replay_fixture["ud_15555_replay"]["repository"]["pullRequests"]["nodes"]
+    # Fix clock to 2026-11-24T21:00:00Z — 55 minutes after the review submittedAt,
+    # keeping PR 15556's pass within the 72h TTL window.
+    fixed_now = datetime(2026, 11, 24, 21, 0, 0, tzinfo=UTC)
 
     actions, skips, backoff = plan_repo_pass(
         "D-sorganization/UpstreamDrift",
@@ -81,6 +85,7 @@ def test_plan_repo_pass_with_ud_15555_replay(replay_fixture: dict[str, Any]) -> 
         armed_count=0,
         queue_depth=0,
         live=False,
+        now=fixed_now,
     )
 
     assert backoff is False

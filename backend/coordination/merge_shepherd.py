@@ -6,6 +6,7 @@ import enum
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from coordination.merge_shepherd_carry_forward import fix_pass_decision, fix_pass_escalation_notice
@@ -134,6 +135,7 @@ class PRCandidate:
     failed_fix_passes: int = 0
     retry_suppressed: bool = False
     retry_suppressed_detail: str = ""
+    now: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -433,6 +435,7 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
         head_sha=head_sha,
         review_passes=candidate.review_passes,
         review_pass_ttl_hours=candidate.review_pass_ttl_hours,
+        now=candidate.now,
     )
     if eligibility != "reviewed":
         if _fix_pass_capped(candidate.failed_fix_passes):
