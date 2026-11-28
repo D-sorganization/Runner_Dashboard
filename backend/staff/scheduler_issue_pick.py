@@ -20,7 +20,6 @@ ISSUE_REMEDIATOR_SKIP_LABELS = frozenset(
     {
         "blocked",
         "do-not-automate",
-        "epic",
         "judgement:contested",
         "judgement:design",
         "measurement",
