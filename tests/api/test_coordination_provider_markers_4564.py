@@ -65,3 +65,31 @@ def test_provider_markers_set_get_clear(marker_api: TestClient) -> None:
     assert cleared.status_code == 200
     assert cleared.json()["removed"] == 1
     assert marker_api.get("/api/coordination/provider-markers", headers=_CODEX).json()["markers"] == []
+
+
+def test_provider_marker_restore_endpoint(marker_api: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import time
+
+    past = time.time() - 120.0
+    future = time.time() + 3600.0
+    marker_api.post(
+        "/api/coordination/provider-markers",
+        headers=_CODEX,
+        json={"provider": "claude", "kind": "provider_down", "until": future},
+    )
+    marker_api.post(
+        "/api/coordination/provider-markers",
+        headers=_CODEX,
+        json={"provider": "codex", "kind": "rate_limited", "until": past},
+    )
+    monkeypatch.setattr(
+        "coordination.provider_marker_restore._default_provider_healthy",
+        lambda prov: prov == "claude",
+    )
+
+    resp = marker_api.post("/api/coordination/provider-markers/restore", headers=_CODEX, json={})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["store_ok"] is True
+    assert body["cleared_total"] >= 2
+    assert marker_api.get("/api/coordination/provider-markers", headers=_CODEX).json()["markers"] == []

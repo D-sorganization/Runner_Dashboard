@@ -3120,6 +3120,12 @@ async def _startup() -> None:
 
         asyncio.create_task(periodic_agent_token_loop())
 
+        from coordination.provider_marker_restore import (  # noqa: PLC0415
+            periodic_provider_marker_restore_loop,
+        )
+
+        asyncio.create_task(periodic_provider_marker_restore_loop(node=HOSTNAME))
+
     # Inject org into the audit router so it can query GitHub (issue #298)
     _runner_audit_router.set_org(ORG)
 
