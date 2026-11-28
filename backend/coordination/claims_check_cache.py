@@ -177,11 +177,7 @@ def _shared_load(repo: str, issue: int) -> Future[_CacheEntry]:
         # never submit a second _loader call.
         cached = _cache.get(key)
         now = _clock()
-        if (
-            cached is not None
-            and cached.generation == _generation
-            and now - cached.completed_mono < _ttl_seconds()
-        ):
+        if cached is not None and cached.generation == _generation and now - cached.completed_mono < _ttl_seconds():
             resolved: Future[_CacheEntry] = Future()
             resolved.set_result(cached)
             return resolved
