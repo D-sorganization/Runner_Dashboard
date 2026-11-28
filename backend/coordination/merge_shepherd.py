@@ -377,9 +377,7 @@ def evaluate_pr_shepherd_eligibility(candidate: PRCandidate) -> ShepherdDecision
     if is_pr_held(candidate.labels, candidate.title):
         return ShepherdDecision(_action, pr_num, repo, reason=IneligibleReason.HELD, priority=priority)
     if candidate.bounces >= BOUNCE_LIMIT:
-        return ShepherdDecision(
-            _action, pr_num, repo, reason=IneligibleReason.BOUNCE_LIMIT, priority=priority
-        )
+        return ShepherdDecision(_action, pr_num, repo, reason=IneligibleReason.BOUNCE_LIMIT, priority=priority)
     if candidate.retry_suppressed:
         return ShepherdDecision(
             _action,

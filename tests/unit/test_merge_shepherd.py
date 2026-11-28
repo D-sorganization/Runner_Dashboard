@@ -143,7 +143,8 @@ class TestMergeShepherdEvaluator(unittest.TestCase):
         for cand, expected_reason in cases:
             with self.subTest(cand=cand.pr_number):
                 dec = evaluate_pr_shepherd_eligibility(cand)
-                self.assertEqual((dec.action, dec.reason), (ShepherdAction.SKIP, expected_reason))
+                expected_action = ShepherdAction.DISARM if cand.is_queued else ShepherdAction.SKIP
+                self.assertEqual((dec.action, dec.reason), (expected_action, expected_reason))
 
     def test_ineligible_when_held(self) -> None:
         cases = [
