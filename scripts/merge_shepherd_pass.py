@@ -213,9 +213,11 @@ def _revalidate_disarm(*, repo: str, pr: int, head_sha: str, repo_root: Path) ->
     nodes, _, _ = graphql_nodes(_graphql(owner, name))
     passes = collect_review_passes_from_store(store=resolve_merge_shepherd_review_store(repo_root=repo_root), repo=name)
     actions = plan_repo_disarms(repo, nodes, skip_list=frozenset(), holds=(), live=True, review_passes=passes)
+    # The reason is not part of this contract: revalidating that the plan still wants a
+    # disarm at this exact head is what refuses a moved head. Matching one reason string
+    # made every requeue-suppression disarm unexecutable (#4251).
     return any(
-        action.pr_number == pr and action.head_sha == head_sha and action.detail == "rejected_at_head"
-        for action in actions
+        action.kind == "disarm" and action.pr_number == pr and action.head_sha == head_sha for action in actions
     )
 
 
