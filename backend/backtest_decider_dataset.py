@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from backend.dispatch_routing import (
+from dispatch_routing import (
     CLI_COMPLEXITIES,
     STRONG_COMPLEXITIES,
     STRONG_FLAGS,
@@ -12,6 +12,7 @@ from backend.dispatch_routing import (
     is_dictated_fix,
     resolve_model_routing,
 )
+
 from scripts.sanitize_private_topology import apply_literal_replacements
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from scripts.backtest_decider_dataset import (
+from backend.backtest_decider_dataset import (
     DeciderClient,
     evaluate_backtest_case,
     is_eligible_unclassified_issue,
