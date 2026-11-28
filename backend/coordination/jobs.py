@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import time
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
@@ -17,8 +18,9 @@ from activity_producers import record_job_claim_activity
 from coordination import board as board_mod
 from coordination import claim_state as claim_state_mod
 from coordination import claims as claims_mod
-from coordination import gh_cli, job_board_lease
+from coordination import claims_check_cache, gh_cli, job_board_lease
 from coordination.board import RMScriptError
+from coordination.claims_check_cache import ClaimCheckUnavailable
 from coordination.job_filters import gate_reason, repo_schedule_holds
 from coordination.merge_shepherd_holds import MERGE_SHEPHERD_HOLD_LABELS
 from coordination.pr_age_rule import claim_blocked_by_aging_prs
@@ -178,10 +180,41 @@ def _candidates(repo: str, warnings: list[str]) -> tuple[list[dict[str, Any]], b
     return [issue for issue in raw if isinstance(issue, dict) and "pull_request" not in issue], True
 
 
-def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[str, Any]:
+def _list_claim_status(repo: str, number: int, deadline: float | None) -> dict[str, Any]:
+    """Claim status for one listing row.
+
+    Without a deadline this is the direct check existing callers already use.
+    With a deadline the shared claim cache must answer inside the time left;
+    a miss is unavailable and tells the listing to stop, never to treat the
+    issue as free.
+    """
+    if deadline is None:
+        return claims_mod.check(repo, number)
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        return {
+            "available": False,
+            "reason": "job-board response budget exhausted",
+            "held": None,
+            "_budget_exhausted": True,
+        }
+    try:
+        return claims_check_cache.read(repo, number, budget_seconds=remaining)
+    except ClaimCheckUnavailable as exc:
+        return {"available": False, "reason": str(exc), "held": None, "_budget_exhausted": True}
+
+
+def list_jobs(
+    *,
+    repo: str | None,
+    limit: int,
+    include_excluded: bool,
+    budget_seconds: float | None = None,
+) -> dict[str, Any]:
     """``{available, complete, jobs, excluded?, warnings, generated_at}``; every ``jobs`` entry is open,
     unclaimed and unheld (an unknown lease state excludes it with a warning — unknown is never free)."""
     assert MIN_LIMIT <= limit <= MAX_LIMIT  # noqa: S101 — contract boundary, route already validates
+    deadline = None if budget_seconds is None else time.monotonic() + max(0.0, float(budget_seconds))
     repos = [repo] if repo else board_mod.fleet_repos()
     warnings: list[str] = []
     jobs: list[dict[str, Any]] = []
@@ -194,7 +227,12 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
     holds_available = True
     priorities, priority_warnings = _safe_top_priorities(50)
     warnings.extend(priority_warnings)
+    budget_stop = ""
     for one_repo in repos:
+        if deadline is not None and time.monotonic() >= deadline:
+            complete = False
+            budget_stop = f"{one_repo}: stopped at job-board response budget"
+            break
         issues, repo_complete = _candidates(one_repo, warnings)
         complete = complete and repo_complete
         repo_full = full_repo(one_repo)
@@ -203,6 +241,10 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
             holds_available = False
             warnings.append(f"{one_repo}: holds list unreadable, excluding repo for safety")
         for issue in issues:
+            if deadline is not None and time.monotonic() >= deadline:
+                complete = False
+                budget_stop = f"{one_repo}: stopped at job-board response budget before claim checks finished"
+                break
             number = issue.get("number")
             if not isinstance(number, int):
                 continue
@@ -243,7 +285,12 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
             if hit is not None:
                 excluded.append(_excluded(one_repo, issue, f"open PR #{hit.get('number')} already closes it"))
                 continue
-            status = claims_mod.check(one_repo, number)
+            status = _list_claim_status(one_repo, number, deadline)
+            if status.get("_budget_exhausted"):
+                complete = False
+                budget_stop = f"{one_repo}#{number}: claim check exceeded job-board response budget"
+                excluded.append(_excluded(one_repo, issue, "claim check exceeded job-board response budget"))
+                break
             if not status["available"]:
                 excluded.append(_excluded(one_repo, issue, f"claim check unavailable: {status['reason']}"))
                 warnings.append(f"{one_repo}#{number}: claim check unavailable ({status['reason']})")
@@ -264,6 +311,10 @@ def list_jobs(*, repo: str | None, limit: int, include_excluded: bool) -> dict[s
                     "_sort": (tier, _board_rank(priorities, one_repo, number), str(issue.get("created_at") or "")),
                 }
             )
+        if budget_stop:
+            break
+    if budget_stop:
+        warnings.append(budget_stop)
     jobs.sort(key=lambda j: j["_sort"])
     for job in jobs:
         del job["_sort"]
