@@ -1110,10 +1110,9 @@ jobs:
     name: Hold label gate
     needs: pick-runner
     if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
-    runs-on: >-
-      ${{ github.event.pull_request &&
-      github.event.pull_request.head.repo.full_name != github.repository &&
-      'ubuntu-latest' || needs.pick-runner.outputs.fast_checks_runner }}
+    # Fleet runner only. fast_checks_runner is hosted and limited to allowlisted
+    # required-check jobs; this gate is not one of them (local_only_runner_guard).
+    runs-on: ${{ needs.pick-runner.outputs.runner }}
     timeout-minutes: 5
     permissions:
       contents: read
